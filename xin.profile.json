@@ -1,0 +1,7 @@
+{
+  "bundles": [
+    "xin-base",
+    "xin-plugin-time"
+  ],
+  "patch": []
+}

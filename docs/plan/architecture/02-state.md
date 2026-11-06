@@ -19,7 +19,7 @@ Read with: [01 Host](./01-host.md) for the storage adapter and operation queue, 
 | `kv` | host | `profile_md`, `dreamer_cursor`, `owner_settings` | small singletons |
 | `files` | host | `path PK, r2_key, size, type, sha256, project, updated_at` | bytes are in R2 |
 | `credentials` | host, sealed | `provider PK, sealed JSON` | backs pi-ai's `CredentialStore` |
-| `plugins` | host | `id PK, enabled, config JSON, sealed JSON, state, error` | reconcile input |
+| `plugins` | host | `id PK, sealed JSON` (other columns unused since P1) | sealed per-plugin secrets; activation and config live in `kv` `plugins.patch` (09) |
 | `push_subs` | host | `endpoint PK, keys JSON` | Web Push when no tab is open |
 
 ## IDs and idempotency keys

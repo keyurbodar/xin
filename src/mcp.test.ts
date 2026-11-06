@@ -311,6 +311,26 @@ describe("mcp servers", () => {
     expect(offered(requestAt(1))).not.toContain("mcp__gone__echo")
   })
 
+  it("leaves exactly the current servers' tools on the mcp extension through add, refresh and remove", async () => {
+    const stub = fresh()
+    serve(fakeServer())
+
+    await cmd(stub, "mcp-swap-1", "mcp.add", { name: "alpha", url: "https://mcp.test/alpha" })
+    await cmd(stub, "mcp-swap-2", "mcp.add", { name: "beta", url: "https://mcp.test/beta" })
+    await cmd(stub, "mcp-swap-3", "mcp.add", { name: "alpha", url: "https://mcp.test/alpha" })
+    await cmd(stub, "mcp-swap-4", "mcp.remove", { name: "beta" })
+    await cmd(stub, "mcp-swap-5", "mcp.add", { name: "gamma", url: "https://mcp.test/gamma" })
+
+    const installed = await runInDurableObject(stub, (home: Home) =>
+      [...(home.extension("mcp").tools ?? [])].map((tool) => tool.name).toSorted(),
+    )
+    expect(installed).toEqual(["mcp__alpha__echo", "mcp__alpha__fail", "mcp__gamma__echo", "mcp__gamma__fail"])
+    expect((await cmd(stub, "mcp-swap-list", "mcp.list")).result).toEqual([
+      expect.objectContaining({ name: "alpha", tools: 2 }),
+      expect.objectContaining({ name: "gamma", tools: 2 }),
+    ])
+  })
+
   it("does not resurrect a server removed while its refresh is in flight", async () => {
     const stub = fresh()
     const fake = fakeServer()

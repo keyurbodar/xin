@@ -1,6 +1,6 @@
 import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai"
 import type { Provider } from "../../src/module.ts"
-import type { Plugin } from "../../src/plugins/host.ts"
+import type { Catalog } from "../../src/kernel/loader.ts"
 
 export const WIDE_MODEL = { provider: "faux-alt", modelId: "alt-wide" } as const
 export const NARROW_MODEL = { provider: "faux-alt", modelId: "alt-narrow" } as const
@@ -28,7 +28,7 @@ const step: FauxResponseStep = (context, _options, _state, model) => {
 
 alt.setResponses(Array.from({ length: 64 }, () => step))
 
-export const plugins: readonly Plugin[] = []
+export const catalog: Catalog = {}
 export const providers: readonly Provider[] = [alt.provider]
 
 function lastUserText(messages: readonly { role: string; content?: unknown }[]): string {

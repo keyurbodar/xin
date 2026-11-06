@@ -16,7 +16,11 @@ describe("Worker auth", () => {
   it("routes the owner's token to the Home object", async () => {
     const reply = await call("/v1/status", { headers: { authorization: "Bearer test-owner-token" } })
     expect(reply.status).toBe(200)
-    expect(await reply.json()).toEqual({ wake: { active: false } })
+    expect(await reply.json()).toMatchObject({
+      wake: { active: false },
+      build: "dev",
+      bundles: ["xin-base", "xin-plugin-time", "test"],
+    })
   })
 
   it("accepts the token as a WebSocket subprotocol", async () => {

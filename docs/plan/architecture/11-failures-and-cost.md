@@ -16,7 +16,7 @@ Read with: [01 Host](./01-host.md) for the alarm and Harness recovery paths, [03
 | Provider down | pi retry → run unanswered → report or error bubble | error names the provider and offers a model switch |
 | Storage error | `harness.closed` → `ctx.abort()` → fresh instance | socket reconnects, snapshot |
 | Alarm write fails | `ctx.abort()`, so the constructor's fallback alarm re-arms | nothing |
-| Plugin throws | a throwing tool gives an error result, a throwing hook is reported and skipped, a failed reconcile marks only that plugin | the plugin shows as failed in settings |
+| Plugin throws | a throwing tool gives an error result, a throwing hook is reported and skipped, a row that fails to start is marked `failed` with its error and its effects unwound; other rows keep running, and a failed required row puts Home in `boot_failed` | the plugin shows as failed in settings |
 | Deploy changes a plugin's tool | running calls finish on the old code and the next phase uses the new (pi reload rule) | nothing |
 
 ## 18 · Cost model (DO SQLite rows written, about $1 per million)

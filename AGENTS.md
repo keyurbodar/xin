@@ -10,7 +10,7 @@ Xin is a personal agent backend on Cloudflare: one Worker, one SQLite-backed Dur
 - Web only. No Telegram/SMS/VPS/computer/browser integrations. No A2A, no multi-agent rooms.
 - **No model ids in product code.** Models come from the pi-ai catalog at run time and from the owner's choices (`docs/plan/architecture/05-models.md`). Test code may name models.
 - Official primitives first: pi-durable (Harness, tasks, docs, inbox, hooks, `onWake`), pi-ai (catalog, `CredentialStore`), pi-mcp, Cloudflare runtime APIs. Before writing a mechanism, check whether pi already ships it (`node_modules/@earendil-works/pi-durable/README.md`).
-- No Effect, no RPC framework, no custom journal or storage proxy. Plain TypeScript.
+- No Effect, no RPC framework, no custom journal or storage proxy. Plain TypeScript, with one framework: the plugin layer is dsh's Cordis stack (`@deepseek-ai/cordis`, `cordis-plugin-loader`, `schemastery`). Everything is a loader row; see `docs/plan/architecture/09-plugins.md`.
 - Kiko (`/home/keyur/kiko`) is a reference only. Copy an idea only when the spec names it.
 
 ## Skills
@@ -63,7 +63,7 @@ The full system is in `docs/process/orchestration.md`, and briefs use `docs/proc
 - TypeScript strict, ESM, Bun for scripts, wrangler for the Worker.
 - Schemas: `@earendil-works/pi-schema` builders (`obj`, `str`, `lit`, `union`, `opt`) and `compile()` for tool parameters, op args and wire frames. pi-ai 1.5 has no TypeBox `Type` export. Parse at the boundary (socket frame, HTTP body, tool args, stored JSON), then trust the types.
 - Branded ids (`ConversationId`, `ProjectId`, `ThreadId`, `CommandId`, `BatchId`). Discriminated unions with a `kind` field for states and frames. No `as` casts except right after validation. Exhaustive `switch` with `const _exhaustive: never`.
-- One module per mechanism, matching the spec's sections: `src/host.ts`, `src/db.ts`, `src/ops.ts`, `src/wire.ts`, `src/gateway.ts`, `src/models.ts`, `src/plugins/host.ts`. Features live in `plugins/*` (see `docs/plan/architecture/09-plugins.md`).
+- One module per mechanism, matching the spec's sections: `src/host.ts`, `src/db.ts`, `src/ops.ts`, `src/wire.ts`, `src/gateway.ts`, `src/models.ts`, and the kernel services in `src/kernel/*`. Built-in features are rows in `src/catalog.ts`; optional plugins are packages under `plugins/*` or installed dependencies with a `xin` field (see `docs/plan/architecture/09-plugins.md`).
 - Host schema changes append a step to the migration list. Never edit an existing step.
 - Everything that runs after a crash must be safe to run twice. Use the derived idempotency keys from `docs/plan/architecture/02-state.md`.
 

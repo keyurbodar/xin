@@ -58,7 +58,7 @@ describe("wire protocol", () => {
     const socket = await connect()
     socket.send({ t: "sub", stream: "home" })
     expect(await socket.next((f) => f.t === "snap")).toMatchObject({
-      value: { plugins: { test: "active", broken: "failed", orphan: "blocked" } },
+      value: { plugins: { test: "active", broken: "failed", orphan: "pending" } },
     })
     socket.send({ t: "sub", stream: "conv:999999" })
     expect(await socket.next((f) => f.t === "error")).toMatchObject({ message: "unknown stream conv:999999" })

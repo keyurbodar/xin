@@ -52,8 +52,8 @@ export class PluginSecrets {
     }
   }
 
-  forPlugin(id: string): ReadonlyMap<string, string> {
-    return this.#plaintext.get(id) ?? NO_SECRETS
+  forRow(row: string): ReadonlyMap<string, string> {
+    return this.#plaintext.get(row) ?? NO_SECRETS
   }
 
   values(): readonly string[] {
@@ -64,16 +64,16 @@ export class PluginSecrets {
     return Array.from(found).toSorted((a, b) => b.length - a.length)
   }
 
-  async set(id: string, key: string, value: string): Promise<void> {
-    const sealed = JSON.stringify(await this.sealer.seal(value, secretLabel(id, key)))
+  async set(row: string, key: string, value: string): Promise<void> {
+    const sealed = JSON.stringify(await this.sealer.seal(value, secretLabel(row, key)))
     await this.db.run(
       "INSERT INTO plugins (id, sealed) VALUES (?, json_object(?, json(?))) ON CONFLICT (id) DO UPDATE SET sealed = json_set(COALESCE(plugins.sealed, '{}'), ?, json(?))",
-      id,
+      row,
       key,
       sealed,
       jsonPath(key),
       sealed,
     )
-    this.#plaintext.set(id, new Map(this.forPlugin(id)).set(key, value))
+    this.#plaintext.set(row, new Map(this.forRow(row)).set(key, value))
   }
 }

@@ -6,7 +6,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai"
 import type { Provider } from "../../src/module.ts"
-import type { Plugin } from "../../src/plugins/host.ts"
+import type { Catalog } from "../../src/kernel/loader.ts"
 
 export const M4_MODEL = { provider: "m4", modelId: "m4-faux" } as const
 
@@ -41,4 +41,4 @@ const faux = fauxProvider({ provider: "m4", models: [{ id: "m4-faux" }] })
 faux.setResponses(Array.from({ length: 2000 }, () => step))
 
 export const providers: readonly Provider[] = [faux.provider]
-export const plugins: readonly Plugin[] = []
+export const catalog: Catalog = {}

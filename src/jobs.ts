@@ -373,10 +373,11 @@ export function create(deps: ModuleDeps): HostModule {
   return {
     extensions: [defineExtension({ name: "xin.jobs", tasks: [Job] })],
     async start() {
-      deps.harness().observeCommits(observe)
+      const observation = deps.harness().observeCommits(observe)
       const doc = await deps.harness().snapshot(JobsDoc, context)
       if (doc !== undefined) collect(doc)
       schedule()
+      return () => observation.detach()
     },
   }
 }

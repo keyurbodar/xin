@@ -15,7 +15,7 @@ export type Outcome =
   | { readonly kind: "ok"; readonly result: JsonValue }
   | {
       readonly kind: "rejected"
-      readonly code: "unknown_op" | "bad_args" | "forbidden" | "failed"
+      readonly code: "unknown_op" | "bad_args" | "forbidden" | "failed" | "unavailable"
       readonly message: string
     }
 
@@ -69,14 +69,17 @@ export function defineOp<A>(definition: {
 const isOutcome = (value: unknown): value is Outcome =>
   typeof value === "object" && value !== null && "kind" in value && (value.kind === "ok" || value.kind === "rejected")
 
+export type CommandDeps = {
+  readonly db: SqliteDatabase
+  op(name: string): Op | undefined
+  harness(): Harness | undefined
+  around(command: Command, actor: Actor, invoke: () => Promise<Outcome>): Promise<Outcome>
+}
+
 export class Commands {
   readonly #inflight = new Map<CommandId, Promise<Outcome>>()
 
-  constructor(
-    private readonly db: SqliteDatabase,
-    private readonly ops: ReadonlyMap<string, Op>,
-    private readonly harness: Harness,
-  ) {}
+  constructor(private readonly deps: CommandDeps) {}
 
   run(command: Command, actor: Actor): Promise<Outcome> {
     const running = this.#inflight.get(command.id)
@@ -87,7 +90,7 @@ export class Commands {
   }
 
   async #run(command: Command, actor: Actor): Promise<Outcome> {
-    const receipt = await this.db.get<{ outcome: string }>(
+    const receipt = await this.deps.db.get<{ outcome: string }>(
       "SELECT outcome FROM receipts WHERE command_id = ?",
       command.id,
     )
@@ -95,26 +98,28 @@ export class Commands {
       const stored: unknown = JSON.parse(receipt.outcome)
       if (isOutcome(stored)) return stored
     }
-    const outcome = await this.#invoke(command, actor)
-    if (outcome.kind === "rejected" && outcome.code === "failed") return outcome
+    const outcome = await this.deps.around(command, actor, () => this.#invoke(command, actor))
+    if (outcome.kind === "rejected" && (outcome.code === "failed" || outcome.code === "unavailable")) return outcome
     const now = Date.now()
-    await this.db.run(
+    await this.deps.db.run(
       "INSERT OR IGNORE INTO receipts (command_id, outcome, at) VALUES (?, ?, ?)",
       command.id,
       JSON.stringify(outcome),
       now,
     )
-    await this.db.run("DELETE FROM receipts WHERE at < ?", now - RECEIPT_TTL_MS)
+    await this.deps.db.run("DELETE FROM receipts WHERE at < ?", now - RECEIPT_TTL_MS)
     return outcome
   }
 
   async #invoke(command: Command, actor: Actor): Promise<Outcome> {
-    const op = this.ops.get(command.op)
+    const harness = this.deps.harness()
+    if (harness === undefined) return { kind: "rejected", code: "unavailable", message: "Home is not ready" }
+    const op = this.deps.op(command.op)
     if (op === undefined) return { kind: "rejected", code: "unknown_op", message: `no op ${command.op}` }
     if (!op.actors.includes(actor.kind))
       return { kind: "rejected", code: "forbidden", message: `${actor.kind} may not run ${command.op}` }
     try {
-      return await op.invoke({ harness: this.harness, actor, commandId: command.id }, command.args)
+      return await op.invoke({ harness, actor, commandId: command.id }, command.args)
     } catch (error) {
       return { kind: "rejected", code: "failed", message: error instanceof Error ? error.message : String(error) }
     }

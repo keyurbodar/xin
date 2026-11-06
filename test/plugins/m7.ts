@@ -5,7 +5,7 @@ import {
   type TranscriptContext,
 } from "@earendil-works/pi-ai"
 import type { Provider } from "../../src/module.ts"
-import type { Plugin } from "../../src/plugins/host.ts"
+import type { Catalog } from "../../src/kernel/loader.ts"
 
 export const DREAM_MODEL = { provider: "faux-dream", modelId: "dream-1" } as const
 
@@ -25,5 +25,5 @@ export function script(responses: readonly FauxResponseStep[]): void {
 
 export const dreamJson = (value: unknown) => fauxAssistantMessage(JSON.stringify(value))
 
-export const plugins: readonly Plugin[] = []
+export const catalog: Catalog = {}
 export const providers: readonly Provider[] = [dream.provider]

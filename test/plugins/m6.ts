@@ -2,13 +2,11 @@ import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxToolCall
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
 import { obj } from "@earendil-works/pi-schema"
 import { jobTool } from "../../src/jobs.ts"
-import type { PluginId } from "../../src/ids.ts"
 import type { Provider } from "../../src/module.ts"
-import { definePlugin, type Plugin } from "../../src/plugins/host.ts"
+import type { Catalog } from "../../src/kernel/loader.ts"
+import { testPlugin } from "../kernel.ts"
 
 export const M6_MODEL = { provider: "m6", modelId: "m6-faux" } as const
-
-const NONE = { net: [], memory: "none", files: "none" } as const
 
 const faux = fauxProvider({ provider: "m6", models: [{ id: "m6-faux", name: "M6 Faux" }] })
 
@@ -143,17 +141,8 @@ const step: FauxResponseStep = async (context) => {
 faux.setResponses(Array.from({ length: 4_000 }, () => step))
 
 export const providers: readonly Provider[] = [faux.provider]
-export const plugins: readonly Plugin[] = [
-  definePlugin(
-    {
-      id: "m6" as PluginId,
-      version: "0.0.0",
-      requires: [],
-      provides: ["tool:quick_tool", "tool:slow_tool", "tool:thread_slow_tool", "tool:stuck_tool"],
-      permissions: NONE,
-    },
-    () => ({
-      extensions: [defineExtension({ name: "m6.tools", tools: [quick, slow, threadSlow, stuck] })],
-    }),
-  ),
-]
+export const catalog: Catalog = {
+  m6: testPlugin("m6", {
+    extensions: [defineExtension({ name: "m6.tools", tools: [quick, slow, threadSlow, stuck] })],
+  }),
+}

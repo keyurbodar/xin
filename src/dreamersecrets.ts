@@ -1,7 +1,7 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import { compile, map, obj, opt, str } from "@earendil-works/pi-schema"
 import type { ModuleDeps } from "./module.ts"
-import { PluginSecrets } from "./plugins/secrets.ts"
+import { PluginSecrets } from "./kernel/sealed.ts"
 import { SealedSchema, Sealer } from "./seal.ts"
 
 const MIN_SECRET_LENGTH = 4

@@ -2,7 +2,6 @@ import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxToolCall
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { defineDoc, defineExtension, defineTool, type ModelRef } from "@earendil-works/pi-durable"
 import type { Provider } from "../src/module.ts"
-import { BUNDLED } from "../src/plugins/bundled.ts"
 import * as m2 from "./plugins/m2.ts"
 import * as m3 from "./plugins/m3.ts"
 import * as m4 from "./plugins/m4.ts"
@@ -12,14 +11,18 @@ import * as m7 from "./plugins/m7.ts"
 import * as m8 from "./plugins/m8.ts"
 import * as m9 from "./plugins/m9.ts"
 import * as mcp from "./plugins/mcp.ts"
+import * as piext from "./plugins/piext.ts"
+import * as secretsTest from "./plugins/secrets.ts"
 import * as skills from "./plugins/skills.ts"
-import { definePlugin, type Plugin } from "../src/plugins/host.ts"
+import type { Composition, Catalog } from "../src/kernel/loader.ts"
+import type { Extension } from "@earendil-works/pi-durable"
+import { testPlugin } from "./kernel.ts"
 import { defineOp } from "../src/ops.ts"
 import { int, obj, opt } from "@earendil-works/pi-schema"
 import { env } from "cloudflare:workers"
-import { Home as ProductHome } from "../src/host.ts"
+import { BUNDLES, CATALOG } from "../src/catalog.ts"
+import { Home as ProductHome, PROFILE } from "../src/host.ts"
 import type { Env } from "../src/env.ts"
-import type { PluginId } from "../src/ids.ts"
 
 export { default } from "../src/worker.ts"
 
@@ -31,47 +34,62 @@ export const Counter = defineDoc<{ count: number }>({
   checkpointWhen: () => true,
 })
 
-const NONE = { net: [], memory: "none", files: "none" } as const
+const ping = defineTool({
+  name: "ping",
+  description: "Fetch the echo service once.",
+  parameters: obj({}),
+  replay: "safe",
+  execute: async () => {
+    const reply = await env.ECHO.fetch("http://echo/")
+    return { output: [{ type: "text", text: await reply.text() }] }
+  },
+})
 
-const testPlugin = definePlugin(
-  { id: "test" as PluginId, version: "0.0.0", requires: [], provides: ["tool:ping"], permissions: NONE },
-  () => {
-    const ping = defineTool({
-      name: "ping",
-      description: "Fetch the echo service once.",
-      parameters: obj({}),
-      replay: "safe",
-      execute: async () => {
-        const reply = await env.ECHO.fetch("http://echo/")
-        return { output: [{ type: "text", text: await reply.text() }] }
+const bump = defineOp({
+  name: "test.bump",
+  args: obj({ by: opt(int({ minimum: 1 })) }),
+  actors: ["owner"],
+  run: async ({ harness }, { by }) =>
+    harness.commit(async (tx) => {
+      const counter = await tx.doc(Counter)
+      counter.count += by ?? 1
+      return counter.count
+    }, BACKGROUND_CONTEXT),
+})
+
+const TEST_CATALOG: Catalog = {
+  test: testPlugin("test", { extensions: [defineExtension({ name: "test.ping", tools: [ping] })], ops: [bump] }),
+  broken: {
+    ...testPlugin("broken", {}),
+    plugin: {
+      name: "broken",
+      inject: ["pi"],
+      apply() {
+        throw new Error("setup exploded")
       },
-    })
-    const bump = defineOp({
-      name: "test.bump",
-      args: obj({ by: opt(int({ minimum: 1 })) }),
-      actors: ["owner"],
-      run: async ({ harness }, { by }) =>
-        harness.commit(async (tx) => {
-          const counter = await tx.doc(Counter)
-          counter.count += by ?? 1
-          return counter.count
-        }, BACKGROUND_CONTEXT),
-    })
-    return { extensions: [defineExtension({ name: "test.ping", tools: [ping] })], ops: [bump] }
+    },
   },
-)
+  orphan: testPlugin("orphan", {}, ["nothing-provides-this"]),
+  ...m2.catalog,
+  ...m3.catalog,
+  ...m4.catalog,
+  ...m5.catalog,
+  ...m6.catalog,
+  ...m7.catalog,
+  ...m8.catalog,
+  ...m9.catalog,
+  ...skills.catalog,
+  ...mcp.catalog,
+  ...piext.catalog,
+  ...secretsTest.catalog,
+}
 
-const brokenPlugin = definePlugin(
-  { id: "broken" as PluginId, version: "0.0.0", requires: ["test"], provides: [], permissions: NONE },
-  () => {
-    throw new Error("setup exploded")
-  },
-)
-
-const orphanPlugin = definePlugin(
-  { id: "orphan" as PluginId, version: "0.0.0", requires: ["nothing-provides-this"], provides: [], permissions: NONE },
-  () => ({}),
-)
+const TEST_ROWS = [
+  ...["test", "broken", "orphan", "m2", "m6"].map((id) => ({ id, name: `cordis:${id}` })),
+  ...m8.rows,
+  ...piext.rows,
+  ...secretsTest.rows,
+]
 
 export const FAUX_MODEL = { provider: "faux", modelId: "faux-1" } as const
 
@@ -100,19 +118,18 @@ export class Home extends ProductHome {
     ]
   }
 
-  override plugins(): readonly Plugin[] {
-    return [
-      ...BUNDLED,
-      testPlugin,
-      brokenPlugin,
-      orphanPlugin,
-      ...m2.plugins,
-      ...m3.plugins,
-      ...m4.plugins,
-      ...m5.plugins,
-      ...m6.plugins,
-      ...m8.plugins,
-    ]
+  protected override composition(): Composition {
+    return {
+      catalog: { ...CATALOG, ...TEST_CATALOG },
+      bundles: { ...BUNDLES, test: TEST_ROWS },
+      profile: { bundles: [...PROFILE.bundles, "test"], patch: PROFILE.patch },
+    }
+  }
+
+  extension(name: string): Extension {
+    const installed = this.loader.ctx.pi.installed.get(name)
+    if (installed === undefined) throw new Error(`extension ${name} is not installed`)
+    return installed.extension
   }
 
   async submit(text: string, requestId: string): Promise<void> {

@@ -9,7 +9,7 @@ import {
   type SimpleStreamOptions,
 } from "@earendil-works/pi-ai"
 import type { Provider } from "../../src/module.ts"
-import type { Plugin } from "../../src/plugins/host.ts"
+import type { Catalog } from "../../src/kernel/loader.ts"
 
 export const M5_MODEL = { provider: "m5", modelId: "m5-faux" } as const
 
@@ -122,4 +122,4 @@ const step: FauxResponseStep = async (context, options) => {
 faux.setResponses(Array.from({ length: 4_000 }, () => step))
 
 export const providers: readonly Provider[] = [faux.provider]
-export const plugins: readonly Plugin[] = []
+export const catalog: Catalog = {}

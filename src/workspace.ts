@@ -356,7 +356,7 @@ export function create(deps: ModuleDeps): HostModule {
     ops: [createProject, updateProject, archiveProject, renameThread, readWorkspace],
     async start() {
       const harness = deps.harness()
-      harness.observeCommits({ advance: apply, end: () => undefined })
+      const observation = harness.observeCommits({ advance: apply, end: () => undefined })
       const stored = await harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
       if (stored !== undefined && parseWorkspace.check(stored)) projection.workspace = stored
       for (const project of Object.values(projection.workspace.projects)) {
@@ -371,6 +371,7 @@ export function create(deps: ModuleDeps): HostModule {
         const requests = await harness.snapshot(RequestsDoc, coordinatorId, BACKGROUND_CONTEXT)
         if (requests !== undefined) applyRequests(requests, coordinatorId)
       }
+      return () => observation.detach()
     },
     home: async () => ({ projects: projectSummaries(projection) }),
   }

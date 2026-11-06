@@ -88,7 +88,7 @@ Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](.
 
 **Builds**: plugin host, skills, MCP, schedules (§15–16).
 
-**Proof (test that must pass)**: a plugin without `net` can't fetch. Broken plugin isolated. Schedule fires once per slot.
+**Proof (test that must pass)**: broken plugin isolated (now `src/kernel/kernel.test.ts`). Schedule fires once per slot. The `net` allowlist proof was retired in P1 with the facade: in-process plugins are trusted, as in dsh.
 
 **Depends on**: M1.
 
@@ -103,3 +103,11 @@ Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](.
 **Depends on**: M1 and M5.
 
 **Parallel with**: M6.
+
+## P1 · everything is a plugin (dsh model)
+
+**Builds**: the Cordis kernel (§15 rewritten): kernel services as rows, layered composition (bundles, profile patch, owner patch), the plugin manager ops and agent tool, `system.version`/`restart`/`update` with a deployer seam, the `scripts/xin.ts plugin` CLI and the in-repo `plugins/time` package.
+
+**Proof (test that must pass)**: `src/kernel/kernel.test.ts` and `src/kernel/tools.test.ts`: live configure with schema validation, persistence across eviction, reset to bundle, disable/enable, required-row guard, a failing row isolated, `ops/before` policy, scoped secrets, ready work for a late row, soft restart, deployer seam, agent tool gated by `allowAgent`, the time plugin reconfigured live. The whole earlier suite passes on the kernel unchanged in behaviour.
+
+**Depends on**: M0–M9.

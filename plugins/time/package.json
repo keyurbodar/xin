@@ -1,0 +1,25 @@
+{
+  "name": "xin-plugin-time",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gives the model the current date and time in the owner's timezone.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "time": {
+        "module": "./index.ts",
+        "title": "Current time",
+        "description": "A current_time tool in a configurable timezone."
+      }
+    },
+    "bundle": [
+      {
+        "id": "time",
+        "plugin": "time",
+        "config": {
+          "timezone": "UTC"
+        }
+      }
+    ]
+  }
+}

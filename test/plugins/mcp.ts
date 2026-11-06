@@ -1,6 +1,6 @@
 import { fauxProvider, type FauxResponseStep, type TranscriptContext } from "@earendil-works/pi-ai"
 import type { Provider } from "../../src/module.ts"
-import type { Plugin } from "../../src/plugins/host.ts"
+import type { Catalog } from "../../src/kernel/loader.ts"
 
 export const MCP_MODEL = { provider: "mcp-faux", modelId: "mcp-faux-1" } as const
 
@@ -23,4 +23,4 @@ export function script(responses: readonly FauxResponseStep[]): void {
 }
 
 export const providers: readonly Provider[] = [faux.provider]
-export const plugins: readonly Plugin[] = []
+export const catalog: Catalog = {}

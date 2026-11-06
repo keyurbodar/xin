@@ -16,7 +16,7 @@ export type ModuleDeps = {
   arm(wake?: Wake): Promise<void>
   run(command: Command, actor: Actor): Promise<Outcome>
   publishHome(): Promise<void>
-  install(extension: Extension): void
+  install(extension: Extension): () => void
 }
 
 export type Route = (request: Request) => Promise<Response>
@@ -27,7 +27,7 @@ export type HostModule = {
   readonly routes?: Readonly<Record<string, Route>>
   models?(): Models
   env?(target: EnvTarget): ExecutionEnv | undefined
-  start?(): Promise<void>
+  start?(): Promise<(() => void) | void>
   due?(): Promise<number | undefined>
   fire?(now: number): Promise<void>
   typing?(conversation: ConversationId, on: boolean): Promise<void>

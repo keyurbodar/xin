@@ -208,12 +208,13 @@ export function create(deps: ModuleDeps): HostModule {
     ops: [retryMessage],
     async start() {
       const harness = deps.harness()
-      harness.observeCommits(observe)
+      const observation = harness.observeCommits(observe)
       for (const conversationId of await coordinatorIds(harness)) {
         const live = await harness.snapshot(LiveDoc, conversationId, context)
         if (live?.runFailure !== undefined) pending.set(conversationId, live.runFailure)
       }
       if (pending.size > 0) schedule()
+      return () => observation.detach()
     },
   }
 }

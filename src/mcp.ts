@@ -89,12 +89,14 @@ type Row = { readonly name: string; readonly raw: string }
 export function create(deps: ModuleDeps): HostModule {
   const sealer = new Sealer(deps.env.KEK)
   const definitions = new Map<string, readonly ToolRegistration[]>()
+  let dispose: (() => void) | undefined
 
   const publish = (): void => {
     const byName = new Map<string, ToolRegistration>()
     const sorted = [...definitions.entries()].toSorted(([left], [right]) => left.localeCompare(right))
     for (const [, tools] of sorted) for (const tool of tools) if (!byName.has(tool.name)) byName.set(tool.name, tool)
-    deps.install(defineExtension({ name: "mcp", tools: [...byName.values()] }))
+    dispose?.()
+    dispose = deps.install(defineExtension({ name: "mcp", tools: [...byName.values()] }))
   }
 
   const rows = async (): Promise<readonly Row[]> => {

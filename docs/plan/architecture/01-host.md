@@ -18,10 +18,10 @@ sequenceDiagram
   Note over H: constructor runs inside blockConcurrencyWhile
   E->>H: constructor
   H->>D: setAlarm now plus 60 s fallback
-  H->>D: db = DOSqliteDatabase
-  H->>D: migrate host steps
-  H->>P: Harness.open with prefix pi_ and onWake to arm
-  H->>H: plugins.reconcile
+  H->>H: root Context, provide host facts, XinLoader
+  H->>H: mount composed rows; db row migrates host steps
+  H->>P: pi row init: Harness.open with prefix pi_ and onWake to clock.arm, provides harness
+  H->>H: rows that inject harness start; loader.await, all rows settled
   H->>P: harness.wake
   H->>H: arm wake
   H->>P: harness.resume
@@ -51,12 +51,12 @@ The constructor steps, in order:
 constructor:
   blockConcurrencyWhile(
     1 setAlarm(now+60s) fallback
-    2 db = DOSqliteDatabase
-    3 migrate(host steps)
-    4 Harness.open(prefix pi_, onWake → arm)
-    5 plugins.reconcile()
-    6 arm(harness.wake())
-    7 harness.resume() )
+    2 root Context; provide host facts; XinLoader (09 Plugins)
+    3 mount rows: db (migrate host steps), clock, pi (opens the Harness, provides harness), ops, http,
+      wire (rehydrates sockets once harness exists), secrets, plugins, system, features (inject harness)
+    4 loader.await(); a failed required row stops here as boot_failed; a failed feature row fails alone
+    5 clock.arm(harness.wake())
+    6 harness.resume() )
 ```
 
 The event handlers:

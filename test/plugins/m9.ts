@@ -1,5 +1,5 @@
 import type { Provider } from "../../src/module.ts"
-import type { Plugin } from "../../src/plugins/host.ts"
+import type { Catalog } from "../../src/kernel/loader.ts"
 
-export const plugins: readonly Plugin[] = []
+export const catalog: Catalog = {}
 export const providers: readonly Provider[] = []
