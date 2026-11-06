@@ -1,0 +1,102 @@
+# 1 · The Home DO host loop
+
+This section decides the shape of the Home DO host loop: one SQLite-backed Durable Object per owner, with the alarm armed before any call that can start work.
+
+Read with: [02 State](./02-state.md) for what the host stores, [10 Time](./10-time.md) for how every timer folds into `arm()`, [11 Failures and cost](./11-failures-and-cost.md) for the failure matrix.
+
+There is one SQLite-backed Durable Object per owner. Its shape is copied from pi-durable's own `test-workers/worker.ts`, which is the official way to host a Harness on Cloudflare. The rule that governs everything: **arm the alarm before any call that can start work**. An early alarm is harmless. A missing alarm strands work forever.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant E as Event
+  participant H as Home DO host
+  participant P as pi Harness
+  participant D as DO SQLite
+  participant G as Gateway
+
+  Note over H: constructor runs inside blockConcurrencyWhile
+  E->>H: constructor
+  H->>D: setAlarm now plus 60 s fallback
+  H->>D: db = DOSqliteDatabase
+  H->>D: migrate host steps
+  H->>P: Harness.open with prefix pi_ and onWake to arm
+  H->>H: plugins.reconcile
+  H->>P: harness.wake
+  H->>H: arm wake
+  H->>P: harness.resume
+
+  E->>H: fetch or webSocketMessage
+  H->>H: decode command
+  H->>H: arm with active true FIRST
+  H->>H: ops.run cmd then ack
+
+  E->>H: alarm
+  H->>H: arm with wake and active true
+  H->>P: harness.resume
+  H->>G: fireDue now
+
+  E->>H: onWake
+  H->>H: arm again
+
+  Note over H: idle owner has no live tasks and no debounce
+  Note over H: so no alarm is armed, it hibernates, sockets stay open, cost 0
+  Note over P: harness.closed on a storage error ends the Harness
+  Note over P: ctx.abort, the next event reconstructs, commits stay atomic
+```
+
+The constructor steps, in order:
+
+```text
+constructor:
+  blockConcurrencyWhile(
+    1 setAlarm(now+60s) fallback
+    2 db = DOSqliteDatabase
+    3 migrate(host steps)
+    4 Harness.open(prefix pi_, onWake → arm)
+    5 plugins.reconcile()
+    6 arm(harness.wake())
+    7 harness.resume() )
+```
+
+The event handlers:
+
+```text
+webSocketMessage / fetch:
+  decode command
+  arm({active:true}) FIRST
+  ops.run(cmd) → ack
+
+alarm():
+  arm({...wake(), active:true})
+  harness.resume()
+  gateway.fireDue(now)
+```
+
+`arm()` folds every deadline into one alarm:
+
+```text
+arm(wake):
+  hb  = wake.active ? now+60s
+  pi  = wake.at
+  deb = min(inbound.fire_at)
+  at  = min(hb, pi, deb)
+  at ? setAlarm(at)
+     : deleteAlarm()
+  failed write → ctx.abort()   // restart, re-arm
+```
+
+`onWake` fires whenever pi's next-needed time changes (a sleep is created, work starts or ends), and it calls `arm()` again. The 60 s heartbeat runs only while `wake.active`: an eviction mid-run is noticed within 60 s and `resume()` continues from the last checkpoint. The only non-pi timer is the debounce (`inbound.fire_at`), folded into the same `min()`.
+
+An idle owner has no live tasks and no debounce, so no alarm is armed. It hibernates, its sockets stay open, and it costs $0. If a storage error ends the Harness, `harness.closed(failed)` runs: `ctx.abort()`, the next event reconstructs the instance, and commits stay atomic.
+
+The host is about 120 lines. Feature code lives in plugins, and the host never branches on a feature.
+
+## Runtime facts and their consequences
+
+| Runtime fact | Consequence for the design |
+| --- | --- |
+| A DO is single-threaded, and storage calls inside one turn of the event loop are atomic | The gateway's claim can't race. We still use `UPDATE…RETURNING` so the claim is one statement that survives a crash. |
+| Eviction or deploy during an LLM stream | pi counts it as a failed attempt and retries. The UI sees the partial text reset. The prompt cache makes the retry cheap. |
+| CPU limit per event (default 30 s) | Set `limits.cpu_ms` to 300000 in wrangler. Streaming JSON parse is light, but compaction plus big tool outputs can spike. |
+| Subrequest cap per invocation | **Risk to verify in M0.** Long multi-thread work runs inside whichever event woke the DO. Kiko hit this. The test: 10 threads × 30 tool calls on one wake. If it trips, the fix is to slice work across alarm invocations (pi's retry handles the split). |

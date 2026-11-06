@@ -1,0 +1,105 @@
+# 20 · Build order
+
+Each step ends with a passing proof. Proofs run under `vitest-pool-workers` with the pi faux provider.
+
+Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](./architecture/11-failures-and-cost.md) for the section each milestone builds.
+
+## M0 · Home DO host loop, migrations, Worker auth
+
+**Builds**: Home DO host loop (§1), migrations, Worker auth.
+
+**Proof (test that must pass)**: evict mid-run, run the alarm: answered exactly once. Subrequest stress test.
+
+**Depends on**: nothing.
+
+**Parallel with**: nothing.
+
+## M1 · ops, receipts, wire protocol
+
+**Builds**: ops + receipts + wire protocol (§3–4), plus the minimal plugin host: `definePlugin`, the bundled plugin list, and `reconcile()` with requires/provides. Every later feature (M2–M7) ships as a plugin against this contract. M8 adds permissions, sealed secrets, skills, MCP and schedules on top.
+
+**Proof (test that must pass)**: duplicate cmd → one effect. Hibernate, reconnect, snapshot equals state.
+
+**Depends on**: M0.
+
+**Parallel with**: nothing.
+
+## M2 · intake and dispatch
+
+**Builds**: intake + dispatch (§5–6).
+
+**Proof (test that must pass)**: 3 msgs → 1 turn. Stop aborts. Restart before tools, steer after.
+
+**Depends on**: M1.
+
+**Parallel with**: M3, M4.
+
+## M3 · models
+
+**Builds**: models (§7): credentials, catalog, picker op, `set_model`.
+
+**Proof (test that must pass)**: mid-run switch: the next request uses the new model. A smaller window triggers compaction.
+
+**Depends on**: M1.
+
+**Parallel with**: M2, M4.
+
+## M4 · files
+
+**Builds**: files (§14).
+
+**Proof (test that must pass)**: pi env conformance on R2Env. Upload bypasses the DO.
+
+**Depends on**: M1.
+
+**Parallel with**: M2, M3.
+
+## M5 · orchestrator and threads
+
+**Builds**: orchestrator + threads (§8–9).
+
+**Proof (test that must pass)**: 8 threads finishing together → 1 coordinator turn. Coordinator stop leaves threads running.
+
+**Depends on**: M2.
+
+**Parallel with**: M7, M8.
+
+## M6 · jobs, questions, watchdog
+
+**Builds**: jobs, questions, watchdog (§10–12).
+
+**Proof (test that must pass)**: 1 s tool inline, 20 s tool "started" then a report. Hung tool → failure report ≤ 2.5 min.
+
+**Depends on**: M5.
+
+**Parallel with**: M9.
+
+## M7 · memory
+
+**Builds**: memory (§13).
+
+**Proof (test that must pass)**: fact said once → in profile after an idle pass. Forget removes it. Replayed remember → 1 row.
+
+**Depends on**: M1 and M4.
+
+**Parallel with**: M2, M3, M5, M8.
+
+## M8 · plugin host, skills, MCP, schedules
+
+**Builds**: plugin host, skills, MCP, schedules (§15–16).
+
+**Proof (test that must pass)**: a plugin without `net` can't fetch. Broken plugin isolated. Schedule fires once per slot.
+
+**Depends on**: M1.
+
+**Parallel with**: M2, M3, M4, M5, M7.
+
+## M9 · push and cost guard
+
+**Builds**: push + cost guard (§4, §18).
+
+**Proof (test that must pass)**: push only when no socket. Row bound per scenario.
+
+**Depends on**: M1 and M5.
+
+**Parallel with**: M6.

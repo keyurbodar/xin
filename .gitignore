@@ -1,0 +1,6 @@
+node_modules/
+.wrangler/
+.gate/
+.dev.vars
+*.log
+dist/
