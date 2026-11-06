@@ -28,3 +28,5 @@ Tool use and Dreamer passes need a model, so they are proven in `src/memory.test
 - A fresh home has no notes, so `memory.list` returns `[]` and `memory.profile` returns `""`.
 - Dreamer time is driven in tests without touching `dreamer_due`: backdate a note's `at` past the 10-minute idle window, evict the DO, and `start()` schedules the pass itself at the elapsed deadline.
 - `recall` and `remember` take their project from the caller's conversation; a coordinator or thread only ever sees `me` plus its own project.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M7-memory.txt`.

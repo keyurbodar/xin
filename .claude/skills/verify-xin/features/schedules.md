@@ -36,3 +36,5 @@ Proof: after the slot passes, the one-shot is gone from `schedule.list`, and the
 
 - With no model chosen, the fired batch is followed by an `xin.error` entry. That is expected.
 - Crash replay, catch-up, DST, COUNT and the create race are proven in `src/schedules.test.ts` and `src/rrule.test.ts`. pi can't rewind a checkpoint under wrangler dev, so replay is driven through `sendDue` directly.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M8-schedules.txt`.

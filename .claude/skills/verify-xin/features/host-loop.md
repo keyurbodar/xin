@@ -28,3 +28,5 @@ id=$(bun scripts/gate.ts submit test --only=src/host.test.ts); bun scripts/gate.
 
 - Local workerd does not enforce production's per-invocation subrequest cap. The stress test proves correctness, not the deployed limit.
 - Restarting `wrangler dev` with the same `.verify/state` keeps DO storage. `xin.sh stop` deletes it.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M0-auth.txt` (`/v1/status`) and `.verify/evidence/M5-workspace.txt`.

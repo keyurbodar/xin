@@ -27,3 +27,5 @@ That the model's request carries the section but not the body, and that the tool
 ## Gotchas
 
 - Plugin-declared skills arrive through `skillsFrom()` once M8a wires the manifest `skills` field.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M2-M8skills.txt`.

@@ -29,3 +29,5 @@ The mid-run switch, the compaction after a switch to a smaller window and the se
 ## Gotchas
 
 - A fake key still lists the provider's catalog, because the auth check is "a credential exists", not a network probe.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M3-models.txt` and the mid-run switch in `.verify/evidence/M5-live.txt`.

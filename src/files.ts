@@ -1,4 +1,3 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { JsonValue } from "@earendil-works/chord"
 import {
   AgentDoc,
@@ -148,7 +147,11 @@ export function create(deps: ModuleDeps, scope: WriteScope = coordinatorOnly): H
     routes: { "POST /v1/files/commit": commit },
     env: (target) => envFor(target.cwd),
     start: () =>
-      deps.db.run("INSERT OR IGNORE INTO kv (key, value) VALUES (?, ?)", SWEEP_KEY, String(Date.now() + SWEEP_EVERY_MS)),
+      deps.db.run(
+        "INSERT OR IGNORE INTO kv (key, value) VALUES (?, ?)",
+        SWEEP_KEY,
+        String(Date.now() + SWEEP_EVERY_MS),
+      ),
     due: () => nextSweep(deps),
     fire: async (now) => {
       const at = await nextSweep(deps)

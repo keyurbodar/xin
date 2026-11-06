@@ -27,3 +27,5 @@ Expected: `open protocol=xin`, Pong, a home snap, a rejected ack, and `unknown s
 
 - A browser only accepts the upgrade if the server echoes a protocol it offered. The Worker sets it when `xin` is in the list.
 - Conversation snapshots after an eviction are proven in the gate (`src/wire.test.ts`), because HTTP can't evict.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M1-commands-socket.txt`.

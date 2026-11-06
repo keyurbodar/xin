@@ -14,27 +14,50 @@ import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/stora
 import { migrate } from "./db.ts"
 import type { Env } from "./env.ts"
 import * as files from "./files.ts"
+import * as failures from "./failures.ts"
 import * as gateway from "./gateway.ts"
+import * as jobs from "./jobs.ts"
 import * as mcp from "./mcp.ts"
 import * as memory from "./memory.ts"
 import * as push from "./push.ts"
+import * as questions from "./questions.ts"
+import * as schedules from "./schedules.ts"
 import * as skills from "./skills.ts"
+import * as watchdog from "./watchdog.ts"
+import * as workspace from "./workspace.ts"
 import type { PluginId } from "./ids.ts"
 import type { HostModule, ModuleDeps, Provider, Route } from "./module.ts"
 import * as models from "./models.ts"
+import * as orchestrator from "./orchestrator.ts"
 import { Commands } from "./ops.ts"
 import { BUNDLED } from "./plugins/bundled.ts"
-import { type Plugin, type Reconciled, reconcile, stateError } from "./plugins/host.ts"
+import { type Plugin, type Reconciled } from "./plugins/host.ts"
+import { PluginRuntime } from "./plugins/module.ts"
 import { ack, decodeCommand, Sockets } from "./wire.ts"
 
 export const HEARTBEAT_MS = 60_000
 const context = BACKGROUND_CONTEXT
-const MODULES: readonly { create(deps: ModuleDeps): HostModule }[] = [models, files, gateway, memory, push, skills, mcp]
+const MODULES: readonly { create(deps: ModuleDeps): HostModule }[] = [
+  models,
+  files,
+  gateway,
+  memory,
+  push,
+  skills,
+  mcp,
+  workspace,
+  schedules,
+  orchestrator,
+  jobs,
+  questions,
+  watchdog,
+  failures,
+]
 
 type Opened = {
   readonly db: DurableObjectSqliteDatabase
   readonly harness: Harness
-  readonly plugins: Reconciled
+  readonly runtime: PluginRuntime
   readonly modules: readonly HostModule[]
   readonly commands: Commands
   readonly sockets: Sockets
@@ -70,7 +93,7 @@ export class Home extends DurableObject<Env> {
   }
 
   get reconciled(): Reconciled {
-    return this.#current.plugins
+    return this.#current.runtime.reconciled
   }
 
   get commands(): Commands {
@@ -87,17 +110,7 @@ export class Home extends DurableObject<Env> {
     if (current === null || current > fallback) await this.ctx.storage.setAlarm(fallback)
     const db = new DurableObjectSqliteDatabase(this.ctx.storage)
     await migrate(db)
-    const disabled = new Set(
-      (await db.all<{ id: string }>("SELECT id FROM plugins WHERE enabled = 0")).map((r) => r.id),
-    )
-    const plugins = reconcile(this.plugins(), (id) => !disabled.has(id))
-    for (const [id, state] of plugins.states)
-      await db.run(
-        "INSERT INTO plugins (id, state, error) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET state = excluded.state, error = excluded.error",
-        id,
-        state.kind,
-        stateError(state) ?? null,
-      )
+    const registry = createRegistry()
     const deps: ModuleDeps = {
       ctx: this.ctx,
       env: this.env,
@@ -107,11 +120,21 @@ export class Home extends DurableObject<Env> {
       arm: (wake) => this.arm(wake ?? { ...this.harness.wake(), active: true }),
       run: (command, actor) => this.commands.run(command, actor),
       publishHome: () => this.#current.sockets.publishHome(),
+      install: (extension) => registry.install(extension),
     }
     const modules = MODULES.map((module) => module.create(deps))
-    const registry = createRegistry()
-    for (const extension of [...plugins.extensions, ...modules.flatMap((module) => module.extensions ?? [])])
-      registry.install(extension)
+    const runtime = await PluginRuntime.open({
+      db,
+      kek: this.env.KEK,
+      plugins: this.plugins(),
+      core: modules.flatMap((module) => module.ops ?? []),
+      registry,
+      run: (command, actor) => this.commands.run(command, actor),
+      publish: async () => {
+        await this.#opened?.sockets.publishHome()
+      },
+    })
+    for (const extension of modules.flatMap((module) => module.extensions ?? [])) registry.install(extension)
     const harness = await Harness.open(
       await openDurableObjectSqliteStorage(this.ctx.storage, { prefix: "pi_" }),
       {
@@ -125,8 +148,7 @@ export class Home extends DurableObject<Env> {
       },
       context,
     )
-    const ops = [...plugins.ops.values(), ...modules.flatMap((module) => module.ops ?? [])]
-    const commands = new Commands(db, new Map(ops.map((op) => [op.name, op])), harness)
+    const commands = new Commands(db, runtime.ops, harness)
     const sockets = new Sockets({
       ctx: this.ctx,
       harness,
@@ -137,7 +159,7 @@ export class Home extends DurableObject<Env> {
       },
       home: () => this.home(),
     })
-    this.#opened = { db, harness, plugins, modules, commands, sockets }
+    this.#opened = { db, harness, runtime, modules, commands, sockets }
     for (const module of modules) await module.start?.()
     await this.arm(harness.wake())
     harness.resume()

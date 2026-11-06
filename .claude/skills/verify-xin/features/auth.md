@@ -25,3 +25,5 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'sec-websocket-protocol: xin, bearer
 
 - An empty `OWNER_TOKEN` rejects everyone by design.
 - All owners route to one Home (`idFromName("owner")`). Xin is single-owner per deployment.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M0-auth.txt`.

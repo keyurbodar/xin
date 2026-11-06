@@ -13,7 +13,7 @@ The coordinator gets this tool surface. Threads get a narrower version (no `dele
 | `capabilities` | - | current model, short model list, thread limits, enabled plugins |
 | `delegate_task` | `{task, title, role?, target?:{model}, mode:"async"\|"wait", timeoutMs≤8000, clientRequestId}` | one `api.commit`: background Anchor task + task-owned child conv + `xin.thread` doc + workspace threadIds. Then submit the brief with requestId `delegate:…`. In `wait` mode, wait on the child's submission with a deadline |
 | `task_status` | `{threadId}` | reads `xin.thread` + last assistant text |
-| `task_cancel` | `{threadId, reason?}` | `conversation.abort({background:true})` on the child, status → cancelled |
+| `task_cancel` | `{threadId?, jobId?, reason?}` (exactly one id) | `conversation.abort({background:true})` on the child, status → cancelled; a `jobId` aborts that job task |
 | `thread_send` | `{threadId, text, mode:"steer"\|"queue"}` | child `submit` with that `whenBusy`. On a resolved thread it starts a new run in the same conversation |
 | `thread_read` | `{threadId, after?}` | entries after a cursor, text only, bounded at 4k tokens |
 | `thread_list` | `{projectId?, status?}` | projection of the workspace and thread docs |
@@ -67,11 +67,17 @@ Any tool declared `latency:"maybe-slow"` (web research, a large fetch, an MCP ca
 ```text
 execute(args, api, ctx):
   job = api.createTask(Job, {tool, args}, {background:true})     // the real call runs in the Job's phase
-  r   = await waitWithDeadline(job, 8000)                          // cancelling the wait never cancels the work
-  if r.done   → return r.result                                     // felt synchronous
-  else        → doc xin.jobs[job] = {tool, startedAt}; return "started (job j_42), result will follow"
-Job.finish  → inbound kind=job, command_id="job:"+id               // lands as a batch item (§5)
+  doc xin.jobs[job] = {tool, startedAt, deadlineAt, parentId}
+  doc xin.jobs.calls[api.taskId] = job                            // replay reuses this job, never a second one
+  r   = await waitForTask(job, deadline 8000)                     // cancelling the wait never cancels the work
+  if r.done   → doc delete xin.jobs[job]; return r.result        // felt synchronous
+  else        → doc xin.jobs[job].detached = true; return "started (job j_42), result will follow"
+Job.finish  → doc result; the JobsDoc observer enqueues inbound kind=job, command_id="job:"+id
 ```
+
+The wrapper is always `replay:"safe"`. A replay of the same tool task finds its call id in `xin.jobs.calls` and waits on the job it already made. A job created inside a thread (the caller has a `xin.thread` doc) is never detached and never reports: the wrapper waits inline until the job settles or the thread's deadline passes.
+
+A pi task cannot call a tool, so the wrapper supplies the tool's work as a runner registered under the tool's name; the Job phase runs it with the task's signal, clock, models and environment. On timeout the wrapper marks the job detached, and only a detached job posts a report: a tool that answered inline never lands twice.
 
 A job is a thread with no conversation: it shows in the Overview, the watchdog covers it, and `task_cancel` works on it. The coordinator never has to decide up front whether something is slow.
 
@@ -89,19 +95,22 @@ flowchart LR
 
 - `respond` also DELETEs the question's inbound row if still pending, so the coordinator never gets a turn about an answered question.
 - Why not a tool that waits for the answer: a held tool task across hours of eviction needs replay tricks; a finished run needs nothing.
-- `respond` is idempotent on `requestId`: the second answer to the same question returns `already_answered`.
+- `respond` returns `{kind:"answered", run}` or, on a replay after the first answer, `{kind:"already_answered", answer}`. An unknown request, a thread that is not waiting, or a thread with no parent is `bad_args`, checked before the request document changes.
 
 ## 12 · Watchdog: failures are always visible
 
 ```text
-Watchdog = one pi background task (key "xin.watchdog"), phases: sleep → check → sleep
- sleep:  runtime.sleepUntil(now+30s)  — exists only while any thread/job is live; otherwise it finishes
- check, per live thread/job:
-   stalled  = now − beatAt > 120s AND no tool in pi.live has tool.expectedMaxMs covering it
+Watchdog = one pi background task (key "xin.watchdog"), phases: check → fail → sleep → check
+ sleep:  runtime.sleepUntil(now+30s)  — exists only while a working thread or a job without a result is live; otherwise it finishes
+ check, per working thread:
+   stalled  = now − beatAt > 120s AND no running tool is a job wrapper (pi has no expectedMaxMs)
    overtime = now > deadlineAt                       (project setting, default 30 min)
-   → child.abort() · xin.thread.status="failed" · result="stopped: no progress for 2 min in web_research"
-   → the Reporter posts it like any other result
+   → commit status="failed" and result together with checkpoint {phase:"fail", victims}
+ check, per job without a result: overtime = now > deadlineAt only (jobs do not beat)
+ fail: enqueue report:<thread>:<run> / job:<id> (dedup by command id), abort each conversation or job task, then sleep or finish
  beatAt is written by hook(GenerationTask.afterResponse) and hook(ToolTask.afterTool): ~1 row per step
 ```
+
+A waiting thread is not work: it holds no run and needs no watchdog. `request.respond` starts the next watchdog when it reopens the thread, as `thread.send` does.
 
 A coordinator run that fails (provider error, compaction failure) commits one `xin.error` entry into the chat, which the UI renders as an error bubble with a retry button (`op message.retry` resubmits that batch). Nothing fails silently.

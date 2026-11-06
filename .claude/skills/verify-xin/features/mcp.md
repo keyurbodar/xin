@@ -28,3 +28,5 @@ Tool discovery and `tools/call` are proven in `src/mcp.test.ts` against an in-pr
 ## Gotchas
 
 - An unreachable URL gives `tools: 0` and an `error`, not a rejection.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M8-mcp-after-fix.txt`.

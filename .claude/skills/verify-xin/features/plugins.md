@@ -23,3 +23,5 @@ Ordering, isolation and net limits are proven in `src/plugins/host.test.ts`, and
 ## Gotchas
 
 - Until M2 bundles the first core plugin, `plugins` under `wrangler dev` is `{}`.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M2-M8skills.txt`.

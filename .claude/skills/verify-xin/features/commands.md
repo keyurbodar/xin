@@ -25,3 +25,5 @@ Ops come from plugins. Which ops exist under `wrangler dev` depends on `src/plug
 ## Gotchas
 
 - An op's effect and its receipt are not one transaction. A crash in between reruns the op, so every op must be idempotent through its derived key (`docs/plan/architecture/02-state.md`).
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M1-commands-socket.txt`.

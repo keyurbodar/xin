@@ -5,9 +5,10 @@ import {
   type CallToolResult,
   type Tool as McpTool,
 } from "@earendil-works/pi-mcp"
-import { defineExtension, defineTool, type Extension, type ToolRegistration } from "@earendil-works/pi-durable"
+import { defineExtension, type Extension, type ToolRegistration } from "@earendil-works/pi-durable"
 import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search"
 import { arr, compile, map, obj, opt, str, unknown, type Static } from "@earendil-works/pi-schema"
+import { jobTool } from "./jobs.ts"
 import type { HostModule, ModuleDeps } from "./module.ts"
 import { defineOp, OpRejected, type Op } from "./ops.ts"
 import { Sealer, SealedSchema, type Sealed } from "./seal.ts"
@@ -178,16 +179,18 @@ export function create(deps: ModuleDeps): HostModule {
     definitions.set(
       name,
       cached.map((tool) =>
-        defineTool({
-          name: toolName(name, tool.name),
-          description: tool.description,
-          parameters: parametersOf(tool.inputSchema),
-          deferred: true,
-          execute: async (args, _api, context) => {
-            const result = await callTool(name, tool.name, isRecord(args) ? args : {}, context.abortSignal)
+        jobTool(
+          {
+            name: toolName(name, tool.name),
+            description: tool.description,
+            parameters: parametersOf(tool.inputSchema),
+            deferred: true,
+          },
+          async (args, run) => {
+            const result = await callTool(name, tool.name, args, run.signal)
             return { output: toLlmContent(result), isError: result.isError === true }
           },
-        }),
+        ),
       ),
     )
     publish()

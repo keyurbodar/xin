@@ -174,16 +174,16 @@ export class FileIndex {
 export async function putFile(
   bucket: R2Bucket,
   index: FileIndex,
-  file: { readonly path: string; readonly content: string | Uint8Array },
+  write: { readonly path: string; readonly content: string | Uint8Array },
 ): Promise<FileRow> {
-  const bytes = typeof file.content === "string" ? encoder.encode(file.content) : file.content
+  const bytes = typeof write.content === "string" ? encoder.encode(write.content) : write.content
   const digest = await sha256(bytes)
   await bucket.put(blobKey(digest), bytes)
   return index.upsert({
-    path: file.path,
+    path: write.path,
     r2Key: blobKey(digest),
     size: bytes.byteLength,
-    type: typeOf(file.path),
+    type: typeOf(write.path),
     sha256: digest,
   })
 }

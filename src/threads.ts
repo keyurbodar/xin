@@ -28,6 +28,7 @@ import {
   type ThreadStatus,
 } from "./threaddoc.ts"
 import { detailOf, textOf } from "./transcript.ts"
+import { ensureWatchdogTx, watchdogTask, type WatchdogTask } from "./watchdog.ts"
 import { WorkspaceDoc } from "./workspace.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -61,6 +62,7 @@ type ReporterCheckpoint =
       readonly status: ReportStatus
       readonly text: string
     }
+  | { readonly phase: "skip" }
 
 export type ReporterTask = Task<ReporterInput, ReporterCheckpoint, null, object>
 export type AnchorTask = Task<null, { readonly phase: "done" }, null, object>
@@ -93,9 +95,13 @@ export function reporterTask(deps: ThreadDeps): ReporterTask {
         const settled = await settle(deps, task.input, runtime, taskContext)
         await runtime.commit(async (tx) => {
           const thread = await tx.doc(ThreadDoc, task.input.threadId as ConversationId)
-          if (thread.status === "working") {
-            const next = transition(thread.status, eventOf(settled.status))
-            if (next.kind === "ok") thread.status = next.status
+          if (thread.status !== "working") {
+            return { status: "running", checkpoint: { phase: "skip" } } as const
+          }
+          const next = transition(thread.status, eventOf(settled.status))
+          if (next.kind === "ok") {
+            thread.status = next.status
+            delete thread.statusLine
           }
           thread.result = settled.text
           thread.beatAt = runtime.now()
@@ -126,6 +132,8 @@ export function reporterTask(deps: ThreadDeps): ReporterTask {
           taskContext,
         )
       },
+      skip: (_task, runtime, taskContext) =>
+        runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), taskContext),
     },
     abort: (_task, runtime, taskContext) =>
       runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), taskContext),
@@ -222,7 +230,12 @@ export type Threads = {
 
 const sendKeyOf = (threadId: number, sendKey: string): string => `thread-send:${threadId}:${sendKey}`
 
-async function sendToThread(harness: Harness, args: SendArgs, reporter: ReporterTask): Promise<SendOutcome> {
+async function sendToThread(
+  harness: Harness,
+  args: SendArgs,
+  reporter: ReporterTask,
+  watchdog: WatchdogTask,
+): Promise<SendOutcome> {
   const threadId = args.threadId as ConversationId
   const snapshot = await harness.snapshot(ThreadDoc, threadId, context)
   if (snapshot === undefined) return { kind: "rejected", reason: `no thread ${args.threadId}` }
@@ -247,6 +260,7 @@ async function sendToThread(harness: Harness, args: SendArgs, reporter: Reporter
     delete thread.result
     thread.beatAt = now
     thread.deadlineAt = now + project.settings.deadlineMs
+    await ensureWatchdogTx(tx, watchdog, parentId)
     await tx.createTask(
       reporter,
       {
@@ -358,7 +372,9 @@ async function denied(actor: Actor, read: DocumentReader, threadId: number): Pro
 
 export function lifecycle(deps: ModuleDeps): Threads {
   const reporter = reporterTask({ db: deps.db, arm: () => deps.arm(), harness: () => deps.harness() })
-  const send = (harness: Harness, args: SendArgs): Promise<SendOutcome> => sendToThread(harness, args, reporter)
+  const watchdog = watchdogTask(deps)
+  const send = (harness: Harness, args: SendArgs): Promise<SendOutcome> =>
+    sendToThread(harness, args, reporter, watchdog)
 
   const createThread = async (tx: Tx, args: CreateThreadArgs): Promise<CreateOutcome> => {
     const workspace = await tx.doc(WorkspaceDoc)
@@ -378,6 +394,7 @@ export function lifecycle(deps: ModuleDeps): Threads {
         limit: project.settings.threadLimit,
       }
     }
+    await ensureWatchdogTx(tx, watchdog, args.parentId)
     const anchor = await tx.createTask(Anchor, null, {
       ownership: { kind: "conversation" },
       conversationId: args.parentId,

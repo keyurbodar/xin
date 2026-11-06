@@ -29,3 +29,5 @@ Encryption, VAPID claims, record budget and pruning are proven in `src/push.test
 ## Gotchas
 
 - Delivery can't be observed under wrangler dev without a real push service. Use the tests.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M9-push.txt`.

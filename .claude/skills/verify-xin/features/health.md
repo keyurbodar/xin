@@ -19,3 +19,5 @@ curl -s -w '\nHTTP %{http_code}\n' http://127.0.0.1:8799/health   # ok / HTTP 20
 ## Gotchas
 
 - It answers even when the DO would fail to open, so it proves the Worker is up, not the Home.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M0-auth.txt`.

@@ -18,9 +18,7 @@ const put = (path: string, body: string, headers?: Record<string, string>) =>
   api(`/files${path}`, { method: "PUT", body, ...(headers === undefined ? {} : { headers }) })
 
 const run = (id: string, op: string, args: Record<string, string>, actor: Actor): Promise<Outcome> =>
-  runInDurableObject(owner(), (home: Home) =>
-    home.commands.run({ id: id as CommandId, op, args }, actor),
-  )
+  runInDurableObject(owner(), (home: Home) => home.commands.run({ id: id as CommandId, op, args }, actor))
 
 const toolTexts = (home: Home, id: ConversationId): Promise<string[]> =>
   home.harness.conversation(id, BACKGROUND_CONTEXT).then(async (conversation) => {
@@ -136,8 +134,10 @@ describe("files", () => {
 
   it("applies the write scope to file.put and file.delete", async () => {
     const stub = owner()
-    const threadId = await runInDurableObject(stub, async (home: Home) =>
-      (await home.harness.createConversation({ ownership: { kind: "ownerless" } }, BACKGROUND_CONTEXT)).id,
+    const threadId = await runInDurableObject(
+      stub,
+      async (home: Home) =>
+        (await home.harness.createConversation({ ownership: { kind: "ownerless" } }, BACKGROUND_CONTEXT)).id,
     )
     const path = `/me/scope-${crypto.randomUUID()}.txt`
     const plugin: Actor = { kind: "plugin", pluginId: "test" as PluginId }

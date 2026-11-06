@@ -13,3 +13,10 @@ One file per user-facing feature. Each is driven with `xin.sh` against `wrangler
 | Skills | [skills.md](skills.md) | M8 |
 | Intake and dispatch | [intake.md](intake.md) | M2 |
 | Models and credentials | [models.md](models.md) | M3 |
+| Files and uploads | [files.md](files.md) | M4 |
+| Memory and Dreamer | [memory.md](memory.md) | M7 |
+| Web push | [push.md](push.md) | M9 |
+| MCP servers | [mcp.md](mcp.md) | M8 |
+| Schedules | [schedules.md](schedules.md) | M8 |
+| Projects and threads | [threads.md](threads.md) | M5 |
+| Jobs, questions, watchdog | [jobs-questions.md](jobs-questions.md) | M6 |

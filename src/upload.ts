@@ -18,12 +18,7 @@ async function buffered(env: Env, bytes: Uint8Array): Promise<Stored> {
   return { digest, size: bytes.byteLength }
 }
 
-async function streamed(
-  env: Env,
-  body: ReadableStream<Uint8Array>,
-  staged: string,
-  length: number,
-): Promise<Stored> {
+async function streamed(env: Env, body: ReadableStream<Uint8Array>, staged: string, length: number): Promise<Stored> {
   const hasher = new crypto.DigestStream(HASH)
   const hashWriter = hasher.getWriter()
   const hashing = new TransformStream<Uint8Array, Uint8Array>({

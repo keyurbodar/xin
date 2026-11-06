@@ -14,6 +14,7 @@ import {
 } from "@earendil-works/pi-durable"
 import { int, obj, oneOf, opt, str } from "@earendil-works/pi-schema"
 import type { CommandId, ProjectId } from "./ids.ts"
+import { cancelJob } from "./jobs.ts"
 import { ModelRefSchema, ownerDefaults, resolveModel } from "./models.ts"
 import type { HostModule, ModuleDeps } from "./module.ts"
 import { lifecycle } from "./threads.ts"
@@ -296,22 +297,38 @@ export function create(deps: ModuleDeps): HostModule {
 
   const taskCancel = defineTool({
     name: "task_cancel",
-    description: "Stop a thread's current run. The thread stays usable.",
-    parameters: obj({ threadId: int({ minimum: 0 }), reason: opt(str({ maxLength: 500 })) }),
+    description: "Stop a thread's current run or a job. Give exactly one of threadId or jobId.",
+    parameters: obj({
+      threadId: opt(int({ minimum: 0 })),
+      jobId: opt(int({ minimum: 0 })),
+      reason: opt(str({ maxLength: 500 })),
+    }),
     replay: "unsafe",
     execute: async (args, api) => {
-      if ((await threadInScope(api, api.conversationId, args.threadId)) === undefined)
-        return output(`No thread ${args.threadId}.`, { isError: true })
+      const target =
+        args.threadId !== undefined && args.jobId === undefined
+          ? { kind: "thread" as const, threadId: args.threadId }
+          : args.jobId !== undefined && args.threadId === undefined
+            ? { kind: "job" as const, jobId: args.jobId }
+            : undefined
+      if (target === undefined) return output("task_cancel needs exactly one of threadId or jobId.", { isError: true })
+      if (target.kind === "job") {
+        if (!(await cancelJob(deps, api.conversationId, target.jobId)))
+          return output(`No job ${target.jobId}.`, { isError: true })
+        return output(`Stopped job ${target.jobId}.`, { details: { jobId: target.jobId } })
+      }
+      if ((await threadInScope(api, api.conversationId, target.threadId)) === undefined)
+        return output(`No thread ${target.threadId}.`, { isError: true })
       const outcome = await deps.run(
         {
           id: commandId(`thread.stop:${api.taskId}`),
           op: "thread.stop",
-          args: { threadId: args.threadId, ...(args.reason === undefined ? {} : { reason: args.reason }) },
+          args: { threadId: target.threadId, ...(args.reason === undefined ? {} : { reason: args.reason }) },
         },
         { kind: "agent", conversationId: api.conversationId },
       )
       if (outcome.kind !== "ok") return output(outcome.message, { isError: true })
-      return output(`Stopped thread ${args.threadId}.`, { details: outcome.result })
+      return output(`Stopped thread ${target.threadId}.`, { details: outcome.result })
     },
   })
 

@@ -29,3 +29,5 @@ A reply needs a model (M3 credentials). 3 messages → 1 turn, restart vs steer,
 ## Gotchas
 
 - Without a configured model the batch is submitted and nothing answers. The "pick a model" error bubble is M3/M5 work.
+
+Evidence from the last wrangler dev drive: `.verify/evidence/M2-M8skills.txt`.

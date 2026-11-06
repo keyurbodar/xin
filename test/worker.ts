@@ -6,6 +6,8 @@ import { BUNDLED } from "../src/plugins/bundled.ts"
 import * as m2 from "./plugins/m2.ts"
 import * as m3 from "./plugins/m3.ts"
 import * as m4 from "./plugins/m4.ts"
+import * as m5 from "./plugins/m5.ts"
+import * as m6 from "./plugins/m6.ts"
 import * as m7 from "./plugins/m7.ts"
 import * as m8 from "./plugins/m8.ts"
 import * as m9 from "./plugins/m9.ts"
@@ -88,6 +90,8 @@ export class Home extends ProductHome {
       ...m2.providers,
       ...m3.providers,
       ...m4.providers,
+      ...m5.providers,
+      ...m6.providers,
       ...m7.providers,
       ...m8.providers,
       ...m9.providers,
@@ -105,6 +109,8 @@ export class Home extends ProductHome {
       ...m2.plugins,
       ...m3.plugins,
       ...m4.plugins,
+      ...m5.plugins,
+      ...m6.plugins,
       ...m8.plugins,
     ]
   }

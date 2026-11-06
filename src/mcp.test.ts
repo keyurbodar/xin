@@ -9,7 +9,7 @@ import {
 import { LATEST_PROTOCOL_VERSION } from "@earendil-works/pi-mcp"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { MCP_MODEL, requests, script } from "../test/plugins/mcp.ts"
-import { fresh } from "../test/support.ts"
+import { eventually, fresh } from "../test/support.ts"
 import type { Home } from "../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -25,7 +25,9 @@ type FakeServer = {
   readonly calls: Call[]
   offline: boolean
   holdList: boolean
+  holdCall: boolean
   during?: () => Promise<void>
+  duringCall?: () => Promise<void>
 }
 
 const TOOLS = [
@@ -79,6 +81,7 @@ function fakeServer(): FakeServer {
     calls,
     offline: false,
     holdList: false,
+    holdCall: false,
     fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input))
       if (server.offline || url.pathname === "/dead") throw new TypeError(`connection refused by ${url.href}`)
@@ -89,6 +92,7 @@ function fakeServer(): FakeServer {
       calls.push({ method, headers: new Headers(init?.headers), params: isRecord(body.params) ? body.params : {} })
       if (body.id === undefined) return new Response(null, { status: 202 })
       if (server.holdList && method === "tools/list") await server.during?.()
+      if (server.holdCall && method === "tools/call") await server.duringCall?.()
       let reply: unknown
       try {
         reply = { result: respond(method, isRecord(body.params) ? body.params : {}) }
@@ -146,6 +150,9 @@ async function lastToolResult(stub: DurableObjectStub<Home>): Promise<{ isError:
     return found
   })
 }
+
+const jobRows = (home: Home): Promise<{ command_id: string }[]> =>
+  home.db.all<{ command_id: string }>("SELECT command_id FROM inbound WHERE kind = 'job' ORDER BY id")
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -335,4 +342,31 @@ describe("mcp servers", () => {
 
     expect(offered(requestAt(1))).not.toContain("mcp__demo__echo")
   })
+
+  it("turns a held MCP call into a job that reports once", async () => {
+    const stub = fresh()
+    const fake = fakeServer()
+    serve(fake)
+    await cmd(stub, "mcp-add-job", "mcp.add", { name: "demo", url: "https://mcp.test/mcp" })
+
+    const gate = Promise.withResolvers<void>()
+    fake.holdCall = true
+    fake.duringCall = () => gate.promise
+
+    script([
+      fauxAssistantMessage([fauxToolCall("tool_search", { query: "echo" })], { stopReason: "toolUse" }),
+      fauxAssistantMessage([fauxToolCall("mcp__demo__echo", { text: "slow" })], { stopReason: "toolUse" }),
+      fauxAssistantMessage("done"),
+    ])
+    await turn(stub, "mcp-turn-job", "say hi slowly through mcp")
+
+    expect((await lastToolResult(stub))?.text).toMatch(/^started \(job \d+\)/)
+
+    fake.holdCall = false
+    gate.resolve()
+    await eventually(stub, async (home: Home) => (await jobRows(home)).length === 1)
+    const rows = await runInDurableObject(stub, jobRows)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.command_id).toMatch(/^job:\d+$/)
+  }, 30_000)
 })
