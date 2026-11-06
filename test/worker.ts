@@ -1,0 +1,93 @@
+import {
+  type FauxResponseStep,
+  createModels,
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+  type Models,
+} from "@earendil-works/pi-ai"
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
+import { defineExtension, defineTool, type Extension, type ModelRef } from "@earendil-works/pi-durable"
+import { obj } from "@earendil-works/pi-schema"
+import { env } from "cloudflare:workers"
+import { Home as ProductHome } from "../src/host.ts"
+import type { Env } from "../src/env.ts"
+
+export { default } from "../src/worker.ts"
+
+export const FAUX_MODEL = { provider: "faux", modelId: "faux-1" } as const
+
+type Script = { readonly responses: readonly string[]; readonly next: number }
+
+export type TestEnv = Omit<Env, "HOME"> & { readonly HOME: DurableObjectNamespace<Home>; readonly ECHO: Fetcher }
+
+export class Home extends ProductHome {
+  readonly hanging = Promise.withResolvers<void>()
+
+  override models(): Models {
+    const faux = fauxProvider()
+    faux.setResponses(Array.from({ length: 2000 }, () => this.#step()))
+    const models = createModels()
+    models.setProvider(faux.provider)
+    return models
+  }
+
+  override extensions(): readonly Extension[] {
+    const echo = env.ECHO
+    const ping = defineTool({
+      name: "ping",
+      description: "Fetch the echo service once.",
+      parameters: obj({}),
+      replay: "safe",
+      execute: async () => {
+        const reply = await echo.fetch("http://echo/")
+        return { output: [{ type: "text", text: await reply.text() }] }
+      },
+    })
+    return [defineExtension({ name: "test.ping", tools: [ping] })]
+  }
+
+  async chooseModel(model: ModelRef): Promise<void> {
+    await (await this.root()).configure({ model }, BACKGROUND_CONTEXT)
+  }
+
+  script(responses: readonly string[]): void {
+    this.ctx.storage.kv.put("test.script", { responses, next: 0 } satisfies Script)
+  }
+
+  #step(): FauxResponseStep {
+    return (context, options) => {
+      const prompt = lastUserText(context.messages)
+      const pings = /^ping (\d+)$/.exec(prompt)
+      if (pings !== null) {
+        const done = context.messages.filter((message) => message.role === "toolResult").length
+        const want = Number(pings[1])
+        return done < want
+          ? fauxAssistantMessage([fauxToolCall("ping", {}, { id: `p${done}` })], { stopReason: "toolUse" })
+          : fauxAssistantMessage(`pinged ${done}`)
+      }
+      const script = this.ctx.storage.kv.get<Script>("test.script") ?? { responses: [], next: 0 }
+      const text = script.responses[script.next] ?? "unscripted"
+      this.ctx.storage.kv.put("test.script", { ...script, next: script.next + 1 })
+      if (text !== "hang") return fauxAssistantMessage(text)
+      this.hanging.resolve()
+      return new Promise((_resolve, reject) => {
+        const abort = () => reject(new DOMException("Request interrupted", "AbortError"))
+        if (options?.signal?.aborted) abort()
+        else options?.signal?.addEventListener("abort", abort, { once: true })
+      })
+    }
+  }
+}
+
+function lastUserText(messages: readonly { role: string; content?: unknown }[]): string {
+  const user = messages.findLast((message) => message.role === "user")
+  if (user === undefined) return ""
+  if (typeof user.content === "string") return user.content
+  if (!Array.isArray(user.content)) return ""
+  return user.content
+    .map((part: unknown) =>
+      typeof part === "object" && part !== null && "text" in part && typeof part.text === "string" ? part.text : "",
+    )
+    .join("")
+}

@@ -1,0 +1,10 @@
+{
+  "name": "xin-test",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": { "bindings": [{ "name": "HOME", "class_name": "Home" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Home"] }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "xin-files" }],
+  "vars": { "OWNER_TOKEN": "test-owner-token", "KEK": "dGVzdC1rZWstMzItYnl0ZXMtbG9uZy0xMjM0NTY3ODk=" },
+}

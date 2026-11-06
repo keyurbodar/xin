@@ -1,0 +1,30 @@
+{
+  "name": "xin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fmt": "oxfmt src plugins test scripts",
+    "fmt:check": "oxfmt --check src plugins test scripts",
+    "lint": "oxlint --deny-warnings src plugins test scripts",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "bundle": "wrangler deploy --dry-run --outdir .wrangler/bundle",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-durable": "1.5.0",
+    "@earendil-works/pi-mcp": "1.5.0",
+    "@earendil-works/pi-schema": "1.5.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.10",
+    "@cloudflare/workers-types": "^5.20261106.1",
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "oxfmt": "^0.77.0",
+    "oxlint": "^1.92.0",
+    "vitest": "4.1.12",
+    "wrangler": "^4.158.0"
+  }
+}

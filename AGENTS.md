@@ -39,10 +39,11 @@ bun scripts/gate.ts status                         # runner, queue, recent resul
 bun scripts/gate.ts [run] [steps]                  # lead only: run now, still behind the same lock
 ```
 
-- **One runner, serial**: jobs run one at a time under `nice -n 10`, with vitest capped at 2 workers. `submit` starts the runner when needed, and it exits after 10 idle minutes. The machine has 4 cores and 15 GB.
+- **One runner**: jobs run in parallel, one per box (or one at a time when there are no boxes), with local heavy steps serialized under `nice -n 10` and vitest capped at 2 workers. `submit` starts the runner when needed, and it exits after 10 idle minutes. The machine has 4 cores and 15 GB.
 - **Coalescing**: identical jobs (same checkout, steps and filter) submitted within 1.5 s run once, and every submitter gets the result.
+- **Box pool**: `test` and `bundle` run on the owner's instabox machines listed in `~/.config/xin/boxes.env` (`machine=key` per line, 4 vCPU / 8 GB each, free plan). The runner runs one job per box in parallel, and each job leases a box. The gate syncs the git-listed tree (never `.dev.vars`) and reinstalls only when `bun.lock` changes. A box that fails is benched for 10 minutes and the job moves to another box, or runs locally under the machine-wide lock when none is left. Boxes pause after 30 idle minutes and the next job wakes them, so there is no keep-alive. `XIN_GATE_BOX=0` forces local, and live runs (`XIN_LIVE=1`) always stay local. Never put a key in a brief or the repo.
 - **Cache**: a step that passed is skipped until its inputs change, so an unchanged tree costs nothing.
-- **Logs**: `.gate/<step>.log` in the checkout, and results in `/tmp/xin-gate/results/<id>.json`. Read them instead of re-running.
+- **Logs**: `.gate/<step>[-<filter hash>].log` in the checkout, and results in `/tmp/xin-gate/results/<id>.json`. Read them instead of re-running.
 - `package.json` must define `fmt:check`, `lint`, `typecheck`, `test` and `bundle`. The gate calls exactly those.
 - Workers may only `submit test --only=<own path>` and `wait`, at most 3 jobs per lane. Only the lead submits the full gate, once per merged wave.
 
