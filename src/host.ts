@@ -15,6 +15,10 @@ import { migrate } from "./db.ts"
 import type { Env } from "./env.ts"
 import * as files from "./files.ts"
 import * as gateway from "./gateway.ts"
+import * as mcp from "./mcp.ts"
+import * as memory from "./memory.ts"
+import * as push from "./push.ts"
+import * as skills from "./skills.ts"
 import type { PluginId } from "./ids.ts"
 import type { HostModule, ModuleDeps, Provider, Route } from "./module.ts"
 import * as models from "./models.ts"
@@ -25,7 +29,7 @@ import { ack, decodeCommand, Sockets } from "./wire.ts"
 
 export const HEARTBEAT_MS = 60_000
 const context = BACKGROUND_CONTEXT
-const MODULES: readonly { create(deps: ModuleDeps): HostModule }[] = [models, files, gateway]
+const MODULES: readonly { create(deps: ModuleDeps): HostModule }[] = [models, files, gateway, memory, push, skills, mcp]
 
 type Opened = {
   readonly db: DurableObjectSqliteDatabase

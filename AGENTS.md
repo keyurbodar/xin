@@ -53,8 +53,8 @@ The full system is in `docs/process/orchestration.md`, and briefs use `docs/proc
 
 - The lead (this session) plans, briefs, reviews, iterates and commits. Workers implement exactly one lane each.
 - Workers always use `delegate_task` with `target: { providerInstanceId: "magpie", model: "group/workhorse[1m]" }`.
-- Disk: default `isolation: "shared"` with disjoint file ownership. Use a worktree only for overlapping files, at most 2 at once, only with more than 15 GB free, and remove it after merge.
-- At most 6 live workers. Workers never commit in the shared checkout, never `bun install`, never run `wrangler dev`.
+- Disk: default `isolation: "shared"` with disjoint file ownership. Use a worktree only for overlapping files, at most 4 at once, only with more than 15 GB free, and remove it after merge.
+- At most 24 live workers. Workers never commit in the shared checkout, never `bun install`, never run `wrangler dev`.
 - If a lane stalls or fails the same way twice, cancel it, split it smaller or re-brief it, and log the choice.
 - Never put secrets in a brief. Live keys live in `.dev.vars`.
 

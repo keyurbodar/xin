@@ -16,7 +16,7 @@ else beam-free, else muse-spark-1.3-contributor); docs/plan matches the code; on
 Work unattended. Don't stop to ask me. Decide, log the decision in docs/log/decisions.tsv, and continue.
 Run it the way docs/process/orchestration.md describes: you are the lead (plan each wave, brief lanes from
 docs/process/brief-template.md, review, iterate, commit). Workers are delegate_task subagents on magpie
-group/workhorse[1m], with shared checkout and disjoint files by default, at most 6 live and at most 2
+group/workhorse[1m], with shared checkout and disjoint files by default, at most 24 live and at most 4
 worktrees. All builds, lint, typecheck and tests go through the `bun scripts/gate.ts` background queue.
 Workers submit only their own scoped tests, and you submit the full gate once per merged wave. Before
 marking any milestone done, run /pstack:thermo-nuclear-code-quality-review and /pstack:no-comments on

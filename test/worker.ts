@@ -6,7 +6,11 @@ import { BUNDLED } from "../src/plugins/bundled.ts"
 import * as m2 from "./plugins/m2.ts"
 import * as m3 from "./plugins/m3.ts"
 import * as m4 from "./plugins/m4.ts"
+import * as m7 from "./plugins/m7.ts"
 import * as m8 from "./plugins/m8.ts"
+import * as m9 from "./plugins/m9.ts"
+import * as mcp from "./plugins/mcp.ts"
+import * as skills from "./plugins/skills.ts"
 import { definePlugin, type Plugin } from "../src/plugins/host.ts"
 import { defineOp } from "../src/ops.ts"
 import { int, obj, opt } from "@earendil-works/pi-schema"
@@ -79,7 +83,17 @@ export class Home extends ProductHome {
   override providers(): readonly Provider[] {
     const faux = fauxProvider()
     faux.setResponses(Array.from({ length: 2000 }, () => this.#step()))
-    return [faux.provider, ...m2.providers, ...m3.providers, ...m4.providers, ...m8.providers]
+    return [
+      faux.provider,
+      ...m2.providers,
+      ...m3.providers,
+      ...m4.providers,
+      ...m7.providers,
+      ...m8.providers,
+      ...m9.providers,
+      ...skills.providers,
+      ...mcp.providers,
+    ]
   }
 
   override plugins(): readonly Plugin[] {

@@ -26,9 +26,9 @@ flowchart LR
 - **Model**: always `delegate_task` with `target: { providerInstanceId: "magpie", model: "group/workhorse[1m]" }` (Workhorse routing group, magpie, Claude Code driver). Leave the options at their defaults.
 - **Isolation, which is the disk rule**:
   - Default is `isolation: "shared"`: lanes work in the lead's checkout and own disjoint files, as listed in the brief. This costs no disk.
-  - Use `isolation: "worktree"` only when two lanes must touch the same file. Never run more than 2 worktrees at once, and only when `bun scripts/gate.ts status` reports more than 15 GB free.
+  - Use `isolation: "worktree"` only when two lanes must touch the same file. Never run more than 4 worktrees at once, and only when `bun scripts/gate.ts status` reports more than 15 GB free.
   - A worktree needs its own `bun install`. Bun hardlinks from its global cache, so the cost is small but not zero. The lead removes the worktree (`git worktree remove`) as soon as its lane is merged.
-- **Concurrency**: at most 6 live workers. Workers are I/O-bound (model calls), and the gate runner is the only CPU-heavy process, one job at a time.
+- **Concurrency**: at most 24 live workers. Workers are I/O-bound (model calls), and the gate runner is the only CPU-heavy process, one job at a time.
 - **Gate use**: a worker may `gate submit test --only=<its test path>` followed by `gate wait <id>`, at most 3 times per lane. Nothing else. No `bun install` in the shared checkout (only the lead installs dependencies), no `wrangler dev`, no full gate.
 - **A worker never commits** in the shared checkout. In a worktree it commits on its own branch, and the lead merges it.
 - **Report contract**: the worker's final message ends with:
@@ -45,7 +45,7 @@ flowchart LR
 for each wave in docs/plan/goal.md:
   1. write docs/log/waves/W<n>.md: lane table (id, spec sections, owned files, must-not-touch, proof test, isolation)
   2. install any new deps once (lead only), then gate submit types to set the baseline
-  3. spawn every lane of the wave (async, ≤6 live), each with a brief from docs/process/brief-template.md
+  3. spawn every lane of the wave (async, ≤24 live), each with a brief from docs/process/brief-template.md
   4. as each report lands:
        read the diff · check it against the spec section · read its gate result
        small fix → lead fixes it directly
