@@ -2,11 +2,14 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai"
 import { type Conversation, type EntryRecord, LiveDoc } from "@earendil-works/pi-durable"
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { M2_MODEL, script as scriptM2 } from "../test/plugins/m2.ts"
-import { eventually, fresh } from "../test/support.ts"
+import { connect, eventually, fresh, owner } from "../test/support.ts"
+import { decrypt, subscriber, type Subscriber } from "../test/webpush.ts"
 import { FAUX_MODEL, type Home } from "../test/worker.ts"
+import { enqueue } from "./gateway.ts"
 import type { CommandId } from "./ids.ts"
+import { pushTopic } from "./webpush.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -197,5 +200,124 @@ describe("gateway intake and dispatch", () => {
     await runDurableObjectAlarm(stub)
     expect(await answers(stub)).toEqual([])
     expect((await rows(stub))[0]?.status).toBe("pending")
+  })
+})
+
+type Stub = ReturnType<typeof fresh>
+
+type CapturedPush = {
+  readonly url: string
+  readonly topic: string | null
+  readonly body: Uint8Array
+}
+
+function capturePush(): CapturedPush[] {
+  const sent: CapturedPush[] = []
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (request) => {
+    const captured = request instanceof Request ? request : new Request(request)
+    sent.push({
+      url: captured.url,
+      topic: captured.headers.get("topic"),
+      body: new Uint8Array(await captured.arrayBuffer()),
+    })
+    return new Response(null, { status: 201 })
+  })
+  return sent
+}
+
+async function subscribe(stub: Stub, id: string, target: Subscriber): Promise<void> {
+  const outcome = await command(stub, id, "push.subscribe", { endpoint: target.endpoint, keys: target.keys })
+  expect(outcome, JSON.stringify(outcome)).toMatchObject({ kind: "ok" })
+}
+
+async function enqueueReport(stub: Stub, commandId: string, title: string): Promise<void> {
+  await runInDurableObject(stub, async (home: Home) => {
+    const accepted = await enqueue(home.db, {
+      target: (await home.root()).id,
+      commandId,
+      kind: "report",
+      threadId: "7",
+      title,
+      status: "completed",
+      text: "the parser is done",
+    })
+    expect(accepted).toBe(true)
+  })
+}
+
+const payloadOf = (target: Subscriber, push: CapturedPush): Promise<unknown> => decrypt(target, push.body)
+
+describe("dispatch push", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("pushes one notification with the thread title when a report lands and no socket is open", async () => {
+    const stub = fresh()
+    const target = await subscriber("https://push.example.test/report")
+    await subscribe(stub, "push-sub-report", target)
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["noted"])
+      await home.chooseModel(FAUX_MODEL)
+    })
+    const sent = capturePush()
+
+    await enqueueReport(stub, "report:7:1", "Parser thread")
+    await fireNow(stub)
+
+    expect(sent).toHaveLength(1)
+    const request = sent[0]
+    if (request === undefined) throw new Error("missing push request")
+    expect(request.url).toBe(target.endpoint)
+    expect(request.topic).toBe(await pushTopic("report:7:1"))
+    expect(await payloadOf(target, request)).toMatchObject({ threadTitle: "Parser thread", tag: "report:7:1" })
+  })
+
+  it("sends nothing when a socket is open", async () => {
+    const stub = owner()
+    await runInDurableObject(stub, (home: Home) => home.db.run("DELETE FROM push_subs"))
+    const target = await subscriber("https://push.example.test/connected")
+    await subscribe(stub, "push-sub-connected", target)
+    const socket = await connect()
+    try {
+      const sent = capturePush()
+      await enqueueReport(stub, "report:8:1", "Connected thread")
+      await fireNow(stub)
+      expect(sent).toHaveLength(0)
+    } finally {
+      socket.close()
+    }
+  })
+
+  it("replays a claimed report after eviction with the same topic and tag", async () => {
+    const stub = fresh()
+    const target = await subscriber("https://push.example.test/replay")
+    await subscribe(stub, "push-sub-replay", target)
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["hang", "recovered"])
+      await home.chooseModel(FAUX_MODEL)
+    })
+    const sent = capturePush()
+
+    await enqueueReport(stub, "report:9:1", "Replay thread")
+    await fireNow(stub)
+    expect(sent).toHaveLength(1)
+    expect((await rows(stub))[0]?.status).toBe("claimed")
+
+    await evictDurableObject(stub)
+    expect(await runDurableObjectAlarm(stub)).toBe(true)
+    expect(sent).toHaveLength(2)
+
+    const [first, second] = sent
+    if (first === undefined || second === undefined) throw new Error("missing push request")
+    const topic = first.topic
+    expect(topic).not.toBeNull()
+    expect(second.topic).toBe(topic)
+    expect(second.url).toBe(first.url)
+    expect(await payloadOf(target, first)).toMatchObject({ threadTitle: "Replay thread", tag: "report:9:1" })
+    expect(await payloadOf(target, second)).toMatchObject({ threadTitle: "Replay thread", tag: "report:9:1" })
+    await eventually(stub, async (home: Home) =>
+      (await home.db.all<Row>("SELECT status, batch_id, command_id FROM inbound")).every(
+        (row) => row.status === "done",
+      ),
+    )
   })
 })

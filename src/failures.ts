@@ -1,4 +1,3 @@
-/* oxlint-disable no-console -- a dropped error entry is reported to the Worker log */
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { JsonValue } from "@earendil-works/chord"
 import {

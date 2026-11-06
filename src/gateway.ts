@@ -7,6 +7,7 @@ import { type Batch, decide, type InboundKind, probe } from "./dispatch.ts"
 import type { BatchId, ConversationId } from "./ids.ts"
 import type { HostModule, ModuleDeps } from "./module.ts"
 import { defineOp } from "./ops.ts"
+import { notifier, type Notifier, type Notification } from "./push.ts"
 
 const context = BACKGROUND_CONTEXT
 const DEBOUNCE_MS = 2_000
@@ -52,6 +53,7 @@ type BatchEntryRow = {
 }
 
 export function create(deps: ModuleDeps): HostModule {
+  const push = notifier(deps)
   return {
     ops: [
       defineOp({
@@ -106,8 +108,8 @@ export function create(deps: ModuleDeps): HostModule {
     start: async () => {
       const now = Date.now()
       await deps.db.run("DELETE FROM inbound WHERE status = 'done' AND fire_at < ?", now - RETENTION_MS)
-      await recover(deps)
-      await fire(deps, now)
+      await recover(deps, push)
+      await fire(deps, now, push)
     },
     due: async () => {
       const row = await deps.db.get<{ at: number | null }>(
@@ -115,7 +117,7 @@ export function create(deps: ModuleDeps): HostModule {
       )
       return row?.at ?? undefined
     },
-    fire: (now) => fire(deps, now),
+    fire: (now) => fire(deps, now, push),
     typing: async (conversation, on) => {
       if (!on) return
       const now = Date.now()
@@ -157,7 +159,7 @@ export async function enqueue(db: SqliteDatabase, draft: InboundDraft, now = Dat
   return true
 }
 
-async function recover(deps: ModuleDeps): Promise<void> {
+async function recover(deps: ModuleDeps, push: Notifier): Promise<void> {
   const claimed = await deps.db.all<InboundRow>(
     "SELECT * FROM inbound WHERE status = 'claimed' AND batch_id IS NOT NULL ORDER BY target, client_ts, id",
   )
@@ -177,18 +179,19 @@ async function recover(deps: ModuleDeps): Promise<void> {
       continue
     }
     await submit(deps, conversation, batchId as BatchId, rows)
+    await announce(push, rows)
   }
 }
 
-async function fire(deps: ModuleDeps, now: number): Promise<void> {
+async function fire(deps: ModuleDeps, now: number, push: Notifier): Promise<void> {
   const targets = await deps.db.all<{ target: number }>(
     "SELECT DISTINCT target FROM inbound WHERE status = 'pending' AND fire_at <= ?",
     now,
   )
-  for (const { target } of targets) await dispatch(deps, target, now)
+  for (const { target } of targets) await dispatch(deps, target, now, push)
 }
 
-async function dispatch(deps: ModuleDeps, target: number, now: number): Promise<void> {
+async function dispatch(deps: ModuleDeps, target: number, now: number, push: Notifier): Promise<void> {
   const batchId = crypto.randomUUID() as BatchId
   const rows = await deps.db.all<InboundRow>(
     "UPDATE inbound SET status = 'claimed', batch_id = ? WHERE target = ? AND status = 'pending' AND fire_at <= ? RETURNING *",
@@ -212,9 +215,11 @@ async function dispatch(deps: ModuleDeps, target: number, now: number): Promise<
   switch (mode.kind) {
     case "start":
       await submit(deps, conversation, batchId, pending)
+      await announce(push, pending)
       return
     case "steer":
       await submit(deps, conversation, batchId, pending, "steer")
+      await announce(push, pending)
       return
     case "restart":
       await deps.db.run(
@@ -225,6 +230,7 @@ async function dispatch(deps: ModuleDeps, target: number, now: number): Promise<
       )
       await conversation.abort(context)
       await submit(deps, conversation, batchId, ordered([...prior, ...pending]))
+      await announce(push, pending)
       return
     case "stop":
       await deps.db.run("UPDATE inbound SET status = 'done' WHERE target = ? AND status = 'claimed'", target)
@@ -236,6 +242,19 @@ async function dispatch(deps: ModuleDeps, target: number, now: number): Promise<
       throw new Error(`unhandled dispatch ${JSON.stringify(_exhaustive)}`)
     }
   }
+}
+
+async function announce(push: Notifier, rows: readonly InboundRow[]): Promise<void> {
+  for (const row of rows) {
+    const notification = notificationOf(row)
+    if (notification !== undefined) await push.notify(notification)
+  }
+}
+
+function notificationOf(row: InboundRow): Notification | undefined {
+  if (row.kind !== "report" && row.kind !== "question") return undefined
+  const body = bodyOf(row)
+  return { threadTitle: body.title, title: body.title, body: body.text, tag: row.command_id }
 }
 
 async function submit(

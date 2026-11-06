@@ -1,4 +1,3 @@
-/* oxlint-disable no-console -- a dropped home publish is reported to the Worker log */
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { defineDoc } from "@earendil-works/pi-durable"
 import type { CommitPublication, ConversationId, JsonObject } from "@earendil-works/pi-durable"
