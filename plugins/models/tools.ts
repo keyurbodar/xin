@@ -2,7 +2,7 @@ import type { Api, Model } from "@earendil-works/pi-ai"
 import { defineExtension, defineTool, type ConversationId, type ModelRef } from "@earendil-works/pi-durable"
 import { obj, opt, str } from "@earendil-works/pi-schema"
 import { ThinkingSchema, type ModelsService } from "../../src/contracts/models.ts"
-import type { Context } from "../../src/kernel/index.ts"
+import { type Context, textResult } from "../../src/kernel/index.ts"
 
 export const name = "tool-models"
 export const inject = ["pi", "models"]
@@ -38,7 +38,7 @@ function setModel(models: ModelsService) {
     replay: "safe",
     execute: async (args, api) => {
       const target = resolveTarget(args.target, api.conversationId)
-      if (target.kind !== "conversation") return { output: [{ type: "text", text: target.message }] }
+      if (target.kind !== "conversation") return textResult(target.message)
       const { catalog, matches } = await models.search(args.query)
       const top = matches[0]
       if (top === undefined) {
@@ -54,14 +54,14 @@ function setModel(models: ModelsService) {
           .map((model) => `${model.provider}/${model.id} (${model.name})`)
         const hint = close.length > 0 ? `Close matches: ${close.join(", ")}. ` : ""
         const text = `No model matches "${args.query}". ${hint}Ask the owner to add a provider key in Settings.`
-        return { output: [{ type: "text", text }], isError: true }
+        return textResult(text, { isError: true })
       }
       if (matches.length > 1 && (matches[1]?.score ?? 0) === top.score) {
         const options = matches
           .slice(0, 4)
           .map((hit, index) => `${index + 1}. ${hit.model.provider}/${hit.model.id} (${hit.model.name})`)
         const text = `Which model? Several match "${args.query}": ${options.join("; ")}. Ask the owner which one, then call set_model again with the provider and id.`
-        return { output: [{ type: "text", text }] }
+        return textResult(text)
       }
       const chosen = top.model
       const outcome = await models.switchModel({
@@ -71,7 +71,7 @@ function setModel(models: ModelsService) {
         ...(args.thinking === undefined ? {} : { thinking: args.thinking }),
         callId: api.callId,
       })
-      if (outcome.kind !== "ok") return { output: [{ type: "text", text: outcome.message }], isError: true }
+      if (outcome.kind !== "ok") return textResult(outcome.message, { isError: true })
       const vision = chosen.input.includes("image")
       const notes = [
         vision ? undefined : "This model can't see images; they become placeholders.",
@@ -81,8 +81,7 @@ function setModel(models: ModelsService) {
         `Set ${chosen.provider}/${chosen.id} (${chosen.name}, ${chosen.contextWindow} tokens). It applies from the next request.`,
         ...notes,
       ].join(" ")
-      return {
-        output: [{ type: "text", text }],
+      return textResult(text, {
         details: {
           model: refOf(chosen),
           contextWindow: chosen.contextWindow,
@@ -90,7 +89,7 @@ function setModel(models: ModelsService) {
           reasoning: chosen.reasoning,
           effectiveFrom: "next request",
         },
-      }
+      })
     },
   })
 }

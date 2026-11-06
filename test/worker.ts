@@ -2,6 +2,7 @@ import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxToolCall
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { defineDoc, defineExtension, defineTool, type ModelRef } from "@earendil-works/pi-durable"
 import type { Provider } from "../src/module.ts"
+import * as fakefiles from "./plugins/fakefiles.ts"
 import * as m2 from "./plugins/m2.ts"
 import * as m3 from "./plugins/m3.ts"
 import * as m4 from "./plugins/m4.ts"
@@ -71,6 +72,7 @@ const TEST_CATALOG: Catalog = {
   },
   orphan: testPlugin("orphan", {}, ["nothing-provides-this"]),
   ...m2.catalog,
+  ...fakefiles.catalog,
   ...m3.catalog,
   ...m4.catalog,
   ...m5.catalog,

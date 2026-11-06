@@ -1,8 +1,9 @@
 import type { JsonRepresentation } from "@earendil-works/chord"
 import type { AssistantMessage } from "@earendil-works/pi-ai"
 import type { LiveState } from "@earendil-works/pi-durable"
+import type { InboundKind } from "../../src/contracts/intake.ts"
 
-export type InboundKind = "user" | "report" | "question" | "job"
+export type { InboundKind }
 
 export type Batch = {
   readonly kinds: readonly InboundKind[]

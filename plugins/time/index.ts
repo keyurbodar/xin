@@ -19,15 +19,19 @@ export function format(now: Date, timezone: string): string {
   return `${local} (${timezone}, ${now.toISOString()})`
 }
 
+export const toolName = (row: string): string =>
+  row === name ? "current_time" : `current_time_${row.replaceAll("-", "_")}`
+
 export function apply(ctx: Context, config: Config): void {
   format(new Date(0), config.timezone)
+  const row = ctx.get("loader")?.locate(ctx.fiber) ?? name
   ctx.pi.install(
     defineExtension({
-      name: "time",
+      name: row,
       tools: [
         defineTool({
-          name: "current_time",
-          description: "Return the current date and time in the owner's timezone.",
+          name: toolName(row),
+          description: `Return the current date and time in ${config.timezone}.`,
           parameters: obj({}),
           replay: "safe",
           execute: async () => ({ output: [{ type: "text", text: format(new Date(), config.timezone) }] }),

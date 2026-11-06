@@ -1,38 +1,60 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Context, Draft } from "@earendil-works/chord"
-import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import {
   configure,
   type ConversationId,
   defineTask,
   type DocumentReader,
   type Harness,
+  type ModelRef,
   type Task,
   type TaskRuntime,
+  type ToolRegistration,
   type Tx,
 } from "@earendil-works/pi-durable"
-import { int, obj, oneOf, opt, str } from "@earendil-works/pi-schema"
-import type { CreateOutcome, CreateThreadArgs } from "../../src/contracts/threads.ts"
-import { enqueue } from "../intake/gateway.ts"
+import { int, obj, opt, str } from "@earendil-works/pi-schema"
+import { SendModeSchema, type ReporterInput } from "../../src/contracts/threads.ts"
+import type { ProjectId } from "../../src/ids.ts"
 import type { ModuleDeps } from "../../src/module.ts"
 import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
-  addThread,
   ThreadDoc,
   threadInScope,
+  threadState,
   transition,
+  type NewThread,
   type ThreadDocState,
+  type ThreadRole,
+  type ThreadState,
   type ThreadStatus,
-} from "../workspace/threaddoc.ts"
+} from "../../src/contracts/threaddoc.ts"
 import { detailOf, textOf } from "../../src/transcript.ts"
-import { ensureWatchdogTx, watchdogTask, type WatchdogTask } from "../watchdog/watchdog.ts"
-import { WorkspaceDoc } from "../workspace/workspace.ts"
+import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
-const SendModeSchema = oneOf(["steer", "queue"] as const)
 
 export const ANCHOR_KIND = "xin.anchor"
 export const REPORTER_KIND = "xin.reporter"
+
+export type CreateThreadArgs = {
+  readonly projectId: ProjectId
+  readonly parentId: ConversationId
+  readonly title: string
+  readonly role: ThreadRole
+  readonly task: string
+  readonly model: ModelRef
+  readonly clientRequestId: string
+  readonly requestId: string
+  readonly removeTools: readonly ToolRegistration[]
+}
+
+export type CreateOutcome =
+  | { readonly kind: "created"; readonly threadId: number; readonly title: string }
+  | { readonly kind: "existing"; readonly threadId: number; readonly title: string }
+  | { readonly kind: "limit"; readonly live: readonly LiveThread[]; readonly limit: number }
+  | { readonly kind: "rejected"; readonly reason: string }
+
+type LiveThread = { readonly id: number; readonly title: string; readonly status: ThreadStatus }
 
 export type ReportLanded = {
   readonly threadId: number
@@ -40,15 +62,6 @@ export type ReportLanded = {
   readonly title: string
   readonly status: ReportStatus
   readonly text: string
-}
-
-export type ReporterInput = {
-  readonly threadId: number
-  readonly parentId: number
-  readonly title: string
-  readonly run: number
-  readonly brief: string
-  readonly requestId: string
 }
 
 type ReportStatus = Extract<ThreadStatus, "completed" | "failed" | "cancelled">
@@ -64,11 +77,7 @@ type ReporterCheckpoint =
 export type ReporterTask = Task<ReporterInput, ReporterCheckpoint, null, object>
 export type AnchorTask = Task<null, { readonly phase: "done" }, null, object>
 
-export type ThreadDeps = {
-  readonly db: SqliteDatabase
-  arm(): Promise<void>
-  harness(): Harness
-}
+export type ThreadDeps = Pick<ModuleDeps<"intake" | "watchdog">, "arm" | "harness" | "services">
 
 export const Anchor: AnchorTask = defineTask<null, { readonly phase: "done" }, null>({
   name: ANCHOR_KIND,
@@ -110,19 +119,15 @@ export function reporterTask(deps: ThreadDeps): ReporterTask {
       },
       report: async (task, runtime, taskContext) => {
         const checkpoint = task.state.checkpoint
-        const accepted = await enqueue(
-          deps.db,
-          {
-            target: task.input.parentId as ConversationId,
-            commandId: `report:${task.input.threadId}:${task.input.run}`,
-            kind: "report",
-            threadId: String(task.input.threadId),
-            title: task.input.title,
-            status: checkpoint.status,
-            text: checkpoint.text,
-          },
-          runtime.now(),
-        )
+        const accepted = await deps.services.intake.enqueue({
+          target: task.input.parentId as ConversationId,
+          commandId: `report:${task.input.threadId}:${task.input.run}`,
+          kind: "report",
+          threadId: String(task.input.threadId),
+          title: task.input.title,
+          status: checkpoint.status,
+          text: checkpoint.text,
+        })
         if (accepted) await deps.arm()
         await runtime.commit(
           () => ({ status: "terminal", outcome: { status: "completed", result: null } }),
@@ -184,6 +189,37 @@ function eventOf(status: ReportStatus): "done" | "unanswered" | "abort" {
   }
 }
 
+async function addThread(tx: Tx, thread: NewThread): Promise<ThreadState> {
+  const workspace = await tx.doc(WorkspaceDoc)
+  const project = workspace.projects[thread.projectId]
+  if (project === undefined) throw new OpRejected("bad_args", `no project ${thread.projectId}`)
+  const status = thread.status ?? "working"
+  if ((status === "completed" || status === "failed") && thread.result === undefined)
+    throw new OpRejected("bad_args", `a ${status} thread needs a result`)
+  const beatAt = thread.beatAt ?? Date.now()
+  const deadlineAt = thread.deadlineAt ?? beatAt + project.settings.deadlineMs
+  const doc = await tx.doc(ThreadDoc, thread.threadId)
+  const value: ThreadDocState = {
+    projectId: thread.projectId,
+    title: thread.title,
+    role: thread.role ?? "thread",
+    status,
+    run: thread.run ?? 1,
+    beatAt,
+    deadlineAt,
+    ...(thread.parentId === undefined ? {} : { parentId: thread.parentId }),
+    ...(thread.anchorTaskId === undefined ? {} : { anchorTaskId: thread.anchorTaskId }),
+    ...(thread.statusLine === undefined ? {} : { statusLine: thread.statusLine }),
+    ...(thread.result === undefined ? {} : { result: thread.result }),
+    ...(thread.clientRequestId === undefined ? {} : { clientRequestId: thread.clientRequestId }),
+  }
+  Object.assign(doc, value)
+  if (!project.threadIds.includes(thread.threadId)) project.threadIds.push(thread.threadId)
+  const state = threadState(value)
+  if (state === undefined) throw new Error(`thread ${thread.threadId} does not satisfy xin.thread`)
+  return state
+}
+
 export type SendArgs = {
   readonly threadId: number
   readonly text: string
@@ -201,17 +237,20 @@ type SendFn = (harness: Harness, args: SendArgs) => Promise<SendOutcome>
 export type Threads = {
   readonly anchor: AnchorTask
   readonly reporter: ReporterTask
+  report(tx: Tx, input: ReporterInput): Promise<void>
   createThread(tx: Tx, args: CreateThreadArgs): Promise<CreateOutcome>
   readonly ops: readonly Op[]
 }
 
 const sendKeyOf = (threadId: number, sendKey: string): string => `thread-send:${threadId}:${sendKey}`
 
+type ReportFn = (tx: Tx, input: ReporterInput) => Promise<void>
+
 async function sendToThread(
+  deps: ThreadDeps,
   harness: Harness,
   args: SendArgs,
-  reporter: ReporterTask,
-  watchdog: WatchdogTask,
+  report: ReportFn,
 ): Promise<SendOutcome> {
   const threadId = args.threadId as ConversationId
   const snapshot = await harness.snapshot(ThreadDoc, threadId, context)
@@ -237,19 +276,15 @@ async function sendToThread(
     delete thread.result
     thread.beatAt = now
     thread.deadlineAt = now + project.settings.deadlineMs
-    await ensureWatchdogTx(tx, watchdog, parentId)
-    await tx.createTask(
-      reporter,
-      {
-        threadId: args.threadId,
-        parentId,
-        title: thread.title,
-        run,
-        brief: args.text,
-        requestId: sendKeyOf(args.threadId, args.sendKey),
-      },
-      { ownership: { kind: "conversation" }, conversationId: parentId, background: true },
-    )
+    await deps.services.watchdog.ensure(tx, parentId)
+    await report(tx, {
+      threadId: args.threadId,
+      parentId,
+      title: thread.title,
+      run,
+      brief: args.text,
+      requestId: sendKeyOf(args.threadId, args.sendKey),
+    })
     return { kind: "opened" as const, run }
   }, context)
   switch (opened.kind) {
@@ -347,11 +382,16 @@ async function denied(actor: Actor, read: DocumentReader, threadId: number): Pro
   return (await threadInScope(read, actor.conversationId, threadId)) === undefined
 }
 
-export function lifecycle(deps: ModuleDeps): Threads {
-  const reporter = reporterTask({ db: deps.db, arm: () => deps.arm(), harness: () => deps.harness() })
-  const watchdog = watchdogTask(deps)
-  const send = (harness: Harness, args: SendArgs): Promise<SendOutcome> =>
-    sendToThread(harness, args, reporter, watchdog)
+export function lifecycle(deps: ThreadDeps): Threads {
+  const reporter = reporterTask(deps)
+  const report: ReportFn = async (tx, input) => {
+    await tx.createTask(reporter, input, {
+      ownership: { kind: "conversation" },
+      conversationId: input.parentId as ConversationId,
+      background: true,
+    })
+  }
+  const send = (harness: Harness, args: SendArgs): Promise<SendOutcome> => sendToThread(deps, harness, args, report)
 
   const createThread = async (tx: Tx, args: CreateThreadArgs): Promise<CreateOutcome> => {
     const workspace = await tx.doc(WorkspaceDoc)
@@ -371,7 +411,7 @@ export function lifecycle(deps: ModuleDeps): Threads {
         limit: project.settings.threadLimit,
       }
     }
-    await ensureWatchdogTx(tx, watchdog, args.parentId)
+    await deps.services.watchdog.ensure(tx, args.parentId)
     const anchor = await tx.createTask(Anchor, null, {
       ownership: { kind: "conversation" },
       conversationId: args.parentId,
@@ -393,20 +433,16 @@ export function lifecycle(deps: ModuleDeps): Threads {
       run: 1,
       clientRequestId: args.clientRequestId,
     })
-    await tx.createTask(
-      reporter,
-      {
-        threadId: child.id,
-        parentId: args.parentId,
-        title: args.title,
-        run: 1,
-        brief: args.task,
-        requestId: args.requestId,
-      },
-      { ownership: { kind: "conversation" }, conversationId: args.parentId, background: true },
-    )
+    await report(tx, {
+      threadId: child.id,
+      parentId: args.parentId,
+      title: args.title,
+      run: 1,
+      brief: args.task,
+      requestId: args.requestId,
+    })
     return { kind: "created", threadId: child.id, title: args.title }
   }
 
-  return { anchor: Anchor, reporter, createThread, ops: [sendThreadOp(send), stopThread] }
+  return { anchor: Anchor, reporter, report, createThread, ops: [sendThreadOp(send), stopThread] }
 }

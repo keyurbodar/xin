@@ -1,8 +1,8 @@
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable"
 import { obj, opt, str } from "@earendil-works/pi-schema"
 import type { MemoryService } from "../../src/contracts/memory.ts"
-import type { Context } from "../../src/kernel/index.ts"
-import { projectInScope } from "../workspace/threaddoc.ts"
+import { type Context, textResult } from "../../src/kernel/index.ts"
+import { projectInScope } from "../../src/contracts/threaddoc.ts"
 import { isScope, refusal, SCOPE_PATTERN } from "./dreamprompt.ts"
 
 export const name = "tool-memory"
@@ -45,7 +45,7 @@ function remember(memory: MemoryService) {
         originTask: String(api.taskId),
         at: Date.now(),
       })
-      return said(inserted ? `Remembered (${scope}).` : `Already remembered (${scope}).`)
+      return textResult(inserted ? `Remembered (${scope}).` : `Already remembered (${scope}).`)
     },
   })
 }
@@ -67,8 +67,8 @@ function recall(memory: MemoryService) {
         if (!allowed.includes(args.scope)) return notRecalled(`scope ${args.scope} belongs to another conversation`)
       }
       const notes = await memory.search(args.q, args.scope === undefined ? allowed : [args.scope], Date.now())
-      if (notes.length === 0) return said("No matching notes.")
-      return said(notes.map((note) => `- [${note.scope}] ${note.text}`).join("\n"))
+      if (notes.length === 0) return textResult("No matching notes.")
+      return textResult(notes.map((note) => `- [${note.scope}] ${note.text}`).join("\n"))
     },
   })
 }
@@ -80,14 +80,10 @@ function profileSection(memory: MemoryService) {
   })
 }
 
-function said(text: string) {
-  return { output: [{ type: "text" as const, text }] }
-}
-
 function refused(reason: string) {
-  return { output: [{ type: "text" as const, text: `Not saved: ${reason}.` }], isError: true }
+  return textResult(`Not saved: ${reason}.`, { isError: true })
 }
 
 function notRecalled(reason: string) {
-  return { output: [{ type: "text" as const, text: `Cannot recall: ${reason}.` }], isError: true }
+  return textResult(`Cannot recall: ${reason}.`, { isError: true })
 }

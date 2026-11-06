@@ -1,16 +1,21 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { JsonValue } from "@earendil-works/chord"
+import type { Context as ChordContext, JsonValue } from "@earendil-works/chord"
 import type { ConversationId, DocumentReader, Tx } from "@earendil-works/pi-durable"
 import { int, obj, str } from "@earendil-works/pi-schema"
-import type { AskRecord, OpenQuestion, QuestionsService, RespondOutcome } from "../../src/contracts/questions.ts"
+import {
+  type AskInput,
+  type AskOutcome,
+  type OpenOutcome,
+  type OpenQuestion,
+  type QuestionsService,
+  RequestsDoc,
+  type RespondOutcome,
+} from "../../src/contracts/questions.ts"
 import type { CommandId } from "../../src/ids.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, OpRejected } from "../../src/ops.ts"
-import { enqueue } from "../intake/gateway.ts"
-import { reporterTask } from "../orchestrator/threads.ts"
-import { ensureWatchdogTx, watchdogTask, type WatchdogTask } from "../watchdog/watchdog.ts"
-import { projectInScope, ThreadDoc, threadInScope, transition } from "../workspace/threaddoc.ts"
-import { DEFAULT_DEADLINE_MS, RequestsDoc, WorkspaceDoc } from "../workspace/workspace.ts"
+import { projectInScope, ThreadDoc, threadInScope, transition } from "../../src/contracts/threaddoc.ts"
+import { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -20,53 +25,44 @@ type AnswerOutcome =
 
 const commandId = (value: string): CommandId => value as CommandId
 
-export function create(deps: ModuleDeps): HostModule {
-  const reporter = reporterTask({ db: deps.db, arm: () => deps.arm(), harness: () => deps.harness() })
-  const watchdog = watchdogTask(deps)
-
+export function create(deps: ModuleDeps<"intake" | "threads" | "watchdog">): HostModule {
   const questions: QuestionsService = {
-    async ask(api, callContext, input): Promise<AskRecord | undefined> {
-      const threadId = api.conversationId
-      const thread = await api.snapshot(ThreadDoc, threadId, callContext)
-      if (thread === undefined) return undefined
-      const requestId = `q:${api.taskId}`
-      const now = api.now()
-      await api.commit(async (tx) => {
-        const requests = await tx.doc(RequestsDoc, threadId)
-        if (requests.open[requestId] !== undefined) return
-        requests.open[requestId] = {
+    async ask(input: AskInput, callContext: ChordContext): Promise<AskOutcome> {
+      const harness = deps.harness()
+      const thread = await harness.snapshot(ThreadDoc, input.threadId, callContext)
+      if (thread === undefined) return { kind: "not_a_thread" }
+      await harness.commit(async (tx) => {
+        const requests = await tx.doc(RequestsDoc, input.threadId)
+        if (requests.open[input.requestId] !== undefined) return
+        requests.open[input.requestId] = {
           kind: "ask_user",
           question: input.question,
           ...(input.options === undefined ? {} : { options: [...input.options] }),
-          at: now,
+          at: input.now,
         }
-        const doc = await tx.doc(ThreadDoc, threadId)
+        const doc = await tx.doc(ThreadDoc, input.threadId)
         if (doc.status === "working") doc.status = "waiting"
         doc.statusLine = "waiting for your answer"
       }, callContext)
       if (thread.parentId !== undefined) {
-        const accepted = await enqueue(
-          deps.db,
-          {
-            target: thread.parentId as ConversationId,
-            commandId: `question:${requestId}`,
-            kind: "question",
-            threadId: String(threadId),
-            title: thread.title,
-            status: "waiting",
-            text: input.question,
-          },
-          now,
-        )
+        const accepted = await deps.services.intake.enqueue({
+          target: thread.parentId as ConversationId,
+          commandId: `question:${input.requestId}`,
+          kind: "question",
+          threadId: String(input.threadId),
+          title: thread.title,
+          status: "waiting",
+          text: input.question,
+        })
         if (accepted) await deps.arm()
       }
-      return { requestId, question: input.question }
+      return { kind: "asked", requestId: input.requestId, question: input.question }
     },
 
-    async open(api): Promise<readonly OpenQuestion[] | undefined> {
-      const scope = await projectInScope(api, api.conversationId)
-      if (scope === undefined) return undefined
-      return openRequests(api, scope.project.threadIds)
+    async open(conversationId: ConversationId): Promise<OpenOutcome> {
+      const scope = await projectInScope(deps.harness(), conversationId)
+      if (scope === undefined) return { kind: "not_in_project" }
+      return { kind: "open", questions: await openRequests(deps.harness(), scope.project.threadIds) }
     },
 
     async respond(api, threadId, requestId, reply): Promise<RespondOutcome> {
@@ -102,23 +98,16 @@ export function create(deps: ModuleDeps): HostModule {
       if (stored === undefined) throw new OpRejected("bad_args", `no thread ${args.threadId}`)
       const now = Date.now()
       const outcome = await api.harness.commit(
-        (tx) => answer(tx, watchdog, threadId, stored.title, args.requestId, args.answer, now),
+        (tx) => answer(tx, threadId, stored.title, args.requestId, args.answer, now),
         context,
       )
-      if (outcome.kind === "answered") {
-        await deps.db.run(
-          "DELETE FROM inbound WHERE command_id = ? AND status = 'pending'",
-          `question:${args.requestId}`,
-        )
-        await deps.arm()
-      }
+      if (outcome.kind === "answered") await deps.services.intake.withdraw(`question:${args.requestId}`)
       return { threadId: args.threadId, requestId: args.requestId, ...outcome }
     },
   })
 
   async function answer(
     tx: Tx,
-    watchdogDef: WatchdogTask,
     threadId: ConversationId,
     title: string,
     requestId: string,
@@ -153,19 +142,15 @@ export function create(deps: ModuleDeps): HostModule {
     thread.beatAt = now
     thread.deadlineAt = now + (project?.settings.deadlineMs ?? DEFAULT_DEADLINE_MS)
     delete thread.result
-    await ensureWatchdogTx(tx, watchdogDef, parentId)
-    await tx.createTask(
-      reporter,
-      {
-        threadId,
-        parentId,
-        title,
-        run,
-        brief: reply,
-        requestId: `answer:${threadId}:${requestId}`,
-      },
-      { ownership: { kind: "conversation" }, conversationId: parentId, background: true },
-    )
+    await deps.services.watchdog.ensure(tx, parentId)
+    await deps.services.threads.report(tx, {
+      threadId,
+      parentId,
+      title,
+      run,
+      brief: reply,
+      requestId: `answer:${threadId}:${requestId}`,
+    })
     return { kind: "answered", run }
   }
 

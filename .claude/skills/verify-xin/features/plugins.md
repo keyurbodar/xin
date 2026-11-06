@@ -10,7 +10,7 @@ Xin's plugin layer is dsh's Cordis stack. Every part of Home is a loader row, ke
 - `system.version`, `system.restart {hard?}`, `system.update` through the `deployer` seam (default row `deploy-hook`, which needs its `url` secret).
 - Agent tool `plugin_manager`: reads always work. `enable` and `configure` work only with `tool-plugins` config `allowAgent: true`. Disabling the `tool-plugins` row hides the tool and keeps the `plugin.*` ops.
 - CLI (build time): `bun scripts/xin.ts plugin list | generate | add <spec> [--enable] | remove | enable | disable`.
-- Example package: `plugins/time` (`current_time` tool, `timezone` config).
+- Example package: `plugins/time` (`current_time` tool, `timezone` config). It declares `multiple: true`, so `plugin.insert` can add more rows; each extra row installs its own extension named after the row and a tool `current_time_<row>`. Inserting a second row of any other plugin is `bad_args`.
 - Tool rows: each feature package ships `tool-<name>` next to its service row (`tool-files`, `tool-models`, `tool-memory`, `tool-questions`, `tool-skills`, `tool-schedules`, `tool-orchestrator`, `tool-mcp`, kernel `tool-plugins`). Disabling one hides those tools; the service row stays `active`.
 
 ## How to get to it (user POV)
@@ -25,13 +25,18 @@ $S call GET /v1/status                                                          
 $S call POST /v1/cmd '{"id":"c","op":"plugin.configure","args":{"id":"time","config":{"timezone":"Asia/Kolkata"}}}'   # applied, layer owner
 $S call POST /v1/cmd '{"id":"b","op":"plugin.configure","args":{"id":"time","config":{"timezone":"Mars/Olympus"}}}'   # application failed, row error
 $S call POST /v1/cmd '{"id":"r","op":"plugin.reset","args":{"id":"time"}}'                # back to layer bundle
+$S call POST /v1/cmd '{"id":"i","op":"plugin.insert","args":{"id":"time-tokyo","plugin":"time","config":{"timezone":"Asia/Tokyo"}}}'  # applied, layer owner
+$S call POST /v1/cmd '{"id":"j","op":"plugin.insert","args":{"id":"files2","plugin":"files","config":{}}}'  # bad_args: single instance
 $S call POST /v1/cmd '{"id":"d","op":"plugin.enable","args":{"id":"push","enabled":false}}'
+$S call POST /v1/cmd '{"id":"t","op":"plugin.enable","args":{"id":"tool-memory","enabled":false}}'  # tool row disabled, memory stays active
+$S call POST /v1/cmd '{"id":"t2","op":"plugin.enable","args":{"id":"tool-mcp","enabled":false}}'  # tool_search and server tools hidden; mcp stays active and mcp.list answers
 $S call POST /v1/cmd '{"id":"q","op":"plugin.enable","args":{"id":"pi","enabled":false}}'  # bad_args: required
 $S call POST /v1/cmd '{"id":"x","op":"system.restart","args":{}}'                         # soft restart; push stays disabled
 $S call POST /v1/cmd '{"id":"u","op":"system.update","args":{}}'                          # failed until the deploy-hook url secret is set
+$S call POST /v1/cmd '{"id":"m","op":"plugin.remove","args":{"id":"time-tokyo"}}'         # owner row gone
 ```
 
-Proof: the end states above. Evidence from the last wrangler dev drive: `.verify/evidence/P1-plugins.txt`.
+Proof: the end states above. Evidence from the last wrangler dev drive: `.verify/evidence/P4-plugins.txt` (P1: `P1-plugins.txt`).
 
 ## Gotchas
 

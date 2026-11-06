@@ -2,20 +2,12 @@ import type { JsonValue } from "@earendil-works/chord"
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
 import { arr, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema"
 import type { OpenQuestion, QuestionsService } from "../../src/contracts/questions.ts"
-import type { Context } from "../../src/kernel/index.ts"
+import { type Context, textResult } from "../../src/kernel/index.ts"
 
 export const name = "tool-questions"
 export const inject = ["pi", "questions"]
 
 const ActionSchema = oneOf(["list", "read", "respond"] as const)
-
-function output(text: string, extra: { readonly isError?: boolean; readonly details?: JsonValue } = {}) {
-  return {
-    output: [{ type: "text" as const, text }],
-    ...(extra.details === undefined ? {} : { details: extra.details }),
-    ...(extra.isError === true ? { isError: true } : {}),
-  }
-}
 
 function plain(request: OpenQuestion): JsonValue {
   return {
@@ -51,16 +43,22 @@ function tools(questions: QuestionsService) {
     }),
     replay: "safe",
     execute: async (args, api, context) => {
-      const asked = await questions.ask(api, context, {
-        question: args.question,
-        ...(args.options === undefined ? {} : { options: args.options }),
-      })
-      if (asked === undefined) return output("ask_user is only available inside a thread.", { isError: true })
-      return {
-        output: [{ type: "text", text: `Asked the owner: ${asked.question}` }],
+      const asked = await questions.ask(
+        {
+          threadId: api.conversationId,
+          requestId: `q:${api.taskId}`,
+          question: args.question,
+          now: api.now(),
+          ...(args.options === undefined ? {} : { options: args.options }),
+        },
+        context,
+      )
+      if (asked.kind === "not_a_thread")
+        return textResult("ask_user is only available inside a thread.", { isError: true })
+      return textResult(`Asked the owner: ${asked.question}`, {
         details: asked,
         control: { terminate: true },
-      }
+      })
     },
   })
 
@@ -75,29 +73,31 @@ function tools(questions: QuestionsService) {
     }),
     replay: "safe",
     execute: async (args, api) => {
-      const open = await questions.open(api)
-      if (open === undefined) return output("This conversation is not in a project.", { isError: true })
+      const opened = await questions.open(api.conversationId)
+      if (opened.kind === "not_in_project")
+        return textResult("This conversation is not in a project.", { isError: true })
+      const open = opened.questions
       switch (args.action) {
         case "list": {
-          if (open.length === 0) return output("No open questions.")
-          return output(
+          if (open.length === 0) return textResult("No open questions.")
+          return textResult(
             open.map((request) => `${request.threadId} "${request.title}": ${request.question}`).join("\n"),
             { details: { requests: open.map(plain) } },
           )
         }
         case "read": {
           const found = pick(open, args.threadId, args.requestId)
-          if (found === undefined) return output("No matching open question.", { isError: true })
-          return output(`${found.title} asks: ${found.question}`, { details: plain(found) })
+          if (found === undefined) return textResult("No matching open question.", { isError: true })
+          return textResult(`${found.title} asks: ${found.question}`, { details: plain(found) })
         }
         case "respond": {
-          if (args.answer === undefined) return output("respond needs an answer.", { isError: true })
+          if (args.answer === undefined) return textResult("respond needs an answer.", { isError: true })
           const found = pick(open, args.threadId, args.requestId)
-          if (found === undefined) return output("No matching open question.", { isError: true })
+          if (found === undefined) return textResult("No matching open question.", { isError: true })
           const outcome = await questions.respond(api, found.threadId, found.requestId, args.answer)
           switch (outcome.kind) {
             case "answered":
-              return output(`Answered ${found.requestId}. The thread is running again.`, {
+              return textResult(`Answered ${found.requestId}. The thread is running again.`, {
                 details: {
                   threadId: found.threadId,
                   requestId: found.requestId,
@@ -106,7 +106,7 @@ function tools(questions: QuestionsService) {
                 },
               })
             case "already_answered":
-              return output(`already_answered: ${outcome.answer}`, {
+              return textResult(`already_answered: ${outcome.answer}`, {
                 details: {
                   threadId: found.threadId,
                   requestId: found.requestId,
@@ -115,7 +115,7 @@ function tools(questions: QuestionsService) {
                 },
               })
             case "refused":
-              return output(outcome.message, { isError: true })
+              return textResult(outcome.message, { isError: true })
             default: {
               const _exhaustive: never = outcome
               return _exhaustive

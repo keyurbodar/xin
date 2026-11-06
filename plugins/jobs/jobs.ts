@@ -5,7 +5,6 @@ import {
   type CommitObserver,
   type ConversationId,
   type DocumentReader,
-  defineDoc,
   defineExtension,
   defineTask,
   type JsonObject,
@@ -16,41 +15,23 @@ import {
   type ToolExecutionResult,
   type ToolRegistration,
 } from "@earendil-works/pi-durable"
-import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
-import type { Models } from "@earendil-works/pi-ai"
-import { bool, compile, int, map, num, obj, opt, str, type Static } from "@earendil-works/pi-schema"
-import { enqueue } from "../intake/gateway.ts"
+import {
+  JobsDoc,
+  parseJobs,
+  type JobRun,
+  type JobsService,
+  type JobTool,
+  type JobWork,
+} from "../../src/contracts/jobs.ts"
+
+export { JobsDoc, type JobRecord, type JobRun, type JobTool, type JobWork } from "../../src/contracts/jobs.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
-import { projectInScope, ThreadDoc } from "../workspace/threaddoc.ts"
-import { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../workspace/workspace.ts"
+import { projectInScope, ThreadDoc } from "../../src/contracts/threaddoc.ts"
+import { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 export const JOB_KIND = "xin.job"
 export const JOB_WAIT_MS = 8_000
-
-const JobSchema = obj({
-  tool: str({ minLength: 1 }),
-  title: str({ minLength: 1 }),
-  startedAt: num(),
-  deadlineAt: num(),
-  parentId: int({ minimum: 0 }),
-  detached: opt(bool()),
-  result: opt(obj({ text: str(), isError: bool(), details: opt(obj({}, { open: true })) }, { open: true })),
-})
-const JobsSchema = obj({ jobs: map(JobSchema), calls: opt(map(int({ minimum: 0 }))) })
-
-export type JobRecord = Static<typeof JobSchema>
-export type JobsState = Static<typeof JobsSchema>
-
-const parseJobs = compile(JobsSchema)
-
-export const JobsDoc = defineDoc<JobsState>({
-  kind: "xin.jobs",
-  version: 1,
-  scope: "session",
-  initial: () => ({ jobs: {} }),
-  checkpointWhen: () => false,
-})
 
 export type JobSummary = {
   readonly text: string
@@ -69,20 +50,9 @@ export type JobState = { readonly phase: "run" } | { readonly phase: "finish"; r
 
 export type JobTask = Task<JobInput, JobState, JobSummary, object>
 
-export type JobRun = {
-  readonly signal: AbortSignal
-  readonly models: Models
-  now(): number
-  env(): Promise<ExecutionEnv | undefined>
-}
-
-export type JobWork = (args: JsonObject, run: JobRun, context: Context) => Promise<ToolExecutionResult>
-
 const RUNNERS = new Map<string, JobWork>()
 
 export const isJobTool = (name: string): boolean => RUNNERS.has(name)
-
-export type JobTool = Omit<ToolRegistration, "execute">
 
 export function jobTool(tool: JobTool, work: JobWork): ToolRegistration {
   RUNNERS.set(tool.name, work)
@@ -294,7 +264,7 @@ function jsonObjectOf(value: unknown): JsonObject {
   return found
 }
 
-export async function cancelJob(deps: ModuleDeps, callerId: ConversationId, jobId: number): Promise<boolean> {
+export async function cancelJob(deps: ModuleDeps<"intake">, callerId: ConversationId, jobId: number): Promise<boolean> {
   const harness = deps.harness()
   const scope = await projectInScope(harness, callerId)
   if (scope === undefined) return false
@@ -306,9 +276,15 @@ export async function cancelJob(deps: ModuleDeps, callerId: ConversationId, jobI
   return true
 }
 
-export function create(deps: ModuleDeps): HostModule {
+export function create(deps: ModuleDeps<"intake">): HostModule {
   const pending = new Set<string>()
   let scheduled = false
+
+  const jobs: JobsService = {
+    tool: jobTool,
+    isJobTool,
+    cancel: (callerId, jobId) => cancelJob(deps, callerId, jobId),
+  }
 
   const collect = (value: JsonObject): void => {
     if (!parseJobs.check(value)) return
@@ -339,19 +315,15 @@ export function create(deps: ModuleDeps): HostModule {
     for (const id of ids) {
       const job = doc.jobs[id]
       if (job?.result === undefined || job.detached !== true) continue
-      const accepted = await enqueue(
-        deps.db,
-        {
-          target: job.parentId as ConversationId,
-          commandId: `job:${id}`,
-          kind: "job",
-          threadId: id,
-          title: job.title,
-          status: job.result.isError ? "failed" : "completed",
-          text: job.result.text,
-        },
-        Date.now(),
-      )
+      const accepted = await deps.services.intake.enqueue({
+        target: job.parentId as ConversationId,
+        commandId: `job:${id}`,
+        kind: "job",
+        threadId: id,
+        title: job.title,
+        status: job.result.isError ? "failed" : "completed",
+        text: job.result.text,
+      })
       if (accepted) await deps.arm()
       await harness.commit(async (tx) => {
         const current = await tx.doc(JobsDoc)
@@ -371,6 +343,7 @@ export function create(deps: ModuleDeps): HostModule {
   }
 
   return {
+    provides: { jobs },
     extensions: [defineExtension({ name: "xin.jobs", tasks: [Job] })],
     async start() {
       const observation = deps.harness().observeCommits(observe)

@@ -1,9 +1,9 @@
-import type { DurableObjectSqliteDatabase } from "@earendil-works/chord/sqlite/cloudflare"
 import type { ConversationId, Harness } from "@earendil-works/pi-durable"
 import type { Env } from "../env.ts"
 import type { Provider } from "../module.ts"
 import type { Actor, Command, Outcome } from "../ops.ts"
 import type { Clock } from "./clock.ts"
+import type { DbService } from "./db.ts"
 import type { Http } from "./http.ts"
 import type { XinLoader } from "./loader.ts"
 import type { Manager } from "./manager.ts"
@@ -26,7 +26,7 @@ export type OpCall = { readonly command: Command; readonly actor: Actor }
 declare module "@deepseek-ai/cordis" {
   interface Context {
     host: Runtime
-    db: DurableObjectSqliteDatabase
+    db: DbService
     pi: Pi
     harness: Harness
     ops: Ops

@@ -127,3 +127,11 @@ Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](.
 **Proof (test that must pass)**: `plugins/<name>/tools.test.ts` per package: disabling the tool row removes its tools from the next model request while the service row stays active and its ops still work; re-enabling restores them.
 
 **Depends on**: P2.
+
+## P4 · features meet only through services
+
+**Builds**: shared docs, schemas and pure helpers in `src/contracts/` (workspace, threaddoc, jobs, intake, models); services `intake`, `push`, `jobs`, `watchdog`, `models.ownerDefaults`, `threads.report`; `hostModule(name, create, uses)` injects the services a feature calls; `scripts/boundaries.ts` (part of `lint`) rejects any import from one plugin into another.
+
+**Proof (test that must pass)**: `src/kernel/swap.test.ts`: with the `files` row disabled `tool-files` goes pending, an inserted in-memory `fake-files` row provides `files`, and pi's write/read tools work against it; restoring the real row brings R2 back. The whole suite passes with zero boundary violations.
+
+**Depends on**: P3.

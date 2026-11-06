@@ -9,7 +9,7 @@ import {
 import { LATEST_PROTOCOL_VERSION } from "@earendil-works/pi-mcp"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { MCP_MODEL, requests, script } from "../../test/plugins/mcp.ts"
-import { eventually, fresh } from "../../test/support.ts"
+import { cmd, eventually, fresh, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -107,25 +107,6 @@ function fakeServer(): FakeServer {
 
 const serve = (fake: FakeServer) => vi.spyOn(globalThis, "fetch").mockImplementation(fake.fetch)
 
-type Ack = {
-  readonly ok: boolean
-  readonly result?: unknown
-  readonly error?: { readonly code: string; readonly message: string }
-}
-
-const cmd = (stub: DurableObjectStub<Home>, id: string, op: string, args?: unknown) =>
-  stub
-    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
-    .then((reply) => reply.json<Ack>())
-
-async function turn(stub: DurableObjectStub<Home>, id: string, text: string): Promise<void> {
-  await runInDurableObject(stub, async (home: Home) => {
-    await home.chooseModel(MCP_MODEL)
-    await home.submit(text, id)
-    await home.harness.waitForIdle(context)
-  })
-}
-
 function requestAt(index: number): TranscriptContext {
   const request = requests[index]
   if (request === undefined) throw new Error(`no request ${index} recorded`)
@@ -174,7 +155,7 @@ describe("mcp servers", () => {
       fauxAssistantMessage([fauxToolCall("mcp__demo__echo", { text: "hi" })], { stopReason: "toolUse" }),
       fauxAssistantMessage("done"),
     ])
-    await turn(stub, "mcp-turn-1", "say hi through mcp")
+    await turn(stub, "mcp-turn-1", { text: "say hi through mcp", model: MCP_MODEL })
 
     expect(offered(requestAt(0))).toContain("tool_search")
     expect(offered(requestAt(0))).not.toContain("mcp__demo__echo")
@@ -199,7 +180,7 @@ describe("mcp servers", () => {
       fauxAssistantMessage([fauxToolCall("tool_search", { query: "echo" })], { stopReason: "toolUse" }),
       fauxAssistantMessage("found it"),
     ])
-    await turn(stub, "mcp-turn-2", "which tools are cached")
+    await turn(stub, "mcp-turn-2", { text: "which tools are cached", model: MCP_MODEL })
 
     expect(offered(requestAt(1))).toContain("mcp__demo__echo")
   })
@@ -226,7 +207,7 @@ describe("mcp servers", () => {
       fauxAssistantMessage([fauxToolCall("mcp__good__echo", { text: "still here" })], { stopReason: "toolUse" }),
       fauxAssistantMessage("done"),
     ])
-    await turn(stub, "mcp-turn-3", "use the good server")
+    await turn(stub, "mcp-turn-3", { text: "use the good server", model: MCP_MODEL })
 
     expect(await lastToolResult(stub)).toEqual({ isError: false, text: "echo:still here" })
   })
@@ -306,7 +287,7 @@ describe("mcp servers", () => {
       fauxAssistantMessage([fauxToolCall("tool_search", { query: "echo" })], { stopReason: "toolUse" }),
       fauxAssistantMessage("nothing left"),
     ])
-    await turn(stub, "mcp-turn-4", "any mcp tools left")
+    await turn(stub, "mcp-turn-4", { text: "any mcp tools left", model: MCP_MODEL })
 
     expect(offered(requestAt(1))).not.toContain("mcp__gone__echo")
   })
@@ -322,7 +303,7 @@ describe("mcp servers", () => {
     await cmd(stub, "mcp-swap-5", "mcp.add", { name: "gamma", url: "https://mcp.test/gamma" })
 
     const installed = await runInDurableObject(stub, (home: Home) =>
-      [...(home.extension("mcp").tools ?? [])].map((tool) => tool.name).toSorted(),
+      [...(home.extension("tool-mcp").tools ?? [])].map((tool) => tool.name).toSorted(),
     )
     expect(installed).toEqual(["mcp__alpha__echo", "mcp__alpha__fail", "mcp__gamma__echo", "mcp__gamma__fail"])
     expect((await cmd(stub, "mcp-swap-list", "mcp.list")).result).toEqual([
@@ -358,7 +339,7 @@ describe("mcp servers", () => {
       fauxAssistantMessage([fauxToolCall("tool_search", { query: "echo" })], { stopReason: "toolUse" }),
       fauxAssistantMessage("nothing left"),
     ])
-    await turn(stub, "mcp-turn-5", "any mcp tools left")
+    await turn(stub, "mcp-turn-5", { text: "any mcp tools left", model: MCP_MODEL })
 
     expect(offered(requestAt(1))).not.toContain("mcp__demo__echo")
   })
@@ -378,7 +359,7 @@ describe("mcp servers", () => {
       fauxAssistantMessage([fauxToolCall("mcp__demo__echo", { text: "slow" })], { stopReason: "toolUse" }),
       fauxAssistantMessage("done"),
     ])
-    await turn(stub, "mcp-turn-job", "say hi slowly through mcp")
+    await turn(stub, "mcp-turn-job", { text: "say hi slowly through mcp", model: MCP_MODEL })
 
     expect((await lastToolResult(stub))?.text).toMatch(/^started \(job \d+\)/)
 

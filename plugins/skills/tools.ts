@@ -1,7 +1,7 @@
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable"
 import { obj, str } from "@earendil-works/pi-schema"
 import { SKILL_NAME_PATTERN } from "../../src/contracts/skills.ts"
-import type { Context } from "../../src/kernel/index.ts"
+import { type Context, textResult } from "../../src/kernel/index.ts"
 
 export const name = "tool-skills"
 export const inject = ["pi", "skills"]
@@ -33,7 +33,7 @@ export function apply(ctx: Context): void {
     execute: async ({ name: requested }) => {
       const skills = await ctx.skills.list()
       const skill = skills.find((other) => other.name === requested)
-      if (skill !== undefined) return { output: [{ type: "text", text: skill.body }] }
+      if (skill !== undefined) return textResult(skill.body)
       const known = skills.map((other) => other.name)
       const close = suggestions(requested, known)
       const hint =
@@ -42,7 +42,7 @@ export function apply(ctx: Context): void {
           : known.length > 0
             ? ` Known skills: ${known.join(", ")}.`
             : ""
-      return { isError: true, output: [{ type: "text", text: `No skill "${requested}".${hint}` }] }
+      return textResult(`No skill "${requested}".${hint}`, { isError: true })
     },
   })
 

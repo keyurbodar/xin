@@ -1,4 +1,4 @@
-import { fromBase64Url, toBase64Url } from "../plugins/push/webpush.ts"
+import { fromBase64Url, pushTopic, toBase64Url } from "../plugins/push/webpush.ts"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -69,7 +69,7 @@ export function tokenParts(token: string): { header: string; claims: string; sig
   return { header, claims, signature }
 }
 
-export { encoder, decoder, fromBase64Url, toBase64Url }
+export { encoder, decoder, fromBase64Url, pushTopic, toBase64Url }
 
 async function hkdf(secret: Uint8Array, salt: Uint8Array, info: Uint8Array, bits: number): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey("raw", secret, "HKDF", false, ["deriveBits"])

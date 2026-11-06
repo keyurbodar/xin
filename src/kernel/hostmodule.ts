@@ -1,14 +1,18 @@
 import type { Context } from "@deepseek-ai/cordis"
-import type { HostModule, ModuleDeps } from "../module.ts"
+import type { ModuleCreate, ModuleDeps, ServiceKey } from "../module.ts"
 
 export const MODULE_INJECT = ["host", "db", "pi", "harness", "ops", "http", "wire", "clock"]
 
-export function hostModule(name: string, create: (deps: ModuleDeps) => HostModule) {
+export function hostModule<const K extends ServiceKey>(
+  name: string,
+  create: ModuleCreate<NoInfer<K>>,
+  uses: readonly K[],
+) {
   return {
     name,
-    inject: MODULE_INJECT,
+    inject: [...MODULE_INJECT, ...uses],
     async apply(ctx: Context): Promise<void> {
-      const deps: ModuleDeps = {
+      const deps: ModuleDeps<K> = {
         ctx: ctx.host.state,
         env: ctx.host.env,
         db: ctx.db,
@@ -17,7 +21,7 @@ export function hostModule(name: string, create: (deps: ModuleDeps) => HostModul
         arm: (wake) => ctx.clock.arm(wake),
         run: (command, actor) => ctx.ops.run(command, actor),
         publishHome: () => ctx.wire.publishHome(),
-        install: (extension) => ctx.pi.install(extension),
+        services: ctx,
       }
       const module = create(deps)
       for (const [key, value] of Object.entries(module.provides ?? {})) ctx.provide(key, value)
@@ -25,7 +29,6 @@ export function hostModule(name: string, create: (deps: ModuleDeps) => HostModul
       for (const op of module.ops ?? []) ctx.ops.define(op)
       for (const [key, route] of Object.entries(module.routes ?? {})) ctx.http.route(key, route)
       if (module.models !== undefined) ctx.pi.models(module.models)
-      if (module.env !== undefined) ctx.pi.env(module.env)
       if (module.home !== undefined) ctx.wire.home(name, module.home)
       if (module.typing !== undefined)
         ctx.on("wire/typing", async (conversation, on) => module.typing?.(conversation, on))

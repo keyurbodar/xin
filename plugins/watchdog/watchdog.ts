@@ -12,11 +12,11 @@ import {
   type Tx,
   ToolTask,
 } from "@earendil-works/pi-durable"
-import { enqueue } from "../intake/gateway.ts"
-import { isJobTool, JobsDoc, type JobRecord } from "../jobs/jobs.ts"
+import type { InboundDraft } from "../../src/contracts/intake.ts"
+import { JobsDoc, type JobRecord } from "../../src/contracts/jobs.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
-import { ThreadDoc, type ThreadDocState } from "../workspace/threaddoc.ts"
-import { WorkspaceDoc } from "../workspace/workspace.ts"
+import { ThreadDoc, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
+import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 export const WATCHDOG_KIND = "xin.watchdog"
@@ -48,7 +48,7 @@ type WatchdogState =
 
 export type WatchdogTask = Task<null, WatchdogState, null, object>
 
-export function watchdogTask(deps: ModuleDeps): WatchdogTask {
+export function watchdogTask(deps: ModuleDeps<"intake" | "jobs">): WatchdogTask {
   return defineTask<null, WatchdogState, null, object>({
     name: WATCHDOG_KIND,
     version: 1,
@@ -77,7 +77,7 @@ export function watchdogTask(deps: ModuleDeps): WatchdogTask {
         }, taskContext)
       },
       fail: async (task, runtime, taskContext) => {
-        for (const victim of task.state.checkpoint.victims) await deliverFailure(deps, victim, runtime.now())
+        for (const victim of task.state.checkpoint.victims) await deliverFailure(deps, victim)
         if (!(await anyWork(deps))) {
           await runtime.commit(
             () => ({ status: "terminal", outcome: { status: "completed", result: null } }) as const,
@@ -95,9 +95,12 @@ export function watchdogTask(deps: ModuleDeps): WatchdogTask {
   })
 }
 
-export function create(deps: ModuleDeps): HostModule {
+export function create(deps: ModuleDeps<"intake" | "jobs">): HostModule {
   const task = watchdogTask(deps)
   return {
+    provides: {
+      watchdog: { ensure: (tx: Tx, conversationId: ConversationId) => ensureWatchdogTx(tx, task, conversationId) },
+    },
     extensions: [
       defineExtension({
         name: "xin.watchdog",
@@ -131,7 +134,7 @@ export async function ensureWatchdogTx(tx: Tx, task: WatchdogTask, conversationI
   })
 }
 
-export async function ensureWatchdog(deps: ModuleDeps, task: WatchdogTask): Promise<void> {
+export async function ensureWatchdog(deps: ModuleDeps<"intake" | "jobs">, task: WatchdogTask): Promise<void> {
   if (!(await anyWork(deps))) return
   const root = await deps.harness().root(context)
   const created = await deps.harness().commit(async (tx) => {
@@ -156,7 +159,7 @@ async function liveWatchdog(tx: Tx): Promise<boolean> {
 
 type LiveThread = { readonly id: ConversationId; readonly doc: ThreadDocState }
 
-async function threadsOf(deps: ModuleDeps): Promise<LiveThread[]> {
+async function threadsOf(deps: ModuleDeps<"intake" | "jobs">): Promise<LiveThread[]> {
   const harness = deps.harness()
   const workspace = await harness.snapshot(WorkspaceDoc, context)
   if (workspace === undefined) return []
@@ -171,7 +174,7 @@ async function threadsOf(deps: ModuleDeps): Promise<LiveThread[]> {
   return found
 }
 
-async function jobsOf(deps: ModuleDeps): Promise<Record<string, JobRecord>> {
+async function jobsOf(deps: ModuleDeps<"intake" | "jobs">): Promise<Record<string, JobRecord>> {
   const doc = await deps.harness().snapshot(JobsDoc, context)
   if (doc === undefined) return {}
   const live: Record<string, JobRecord> = {}
@@ -179,19 +182,19 @@ async function jobsOf(deps: ModuleDeps): Promise<Record<string, JobRecord>> {
   return live
 }
 
-async function anyWork(deps: ModuleDeps): Promise<boolean> {
+async function anyWork(deps: ModuleDeps<"intake" | "jobs">): Promise<boolean> {
   const threads = await threadsOf(deps)
   if (threads.some(({ doc }) => doc.status === "working")) return true
   return Object.keys(await jobsOf(deps)).length > 0
 }
 
-async function sweep(deps: ModuleDeps, now: number): Promise<Victim[]> {
+async function sweep(deps: ModuleDeps<"intake" | "jobs">, now: number): Promise<Victim[]> {
   const victims: Victim[] = []
   for (const { id, doc } of await threadsOf(deps)) {
     if (doc.status !== "working") continue
     const live = await deps.harness().snapshot(LiveDoc, id, context)
     const tool = live?.tools?.find((slot) => slot.status === "running")?.name
-    const covered = tool !== undefined && isJobTool(tool)
+    const covered = tool !== undefined && deps.services.jobs.isJobTool(tool)
     const stalled = !covered && now - (doc.beatAt ?? now) > STALL_MS
     const overtime = doc.deadlineAt !== undefined && now > doc.deadlineAt
     if (!stalled && !overtime) continue
@@ -222,23 +225,19 @@ function failureText(stalled: boolean, tool: string | undefined): string {
   return stalled ? `stopped: no progress for 2 min in ${tool ?? "the model"}` : "stopped: deadline exceeded"
 }
 
-async function deliverFailure(deps: ModuleDeps, victim: Victim, now: number): Promise<void> {
+async function deliverFailure(deps: ModuleDeps<"intake" | "jobs">, victim: Victim): Promise<void> {
   if (victim.kind === "thread") {
     if (victim.parentId !== undefined) {
-      const accepted = await enqueue(
-        deps.db,
-        {
-          target: victim.parentId as ConversationId,
-          commandId: `report:${victim.id}:${victim.run}`,
-          kind: "report",
-          threadId: String(victim.id),
-          title: victim.title,
-          status: "failed",
-          text: victim.text,
-        },
-        now,
-      )
-      if (accepted) await deps.arm()
+      const draft: InboundDraft = {
+        target: victim.parentId as ConversationId,
+        commandId: `report:${victim.id}:${victim.run}`,
+        kind: "report",
+        threadId: String(victim.id),
+        title: victim.title,
+        status: "failed",
+        text: victim.text,
+      }
+      if (await deps.services.intake.enqueue(draft)) await deps.arm()
     }
     const conversation = await deps.harness().conversation(victim.id as ConversationId, context)
     if (conversation !== undefined) await conversation.abort(context, { background: true })
@@ -246,20 +245,16 @@ async function deliverFailure(deps: ModuleDeps, victim: Victim, now: number): Pr
   }
   const job = (await deps.harness().snapshot(JobsDoc, context))?.jobs[victim.id]
   if (job === undefined || job.result !== undefined) return
-  const accepted = await enqueue(
-    deps.db,
-    {
-      target: victim.parentId as ConversationId,
-      commandId: `job:${victim.id}`,
-      kind: "job",
-      threadId: victim.id,
-      title: victim.title,
-      status: "failed",
-      text: victim.text,
-    },
-    now,
-  )
-  if (accepted) await deps.arm()
+  const draft: InboundDraft = {
+    target: victim.parentId as ConversationId,
+    commandId: `job:${victim.id}`,
+    kind: "job",
+    threadId: victim.id,
+    title: victim.title,
+    status: "failed",
+    text: victim.text,
+  }
+  if (await deps.services.intake.enqueue(draft)) await deps.arm()
   const taskId = Number(victim.id) as TaskId
   if ((await deps.harness().getTask(taskId, context)) !== undefined) await deps.harness().abortTask(taskId, context)
   await deps.harness().commit(async (tx) => {
@@ -268,7 +263,7 @@ async function deliverFailure(deps: ModuleDeps, victim: Victim, now: number): Pr
   }, context)
 }
 
-async function beat(deps: ModuleDeps, conversationId: ConversationId, line?: string): Promise<void> {
+async function beat(deps: ModuleDeps<"intake" | "jobs">, conversationId: ConversationId, line?: string): Promise<void> {
   const thread = await deps.harness().snapshot(ThreadDoc, conversationId, context)
   if (thread === undefined || thread.status !== "working") return
   await deps.harness().commit(async (tx) => {

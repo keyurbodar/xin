@@ -10,11 +10,10 @@ import {
   ROOT_CONVERSATION_ID,
 } from "@earendil-works/pi-durable"
 import { arr, compile, int, num, obj, opt, str } from "@earendil-works/pi-schema"
-import type { InboundKind } from "../intake/dispatch.ts"
-import { type InboundDraft, enqueue, parseInboundBody } from "../intake/gateway.ts"
+import { type InboundDraft, type InboundRecord } from "../../src/contracts/intake.ts"
+import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, OpRejected } from "../../src/ops.ts"
-import { WorkspaceDoc } from "../workspace/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 const ERROR_KIND = "xin.error"
@@ -37,14 +36,6 @@ type Failure = {
   readonly reason: string
   readonly detail?: string
   readonly inputs?: readonly number[]
-}
-
-type RetryRow = {
-  readonly id: number
-  readonly target: number
-  readonly kind: InboundKind
-  readonly body: string
-  readonly client_ts: number
 }
 
 function errorText(failure: Failure): string {
@@ -72,27 +63,27 @@ function stringData(value: JsonValue | undefined, key: string): string | undefin
   return typeof found === "string" ? found : undefined
 }
 
-function retryDraft(row: RetryRow, commandId: string): InboundDraft | undefined {
-  const body = parseInboundBody(row.body)
-  const base = { target: row.target as ConversationId, commandId, clientTs: row.client_ts }
-  switch (row.kind) {
+function retryDraft(row: InboundRecord, commandId: string): InboundDraft | undefined {
+  const base = { target: row.target, commandId, clientTs: row.clientTs }
+  const content = row.content
+  switch (content.kind) {
     case "user":
-      return { ...base, kind: "user", text: body.text }
+      return { ...base, kind: "user", text: content.text }
     case "report":
     case "question":
     case "job": {
-      if (body.threadId === "" || body.title === "" || body.status === "") return undefined
+      if (content.threadId === "" || content.title === "" || content.status === "") return undefined
       return {
         ...base,
-        kind: row.kind,
-        threadId: body.threadId,
-        title: body.title,
-        status: body.status,
-        text: body.text,
+        kind: content.kind,
+        threadId: content.threadId,
+        title: content.title,
+        status: content.status,
+        text: content.text,
       }
     }
     default: {
-      const _exhaustive: never = row.kind
+      const _exhaustive: never = content
       return _exhaustive
     }
   }
@@ -105,26 +96,24 @@ const coordinatorIds = async (harness: Harness): Promise<ReadonlySet<Conversatio
   return ids
 }
 
-export function create(deps: ModuleDeps): HostModule {
+const batchIdOf = (entries: readonly EntryRecord[]): string | undefined => {
+  for (const entry of entries) {
+    if (entry.kind !== "xin.batch" || !Array.isArray(entry.data)) continue
+    const batchId = stringData(entry.data[0], "batchId")
+    if (batchId !== undefined) return batchId
+  }
+  return undefined
+}
+
+export function create(deps: ModuleDeps<"intake">): HostModule {
   const pending = new Map<ConversationId, Failure>()
   let scheduled = false
-
-  const batchIdOf = async (entries: readonly EntryRecord[]): Promise<string | undefined> => {
-    for (const entry of entries) {
-      if (entry.kind !== "xin.batch" || !Array.isArray(entry.data)) continue
-      const first: unknown = entry.data[0]
-      const id = typeof first === "object" && first !== null ? Reflect.get(first, "id") : undefined
-      if (typeof id !== "number") continue
-      const row = await deps.db.get<{ batch_id: string | null }>("SELECT batch_id FROM inbound WHERE id = ?", id)
-      if (row?.batch_id !== null && row?.batch_id !== undefined) return row.batch_id
-    }
-    return undefined
-  }
 
   const commitError = async (harness: Harness, conversationId: ConversationId, failure: Failure): Promise<void> => {
     const conversation = await harness.conversation(conversationId, context)
     if (conversation === undefined) return
-    const batchId = await batchIdOf((await conversation.entries({ order: "descending" }, 50, undefined, context)).items)
+    const entries = (await conversation.entries({ order: "descending" }, 50, undefined, context)).items
+    const batchId = batchIdOf(entries)
     await conversation.submit(
       {
         type: "write",
@@ -190,14 +179,11 @@ export function create(deps: ModuleDeps): HostModule {
       }
       const batchId = stringData(entry.data, "batchId")
       if (batchId === undefined) return { resubmitted: 0 }
-      const rows = await deps.db.all<RetryRow>(
-        "SELECT id, target, kind, body, client_ts FROM inbound WHERE batch_id = ? ORDER BY client_ts, id",
-        batchId,
-      )
+      const rows = await deps.services.intake.batch(batchId)
       let resubmitted = 0
       for (const row of rows) {
         const draft = retryDraft(row, `retry:${args.entryId}:${row.id}`)
-        if (draft !== undefined && (await enqueue(deps.db, draft))) resubmitted += 1
+        if (draft !== undefined && (await deps.services.intake.enqueue(draft))) resubmitted += 1
       }
       if (resubmitted > 0) await deps.arm()
       return { resubmitted }

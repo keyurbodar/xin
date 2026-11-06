@@ -40,7 +40,7 @@ Each service is a row in `xin-base`. A different row can provide the same key in
 | Key | Row | Surface |
 | --- | --- | --- |
 | `host` | root facts, not a row | `state: DurableObjectState`, `env: Env`, `abort(reason)` |
-| `db` | `db` | `SqliteDatabase` plus `migrate(owner, steps)`. Host steps stay in `HOST_MIGRATIONS`, and a plugin's own tables use its own migration list |
+| `db` | `db` | `SqliteDatabase` plus `applySqliteMigrations(owner, steps)`. Host steps stay in the append-only `HOST_MIGRATIONS`, and a plugin's own tables use its own migration list, tracked in the table `migrations_<owner>` |
 | `pi` | `pi` | `registry`, `install(extension)` (effect), `models(fn)` and `env(fn)` providers (effects), `open()` |
 | `harness` | `pi` (provided by its init) | the pi-durable `Harness`, closed when the `pi` row unloads |
 | `ops` | `ops` | `define(op)` (effect), `run(command, actor)`, `list()`. Receipts as in §3 |
@@ -58,7 +58,17 @@ Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `
 - The service row (`<name>`) owns state, ops, routes, timers and the home part, and provides `ctx.<key>` (`files`, `models`, `threads`, `jobs`, `intake`, `memory`, `questions`, `skills`, `schedules`, `mcp`, `watchdog`, `push`, `workspace`). A `hostModule` feature returns it as `provides: { <key>: value }`.
 - The tool row (`tool-<name>`) is a plain plugin with `inject: ["pi", "<key>"]` that installs one extension, named `tool-<name>`, holding the model-facing tools (and their prompt sections). Disabling it removes those tools and leaves the service running.
 - Both rows are declared in the package's `xin.plugins` and listed in its `xin.bundle`.
-- Each service's interface lives in `src/contracts/<key>.ts`, which augments Cordis `Context` with `<key>: <Interface>`. That folder holds only types, doc definitions, schemas and pure helpers. A plugin may import `src/contracts/*`, `src/kernel/index.ts` and shared libs in `src/`, never another plugin's files. Calls into another feature go through `inject` (required) or `ctx.get(key)` (optional).
+- Each service's interface lives in `src/contracts/<key>.ts`, which augments Cordis `Context` with `<key>: <Interface>`. That folder holds only types, doc definitions, schemas and pure helpers. A plugin may import `src/contracts/*`, `src/kernel/index.ts` and shared libs in `src/`, never another plugin's files. Calls into another feature go through `inject` (required) or `ctx.get(key)` (optional). A `hostModule` feature names the services it calls in `hostModule(name, create, uses)` and reads them as `deps.services.<key>` at call time (`deps.services.get(key)` when optional, as intake does for `push`). Each plugin reads and writes only its own SQL tables; `src/kernel/dbtables.ts` maps every table to its owning plugin or `kernel`, and `bun scripts/boundaries.ts`, run by `lint`, fails on any import from one plugin (or test plugin) into another, and on any SQL that names another feature's table. The kernel's `kv`, `receipts`, `plugins` and migration tables are shared infrastructure.
+
+| Key | Provider row | Called by |
+| --- | --- | --- |
+| `intake` | `intake` | jobs, watchdog, orchestrator, questions, schedules, failures |
+| `push` | `push` | intake (optional) |
+| `jobs` | `jobs` | mcp, watchdog, orchestrator |
+| `watchdog` | `watchdog` | orchestrator, questions |
+| `models` | `models` | orchestrator, memory, tool-models |
+| `threads` | `orchestrator` | questions, tool-orchestrator |
+| `files` | `files` (or any row, e.g. the test `fake-files`) | tool-files |
 
  `ctx.pi.install(defineExtension({ ... }))` accepts any pi extension: tools, `wrapTool`, hooks, prompt sections, tasks, docs. It installs it in the live registry and calls `registry.uninstall` on dispose. pi treats a reinstall under the same name as a hot replace, so a reconfigured plugin swaps its extension in place.
 
@@ -73,6 +83,7 @@ Events are declared on Cordis `Events` with an `@mode` tag. The dispatch mode is
 | `thread/settled(event)` | emit | a thread reached a terminal status |
 | `wire/typing(conversation, on)` | parallel | typing indicators |
 | `plugins/changed()` | emit | the composed tree or a row's state changed |
+| `mcp/changed()` | emit | the MCP server tool set changed; `tool-mcp` republishes its extension |
 
 Turn, tool and request interception stay pi-native: install an extension with hooks or `wrapTool`.
 
@@ -108,7 +119,7 @@ A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disab
 | `plugin.tree` | the composed rows with the layer that set each field (dsh `--dump-config`) |
 | `plugin.enable` | `{ id, enabled }`. Rejected for a `required` row |
 | `plugin.configure` | `{ id, config }`, validated against the plugin's `Config` before it is committed. Rejected for a plugin with no `Config` (every kernel service but `plugins`) and for a `missing` row |
-| `plugin.insert` | `{ id, plugin, config }` adds a catalog plugin as a new row. Rejected for a `required` plugin, and for a second row of a plugin unless its catalog entry sets `multiple: true` (real plugins register fixed tool and op names, so a second copy could only fail) |
+| `plugin.insert` | `{ id, plugin, config }` adds a catalog plugin as a new row. Rejected for a `required` plugin, and for a second row of a plugin unless its catalog entry sets `multiple: true` (most plugins register fixed tool and op names, so a second copy could only fail). `time` sets it: an extra row names its extension after the row id and its tool `current_time_<row>`. A package declares it as `xin.plugins.<name>.multiple: true` |
 | `plugin.remove` | removes a row that the owner patch inserted, including a `missing` one |
 | `plugin.reset` | drops the owner's override for a row, back to the lower layers |
 | `plugin.secret.set` | `{ id, key, value }` for row `id`, sealed by `secrets` (the op lives in the `secrets` row) |

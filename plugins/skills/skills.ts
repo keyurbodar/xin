@@ -60,7 +60,7 @@ async function ownerSkills(db: SqliteDatabase): Promise<readonly Skill[]> {
   return rows.map((row) => parseSkill(row.value))
 }
 
-export function create(deps: ModuleDeps): HostModule {
+export function create(deps: ModuleDeps<never>): HostModule {
   const bundled = skillsFrom(BUNDLED_SKILLS)
 
   const loadSkills = async (): Promise<ReadonlyMap<string, Skill>> => {

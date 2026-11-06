@@ -1,22 +1,19 @@
-import type { Context as ChordContext } from "@earendil-works/chord"
-import type {
-  ConversationId,
-  DocumentReader,
-  EntryId,
-  ModelRef,
-  ToolExecutionApi,
-  ToolRegistration,
-  Tx,
-} from "@earendil-works/pi-durable"
-import { obj, str } from "@earendil-works/pi-schema"
-import type { CommandId, ProjectId } from "../ids.ts"
-import type { Outcome } from "../ops.ts"
+import type { Context as ChordContext, JsonValue } from "@earendil-works/chord"
+import type { ConversationId, ModelRef, Tx } from "@earendil-works/pi-durable"
+import { oneOf } from "@earendil-works/pi-schema"
+import type { ThreadRole, ThreadStatus } from "./threaddoc.ts"
 
-export const ModelRefSchema = obj({ provider: str({ minLength: 1 }), modelId: str({ minLength: 1 }) })
+export type { ThreadRole, ThreadStatus } from "./threaddoc.ts"
 
-export type ThreadRole = "chat" | "thread" | "utility"
-export type ThreadStatus = "working" | "waiting" | "completed" | "failed" | "cancelled"
 export type SendMode = "steer" | "queue"
+export type DelegateMode = "async" | "wait"
+
+export const SendModeSchema = oneOf(["steer", "queue"] as const)
+
+export type Caller = {
+  readonly conversationId: ConversationId
+  readonly taskId: string
+}
 
 export type CallerProject = {
   readonly projectId: string
@@ -32,73 +29,94 @@ export type ThreadSummary = {
   readonly result?: string
 }
 
-export type ProjectThreads = {
-  readonly project: CallerProject
-  readonly threads: readonly ThreadSummary[]
-}
-
 export type LiveThread = {
   readonly id: number
   readonly title: string
   readonly status: ThreadStatus
 }
 
-export type CreateThreadArgs = {
-  readonly projectId: ProjectId
-  readonly parentId: ConversationId
-  readonly title: string
-  readonly role: ThreadRole
-  readonly task: string
-  readonly model: ModelRef
-  readonly clientRequestId: string
-  readonly requestId: string
-  readonly removeTools: readonly ToolRegistration[]
-}
-
-export type CreateOutcome =
-  | { readonly kind: "created"; readonly threadId: number; readonly title: string }
-  | { readonly kind: "existing"; readonly threadId: number; readonly title: string }
-  | { readonly kind: "limit"; readonly live: readonly LiveThread[]; readonly limit: number }
-  | { readonly kind: "rejected"; readonly reason: string }
-
-export type ResolvedThreadModel =
-  | { readonly kind: "model"; readonly model: ModelRef }
-  | { readonly kind: "none"; readonly reason: string }
-
-export type EnabledPlugin = { readonly id: string; readonly state: string }
-
 export type ThreadEntry = { readonly id: number; readonly text: string }
 
+export type ReporterInput = {
+  readonly threadId: number
+  readonly parentId: number
+  readonly title: string
+  readonly run: number
+  readonly brief: string
+  readonly requestId: string
+}
+
+export type DelegateRequest = {
+  readonly task: string
+  readonly title: string
+  readonly role?: ThreadRole
+  readonly model?: ModelRef
+  readonly mode: DelegateMode
+  readonly timeoutMs?: number
+  readonly clientRequestId: string
+}
+
+export type DelegateOutcome =
+  | { readonly kind: "not_coordinator" }
+  | { readonly kind: "no_model"; readonly reason: string }
+  | { readonly kind: "limit"; readonly live: readonly LiveThread[]; readonly limit: number }
+  | { readonly kind: "rejected"; readonly reason: string }
+  | { readonly kind: "existing"; readonly threadId: number; readonly title: string }
+  | { readonly kind: "started"; readonly threadId: number; readonly title: string }
+  | { readonly kind: "answered"; readonly threadId: number; readonly title: string; readonly text: string }
+  | { readonly kind: "timed_out"; readonly threadId: number; readonly title: string }
+  | { readonly kind: "unanswered"; readonly threadId: number; readonly title: string; readonly reason: string }
+  | { readonly kind: "gone"; readonly threadId: number; readonly title: string }
+
+export type StatusOutcome =
+  | { readonly kind: "none" }
+  | { readonly kind: "thread"; readonly thread: ThreadSummary; readonly last: string }
+
+export type StopOutcome =
+  | { readonly kind: "none" }
+  | { readonly kind: "rejected"; readonly message: string }
+  | { readonly kind: "stopped"; readonly details: JsonValue }
+
+export type SendOutcome =
+  | { readonly kind: "none" }
+  | { readonly kind: "rejected"; readonly message: string }
+  | { readonly kind: "sent"; readonly note: string; readonly details: JsonValue }
+
+export type ReadOutcome =
+  | { readonly kind: "none" }
+  | { readonly kind: "entries"; readonly entries: readonly ThreadEntry[] }
+
+export type ThreadFilter = {
+  readonly projectId?: string
+  readonly status?: ThreadStatus
+}
+
+export type ListOutcome =
+  | { readonly kind: "not_in_project" }
+  | { readonly kind: "no_project"; readonly projectId: string }
+  | { readonly kind: "threads"; readonly projectId: string; readonly threads: readonly ThreadSummary[] }
+
+export type ProjectView = {
+  readonly name: string
+  readonly threadLimit: number
+  readonly live: number
+}
+
+export type CapabilitiesOutcome = {
+  readonly model?: ModelRef
+  readonly models: readonly string[]
+  readonly project?: ProjectView
+}
+
 export interface ThreadsService {
-  coordinator(read: DocumentReader, conversationId: ConversationId): Promise<CallerProject | undefined>
-  threadsOf(read: DocumentReader, conversationId: ConversationId): Promise<ProjectThreads | undefined>
-  threadOf(read: DocumentReader, conversationId: ConversationId, threadId: number): Promise<ThreadSummary | undefined>
-  answerText(threadId: number, answer: EntryId, context: ChordContext): Promise<string>
-  lastText(threadId: number, context: ChordContext): Promise<string>
-  readThread(threadId: number, after: number | undefined, context: ChordContext): Promise<readonly ThreadEntry[]>
-  resolveModel(
-    api: ToolExecutionApi,
-    role: ThreadRole,
-    project: CallerProject,
-    target: ModelRef | undefined,
-    context: ChordContext,
-  ): Promise<ResolvedThreadModel>
-  createThread(tx: Tx, args: CreateThreadArgs): Promise<CreateOutcome>
-  enabledPlugins(): Promise<readonly EnabledPlugin[]>
-  cancelJob(conversationId: ConversationId, jobId: number): Promise<boolean>
-  stopThread(
-    conversationId: ConversationId,
-    threadId: number,
-    reason: string | undefined,
-    commandId: CommandId,
-  ): Promise<Outcome>
-  sendToThread(
-    conversationId: ConversationId,
-    threadId: number,
-    text: string,
-    mode: SendMode,
-    commandId: CommandId,
-  ): Promise<Outcome>
+  delegate(caller: Caller, request: DelegateRequest, context: ChordContext): Promise<DelegateOutcome>
+  status(caller: Caller, threadId: number, context: ChordContext): Promise<StatusOutcome>
+  stop(caller: Caller, threadId: number, reason: string | undefined): Promise<StopOutcome>
+  send(caller: Caller, threadId: number, text: string, mode: SendMode): Promise<SendOutcome>
+  read(caller: Caller, threadId: number, after: number | undefined, context: ChordContext): Promise<ReadOutcome>
+  list(caller: Caller, filter: ThreadFilter): Promise<ListOutcome>
+  capabilities(caller: Caller, context: ChordContext): Promise<CapabilitiesOutcome>
+  report(tx: Tx, input: ReporterInput): Promise<void>
 }
 
 declare module "@deepseek-ai/cordis" {

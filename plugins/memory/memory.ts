@@ -22,7 +22,7 @@ const RECALL_LIMIT = 20
 const LIST_LIMIT = 100
 const OWNER_RETIREMENT = 0
 
-export function create(deps: ModuleDeps): HostModule {
+export function create(deps: ModuleDeps<"models">): HostModule {
   const memory: MemoryService = {
     remember: async (draft) => {
       const inserted = await appendNote(deps.db, draft)
@@ -58,7 +58,7 @@ export function create(deps: ModuleDeps): HostModule {
   }
 }
 
-function forget(deps: ModuleDeps): Op {
+function forget(deps: ModuleDeps<"models">): Op {
   return defineOp({
     name: "memory.forget",
     args: obj({ query: str({ minLength: 1, maxLength: 200 }) }),
@@ -86,7 +86,7 @@ function forget(deps: ModuleDeps): Op {
   })
 }
 
-function list(deps: ModuleDeps): Op {
+function list(deps: ModuleDeps<"models">): Op {
   return defineOp({
     name: "memory.list",
     args: obj({ scope: opt(str({ pattern: SCOPE_PATTERN })) }),
@@ -108,7 +108,7 @@ function list(deps: ModuleDeps): Op {
   })
 }
 
-function profile(deps: ModuleDeps): Op {
+function profile(deps: ModuleDeps<"models">): Op {
   return defineOp({
     name: "memory.profile",
     args: obj({}),

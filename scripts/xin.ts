@@ -7,7 +7,12 @@ const GENERATED = join(ROOT, "src/catalog.gen.ts")
 const PROFILE = join(ROOT, "xin.profile.json")
 const NAME = /^[a-z][a-z0-9-]*$/
 
-type Declared = { readonly module: string; readonly title: string; readonly description: string }
+type Declared = {
+  readonly module: string
+  readonly title: string
+  readonly description: string
+  readonly multiple?: boolean
+}
 type RowSpec = { readonly id: string; readonly name: string; readonly config?: unknown; readonly disabled?: boolean }
 type Found = {
   readonly pkg: string
@@ -39,6 +44,7 @@ function parse(path: string, specifier: (module: string) => string): Found | und
       module,
       title: String(field(entry, "title") ?? name),
       description: String(field(entry, "description") ?? field(manifest, "description") ?? ""),
+      ...(field(entry, "multiple") === true ? { multiple: true } : {}),
     }
   }
   const rows = field(xin, "bundle")
@@ -114,7 +120,7 @@ function render(found: readonly Found[]): string {
       const alias = `p${index++}`
       imports.push(`import * as ${alias} from ${JSON.stringify(entry.specifier(declared.module))}`)
       catalog.push(
-        `  ${JSON.stringify(name)}: { plugin: ${alias}, title: ${JSON.stringify(declared.title)}, description: ${JSON.stringify(declared.description)}, source: ${JSON.stringify(`${entry.pkg}@${entry.version}`)} },`,
+        `  ${JSON.stringify(name)}: { plugin: ${alias}, title: ${JSON.stringify(declared.title)}, description: ${JSON.stringify(declared.description)},${declared.multiple === true ? " multiple: true," : ""} source: ${JSON.stringify(`${entry.pkg}@${entry.version}`)} },`,
       )
     }
     bundles.push(`  ${JSON.stringify(entry.pkg)}: ${JSON.stringify(entry.bundle)},`)
@@ -149,6 +155,8 @@ function generate(): Found[] {
   const found = discover()
   assertCoreFree(found)
   writeFileSync(GENERATED, render(found))
+  if (Bun.spawnSync(["bun", "x", "oxfmt", GENERATED], { cwd: ROOT }).exitCode !== 0)
+    throw new Error(`oxfmt failed on ${relative(ROOT, GENERATED)}`)
   console.warn(`wrote ${relative(ROOT, GENERATED)}: ${found.length} package(s)`)
   return found
 }

@@ -151,6 +151,7 @@ export const CATALOG: Catalog = {
     plugin: p21,
     title: "Current time",
     description: "A current_time tool in a configurable timezone.",
+    multiple: true,
     source: "xin-plugin-time@0.1.0",
   },
   watchdog: {

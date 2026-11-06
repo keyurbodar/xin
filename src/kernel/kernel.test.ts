@@ -1,27 +1,7 @@
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
-import { fresh } from "../../test/support.ts"
+import { cmd, field, fresh, rowOf } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
-
-type Stub = ReturnType<typeof fresh>
-type Ack = {
-  readonly ok: boolean
-  readonly result?: unknown
-  readonly error?: { readonly code: string; readonly message: string }
-}
-
-const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Promise<Ack> =>
-  stub
-    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
-    .then((reply) => reply.json<Ack>())
-
-const field = (value: unknown, key: string): unknown =>
-  typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
-
-const rowOf = async (stub: Stub, id: string): Promise<unknown> => {
-  const listed = await cmd(stub, `list-${id}-${crypto.randomUUID()}`, "plugin.list")
-  return Array.isArray(listed.result) ? listed.result.find((row) => field(row, "id") === id) : undefined
-}
 
 describe("plugin kernel", () => {
   it("lists every kernel and feature row as active and failed rows with their error", async () => {
@@ -59,11 +39,20 @@ describe("plugin kernel", () => {
       ok: false,
       error: { code: "bad_args" },
     })
-    expect(await cmd(stub, "it1", "plugin.insert", { id: "time2", plugin: "time", config: {} })).toMatchObject({
+    expect(await cmd(stub, "it1", "plugin.insert", { id: "files2", plugin: "files", config: {} })).toMatchObject({
       ok: false,
       error: { code: "bad_args" },
     })
-    expect(await rowOf(stub, "time2")).toBeUndefined()
+    expect(await rowOf(stub, "files2")).toBeUndefined()
+  })
+
+  it("inserts a second row of a multiple plugin with its own extension and tool", async () => {
+    const stub = fresh()
+    expect(
+      await cmd(stub, "it2", "plugin.insert", { id: "time-tokyo", plugin: "time", config: { timezone: "Asia/Tokyo" } }),
+    ).toMatchObject({ ok: true })
+    expect(field(await rowOf(stub, "time-tokyo"), "state")).toEqual({ kind: "active" })
+    expect(field(await rowOf(stub, "time"), "state")).toEqual({ kind: "active" })
   })
 
   it("reports an owner row whose plugin left the build as missing, refuses config, and removes it", async () => {

@@ -73,7 +73,7 @@ function rootedPath(path: string): string {
   return normalized
 }
 
-export function create(deps: ModuleDeps, scope: WriteScope = coordinatorOnly): HostModule {
+export function create(deps: ModuleDeps<never>, scope: WriteScope = coordinatorOnly): HostModule {
   const dirs = new Set<string>(["/"])
   const index = new FileIndex(deps.db)
   const envFor = (cwd: string | undefined): R2Env => new R2Env(deps.env.FILES, deps.db, { cwd: cwd ?? "/", dirs })
@@ -165,7 +165,6 @@ export function create(deps: ModuleDeps, scope: WriteScope = coordinatorOnly): H
     extensions: [scoped(scope)],
     ops: [list, remove, put],
     routes: { "POST /v1/files/commit": commit },
-    env: (target) => files.env(target),
     start: () =>
       deps.db.run(
         "INSERT OR IGNORE INTO kv (key, value) VALUES (?, ?)",
@@ -186,7 +185,7 @@ export function create(deps: ModuleDeps, scope: WriteScope = coordinatorOnly): H
   }
 }
 
-async function nextSweep(deps: ModuleDeps): Promise<number | undefined> {
+async function nextSweep(deps: ModuleDeps<never>): Promise<number | undefined> {
   const row = await deps.db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", SWEEP_KEY)
   return row === undefined ? undefined : Number(row.value)
 }

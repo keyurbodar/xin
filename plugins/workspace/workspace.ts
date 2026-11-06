@@ -1,90 +1,34 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import { defineDoc } from "@earendil-works/pi-durable"
 import type { CommitPublication, ConversationId, JsonObject } from "@earendil-works/pi-durable"
-import { arr, bool, compile, int, map, num, obj, opt, str, type Static } from "@earendil-works/pi-schema"
+import { int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { CommandId, ProjectId } from "../../src/ids.ts"
-import { ModelRefSchema } from "../models/models.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, OpRejected } from "../../src/ops.ts"
-import { ThreadDoc, threadState, type ThreadRole, type ThreadState, type ThreadStatus } from "./threaddoc.ts"
+import {
+  ThreadDoc,
+  threadState,
+  type ThreadRole,
+  type ThreadState,
+  type ThreadStatus,
+} from "../../src/contracts/threaddoc.ts"
+import {
+  DEFAULT_DEADLINE_MS,
+  DEFAULT_THREAD_LIMIT,
+  parseWorkspace,
+  SettingsPatchSchema,
+  SLUG,
+  WorkspaceDoc,
+  type ProjectSettings,
+  type ProjectState,
+  type SettingsPatch,
+  type WorkspaceState,
+} from "../../src/contracts/workspace.ts"
+import { parseRequests, RequestsDoc } from "../../src/contracts/questions.ts"
 
-export { ThreadDoc } from "./threaddoc.ts"
-
-const SLUG = "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-
-export const DEFAULT_DEADLINE_MS = 30 * 60_000
-export const DEFAULT_THREAD_LIMIT = 8
-
-const RoleModelsSchema = obj({
-  chat: opt(ModelRefSchema),
-  thread: opt(ModelRefSchema),
-  utility: opt(ModelRefSchema),
-})
-const SettingsSchema = obj({
-  threadLimit: int({ minimum: 1 }),
-  deadlineMs: int({ minimum: 1_000 }),
-  models: opt(RoleModelsSchema),
-})
-const SettingsPatchSchema = obj({
-  threadLimit: opt(int({ minimum: 1 })),
-  deadlineMs: opt(int({ minimum: 1_000 })),
-  models: opt(RoleModelsSchema),
-})
-const ProjectSchema = obj({
-  slug: str({ pattern: SLUG }),
-  name: str({ minLength: 1, maxLength: 200 }),
-  goal: opt(str({ maxLength: 4_000 })),
-  coordinatorId: int({ minimum: 0 }),
-  threadIds: arr(int({ minimum: 0 })),
-  settings: SettingsSchema,
-  archived: bool(),
-})
-const WorkspaceSchema = obj({ projects: map(ProjectSchema) })
-
-const RequestSchema = obj({
-  kind: str({ minLength: 1 }),
-  question: str(),
-  options: opt(arr(str())),
-  at: num(),
-})
-const AnsweredSchema = obj({
-  kind: str({ minLength: 1 }),
-  question: str(),
-  options: opt(arr(str())),
-  at: num(),
-  answer: str(),
-  answeredAt: num(),
-})
-const RequestsSchema = obj({ open: map(RequestSchema), answered: map(AnsweredSchema) })
-
-export type ProjectSettings = Static<typeof SettingsSchema>
-export type SettingsPatch = Static<typeof SettingsPatchSchema>
-export type ProjectState = Static<typeof ProjectSchema>
-export type WorkspaceState = Static<typeof WorkspaceSchema>
-export type OpenRequest = Static<typeof RequestSchema>
-export type AnsweredRequest = Static<typeof AnsweredSchema>
-export type RequestsState = Static<typeof RequestsSchema>
-
-const parseWorkspace = compile(WorkspaceSchema)
-const parseRequests = compile(RequestsSchema)
-
-export const WorkspaceDoc = defineDoc<WorkspaceState>({
-  kind: "xin.workspace",
-  version: 1,
-  scope: "session",
-  initial: () => ({ projects: {} }),
-  checkpointWhen: () => false,
-})
-
-export const RequestsDoc = defineDoc<RequestsState>({
-  kind: "xin.requests",
-  version: 1,
-  scope: "conversation",
-  history: "latest",
-  fork: "initial",
-  initial: () => ({ open: {}, answered: {} }),
-  checkpointWhen: () => false,
-})
+export { ThreadDoc } from "../../src/contracts/threaddoc.ts"
+export { RequestsDoc } from "../../src/contracts/questions.ts"
+export { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../../src/contracts/workspace.ts"
+export type { ProjectState } from "../../src/contracts/workspace.ts"
 
 export type ThreadSummary = {
   readonly id: ConversationId
@@ -203,7 +147,7 @@ function projectSummaries(projection: Projection): ProjectSummary[] {
   })
 }
 
-export function create(deps: ModuleDeps): HostModule {
+export function create(deps: ModuleDeps<never>): HostModule {
   const projection: Projection = {
     workspace: { projects: {} },
     threads: new Map(),

@@ -4,7 +4,7 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import type { CommandId } from "../../src/ids.ts"
 import { dueOf, type ScheduleInput, SCHEDULE_TASK, sendDue, slotKey } from "./schedules.ts"
-import { eventually, fresh } from "../../test/support.ts"
+import { eventually, field, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 type Row = {
@@ -25,10 +25,7 @@ const rows = (home: Home) =>
 const live = async (home: Home) =>
   (await home.harness.inspect(BACKGROUND_CONTEXT)).tasks.filter((task) => task.record.kind === SCHEDULE_TASK)
 
-const ports = (home: Home) => ({ db: home.db, arm: async () => home.arm(home.harness.wake()) })
-
-const field = (value: unknown, key: string): unknown =>
-  typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
+const ports = (home: Home) => ({ intake: home.loader.ctx.intake, arm: async () => home.arm(home.harness.wake()) })
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)))
 
@@ -72,14 +69,14 @@ describe("schedules", () => {
     await eventually(stub, async (home: Home) => (await live(home)).length === 0)
   })
 
-  it("replays the send step with a later now without a second row", async () => {
+  it("replays the send step without a second row", async () => {
     const evidence = await runInDurableObject(fresh(), async (home: Home) => {
       const input = hourly((await home.root()).id)
       const due = dueOf(input, input.anchor - 1, 0, input.anchor)
       const recomputed = dueOf(input, input.anchor - 1, 0, input.anchor + 3 * 3_600_000)
       if (due === undefined || recomputed === undefined) throw new Error("expected a due window")
-      await sendDue(ports(home), input, due, input.anchor)
-      await sendDue(ports(home), input, due, input.anchor + 3 * 3_600_000)
+      await sendDue(ports(home), input, due)
+      await sendDue(ports(home), input, due)
       return { due, recomputed, stored: await rows(home) }
     })
     expect(evidence.due).toEqual({ count: 1, latest: Date.parse("2026-01-01T00:00:00Z"), index: 0 })
@@ -93,7 +90,7 @@ describe("schedules", () => {
       const input = hourly((await home.root()).id)
       const due = dueOf(input, input.anchor - 1, 0, input.anchor + 3 * 3_600_000 - 1)
       if (due === undefined) throw new Error("expected a due window")
-      await sendDue(ports(home), input, due, input.anchor + 3 * 3_600_000 - 1)
+      await sendDue(ports(home), input, due)
       return { due, stored: await rows(home) }
     })
     expect(evidence.due).toEqual({

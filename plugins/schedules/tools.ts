@@ -1,7 +1,7 @@
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
 import { obj, opt, str } from "@earendil-works/pi-schema"
 import { ID_SOURCE, SCHEDULE_FIELDS, type SchedulesService } from "../../src/contracts/schedules.ts"
-import { type Context, OpRejected } from "../../src/kernel/index.ts"
+import { type Context, OpRejected, textResult } from "../../src/kernel/index.ts"
 import { RuleError } from "./rrule.ts"
 
 const DEFAULT_TZ = "UTC"
@@ -33,7 +33,7 @@ function scheduleTool(schedules: SchedulesService) {
           api.now(),
           `call-${api.taskId}`,
         )
-        return said(created.created ? `Scheduled ${created.id}.` : `Schedule ${created.id} is already running.`)
+        return textResult(created.created ? `Scheduled ${created.id}.` : `Schedule ${created.id} is already running.`)
       } catch (error) {
         if (error instanceof OpRejected || error instanceof RuleError) return refused(error.message)
         throw error
@@ -50,15 +50,11 @@ function unscheduleTool(schedules: SchedulesService) {
     replay: "safe",
     execute: async (args) => {
       const cancelled = await schedules.cancel(args.id)
-      return said(cancelled ? `Cancelled ${args.id}.` : `No schedule ${args.id}.`)
+      return textResult(cancelled ? `Cancelled ${args.id}.` : `No schedule ${args.id}.`)
     },
   })
 }
 
-function said(text: string) {
-  return { output: [{ type: "text" as const, text }] }
-}
-
 function refused(reason: string) {
-  return { output: [{ type: "text" as const, text: `Not scheduled: ${reason}.` }], isError: true }
+  return textResult(`Not scheduled: ${reason}.`, { isError: true })
 }

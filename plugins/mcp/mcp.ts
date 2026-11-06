@@ -7,7 +7,6 @@ import {
 } from "@earendil-works/pi-mcp"
 import { type ToolRegistration } from "@earendil-works/pi-durable"
 import { arr, compile, map, obj, opt, str, unknown, type Static } from "@earendil-works/pi-schema"
-import { jobTool } from "../jobs/jobs.ts"
 import type { McpService } from "../../src/contracts/mcp.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, OpRejected, type Op } from "../../src/ops.ts"
@@ -86,10 +85,9 @@ const summarize = (name: string, server: StoredServer) => ({
 
 type Row = { readonly name: string; readonly raw: string }
 
-export function create(deps: ModuleDeps): HostModule {
+export function create(deps: ModuleDeps<"jobs">): HostModule {
   const sealer = new Sealer(deps.env.KEK)
   const definitions = new Map<string, readonly ToolRegistration[]>()
-  const listeners = new Set<() => void>()
 
   const tools = (): readonly ToolRegistration[] => {
     const byName = new Map<string, ToolRegistration>()
@@ -99,15 +97,8 @@ export function create(deps: ModuleDeps): HostModule {
     return [...byName.values()]
   }
 
-  const watch = (listener: () => void): (() => void) => {
-    listeners.add(listener)
-    return () => {
-      listeners.delete(listener)
-    }
-  }
-
   const changed = (): void => {
-    for (const listener of listeners) listener()
+    deps.services.emit("mcp/changed")
   }
 
   const rows = async (): Promise<readonly Row[]> => {
@@ -189,10 +180,11 @@ export function create(deps: ModuleDeps): HostModule {
   }
 
   const register = (name: string, cached: readonly StoredTool[]): void => {
+    const jobs = deps.services.jobs
     definitions.set(
       name,
       cached.map((tool) =>
-        jobTool(
+        jobs.tool(
           {
             name: toolName(name, tool.name),
             description: tool.description,
@@ -293,7 +285,7 @@ export function create(deps: ModuleDeps): HostModule {
       }),
   })
 
-  const service: McpService = { tools, watch }
+  const service: McpService = { tools }
 
   return {
     provides: { mcp: service },

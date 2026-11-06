@@ -5,11 +5,10 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "c
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { M2_MODEL, script as scriptM2 } from "../../test/plugins/m2.ts"
 import { connect, eventually, fresh, owner } from "../../test/support.ts"
-import { decrypt, subscriber, type Subscriber } from "../../test/webpush.ts"
+import { decrypt, pushTopic, subscriber, type Subscriber } from "../../test/webpush.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 import { enqueue } from "./gateway.ts"
 import type { CommandId } from "../../src/ids.ts"
-import { pushTopic } from "../push/webpush.ts"
 
 const context = BACKGROUND_CONTEXT
 

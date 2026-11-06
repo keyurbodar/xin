@@ -12,22 +12,10 @@ import {
   WRAP_MARK,
   XTask,
 } from "../../test/plugins/piext.ts"
-import { fresh } from "../../test/support.ts"
+import { fresh, setRow } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 type Stub = ReturnType<typeof fresh>
-type Ack = { readonly ok: boolean; readonly result?: unknown }
-
-const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Promise<Ack> =>
-  stub
-    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
-    .then((reply) => reply.json<Ack>())
-
-const setRow = async (stub: Stub, id: string, enabled: boolean): Promise<void> => {
-  const ack = await cmd(stub, `${id}-${enabled}-${crypto.randomUUID()}`, "plugin.enable", { id, enabled })
-  expect(ack.result).toMatchObject({ application: "applied", row: { disabled: !enabled } })
-}
-
 const installed = (stub: Stub, name: string): Promise<boolean> =>
   runInDurableObject(stub, (home: Home) => {
     try {

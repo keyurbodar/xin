@@ -8,12 +8,10 @@ export const inject = ["pi", "mcp"]
 export function apply(ctx: Context): void {
   ctx.pi.install(createToolSearchExtension())
 
-  let dispose: (() => void) | undefined
   const publish = (): void => {
-    dispose?.()
-    dispose = ctx.pi.install(defineExtension({ name: "mcp", tools: [...ctx.mcp.tools()] }))
+    ctx.pi.install(defineExtension({ name: "tool-mcp", tools: [...ctx.mcp.tools()] }))
   }
 
   publish()
-  ctx.effect(() => ctx.mcp.watch(publish), "tool-mcp.watch")
+  ctx.on("mcp/changed", publish)
 }

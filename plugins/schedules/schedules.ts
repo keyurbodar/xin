@@ -1,6 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Context } from "@earendil-works/chord"
-import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import {
   type ConversationId,
   type Cursor,
@@ -12,7 +11,7 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable"
 import { compile, int, lit, obj, str, union } from "@earendil-works/pi-schema"
-import { enqueue } from "../intake/gateway.ts"
+import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
   ID_SOURCE,
   SCHEDULE_FIELDS,
@@ -22,7 +21,7 @@ import {
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, type Op, type OpApi, OpRejected } from "../../src/ops.ts"
 import { type DueWindow, type Occurrence, parseRule, RuleError, slotsOf, validateZone, type When } from "./rrule.ts"
-import { WorkspaceDoc } from "../workspace/workspace.ts"
+import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -66,7 +65,7 @@ type ScheduleState =
   | ({ readonly phase: "send"; readonly due: DueWindow } & Progress)
 
 export type FirePorts = {
-  readonly db: SqliteDatabase
+  readonly intake: IntakeService
   readonly arm: () => Promise<void>
 }
 
@@ -76,7 +75,7 @@ type LiveSchedule = {
   readonly until: number | undefined
 }
 
-export function create(deps: ModuleDeps): HostModule {
+export function create(deps: ModuleDeps<"intake">): HostModule {
   return {
     provides: { schedules: service(deps) },
     extensions: [defineExtension({ name: "schedules", tasks: [scheduleTask(deps)] })],
@@ -84,7 +83,7 @@ export function create(deps: ModuleDeps): HostModule {
   }
 }
 
-function service(deps: ModuleDeps): SchedulesService {
+function service(deps: ModuleDeps<"intake">): SchedulesService {
   return {
     create: async (request, fallback, now, defaultId) => {
       const created = await createSchedule(deps, request, fallback, now, defaultId)
@@ -98,7 +97,7 @@ function complete(runtime: TaskRuntime<ScheduleInput, ScheduleState, null, objec
   return runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), ctx)
 }
 
-export function scheduleTask(deps: ModuleDeps): Task<ScheduleInput, ScheduleState, null, object> {
+export function scheduleTask(deps: ModuleDeps<"intake">): Task<ScheduleInput, ScheduleState, null, object> {
   return defineTask<ScheduleInput, ScheduleState, null, object>({
     name: SCHEDULE_TASK,
     version: SCHEDULE_VERSION,
@@ -120,7 +119,7 @@ export function scheduleTask(deps: ModuleDeps): Task<ScheduleInput, ScheduleStat
       },
       send: async (task, runtime, ctx) => {
         const { due } = task.state.checkpoint
-        await sendDue(deps, task.input, due, runtime.now())
+        await sendDue({ intake: deps.services.intake, arm: () => deps.arm() }, task.input, due)
         await runtime.commit(
           () => ({ status: "running", checkpoint: { phase: "wait", last: due.latest, index: due.index } }),
           ctx,
@@ -139,21 +138,17 @@ export function dueOf(input: ScheduleInput, last: number, index: number, now: nu
   return slotsOf(input.when, input.tz, input.anchor).due(last, index, now)
 }
 
-export async function sendDue(ports: FirePorts, input: ScheduleInput, due: DueWindow, now: number): Promise<void> {
-  await enqueue(
-    ports.db,
-    {
-      target: input.target,
-      commandId: slotKey(input.id, due.latest),
-      kind: "job",
-      threadId: input.id,
-      title: titleOf(input.prompt),
-      status: "scheduled",
-      text: due.count > 1 ? `${input.prompt}${MISSED}${due.count})` : input.prompt,
-      clientTs: due.latest,
-    },
-    now,
-  )
+export async function sendDue(ports: FirePorts, input: ScheduleInput, due: DueWindow): Promise<void> {
+  await ports.intake.enqueue({
+    target: input.target,
+    commandId: slotKey(input.id, due.latest),
+    kind: "job",
+    threadId: input.id,
+    title: titleOf(input.prompt),
+    status: "scheduled",
+    text: due.count > 1 ? `${input.prompt}${MISSED}${due.count})` : input.prompt,
+    clientTs: due.latest,
+  })
   await ports.arm()
 }
 
@@ -166,7 +161,7 @@ export function slotKey(id: string, slot: number): string {
 }
 
 async function createSchedule(
-  deps: ModuleDeps,
+  deps: ModuleDeps<"intake">,
   request: ScheduleRequest,
   fallback: ConversationId,
   now: number,
@@ -202,7 +197,11 @@ function whenOf(request: ScheduleRequest): When {
   throw new OpRejected("bad_args", "give exactly one of rrule or at")
 }
 
-async function targetOf(deps: ModuleDeps, request: ScheduleRequest, fallback: ConversationId): Promise<ConversationId> {
+async function targetOf(
+  deps: ModuleDeps<"intake">,
+  request: ScheduleRequest,
+  fallback: ConversationId,
+): Promise<ConversationId> {
   if (request.projectId !== undefined) {
     if (request.conv !== undefined) throw new OpRejected("bad_args", "give conv or projectId, not both")
     return coordinatorOf(deps, request.projectId)
@@ -210,7 +209,7 @@ async function targetOf(deps: ModuleDeps, request: ScheduleRequest, fallback: Co
   return request.conv === undefined ? fallback : conversationOf(deps, request.conv)
 }
 
-async function coordinatorOf(deps: ModuleDeps, projectId: string): Promise<ConversationId> {
+async function coordinatorOf(deps: ModuleDeps<"intake">, projectId: string): Promise<ConversationId> {
   const workspace = await deps.harness().snapshot(WorkspaceDoc, context)
   const project = workspace?.projects[projectId]
   if (project === undefined) throw new OpRejected("bad_args", `no project ${projectId}`)
@@ -241,7 +240,7 @@ function reject(error: unknown): Error {
       : new Error(String(error))
 }
 
-async function conversationOf(deps: ModuleDeps, conv: number): Promise<ConversationId> {
+async function conversationOf(deps: ModuleDeps<"intake">, conv: number): Promise<ConversationId> {
   const found = await deps.harness().conversation(conv as ConversationId, context)
   if (found === undefined) throw new OpRejected("bad_args", `no conversation ${conv}`)
   return found.id
@@ -260,7 +259,7 @@ async function scheduledTask(tx: Tx, id: string): Promise<TaskId | undefined> {
   }
 }
 
-async function liveSchedules(deps: ModuleDeps): Promise<readonly LiveSchedule[]> {
+async function liveSchedules(deps: ModuleDeps<"intake">): Promise<readonly LiveSchedule[]> {
   const inspection = await deps.harness().inspect(context)
   const live: LiveSchedule[] = []
   for (const task of inspection.tasks) {
@@ -284,7 +283,7 @@ function scheduleInputOf(value: unknown): ScheduleInput | undefined {
   }
 }
 
-async function cancelSchedules(deps: ModuleDeps, id: string): Promise<boolean> {
+async function cancelSchedules(deps: ModuleDeps<"intake">, id: string): Promise<boolean> {
   const matching = (await liveSchedules(deps)).filter((schedule) => schedule.input.id === id)
   for (const schedule of matching) await deps.harness().abortTask(schedule.taskId, context)
   if (matching.length > 0) await deps.arm()
@@ -296,7 +295,7 @@ function stableId(source: string): string {
   return cleaned === "" ? crypto.randomUUID() : cleaned
 }
 
-function createOp(deps: ModuleDeps): Op {
+function createOp(deps: ModuleDeps<"intake">): Op {
   return defineOp({
     name: "schedule.create",
     args: obj(SCHEDULE_FIELDS),
@@ -306,7 +305,7 @@ function createOp(deps: ModuleDeps): Op {
   })
 }
 
-function cancelOp(deps: ModuleDeps): Op {
+function cancelOp(deps: ModuleDeps<"intake">): Op {
   return defineOp({
     name: "schedule.cancel",
     args: obj({ id: str({ pattern: ID_SOURCE }) }),
@@ -315,7 +314,7 @@ function cancelOp(deps: ModuleDeps): Op {
   })
 }
 
-function listOp(deps: ModuleDeps): Op {
+function listOp(deps: ModuleDeps<"intake">): Op {
   return defineOp({
     name: "schedule.list",
     args: obj({}),
@@ -334,7 +333,7 @@ function listOp(deps: ModuleDeps): Op {
   })
 }
 
-async function fallbackConversation(deps: ModuleDeps, api: OpApi): Promise<ConversationId> {
+async function fallbackConversation(deps: ModuleDeps<"intake">, api: OpApi): Promise<ConversationId> {
   if (api.actor.kind === "agent") return api.actor.conversationId
   return (await deps.harness().root(context)).id
 }

@@ -6,6 +6,7 @@ export const name = "tool-files"
 export const inject = ["pi", "files"]
 
 export function apply(ctx: Context): void {
+  ctx.pi.env((target) => ctx.files.env(target))
   ctx.pi.install(
     defineExtension({
       name: "tool-files",

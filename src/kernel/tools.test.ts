@@ -4,15 +4,10 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai"
 import type { EntryRecord, JsonObject } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { M8_MODEL, respond } from "../../test/plugins/m8.ts"
-import { fresh } from "../../test/support.ts"
+import { cmd, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 type Stub = ReturnType<typeof fresh>
-
-const cmd = (stub: Stub, id: string, op: string, args: unknown = {}) =>
-  stub
-    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
-    .then((reply) => reply.json<{ ok: boolean; result?: unknown }>())
 
 const call = (name: string, args: JsonObject) =>
   fauxAssistantMessage([fauxToolCall(name, args, { id: `${name}-${crypto.randomUUID()}` })], { stopReason: "toolUse" })

@@ -1,15 +1,16 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { Context } from "@earendil-works/chord"
-import { defineDoc, type ConversationId, type DocumentReader, type Harness, type Tx } from "@earendil-works/pi-durable"
+import { defineDoc, type ConversationId, type DocumentReader } from "@earendil-works/pi-durable"
 import { compile, int, num, obj, oneOf, opt, str, type Static } from "@earendil-works/pi-schema"
-import type { ProjectId, ThreadId } from "../../src/ids.ts"
-import { OpRejected } from "../../src/ops.ts"
+import type { ProjectId, ThreadId } from "../ids.ts"
 import { WorkspaceDoc, type ProjectState } from "./workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
 const ROLES = ["chat", "thread", "utility"] as const
 const STATUSES = ["working", "waiting", "completed", "failed", "cancelled"] as const
+
+export const RoleSchema = oneOf(ROLES)
+export const StatusSchema = oneOf(STATUSES)
 
 export type ThreadRole = (typeof ROLES)[number]
 export type ThreadStatus = (typeof STATUSES)[number]
@@ -138,58 +139,18 @@ export type NewThread = {
   readonly clientRequestId?: string
 }
 
-export async function addThread(tx: Tx, thread: NewThread): Promise<ThreadState> {
-  const workspace = await tx.doc(WorkspaceDoc)
-  const project = workspace.projects[thread.projectId]
-  if (project === undefined) throw new OpRejected("bad_args", `no project ${thread.projectId}`)
-  const status = thread.status ?? "working"
-  if ((status === "completed" || status === "failed") && thread.result === undefined)
-    throw new OpRejected("bad_args", `a ${status} thread needs a result`)
-  const beatAt = thread.beatAt ?? Date.now()
-  const deadlineAt = thread.deadlineAt ?? beatAt + project.settings.deadlineMs
-  const doc = await tx.doc(ThreadDoc, thread.threadId)
-  const value: ThreadDocState = {
-    projectId: thread.projectId,
-    title: thread.title,
-    role: thread.role ?? "thread",
-    status,
-    run: thread.run ?? 1,
-    beatAt,
-    deadlineAt,
-    ...(thread.parentId === undefined ? {} : { parentId: thread.parentId }),
-    ...(thread.anchorTaskId === undefined ? {} : { anchorTaskId: thread.anchorTaskId }),
-    ...(thread.statusLine === undefined ? {} : { statusLine: thread.statusLine }),
-    ...(thread.result === undefined ? {} : { result: thread.result }),
-    ...(thread.clientRequestId === undefined ? {} : { clientRequestId: thread.clientRequestId }),
-  }
-  Object.assign(doc, value)
-  if (!project.threadIds.includes(thread.threadId)) project.threadIds.push(thread.threadId)
-  const state = threadState(value)
-  if (state === undefined) throw new Error(`thread ${thread.threadId} does not satisfy xin.thread`)
-  return state
-}
-
-export async function projectOf(
-  harness: Harness,
-  threadId: ThreadId,
-  ctx: Context = BACKGROUND_CONTEXT,
-): Promise<ProjectId | undefined> {
-  const value = await harness.snapshot(ThreadDoc, threadId, ctx)
-  return value === undefined ? undefined : (value.projectId as ProjectId)
-}
-
 export type ThreadScope = {
   readonly projectId: string
   readonly project: ProjectState
   readonly doc: ThreadDocState
 }
 
-export type CallerProject = { readonly projectId: string; readonly project: ProjectState }
+export type ProjectScope = { readonly projectId: string; readonly project: ProjectState }
 
 export async function projectInScope(
   read: DocumentReader,
   callerId: ConversationId,
-): Promise<CallerProject | undefined> {
+): Promise<ProjectScope | undefined> {
   const workspace = await read.snapshot(WorkspaceDoc, context)
   if (workspace === undefined) return undefined
   for (const [projectId, project] of Object.entries(workspace.projects)) {

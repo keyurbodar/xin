@@ -1,8 +1,106 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
+import {
+  fauxAssistantMessage,
+  getCurrentSystemPrompt,
+  type FauxResponseFactory,
+  type FauxResponseStep,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai"
+import type { ModelRef } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { env, exports } from "cloudflare:workers"
+import { expect } from "vitest"
+import { M8_MODEL } from "./plugins/m8.ts"
 import type { Home } from "./worker.ts"
 
-export const fresh = (): DurableObjectStub<Home> => env.HOME.get(env.HOME.newUniqueId())
+export type Stub = DurableObjectStub<Home>
+
+export const fresh = (): Stub => env.HOME.get(env.HOME.newUniqueId())
+
+export type Ack = {
+  readonly ok: boolean
+  readonly result?: unknown
+  readonly error?: { readonly code: string; readonly message: string }
+}
+
+export const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Promise<Ack> =>
+  stub
+    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
+    .then((reply) => reply.json<Ack>())
+
+export const field = (value: unknown, key: string): unknown =>
+  typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
+
+export const rowOf = async (stub: Stub, id: string): Promise<unknown> => {
+  const listed = await cmd(stub, `list-${id}-${crypto.randomUUID()}`, "plugin.list")
+  return Array.isArray(listed.result) ? listed.result.find((row) => field(row, "id") === id) : undefined
+}
+
+export const rowState = async (stub: Stub, id: string): Promise<unknown> => field(await rowOf(stub, id), "state")
+
+export const setRow = async (stub: Stub, id: string, enabled: boolean): Promise<Ack> => {
+  const ack = await cmd(stub, `${id}-${enabled}-${crypto.randomUUID()}`, "plugin.enable", { id, enabled })
+  expect(ack.result).toMatchObject({ application: "applied", row: { disabled: !enabled } })
+  return ack
+}
+
+export type Offer = { readonly tools: readonly string[]; readonly system: string }
+
+export type OfferLog = {
+  readonly seen: Offer[]
+  wrap(factory: FauxResponseFactory): FauxResponseStep
+  step(reply?: string): FauxResponseStep
+  at(index: number): Offer
+  latest(): Offer
+}
+
+export function offeredTools(context: TranscriptContext): string[] {
+  const names = new Set<string>()
+  for (const message of context.messages) {
+    if (message.role !== "system") continue
+    for (const removed of message.toolsRemoved ?? []) names.delete(removed.name)
+    for (const added of message.toolsAdded ?? []) names.add(added.name)
+  }
+  return [...names].toSorted()
+}
+
+export function recordOffers(): OfferLog {
+  const seen: Offer[] = []
+  const at = (index: number): Offer => {
+    const offer = seen[index]
+    if (offer === undefined) throw new Error(`no request ${index} recorded`)
+    return offer
+  }
+  const wrap =
+    (factory: FauxResponseFactory): FauxResponseStep =>
+    (context, options, state, model) => {
+      seen.push({ tools: offeredTools(context), system: getCurrentSystemPrompt(context.messages) })
+      return factory(context, options, state, model)
+    }
+  return {
+    seen,
+    wrap,
+    step: (reply = "noted") => wrap(() => fauxAssistantMessage(reply)),
+    at,
+    latest: () => {
+      const offer = seen.at(-1)
+      if (offer === undefined) throw new Error("the faux model has not been called")
+      return offer
+    },
+  }
+}
+
+export async function turn(
+  stub: Stub,
+  requestId: string,
+  options: { text?: string; model?: ModelRef } = {},
+): Promise<void> {
+  await runInDurableObject(stub, async (home: Home) => {
+    await home.chooseModel(options.model ?? M8_MODEL)
+    await home.submit(options.text ?? "go", requestId)
+    await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+  })
+}
 
 export async function eventually(
   stub: DurableObjectStub<Home>,

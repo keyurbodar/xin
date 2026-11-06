@@ -13,8 +13,8 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable"
 import type { NoteDraft } from "../../src/contracts/memory.ts"
+import { resolveModel } from "../../src/contracts/models.ts"
 import type { ModuleDeps } from "../../src/module.ts"
-import { ownerDefaults, resolveModel } from "../models/models.ts"
 import { liveSecrets } from "./dreamersecrets.ts"
 import { SYSTEM_PROMPT, validateDreamerOutput, type DreamerOutput } from "./dreamprompt.ts"
 import { readTranscript } from "./dreamtranscript.ts"
@@ -87,7 +87,7 @@ export async function readProfile(db: SqliteExecutor): Promise<string> {
   return (await readKv(db, PROFILE_KEY)) ?? ""
 }
 
-export async function requestPass(deps: ModuleDeps, at: number): Promise<void> {
+export async function requestPass(deps: ModuleDeps<"models">, at: number): Promise<void> {
   const existing = await readNumber(deps.db, DUE_KEY)
   const due = existing === undefined ? at : Math.min(existing, at)
   await writeKv(deps.db, DUE_KEY, String(due))
@@ -95,7 +95,7 @@ export async function requestPass(deps: ModuleDeps, at: number): Promise<void> {
   await deps.arm()
 }
 
-export async function ensurePass(deps: ModuleDeps, at: number): Promise<void> {
+export async function ensurePass(deps: ModuleDeps<"models">, at: number): Promise<void> {
   const harness = deps.harness()
   const root = await harness.root(context)
   const stale = await harness.commit(async (tx) => {
@@ -128,7 +128,7 @@ const dueAt = (task: AnyTask, at: number): boolean => task.state.status !== "sle
 type DreamerInput = { readonly at: number }
 type DreamerState = { readonly phase: "wake" } | { readonly phase: "wait" } | { readonly phase: "pass" }
 
-export function dreamerTask(deps: ModuleDeps): Task<DreamerInput, DreamerState, null, object> {
+export function dreamerTask(deps: ModuleDeps<"models">): Task<DreamerInput, DreamerState, null, object> {
   return defineTask<DreamerInput, DreamerState, null, object>({
     name: DREAMER_TASK,
     version: 1,
@@ -156,7 +156,7 @@ export function dreamerTask(deps: ModuleDeps): Task<DreamerInput, DreamerState, 
   })
 }
 
-async function nextPass(deps: ModuleDeps, now: number): Promise<number> {
+async function nextPass(deps: ModuleDeps<"models">, now: number): Promise<number> {
   const retry = await readNumber(deps.db, RETRY_KEY)
   if (retry !== undefined && retry > now) return retry
   const due = await readNumber(deps.db, DUE_KEY)
@@ -179,7 +179,7 @@ function daily(now: number): number {
 }
 
 async function runPass(
-  deps: ModuleDeps,
+  deps: ModuleDeps<"models">,
   taskId: TaskId,
   runtime: TaskRuntime<DreamerInput, DreamerState, null, object>,
   ctx: Context,
@@ -220,7 +220,7 @@ const noteLine = (note: NoteRow): string =>
   `${note.id} (${note.scope}, ${new Date(note.at).toISOString()}): ${note.text}`
 
 async function draft(
-  deps: ModuleDeps,
+  deps: ModuleDeps<"models">,
   runtime: TaskRuntime<DreamerInput, DreamerState, null, object>,
   ctx: Context,
   model: Model<Api>,
@@ -306,11 +306,11 @@ async function apply(
 }
 
 async function chooseModel(
-  deps: ModuleDeps,
+  deps: ModuleDeps<"models">,
   runtime: TaskRuntime<DreamerInput, DreamerState, null, object>,
   ctx: Context,
 ): Promise<Model<Api> | undefined> {
-  const resolved = resolveModel({ role: "utility", owner: await ownerDefaults(deps.db) })
+  const resolved = resolveModel({ role: "utility", owner: await deps.services.models.ownerDefaults() })
   const ref = resolved.kind === "model" ? resolved.model : (await runtime.agent(ctx)).model
   if (ref === undefined) return undefined
   return runtime.models.getModel(ref.provider, ref.modelId)

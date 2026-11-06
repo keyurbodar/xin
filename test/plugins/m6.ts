@@ -1,10 +1,10 @@
+import type { Context } from "@deepseek-ai/cordis"
 import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai"
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
 import { obj } from "@earendil-works/pi-schema"
-import { jobTool } from "../../plugins/jobs/jobs.ts"
+import type { JobTool, JobWork } from "../../src/contracts/jobs.ts"
 import type { Provider } from "../../src/module.ts"
 import type { Catalog } from "../../src/kernel/loader.ts"
-import { testPlugin } from "../kernel.ts"
 
 export const M6_MODEL = { provider: "m6", modelId: "m6-faux" } as const
 
@@ -48,29 +48,33 @@ function sectionsText(messages: readonly { readonly role: string }[]): string {
     .join("\n")
 }
 
-const quick = jobTool(
-  { name: "quick_tool", description: "Finish after one second.", parameters: obj({}) },
-  async (_args, run) => {
+type JobSpec = { readonly tool: JobTool; readonly work: JobWork }
+
+const quick: JobSpec = {
+  tool: { name: "quick_tool", description: "Finish after one second.", parameters: obj({}) },
+  work: async (_args, run) => {
     await sleep(1_000, run.signal)
     return { output: [{ type: "text", text: "quick done" }] }
   },
-)
+}
 
-const slow = jobTool(
-  { name: "slow_tool", description: "Finish after twenty seconds.", parameters: obj({}) },
-  async (_args, run) => {
+const slow: JobSpec = {
+  tool: { name: "slow_tool", description: "Finish after twenty seconds.", parameters: obj({}) },
+  work: async (_args, run) => {
     await sleep(20_000, run.signal)
     return { output: [{ type: "text", text: "slow done" }] }
   },
-)
+}
 
-const threadSlow = jobTool(
-  { name: "thread_slow_tool", description: "Finish after nine seconds.", parameters: obj({}) },
-  async (_args, run) => {
+const threadSlow: JobSpec = {
+  tool: { name: "thread_slow_tool", description: "Finish after nine seconds.", parameters: obj({}) },
+  work: async (_args, run) => {
     await sleep(9_000, run.signal)
     return { output: [{ type: "text", text: "thread slow done" }] }
   },
-)
+}
+
+const jobTools: readonly JobSpec[] = [quick, slow, threadSlow]
 
 const stuck = defineTool({
   name: "stuck_tool",
@@ -142,7 +146,17 @@ faux.setResponses(Array.from({ length: 4_000 }, () => step))
 
 export const providers: readonly Provider[] = [faux.provider]
 export const catalog: Catalog = {
-  m6: testPlugin("m6", {
-    extensions: [defineExtension({ name: "m6.tools", tools: [quick, slow, threadSlow, stuck] })],
-  }),
+  m6: {
+    plugin: {
+      name: "m6",
+      inject: ["pi", "jobs"],
+      apply(ctx: Context) {
+        const tools = [...jobTools.map((spec) => ctx.jobs.tool(spec.tool, spec.work)), stuck]
+        ctx.pi.install(defineExtension({ name: "m6.tools", tools }))
+      },
+    },
+    title: "m6",
+    description: "test plugin m6",
+    source: "test",
+  },
 }

@@ -3,32 +3,13 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { fauxAssistantMessage, fauxToolCall, getCurrentSystemPrompt } from "@earendil-works/pi-ai"
 import { describe, expect, it } from "vitest"
 import { requests, script, SKILL_MODEL } from "../../test/plugins/skills.ts"
-import { fresh } from "../../test/support.ts"
+import { cmd, fresh, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
 
 const markdown = (name: string, description: string, body: string) =>
   `---\nname: ${name}\ndescription: ${description}\n---\n${body}`
-
-type Ack = {
-  readonly ok: boolean
-  readonly result?: unknown
-  readonly error?: { readonly code: string; readonly message: string }
-}
-
-const cmd = (stub: DurableObjectStub<Home>, id: string, op: string, args?: unknown) =>
-  stub
-    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
-    .then((reply) => reply.json<Ack>())
-
-async function turn(stub: DurableObjectStub<Home>, id: string, text: string): Promise<void> {
-  await runInDurableObject(stub, async (home: Home) => {
-    await home.chooseModel(SKILL_MODEL)
-    await home.submit(text, id)
-    await home.harness.waitForIdle(context)
-  })
-}
 
 function promptAt(index: number): string {
   const request = requests[index]
@@ -64,7 +45,7 @@ describe("skills", () => {
     })
     script([fauxAssistantMessage("ok")])
 
-    await turn(stub, "skill-turn-1", "hello")
+    await turn(stub, "skill-turn-1", { text: "hello", model: SKILL_MODEL })
 
     const prompt = promptAt(0)
     expect(prompt).toContain("- research: Research a topic from primary sources.")
@@ -89,7 +70,7 @@ describe("skills", () => {
       fauxAssistantMessage("done"),
     ])
 
-    await turn(stub, "skill-turn-2", "please research this")
+    await turn(stub, "skill-turn-2", { text: "please research this", model: SKILL_MODEL })
 
     expect(await lastToolResult(stub)).toEqual({ isError: false, text: body })
   })
@@ -120,10 +101,10 @@ describe("skills", () => {
     })
     script([fauxAssistantMessage("first"), fauxAssistantMessage("second")])
 
-    await turn(stub, "skill-turn-3", "one")
+    await turn(stub, "skill-turn-3", { text: "one", model: SKILL_MODEL })
     const before = promptAt(0)
     await cmd(stub, "skill-delete-1", "skill.delete", { name: "temporary" })
-    await turn(stub, "skill-turn-4", "two")
+    await turn(stub, "skill-turn-4", { text: "two", model: SKILL_MODEL })
     const after = promptAt(1)
 
     expect(before).toContain("- temporary: Only here for one turn.")
@@ -144,7 +125,7 @@ describe("skills", () => {
       fauxAssistantMessage("done"),
     ])
 
-    await turn(stub, "skill-turn-5", "unknown please")
+    await turn(stub, "skill-turn-5", { text: "unknown please", model: SKILL_MODEL })
 
     const result = await lastToolResult(stub)
     expect(result?.isError).toBe(true)

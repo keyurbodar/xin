@@ -1,11 +1,11 @@
 import { DurableObject } from "cloudflare:workers"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { DurableObjectSqliteDatabase } from "@earendil-works/chord/sqlite/cloudflare"
 import type { Conversation, Harness, Wake } from "@earendil-works/pi-durable"
 import profile from "../xin.profile.json"
 import { BUNDLES, CATALOG } from "./catalog.ts"
 import type { Env } from "./env.ts"
 import { HEARTBEAT_MS } from "./kernel/clock.ts"
+import type { DbService } from "./kernel/db.ts"
 import type { Profile } from "./kernel/layers.ts"
 import { boot, type Composition, type Kernel, type XinLoader } from "./kernel/loader.ts"
 import { parseProfilePatch } from "./kernel/patch.ts"
@@ -44,7 +44,7 @@ export class Home extends DurableObject<Env> {
     return harness
   }
 
-  get db(): DurableObjectSqliteDatabase {
+  get db(): DbService {
     return this.#current.root.db
   }
 

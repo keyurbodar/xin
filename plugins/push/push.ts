@@ -1,5 +1,6 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import { obj, str } from "@earendil-works/pi-schema"
+import type { Notification, PushService } from "../../src/contracts/push.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, OpRejected } from "../../src/ops.ts"
 import {
@@ -27,14 +28,8 @@ const encoder = new TextEncoder()
 
 export type Fetcher = (request: Request) => Promise<Response>
 
-export type Notification = {
-  readonly threadTitle: string
-  readonly title: string
-  readonly body?: string
-  readonly tag: string
-}
-
-export type Notifier = { notify(notification: Notification): Promise<void> }
+export type { Notification }
+export type Notifier = PushService
 
 type Delivery =
   | { readonly kind: "sent" }
@@ -67,8 +62,9 @@ export function notifier(deps: Pick<ModuleDeps, "ctx" | "db" | "env">, fetcher: 
   }
 }
 
-export function create(deps: ModuleDeps): HostModule {
+export function create(deps: ModuleDeps<never>): HostModule {
   return {
+    provides: { push: notifier(deps) },
     ops: [
       defineOp({
         name: "push.key",

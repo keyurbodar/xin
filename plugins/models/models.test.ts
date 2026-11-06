@@ -4,7 +4,7 @@ import type { Conversation, EntryRecord } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 // @ts-expect-error Vite inlines ?raw imports at bundle time
 import source from "./models.ts?raw"
-import { resolveModel } from "./models.ts"
+import { resolveModel } from "../../src/contracts/models.ts"
 import { api, fresh, owner } from "../../test/support.ts"
 import { WIDE_MODEL } from "../../test/plugins/m3.ts"
 import type { Home } from "../../test/worker.ts"

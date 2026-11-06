@@ -10,8 +10,8 @@ The coordinator gets this tool surface. Threads get a narrower version (no `dele
 
 | Tool | Input | Implementation on pi |
 | --- | --- | --- |
-| `capabilities` | - | current model, short model list, thread limits, enabled plugins |
-| `delegate_task` | `{task, title, role?, target?:{model}, mode:"async"\|"wait", timeoutMs≤8000, clientRequestId}` | one `api.commit`: background Anchor task + task-owned child conv + `xin.thread` doc + workspace threadIds. Then submit the brief with requestId `delegate:…`. In `wait` mode, wait on the child's submission with a deadline |
+| `capabilities` | - | current model, short model list, thread limits, plugin row states |
+| `delegate_task` | `{task, title, role?, target?:{model}, mode:"async"\|"wait", timeoutMs≤8000, clientRequestId}` | one commit: background Anchor task + task-owned child conv + `xin.thread` doc + workspace threadIds. Then submit the brief with requestId `delegate:…`. In `wait` mode, wait on the child's submission with a deadline |
 | `task_status` | `{threadId}` | reads `xin.thread` + last assistant text |
 | `task_cancel` | `{threadId?, jobId?, reason?}` (exactly one id) | `conversation.abort({background:true})` on the child, status → cancelled; a `jobId` aborts that job task |
 | `thread_send` | `{threadId, text, mode:"steer"\|"queue"}` | child `submit` with that `whenBusy`. On a resolved thread it starts a new run in the same conversation |

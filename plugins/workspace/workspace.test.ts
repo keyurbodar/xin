@@ -1,28 +1,12 @@
 import { runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { ConversationId } from "@earendil-works/pi-durable"
+import type { ConversationId, Harness, Tx } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
-import { connect, fresh, owner } from "../../test/support.ts"
+import { cmd, connect, fresh, owner } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import type { ProjectId, ThreadId } from "../../src/ids.ts"
-import { addThread, projectOf, ThreadDoc, transition, type ThreadEvent, type ThreadStatus } from "./threaddoc.ts"
+import { ThreadDoc, transition, type ThreadEvent, type ThreadStatus } from "../../src/contracts/threaddoc.ts"
 import { RequestsDoc, WorkspaceDoc } from "./workspace.ts"
-
-type Ack = {
-  readonly ok: boolean
-  readonly result?: unknown
-  readonly error?: { readonly code: string; readonly message: string }
-}
-
-const cmd = (stub: DurableObjectStub<Home>, id: string, op: string, args?: unknown): Promise<Ack> =>
-  stub
-    .fetch(
-      new Request("https://xin.test/v1/cmd", {
-        method: "POST",
-        body: JSON.stringify({ id, op, ...(args === undefined ? {} : { args }) }),
-      }),
-    )
-    .then((reply) => reply.json<Ack>())
 
 type Summary = {
   readonly id: string
@@ -49,6 +33,34 @@ const conversation = (home: Home): Promise<ConversationId> =>
   home.harness
     .createConversation({ ownership: { kind: "ownerless" } }, BACKGROUND_CONTEXT)
     .then((created) => created.id)
+
+type NewThread = {
+  readonly projectId: ProjectId
+  readonly threadId: ThreadId
+  readonly title: string
+  readonly status?: ThreadStatus
+}
+
+const addThread = async (tx: Tx, thread: NewThread): Promise<void> => {
+  const workspace = await tx.doc(WorkspaceDoc)
+  const project = workspace.projects[thread.projectId]
+  if (project === undefined) throw new Error(`no project ${thread.projectId}`)
+  const doc = await tx.doc(ThreadDoc, thread.threadId)
+  const now = Date.now()
+  Object.assign(doc, {
+    projectId: thread.projectId,
+    title: thread.title,
+    role: "thread",
+    status: thread.status ?? "working",
+    run: 1,
+    beatAt: now,
+    deadlineAt: now + project.settings.deadlineMs,
+  })
+  if (!project.threadIds.includes(thread.threadId)) project.threadIds.push(thread.threadId)
+}
+
+const projectOf = async (harness: Harness, threadId: ThreadId): Promise<string | undefined> =>
+  (await harness.snapshot(ThreadDoc, threadId, BACKGROUND_CONTEXT))?.projectId
 
 const statuses: readonly ThreadStatus[] = ["working", "waiting", "completed", "failed", "cancelled"]
 const events: readonly ThreadEvent[] = ["done", "ask_user", "unanswered", "abort", "answer", "thread_send"]

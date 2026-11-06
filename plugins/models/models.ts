@@ -28,7 +28,13 @@ import {
   type ModelRef,
 } from "@earendil-works/pi-durable"
 import { arr, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
-import { ThinkingSchema, type ModelMatch, type ModelsService } from "../../src/contracts/models.ts"
+import {
+  ModelRefSchema,
+  ThinkingSchema,
+  type ModelDefaults,
+  type ModelMatch,
+  type ModelsService,
+} from "../../src/contracts/models.ts"
 import type { CommandId } from "../../src/ids.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, type Actor, type Op, OpRejected } from "../../src/ops.ts"
@@ -37,27 +43,6 @@ import { Sealer, SealedSchema } from "../../src/seal.ts"
 const MAX_LISTED = 40
 const MAX_RECENT = 8
 
-export type Role = "chat" | "thread" | "utility"
-export type ModelDefaults = { readonly [K in Role]?: ModelRef }
-export type ResolvedModel =
-  | { readonly kind: "model"; readonly model: ModelRef; readonly source: "conversation" | "project" | "owner" }
-  | { readonly kind: "none" }
-
-export function resolveModel(input: {
-  readonly role: Role
-  readonly conversation?: ModelRef
-  readonly project?: ModelDefaults
-  readonly owner?: ModelDefaults
-}): ResolvedModel {
-  if (input.conversation !== undefined) return { kind: "model", model: input.conversation, source: "conversation" }
-  const project = input.project?.[input.role]
-  if (project !== undefined) return { kind: "model", model: project, source: "project" }
-  const owner = input.owner?.[input.role]
-  if (owner !== undefined) return { kind: "model", model: owner, source: "owner" }
-  return { kind: "none" }
-}
-
-export const ModelRefSchema = obj({ provider: str({ minLength: 1 }), modelId: str({ minLength: 1 }) })
 const RoleSchema = oneOf(["chat", "thread", "utility"] as const)
 const CustomSchema = obj({ baseUrl: str({ minLength: 1 }), key: str({ minLength: 1 }), api: str({ minLength: 1 }) })
 
@@ -199,7 +184,7 @@ type Registry = {
   sync(): Promise<void>
 }
 
-function createRegistry(deps: ModuleDeps): Registry {
+function createRegistry(deps: ModuleDeps<never>): Registry {
   const builtins = new Map(builtinProviders().map((provider) => [provider.id, provider] as const))
   const extra = new Map(deps.providers.map((provider) => [provider.id, provider] as const))
   const custom = new Map<string, Endpoint>()
@@ -323,6 +308,23 @@ export async function ownerDefaults(db: SqliteDatabase): Promise<ModelDefaults> 
   return (await readSettings(db)).defaults
 }
 
+async function credentialSecrets(db: SqliteDatabase, store: SealedCredentialStore): Promise<readonly string[]> {
+  const rows = await db.all<{ provider: string }>("SELECT provider FROM credentials ORDER BY provider")
+  const found: string[] = []
+  for (const row of rows) {
+    const entry = await store.entry(row.provider).catch(() => undefined)
+    if (entry === undefined) continue
+    const credential = entry.credential
+    if (credential.type === "api_key") {
+      if (credential.key !== undefined) found.push(credential.key)
+      found.push(...Object.values(credential.env ?? {}))
+    } else {
+      found.push(credential.refresh, credential.access)
+    }
+  }
+  return found
+}
+
 async function remember(db: SqliteDatabase, model: ModelRef): Promise<void> {
   const settings = await readSettings(db)
   const recent = [model, ...settings.recent.filter((entry) => !same(entry, model))].slice(0, MAX_RECENT)
@@ -405,7 +407,7 @@ function ranked(
 // A tool call mints its own command id, so a rerun after a restart reuses the receipt.
 const commandId = (value: string): CommandId => value as CommandId
 
-export function create(deps: ModuleDeps): HostModule {
+export function create(deps: ModuleDeps<never>): HostModule {
   const registry = createRegistry(deps)
   const store = registry.store
 
@@ -513,6 +515,8 @@ export function create(deps: ModuleDeps): HostModule {
   })
 
   const service: ModelsService = {
+    ownerDefaults: () => ownerDefaults(deps.db),
+    credentialSecrets: () => credentialSecrets(deps.db, store),
     search: async (query) => {
       const catalog = await available(registry)
       return { catalog, matches: search(catalog, query) }

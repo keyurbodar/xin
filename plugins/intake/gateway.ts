@@ -3,11 +3,23 @@ import { isJsonValue, type JsonValue } from "@earendil-works/chord"
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import { type Conversation, LiveDoc } from "@earendil-works/pi-durable"
 import { int, obj, opt, str } from "@earendil-works/pi-schema"
-import { type Batch, decide, type InboundKind, probe } from "./dispatch.ts"
+import {
+  type InboundBody,
+  type InboundContent,
+  type InboundDraft,
+  type InboundKind,
+  type InboundRecord,
+  type IntakeService,
+  parseInboundBody,
+} from "../../src/contracts/intake.ts"
+import type { Notification } from "../../src/contracts/push.ts"
+import { type Batch, decide, probe } from "./dispatch.ts"
 import type { BatchId, ConversationId } from "../../src/ids.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp } from "../../src/ops.ts"
-import { notifier, type Notifier, type Notification } from "../push/push.ts"
+
+export type { InboundBody, InboundContent, InboundDraft, InboundKind }
+export { parseInboundBody }
 
 const context = BACKGROUND_CONTEXT
 const DEBOUNCE_MS = 2_000
@@ -29,32 +41,23 @@ type InboundRow = {
   readonly batch_id: string | null
 }
 
-export type InboundContent =
-  | { readonly kind: "user"; readonly text: string }
-  | {
-      readonly kind: "report" | "question" | "job"
-      readonly threadId: string
-      readonly title: string
-      readonly status: string
-      readonly text: string
-    }
-
-export type InboundDraft = {
-  readonly target: ConversationId
-  readonly commandId: string
-  readonly clientTs?: number
-} & InboundContent
-
 type BatchEntryRow = {
   readonly id: number
   readonly kind: InboundKind
   readonly body: JsonValue
   readonly clientTs: number
+  readonly batchId?: string
 }
 
-export function create(deps: ModuleDeps): HostModule {
-  const push = notifier(deps)
+export function create(deps: ModuleDeps<never>): HostModule {
+  const replay: InboundRow[] = []
+  const service: IntakeService = {
+    enqueue: (draft) => enqueue(deps.db, draft),
+    withdraw: (commandId) => withdraw(deps, commandId),
+    batch: (batchId) => batchRows(deps.db, batchId),
+  }
   return {
+    provides: { intake: service },
     ops: [
       defineOp({
         name: "message.send",
@@ -85,14 +88,7 @@ export function create(deps: ModuleDeps): HostModule {
         name: "message.withdraw",
         args: obj({ commandId: str({ minLength: 1 }) }),
         actors: ["owner"],
-        run: async (_api, args) => {
-          const withdrawn = await deps.db.runCounted(
-            "DELETE FROM inbound WHERE command_id = ? AND status = 'pending'",
-            args.commandId,
-          )
-          if (withdrawn > 0) await deps.arm()
-          return { withdrawn: withdrawn > 0 }
-        },
+        run: async (_api, args) => ({ withdrawn: await service.withdraw(args.commandId) }),
       }),
       defineOp({
         name: "conv.stop",
@@ -108,16 +104,19 @@ export function create(deps: ModuleDeps): HostModule {
     start: async () => {
       const now = Date.now()
       await deps.db.run("DELETE FROM inbound WHERE status = 'done' AND fire_at < ?", now - RETENTION_MS)
-      await recover(deps, push)
-      await fire(deps, now, push)
+      replay.push(...(await recover(deps)))
     },
     due: async () => {
+      if (replay.length > 0) return Date.now()
       const row = await deps.db.get<{ at: number | null }>(
         "SELECT MIN(fire_at) AS at FROM inbound WHERE status = 'pending'",
       )
       return row?.at ?? undefined
     },
-    fire: (now) => fire(deps, now, push),
+    fire: async (now) => {
+      if (replay.length > 0) await announce(deps.services, replay.splice(0))
+      await fire(deps, now)
+    },
     typing: async (conversation, on) => {
       if (!on) return
       const now = Date.now()
@@ -159,7 +158,21 @@ export async function enqueue(db: SqliteDatabase, draft: InboundDraft, now = Dat
   return true
 }
 
-async function recover(deps: ModuleDeps, push: Notifier): Promise<void> {
+async function withdraw(deps: ModuleDeps<never>, commandId: string): Promise<boolean> {
+  const withdrawn = await deps.db.runCounted(
+    "DELETE FROM inbound WHERE command_id = ? AND status = 'pending'",
+    commandId,
+  )
+  if (withdrawn > 0) await deps.arm()
+  return withdrawn > 0
+}
+
+async function batchRows(db: SqliteDatabase, batchId: string): Promise<readonly InboundRecord[]> {
+  const rows = await db.all<InboundRow>("SELECT * FROM inbound WHERE batch_id = ? ORDER BY client_ts, id", batchId)
+  return rows.map(recordOf)
+}
+
+async function recover(deps: ModuleDeps<never>): Promise<readonly InboundRow[]> {
   const claimed = await deps.db.all<InboundRow>(
     "SELECT * FROM inbound WHERE status = 'claimed' AND batch_id IS NOT NULL ORDER BY target, client_ts, id",
   )
@@ -170,6 +183,7 @@ async function recover(deps: ModuleDeps, push: Notifier): Promise<void> {
     if (rows === undefined) batches.set(row.batch_id, [row])
     else rows.push(row)
   }
+  const recovered: InboundRow[] = []
   for (const [batchId, rows] of batches) {
     const target = rows[0]?.target
     const conversation =
@@ -179,19 +193,20 @@ async function recover(deps: ModuleDeps, push: Notifier): Promise<void> {
       continue
     }
     await submit(deps, conversation, batchId as BatchId, rows)
-    await announce(push, rows)
+    recovered.push(...rows)
   }
+  return recovered
 }
 
-async function fire(deps: ModuleDeps, now: number, push: Notifier): Promise<void> {
+async function fire(deps: ModuleDeps<never>, now: number): Promise<void> {
   const targets = await deps.db.all<{ target: number }>(
     "SELECT DISTINCT target FROM inbound WHERE status = 'pending' AND fire_at <= ?",
     now,
   )
-  for (const { target } of targets) await dispatch(deps, target, now, push)
+  for (const { target } of targets) await dispatch(deps, target, now)
 }
 
-async function dispatch(deps: ModuleDeps, target: number, now: number, push: Notifier): Promise<void> {
+async function dispatch(deps: ModuleDeps<never>, target: number, now: number): Promise<void> {
   const batchId = crypto.randomUUID() as BatchId
   const rows = await deps.db.all<InboundRow>(
     "UPDATE inbound SET status = 'claimed', batch_id = ? WHERE target = ? AND status = 'pending' AND fire_at <= ? RETURNING *",
@@ -215,11 +230,11 @@ async function dispatch(deps: ModuleDeps, target: number, now: number, push: Not
   switch (mode.kind) {
     case "start":
       await submit(deps, conversation, batchId, pending)
-      await announce(push, pending)
+      await announce(deps.services, pending)
       return
     case "steer":
       await submit(deps, conversation, batchId, pending, "steer")
-      await announce(push, pending)
+      await announce(deps.services, pending)
       return
     case "restart":
       await deps.db.run(
@@ -230,7 +245,7 @@ async function dispatch(deps: ModuleDeps, target: number, now: number, push: Not
       )
       await conversation.abort(context)
       await submit(deps, conversation, batchId, ordered([...prior, ...pending]))
-      await announce(push, pending)
+      await announce(deps.services, pending)
       return
     case "stop":
       await deps.db.run("UPDATE inbound SET status = 'done' WHERE target = ? AND status = 'claimed'", target)
@@ -244,7 +259,9 @@ async function dispatch(deps: ModuleDeps, target: number, now: number, push: Not
   }
 }
 
-async function announce(push: Notifier, rows: readonly InboundRow[]): Promise<void> {
+async function announce(services: ModuleDeps<never>["services"], rows: readonly InboundRow[]): Promise<void> {
+  const push = services.get("push")
+  if (push === undefined) return
   for (const row of rows) {
     const notification = notificationOf(row)
     if (notification !== undefined) await push.notify(notification)
@@ -258,7 +275,7 @@ function notificationOf(row: InboundRow): Notification | undefined {
 }
 
 async function submit(
-  deps: ModuleDeps,
+  deps: ModuleDeps<never>,
   conversation: Conversation,
   batchId: BatchId,
   rows: readonly InboundRow[],
@@ -284,14 +301,14 @@ function markDone(db: SqliteDatabase, batchId: BatchId): Promise<void> {
   return db.run("UPDATE inbound SET status = 'done' WHERE batch_id = ? AND status = 'claimed'", batchId)
 }
 
-async function resolve(deps: ModuleDeps, conv: number | undefined): Promise<ConversationId> {
+async function resolve(deps: ModuleDeps<never>, conv: number | undefined): Promise<ConversationId> {
   if (conv === undefined) return (await deps.harness().root(context)).id
   const conversation = await deps.harness().conversation(conv as ConversationId, context)
   if (conversation === undefined) throw new Error(`no conversation ${conv}`)
   return conversation.id
 }
 
-async function conversationOf(deps: ModuleDeps, conv: number | undefined): Promise<Conversation> {
+async function conversationOf(deps: ModuleDeps<never>, conv: number | undefined): Promise<Conversation> {
   if (conv === undefined) return deps.harness().root(context)
   const conversation = await deps.harness().conversation(conv as ConversationId, context)
   if (conversation === undefined) throw new Error(`no conversation ${conv}`)
@@ -302,6 +319,21 @@ function contentOf(draft: InboundDraft): InboundContent {
   return draft.kind === "user"
     ? { kind: "user", text: draft.text }
     : { kind: draft.kind, threadId: draft.threadId, title: draft.title, status: draft.status, text: draft.text }
+}
+
+function recordOf(row: InboundRow): InboundRecord {
+  const body = bodyOf(row)
+  return {
+    id: row.id,
+    target: row.target as ConversationId,
+    kind: row.kind,
+    commandId: row.command_id,
+    clientTs: row.client_ts,
+    content:
+      row.kind === "user"
+        ? { kind: "user", text: body.text }
+        : { kind: row.kind, threadId: body.threadId, title: body.title, status: body.status, text: body.text },
+  }
 }
 
 function ordered(rows: readonly InboundRow[]): InboundRow[] {
@@ -328,38 +360,21 @@ function renderRow(row: InboundRow): string {
 
 function entryRow(row: InboundRow): BatchEntryRow {
   const value: unknown = JSON.parse(row.body)
-  return { id: row.id, kind: row.kind, body: isJsonValue(value) ? value : row.body, clientTs: row.client_ts }
+  return {
+    id: row.id,
+    kind: row.kind,
+    body: isJsonValue(value) ? value : row.body,
+    clientTs: row.client_ts,
+    ...(row.batch_id === null ? {} : { batchId: row.batch_id }),
+  }
 }
 
 function textOf(row: InboundRow): string {
   return bodyOf(row).text
 }
 
-export type InboundBody = {
-  readonly text: string
-  readonly threadId: string
-  readonly title: string
-  readonly status: string
-}
-
-export function parseInboundBody(body: string): InboundBody {
-  const value: unknown = JSON.parse(body)
-  return {
-    text: stringField(value, "text") ?? body,
-    threadId: stringField(value, "threadId") ?? "",
-    title: stringField(value, "title") ?? "",
-    status: stringField(value, "status") ?? "",
-  }
-}
-
 function bodyOf(row: InboundRow): InboundBody {
   return parseInboundBody(row.body)
-}
-
-function stringField(value: unknown, key: string): string | undefined {
-  if (typeof value !== "object" || value === null) return undefined
-  const found: unknown = Reflect.get(value, key)
-  return typeof found === "string" ? found : undefined
 }
 
 function escape(text: string): string {

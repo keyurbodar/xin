@@ -4,32 +4,17 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { LiveDoc } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { M5_MODEL } from "../../test/plugins/m5.ts"
-import { eventually, connect, fresh, owner } from "../../test/support.ts"
+import { cmd, connect, eventually, fresh, owner } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
-import { ThreadDoc } from "../workspace/threaddoc.ts"
-import { WorkspaceDoc } from "../workspace/workspace.ts"
+import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
+import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
 type Stub = ReturnType<typeof fresh>
-type Ack = {
-  readonly ok: boolean
-  readonly result?: unknown
-  readonly error?: { readonly code: string; readonly message: string }
-}
 type ThreadRow = { readonly id: number; readonly title: string; readonly status: string }
 type Batch = { readonly rows: readonly unknown[]; readonly text: string }
 type ReportRow = { readonly command_id: string; readonly status: string }
-
-const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Promise<Ack> =>
-  stub
-    .fetch(
-      new Request("https://xin.test/v1/cmd", {
-        method: "POST",
-        body: JSON.stringify({ id, op, args }),
-      }),
-    )
-    .then((reply) => reply.json<Ack>())
 
 async function makeProject(stub: Stub, slug: string): Promise<{ id: string; coordinatorId: number }> {
   const created = await cmd(stub, `create-${slug}`, "project.create", { slug, name: slug })

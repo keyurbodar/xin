@@ -1,10 +1,10 @@
 import { runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai"
+import { fauxAssistantMessage, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai"
 import { LATEST_PROTOCOL_VERSION } from "@earendil-works/pi-mcp"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { MCP_MODEL, requests, script } from "../../test/plugins/mcp.ts"
-import { fresh } from "../../test/support.ts"
+import { MCP_MODEL, script } from "../../test/plugins/mcp.ts"
+import { cmd, fresh, recordOffers, rowState, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 const HEADERS = { "content-type": "application/json", "mcp-session-id": "fake-session" }
@@ -54,51 +54,14 @@ const serve = (): void => {
     if (!isRecord(body)) return json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "bad body" } })
     const method = typeof body.method === "string" ? body.method : ""
     if (body.id === undefined) return new Response(null, { status: 202 })
-    let reply: unknown
+    let answer: unknown
     try {
-      reply = { result: respond(method, isRecord(body.params) ? body.params : {}) }
+      answer = { result: respond(method, isRecord(body.params) ? body.params : {}) }
     } catch (error) {
-      reply = { error: { code: -32601, message: error instanceof Error ? error.message : String(error) } }
+      answer = { error: { code: -32601, message: error instanceof Error ? error.message : String(error) } }
     }
-    return json({ jsonrpc: "2.0", id: body.id, ...(isRecord(reply) ? reply : {}) })
+    return json({ jsonrpc: "2.0", id: body.id, ...(isRecord(answer) ? answer : {}) })
   })
-}
-
-type Ack = {
-  readonly ok: boolean
-  readonly result?: unknown
-  readonly error?: { readonly code: string; readonly message: string }
-}
-
-const cmd = (stub: DurableObjectStub<Home>, id: string, op: string, args: unknown = {}) =>
-  stub
-    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
-    .then((reply) => reply.json<Ack>())
-
-async function turn(stub: DurableObjectStub<Home>, id: string, text: string): Promise<void> {
-  await runInDurableObject(stub, async (home: Home) => {
-    await home.chooseModel(MCP_MODEL)
-    await home.submit(text, id)
-    await home.harness.waitForIdle(BACKGROUND_CONTEXT)
-  })
-}
-
-const offered = (index: number): readonly string[] => {
-  const request = requests[index]
-  if (request === undefined) throw new Error(`no request ${index} recorded`)
-  return getCurrentSystemMessage(request.messages)?.toolsAdded?.map((tool) => tool.name) ?? []
-}
-
-const field = (value: unknown, key: string): unknown =>
-  typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
-
-const rowState = async (stub: DurableObjectStub<Home>, id: string): Promise<unknown> => {
-  const listed = await cmd(stub, `list-${id}`, "plugin.list")
-  if (!Array.isArray(listed.result)) throw new Error("plugin.list did not return rows")
-  return field(
-    listed.result.find((row) => field(row, "id") === id),
-    "state",
-  )
 }
 
 const lastToolResult = async (stub: DurableObjectStub<Home>): Promise<{ isError: boolean; text: string } | undefined> =>
@@ -115,12 +78,18 @@ const lastToolResult = async (stub: DurableObjectStub<Home>): Promise<{ isError:
     return found
   })
 
+const callTool =
+  (name: string, args: Record<string, string>): FauxResponseFactory =>
+  () =>
+    fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: "toolUse" })
+
 afterEach(() => vi.restoreAllMocks())
 
 describe("tool-mcp row", () => {
   it("offers the mcp tools only while tool-mcp is active, and leaves the mcp service running", async () => {
     const stub = fresh()
     serve()
+    const offers = recordOffers()
 
     expect(await cmd(stub, "row-add", "mcp.add", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
       ok: true,
@@ -128,15 +97,15 @@ describe("tool-mcp row", () => {
     })
 
     script([
-      fauxAssistantMessage([fauxToolCall("tool_search", { query: "echo" })], { stopReason: "toolUse" }),
-      fauxAssistantMessage([fauxToolCall("mcp__demo__echo", { text: "hi" })], { stopReason: "toolUse" }),
-      fauxAssistantMessage("done"),
+      offers.wrap(callTool("tool_search", { query: "echo" })),
+      offers.wrap(callTool("mcp__demo__echo", { text: "hi" })),
+      offers.step("done"),
     ])
-    await turn(stub, "row-turn-1", "say hi through mcp")
+    await turn(stub, "row-turn-1", { text: "say hi through mcp", model: MCP_MODEL })
 
-    expect(offered(0)).toContain("tool_search")
-    expect(offered(0)).not.toContain("mcp__demo__echo")
-    expect(offered(1)).toContain("mcp__demo__echo")
+    expect(offers.at(0).tools).toContain("tool_search")
+    expect(offers.at(0).tools).not.toContain("mcp__demo__echo")
+    expect(offers.at(1).tools).toContain("mcp__demo__echo")
     expect(await lastToolResult(stub)).toEqual({ isError: false, text: "echo:hi" })
 
     expect(await cmd(stub, "row-disable", "plugin.enable", { id: "tool-mcp", enabled: false })).toMatchObject({
@@ -149,26 +118,28 @@ describe("tool-mcp row", () => {
       expect.objectContaining({ name: "demo", tools: 1 }),
     ])
 
-    script([fauxAssistantMessage("no tools for me")])
-    await turn(stub, "row-turn-2", "what can you do now")
+    offers.seen.length = 0
+    script([offers.step("no tools for me")])
+    await turn(stub, "row-turn-2", { text: "what can you do now", model: MCP_MODEL })
 
-    expect(offered(0)).not.toContain("tool_search")
-    expect(offered(0)).not.toContain("mcp__demo__echo")
+    expect(offers.at(0).tools).not.toContain("tool_search")
+    expect(offers.at(0).tools).not.toContain("mcp__demo__echo")
 
     expect(await cmd(stub, "row-enable", "plugin.enable", { id: "tool-mcp", enabled: true })).toMatchObject({
       ok: true,
       result: { application: "applied", row: { state: { kind: "active" } } },
     })
 
+    offers.seen.length = 0
     script([
-      fauxAssistantMessage([fauxToolCall("tool_search", { query: "echo" })], { stopReason: "toolUse" }),
-      fauxAssistantMessage([fauxToolCall("mcp__demo__echo", { text: "again" })], { stopReason: "toolUse" }),
-      fauxAssistantMessage("done"),
+      offers.wrap(callTool("tool_search", { query: "echo" })),
+      offers.wrap(callTool("mcp__demo__echo", { text: "again" })),
+      offers.step("done"),
     ])
-    await turn(stub, "row-turn-3", "say hi again")
+    await turn(stub, "row-turn-3", { text: "say hi again", model: MCP_MODEL })
 
-    expect(offered(0)).toContain("tool_search")
-    expect(offered(1)).toContain("mcp__demo__echo")
+    expect(offers.at(0).tools).toContain("tool_search")
+    expect(offers.at(1).tools).toContain("mcp__demo__echo")
     expect(await lastToolResult(stub)).toEqual({ isError: false, text: "echo:again" })
   }, 30_000)
 })

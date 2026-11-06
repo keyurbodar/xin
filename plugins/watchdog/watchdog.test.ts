@@ -3,27 +3,17 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { type ConversationId, LiveDoc } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { M6_MODEL } from "../../test/plugins/m6.ts"
-import { eventually, fresh } from "../../test/support.ts"
+import { cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { STALL_MS, WATCHDOG_KIND } from "./watchdog.ts"
-import { ThreadDoc } from "../workspace/threaddoc.ts"
-import { WorkspaceDoc } from "../workspace/workspace.ts"
-import { JobsDoc } from "../jobs/jobs.ts"
+import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
+import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import { JobsDoc } from "../../src/contracts/jobs.ts"
 
 const context = BACKGROUND_CONTEXT
 
 type Stub = ReturnType<typeof fresh>
-type Ack = {
-  readonly ok: boolean
-  readonly result?: unknown
-  readonly error?: { readonly code: string; readonly message: string }
-}
 type ThreadRow = { readonly id: number; readonly title: string; readonly status: string }
-
-const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Promise<Ack> =>
-  stub
-    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
-    .then((reply) => reply.json<Ack>())
 
 async function makeProject(stub: Stub, slug: string): Promise<{ id: string; coordinatorId: number }> {
   const created = await cmd(stub, `create-${slug}`, "project.create", { slug, name: slug })

@@ -3,7 +3,7 @@ import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { threadService } from "./service.ts"
 import { lifecycle } from "./threads.ts"
 
-export function create(deps: ModuleDeps): HostModule {
+export function create(deps: ModuleDeps<"pi" | "intake" | "watchdog" | "models">): HostModule {
   const threads = lifecycle(deps)
   return {
     provides: { threads: threadService(deps, threads) },
