@@ -1,14 +1,12 @@
-import {
-  type FauxResponseStep,
-  createModels,
-  fauxAssistantMessage,
-  fauxProvider,
-  fauxToolCall,
-  type Models,
-} from "@earendil-works/pi-ai"
+import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { defineDoc, defineExtension, defineTool, type ModelRef } from "@earendil-works/pi-durable"
+import type { Provider } from "../src/module.ts"
 import { BUNDLED } from "../src/plugins/bundled.ts"
+import * as m2 from "./plugins/m2.ts"
+import * as m3 from "./plugins/m3.ts"
+import * as m4 from "./plugins/m4.ts"
+import * as m8 from "./plugins/m8.ts"
 import { definePlugin, type Plugin } from "../src/plugins/host.ts"
 import { defineOp } from "../src/ops.ts"
 import { int, obj, opt } from "@earendil-works/pi-schema"
@@ -78,16 +76,23 @@ export type TestEnv = Omit<Env, "HOME"> & { readonly HOME: DurableObjectNamespac
 export class Home extends ProductHome {
   readonly hanging = Promise.withResolvers<void>()
 
-  override models(): Models {
+  override providers(): readonly Provider[] {
     const faux = fauxProvider()
     faux.setResponses(Array.from({ length: 2000 }, () => this.#step()))
-    const models = createModels()
-    models.setProvider(faux.provider)
-    return models
+    return [faux.provider, ...m2.providers, ...m3.providers, ...m4.providers, ...m8.providers]
   }
 
   override plugins(): readonly Plugin[] {
-    return [...BUNDLED, testPlugin, brokenPlugin, orphanPlugin]
+    return [
+      ...BUNDLED,
+      testPlugin,
+      brokenPlugin,
+      orphanPlugin,
+      ...m2.plugins,
+      ...m3.plugins,
+      ...m4.plugins,
+      ...m8.plugins,
+    ]
   }
 
   async submit(text: string, requestId: string): Promise<void> {

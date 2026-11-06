@@ -1,6 +1,7 @@
 import type { Env } from "./env.ts"
 
 export { Home } from "./host.ts"
+import { upload } from "./upload.ts"
 
 const encoder = new TextEncoder()
 
@@ -26,6 +27,8 @@ export default {
   async fetch(request, env): Promise<Response> {
     if (new URL(request.url).pathname === "/health") return new Response("ok")
     if (!authorized(request, env)) return new Response("unauthorized", { status: 401 })
+    const uploaded = await upload()
+    if (uploaded !== undefined) return uploaded
     const forwarded = new Request(request)
     const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((part) => part.trim())
     if (protocols.includes("xin")) forwarded.headers.set("x-xin-protocol", "xin")

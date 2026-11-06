@@ -58,6 +58,7 @@ export type SocketDeps = {
   readonly harness: Harness
   readonly commands: Commands
   readonly beforeWork: () => Promise<void>
+  readonly typing: (conversation: ConversationId, on: boolean) => Promise<void>
   readonly home: () => Promise<JsonObject>
 }
 
@@ -105,8 +106,11 @@ export class Sockets {
         return this.#subscribe(ws, frame.stream)
       case "unsub":
         return this.#unsubscribe(ws, frame.stream)
-      case "typing":
+      case "typing": {
+        const stream = await this.#resolve(`conv:${frame.conv}`)
+        if (stream?.kind === "conv") await this.deps.typing(stream.id, frame.on)
         return
+      }
       default: {
         const _exhaustive: never = frame
         throw new Error(`unhandled frame ${JSON.stringify(_exhaustive)}`)
