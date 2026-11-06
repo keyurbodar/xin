@@ -4,6 +4,7 @@ import type { Conversation, ConversationId, EntryRecord } from "@earendil-works/
 import { describe, expect, it } from "vitest"
 import { eventually, fresh } from "../test/support.ts"
 import { FAUX_MODEL, type Home } from "../test/worker.ts"
+import { HEARTBEAT_MS } from "./host.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -23,8 +24,13 @@ const texts = (entries: readonly EntryRecord[], role: "user" | "assistant") =>
     ),
   )
 
+const heartbeatCleared = async (_home: Home, state: DurableObjectState): Promise<boolean> => {
+  const alarm = await state.storage.getAlarm()
+  return alarm === null || alarm > Date.now() + HEARTBEAT_MS
+}
+
 describe("Home host loop", () => {
-  it("runs migrations once and keeps the fallback alarm only while work can run", async () => {
+  it("runs migrations once and keeps the heartbeat alarm only while work can run", async () => {
     const stub = fresh()
     await runInDurableObject(stub, async (home: Home) => {
       const rows = await home.db.all<{ name: string }>(
@@ -33,7 +39,7 @@ describe("Home host loop", () => {
       expect(rows).toEqual([{ name: "kv" }])
     })
     await evictDurableObject(stub)
-    await eventually(stub, async (_home, state) => (await state.storage.getAlarm()) === null)
+    await eventually(stub, heartbeatCleared)
   })
 
   it("answers a turn cut off by an eviction exactly once, after the alarm", async () => {
@@ -57,7 +63,7 @@ describe("Home host loop", () => {
     const entries = await runInDurableObject(stub, async (home: Home) => history(await home.root()))
     expect(texts(entries, "user")).toEqual(["hello"])
     expect(texts(entries, "assistant")).toEqual(["recovered"])
-    await eventually(stub, async (_home, state) => (await state.storage.getAlarm()) === null)
+    await eventually(stub, heartbeatCleared)
   })
 
   it("runs 10 conversations x 30 subrequesting tool calls inside one invocation", async () => {

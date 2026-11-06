@@ -40,7 +40,7 @@ sequenceDiagram
   H->>H: arm again
 
   Note over H: idle owner has no live tasks and no debounce
-  Note over H: so no alarm is armed, it hibernates, sockets stay open, cost 0
+  Note over H: so no heartbeat is armed, only far module dues (weekly sweep, daily Dreamer), it hibernates, cost 0
   Note over P: harness.closed on a storage error ends the Harness
   Note over P: ctx.abort, the next event reconstructs, commits stay atomic
 ```
@@ -88,7 +88,7 @@ arm(wake):
 
 `onWake` fires whenever pi's next-needed time changes (a sleep is created, work starts or ends), and it calls `arm()` again. The 60 s heartbeat runs only while `wake.active`: an eviction mid-run is noticed within 60 s and `resume()` continues from the last checkpoint. The only non-pi timer is the debounce (`inbound.fire_at`), folded into the same `min()`.
 
-An idle owner has no live tasks and no debounce, so no alarm is armed. It hibernates, its sockets stay open, and it costs $0. If a storage error ends the Harness, `harness.closed(failed)` runs: `ctx.abort()`, the next event reconstructs the instance, and commits stay atomic.
+An idle owner has no live tasks and no debounce, so no heartbeat is armed. The alarm then sits at the earliest far module `due()` (the weekly file sweep, the daily Dreamer pass, the next schedule slot), or is deleted when there is none. It hibernates, its sockets stay open, and it costs $0. If a storage error ends the Harness, `harness.closed(failed)` runs: `ctx.abort()`, the next event reconstructs the instance, and commits stay atomic.
 
 The host is about 120 lines. Feature code lives in plugins, and the host never branches on a feature.
 

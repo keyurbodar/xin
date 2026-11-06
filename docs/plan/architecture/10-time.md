@@ -7,7 +7,7 @@ Read with: [01 Host](./01-host.md) for how every task deadline folds into `arm()
 ```text
 Schedule = pi background task "xin.schedule", input {id, rrule, tz, prompt, projectId}
   wait: runtime.sleepUntil(next(rrule, tz), {phase:"fire"})
-  fire: inbound kind=user (author "schedule") command_id "sched:id:slotIso" → coordinator of projectId
+  wait → fire: checkpoint the due window {count, latest, index} → send: inbound kind=job (threadId = schedule id, status "scheduled") command_id "sched:id:slotIso" → coordinator of projectId, else conv, else root
         → back to wait. Missed slots after downtime collapse into one fire with "(missed ×N)"   (hermes catch_up)
 ```
 

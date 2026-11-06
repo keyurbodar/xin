@@ -30,4 +30,4 @@ export default definePlugin((host) => ({
 | Per project | `configure({extensions})` on the project's conversations. This is native pi. |
 | Trust | Bundled plugins run in-isolate, so permissions are guardrails, not a sandbox. Third-party plugins (later) run in a Worker Loader isolate and reach the same facade over RPC. |
 
-**Core is plugins**: `core-orchestrator` (§8–12), `core-memory`, `core-files`, `core-persona` (sections, `no_reply`, `react`), `jobs`, `web`, `schedules`, `mcp`, `push`.
+**Core features are host modules, not plugins**: models, files, gateway, memory, push, skills, mcp, workspace, schedules and the orchestrator each implement `HostModule` (`src/module.ts`) and are listed in `MODULES` in `src/host.ts`. They get typed `ModuleDeps` (db, harness, arm, run) instead of the narrower plugin facade. Plugins are for optional, owner-enabled features that only need the facade (`fetch`, `secret`, `config`, `ops`).

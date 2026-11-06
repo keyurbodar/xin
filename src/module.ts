@@ -16,6 +16,7 @@ export type ModuleDeps = {
   arm(wake?: Wake): Promise<void>
   run(command: Command, actor: Actor): Promise<Outcome>
   publishHome(): Promise<void>
+  install(extension: Extension): void
 }
 
 export type Route = (request: Request) => Promise<Response>
