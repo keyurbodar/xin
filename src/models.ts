@@ -34,7 +34,7 @@ import { arr, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown 
 import type { CommandId } from "./ids.ts"
 import type { HostModule, ModuleDeps } from "./module.ts"
 import { defineOp, type Actor, type Op, OpRejected } from "./ops.ts"
-import { Sealer } from "./seal.ts"
+import { Sealer, SealedSchema } from "./seal.ts"
 
 const MAX_LISTED = 40
 const MAX_RECENT = 8
@@ -59,7 +59,7 @@ export function resolveModel(input: {
   return { kind: "none" }
 }
 
-const ModelRefSchema = obj({ provider: str({ minLength: 1 }), modelId: str({ minLength: 1 }) })
+export const ModelRefSchema = obj({ provider: str({ minLength: 1 }), modelId: str({ minLength: 1 }) })
 const ThinkingSchema = oneOf(["off", "low", "medium", "high"] as const)
 const RoleSchema = oneOf(["chat", "thread", "utility"] as const)
 const CustomSchema = obj({ baseUrl: str({ minLength: 1 }), key: str({ minLength: 1 }), api: str({ minLength: 1 }) })
@@ -77,7 +77,6 @@ const CredentialSchema = union([
 ])
 const EndpointSchema = obj({ baseUrl: str({ minLength: 1 }), api: str({ minLength: 1 }) })
 const StoredSchema = obj({ credential: CredentialSchema, endpoint: opt(EndpointSchema) })
-const SealedSchema = obj({ iv: str(), data: str() })
 const DefaultsSchema = obj({
   chat: opt(ModelRefSchema),
   thread: opt(ModelRefSchema),

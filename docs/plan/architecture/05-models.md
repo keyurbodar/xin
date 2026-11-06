@@ -23,6 +23,8 @@ flowchart TD
   H --> G
 ```
 
+A delegated thread resolves its model in this order: `delegate_task target.model`, the project's `thread` default, the owner's `thread` default, then the coordinator's current model as an explicit last fallback, then `none` (the tool returns `no_model`). The coordinator fallback keeps the common case — one model picked in the picker — working without configuring a thread default.
+
 ## The `set_model` tool
 
 ```text

@@ -316,21 +316,25 @@ function textOf(row: InboundRow): string {
   return bodyOf(row).text
 }
 
-type Body = {
+export type InboundBody = {
   readonly text: string
   readonly threadId: string
   readonly title: string
   readonly status: string
 }
 
-function bodyOf(row: InboundRow): Body {
-  const value: unknown = JSON.parse(row.body)
+export function parseInboundBody(body: string): InboundBody {
+  const value: unknown = JSON.parse(body)
   return {
-    text: stringField(value, "text") ?? row.body,
+    text: stringField(value, "text") ?? body,
     threadId: stringField(value, "threadId") ?? "",
     title: stringField(value, "title") ?? "",
     status: stringField(value, "status") ?? "",
   }
+}
+
+function bodyOf(row: InboundRow): InboundBody {
+  return parseInboundBody(row.body)
 }
 
 function stringField(value: unknown, key: string): string | undefined {

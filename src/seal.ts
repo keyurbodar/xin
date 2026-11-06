@@ -1,10 +1,13 @@
+import { obj, str, type Static } from "@earendil-works/pi-schema"
+
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
 const fromBase64 = (value: string) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0))
 const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
 
-export type Sealed = { readonly iv: string; readonly data: string }
+export const SealedSchema = obj({ iv: str(), data: str() })
+export type Sealed = Static<typeof SealedSchema>
 
 export class Sealer {
   readonly #key: Promise<CryptoKey>

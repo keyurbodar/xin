@@ -51,8 +51,11 @@ stateDiagram-v2
 ```
 
 - **Why an Anchor task**: a child owned by a background task is outside the coordinator's abort and idle boundary. If you stop the coordinator, threads keep going. To stop everything, use `abort({background:true})`. This is pi example 22.
-- **Result text** is the last assistant message of the final run. A failed run shows its provider error before any progress text (t3).
-- **Re-opening** a resolved thread with `thread_send` starts run N+1 in the same conversation, sets status back to `working`, and creates a new Reporter with key `report:th:N+1`.
+- **Result text** is the last assistant message of the final run, read from the thread conversation itself. A failed run shows its provider error before any progress text (t3).
+- **Re-opening** a resolved thread with `thread_send` starts run N+1 in the same conversation, sets status back to `working`, bumps `xin.thread.run`, and creates a new Reporter with key `report:th:N+1`. The Reporter's brief and both direct submits use one request key, `thread-send:th:sendKey`, so a replay after a crash places the input once.
+- **`thread.stop` only aborts** the thread's run, in the background. The Reporter is the single writer of a terminal status; the stop op never writes `cancelled` itself, so it cannot race the Reporter.
+- **`thread_read`** advances its cursor only past entries it returned. When one entry alone exceeds the bound, it returns a trimmed excerpt of that entry and advances past it, so the next read does not skip it.
+- **Scoping**: every thread tool and both thread ops resolve the caller's project first — the caller's project when it is that project's coordinator, or the project named by the caller's own `xin.thread` — and accept a thread only when it is listed in that project. A thread with another project's id reads as absent.
 - **Limits** (from owner settings, never hidden): live threads per project and per owner. Over the limit, `delegate_task` returns `limit_reached` with the list of live threads, and the coordinator tells you.
 
 You steering a thread directly in the UI = `op thread.send(steer)`. Same path the coordinator's `thread_send` uses.
