@@ -7,13 +7,67 @@ import {
   type Models,
 } from "@earendil-works/pi-ai"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import { defineExtension, defineTool, type Extension, type ModelRef } from "@earendil-works/pi-durable"
-import { obj } from "@earendil-works/pi-schema"
+import { defineDoc, defineExtension, defineTool, type ModelRef } from "@earendil-works/pi-durable"
+import { BUNDLED } from "../src/plugins/bundled.ts"
+import { definePlugin, type Plugin } from "../src/plugins/host.ts"
+import { defineOp } from "../src/ops.ts"
+import { int, obj, opt } from "@earendil-works/pi-schema"
 import { env } from "cloudflare:workers"
 import { Home as ProductHome } from "../src/host.ts"
 import type { Env } from "../src/env.ts"
+import type { PluginId } from "../src/ids.ts"
 
 export { default } from "../src/worker.ts"
+
+export const Counter = defineDoc<{ count: number }>({
+  kind: "test.counter",
+  version: 1,
+  scope: "session",
+  initial: () => ({ count: 0 }),
+  checkpointWhen: () => true,
+})
+
+const NONE = { net: [], memory: "none", files: "none" } as const
+
+const testPlugin = definePlugin(
+  { id: "test" as PluginId, version: "0.0.0", requires: [], provides: ["tool:ping"], permissions: NONE },
+  () => {
+    const ping = defineTool({
+      name: "ping",
+      description: "Fetch the echo service once.",
+      parameters: obj({}),
+      replay: "safe",
+      execute: async () => {
+        const reply = await env.ECHO.fetch("http://echo/")
+        return { output: [{ type: "text", text: await reply.text() }] }
+      },
+    })
+    const bump = defineOp({
+      name: "test.bump",
+      args: obj({ by: opt(int({ minimum: 1 })) }),
+      actors: ["owner"],
+      run: async ({ harness }, { by }) =>
+        harness.commit(async (tx) => {
+          const counter = await tx.doc(Counter)
+          counter.count += by ?? 1
+          return counter.count
+        }, BACKGROUND_CONTEXT),
+    })
+    return { extensions: [defineExtension({ name: "test.ping", tools: [ping] })], ops: [bump] }
+  },
+)
+
+const brokenPlugin = definePlugin(
+  { id: "broken" as PluginId, version: "0.0.0", requires: ["test"], provides: [], permissions: NONE },
+  () => {
+    throw new Error("setup exploded")
+  },
+)
+
+const orphanPlugin = definePlugin(
+  { id: "orphan" as PluginId, version: "0.0.0", requires: ["nothing-provides-this"], provides: [], permissions: NONE },
+  () => ({}),
+)
 
 export const FAUX_MODEL = { provider: "faux", modelId: "faux-1" } as const
 
@@ -32,19 +86,13 @@ export class Home extends ProductHome {
     return models
   }
 
-  override extensions(): readonly Extension[] {
-    const echo = env.ECHO
-    const ping = defineTool({
-      name: "ping",
-      description: "Fetch the echo service once.",
-      parameters: obj({}),
-      replay: "safe",
-      execute: async () => {
-        const reply = await echo.fetch("http://echo/")
-        return { output: [{ type: "text", text: await reply.text() }] }
-      },
-    })
-    return [defineExtension({ name: "test.ping", tools: [ping] })]
+  override plugins(): readonly Plugin[] {
+    return [...BUNDLED, testPlugin, brokenPlugin, orphanPlugin]
+  }
+
+  async submit(text: string, requestId: string): Promise<void> {
+    await this.arm({ ...this.harness.wake(), active: true })
+    await (await this.root()).submit({ type: "input", content: text, requestId }, BACKGROUND_CONTEXT)
   }
 
   async chooseModel(model: ModelRef): Promise<void> {

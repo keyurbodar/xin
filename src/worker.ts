@@ -26,6 +26,9 @@ export default {
   async fetch(request, env): Promise<Response> {
     if (new URL(request.url).pathname === "/health") return new Response("ok")
     if (!authorized(request, env)) return new Response("unauthorized", { status: 401 })
-    return env.HOME.get(env.HOME.idFromName("owner")).fetch(request)
+    const forwarded = new Request(request)
+    const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((part) => part.trim())
+    if (protocols.includes("xin")) forwarded.headers.set("x-xin-protocol", "xin")
+    return env.HOME.get(env.HOME.idFromName("owner")).fetch(forwarded)
   },
 } satisfies ExportedHandler<Env>

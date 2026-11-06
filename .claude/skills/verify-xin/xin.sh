@@ -32,6 +32,9 @@ case "${1:-}" in
     args=(-s -w '\nHTTP %{http_code}\n' -X "$method" -H "authorization: Bearer $TOKEN")
     [ -n "$body" ] && args+=(-H 'content-type: application/json' --data "$body")
     curl "${args[@]}" "$URL$path" ;;
+  ws)
+    shift
+    bun "$(dirname "$0")/ws.ts" "ws://127.0.0.1:$PORT/v1/socket" "$TOKEN" "$@" ;;
   stop)
     if [ -f "$RUN/pid" ]; then
       pid="$(cat "$RUN/pid")"
@@ -43,7 +46,7 @@ case "${1:-}" in
     rm -rf "$RUN/state"
     echo "stopped; evidence kept in $RUN/evidence" ;;
   *) cat <<'USAGE'
-xin.sh launch | doctor | call METHOD PATH [JSON] | stop
+xin.sh launch | doctor | call METHOD PATH [JSON] | ws FRAME_JSON... | stop
 env: XIN_PORT (8799), XIN_RUN (.verify), XIN_TOKEN (verify-owner-token)
 USAGE
      exit 2 ;;

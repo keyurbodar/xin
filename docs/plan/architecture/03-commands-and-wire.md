@@ -32,6 +32,8 @@ ops: message.send · message.withdraw · conv.configure(model, thinking) · conv
      request.respond · file.put/delete · memory.forget · plugin.enable/configure · credential.set
 ```
 
+Receipts store `ok` and deterministic rejections (`unknown_op`, `bad_args`, `forbidden`). A `failed` outcome (the op threw) stores none, so a retry runs it again. The op's effect and its receipt are separate writes, so every op must also be idempotent through its derived key. The same command layer is reachable over HTTP as `POST /v1/cmd {id, op, args?}`, and an omitted `args` means `{}`. Concurrent duplicates inside one object share one in-flight run.
+
 ## 4 · Web wire protocol (one socket per tab, hibernation-safe)
 
 ```text
@@ -46,7 +48,7 @@ server → {t:"ev",   stream, events[]}                 pi watchEvents deltas: t
 ```
 
 - Sockets use `ctx.acceptWebSocket()`. Each socket's subscriptions live in `serializeAttachment()`, so they survive hibernation.
-- There is **one pi `watchEvents` per subscribed conversation**, shared by all sockets, started lazily on the first `sub` after a wake and stopped when the last subscriber leaves.
+- There is **one pi conversation watch per subscribed conversation** (`Conversation.watch`, a window of 60 to 120 entries), shared by all sockets. It starts on the first `sub`, and again on wake for every stream in the surviving sockets' attachments, so a hibernated tab keeps getting events. It stops when the last subscriber leaves. `ev.events` are the watch's delta ops against the snapshot's view.
 - **Reconnect = fresh snapshot.** pi doesn't replay, and that's fine: the snapshot is bounded and the client keeps its own cache. Cursor replay (kiko and t3) adds a sequence log we don't need.
 - The `home` stream is a projection: projects, each project's Overview (threads grouped by status), the open-request count, and running jobs. It is recomputed from docs on every commit that touches `xin.*` docs, then diffed and sent.
 - When no socket is connected and a report or question lands, the DO sends one Web Push (VAPID, sent with `fetch`) carrying the thread title.

@@ -61,7 +61,7 @@ The full system is in `docs/process/orchestration.md`, and briefs use `docs/proc
 ## Code
 
 - TypeScript strict, ESM, Bun for scripts, wrangler for the Worker.
-- Schemas: pi-ai's TypeBox (`Type` from `@earendil-works/pi-ai`) for tool parameters and wire frames. Parse at the boundary (socket frame, HTTP body, tool args, stored JSON), then trust the types.
+- Schemas: `@earendil-works/pi-schema` builders (`obj`, `str`, `lit`, `union`, `opt`) and `compile()` for tool parameters, op args and wire frames. pi-ai 1.5 has no TypeBox `Type` export. Parse at the boundary (socket frame, HTTP body, tool args, stored JSON), then trust the types.
 - Branded ids (`ConversationId`, `ProjectId`, `ThreadId`, `CommandId`, `BatchId`). Discriminated unions with a `kind` field for states and frames. No `as` casts except right after validation. Exhaustive `switch` with `const _exhaustive: never`.
 - One module per mechanism, matching the spec's sections: `src/host.ts`, `src/db.ts`, `src/ops.ts`, `src/wire.ts`, `src/gateway.ts`, `src/models.ts`, `src/plugins/host.ts`. Features live in `plugins/*` (see `docs/plan/architecture/09-plugins.md`).
 - Host schema changes append a step to the migration list. Never edit an existing step.

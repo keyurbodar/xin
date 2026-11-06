@@ -35,7 +35,7 @@ Read-only. It checks that the pid is the one this run started, `/health` answers
 curl -s http://127.0.0.1:8799/health                          # unauthenticated route
 ```
 
-`call METHOD PATH [JSON]` sends the bearer token. A WebSocket client must pass the token as the subprotocol `bearer.<token>` (browsers can't set headers). Per-feature recipes are in `features/README.md`.
+`call METHOD PATH [JSON]` sends the bearer token. `ws FRAME_JSON...` opens `/v1/socket` with the subprotocols `xin, bearer.<token>`, sends each frame, and prints every server frame (`< {...}`) for `XIN_WS_WAIT_MS` (default 1500). A WebSocket client must pass the token as the subprotocol `bearer.<token>` (browsers can't set headers). Per-feature recipes are in `features/README.md`.
 
 ## Evidence
 
@@ -56,4 +56,5 @@ Save each proof under `.verify/evidence/<milestone>-<feature>.txt`: the exact co
 
 ## Helpers
 
-- `xin.sh`: launch, doctor, call, stop (shown above). The env overrides are `XIN_PORT`, `XIN_RUN` and `XIN_TOKEN`.
+- `xin.sh`: launch, doctor, call, ws, stop (shown above).
+- `ws.ts`: the socket client behind `xin.sh ws` (Bun's WebSocket). The env overrides are `XIN_PORT`, `XIN_RUN` and `XIN_TOKEN`.
