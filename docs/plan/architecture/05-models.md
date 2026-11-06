@@ -40,7 +40,7 @@ Because the switch applies at the next request, "switch to X and answer this" wo
 
 | Edge | What happens |
 | --- | --- |
-| New model's context window is smaller than the current context | pi's compaction threshold is `contextWindow − reserveTokens` of the model about to run, so the next request should wait for a compaction first. This is my reading of the README and still needs proving in the M3 test. |
+| New model's context window is smaller than the current context | pi's compaction threshold is `contextWindow − reserveTokens` of the model about to run, so the next request waits for a compaction first. Proven in `src/models.test.ts`, with one limit: pi can't cut at the first entry, so a conversation whose only turn is oversized never compacts. Once a second turn exists the switch compacts before the next request. |
 | New model has no image input | pi substitutes a placeholder, and `set_model` says "this model can't see images" in its result. |
 | New model has no reasoning | `thinkingLevel` is ignored, and the picker greys it out from `model.reasoning`. |
 | Prompt cache | It is cold once, on the first request after a switch. pi keeps `sessionId` per conversation across switches. |

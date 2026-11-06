@@ -4,7 +4,7 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 RUN="${XIN_RUN:-$ROOT/.verify}"
 PORT="${XIN_PORT:-8799}"
 TOKEN="${XIN_TOKEN:-verify-owner-token}"
-KEK="dmVyaWZ5LWtlay0zMi1ieXRlcy1sb25nLTEyMzQ1Njc4OQ=="
+KEK="dmVyaWZ5LWtlay1leGFjdGx5LTMyLWJ5dGVzLWxvbmc="
 URL="http://127.0.0.1:$PORT"
 mkdir -p "$RUN/evidence" "$RUN/state"
 

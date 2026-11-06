@@ -29,6 +29,15 @@ export type Command = { readonly id: CommandId; readonly op: string; readonly ar
 
 const RECEIPT_TTL_MS = 24 * 60 * 60_000
 
+export class OpRejected extends Error {
+  constructor(
+    readonly code: "bad_args" | "forbidden",
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
 export function defineOp<A>(definition: {
   readonly name: string
   readonly args: Schema<A>
@@ -47,7 +56,12 @@ export function defineOp<A>(definition: {
           .join("; ")
         return { kind: "rejected", code: "bad_args", message }
       }
-      return { kind: "ok", result: await definition.run(api, args) }
+      try {
+        return { kind: "ok", result: await definition.run(api, args) }
+      } catch (error) {
+        if (error instanceof OpRejected) return { kind: "rejected", code: error.code, message: error.message }
+        throw error
+      }
     },
   }
 }
