@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-push",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Encrypted pushes when no tab is open.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "push": {
+        "module": "./index.ts",
+        "title": "Web Push",
+        "description": "Encrypted pushes when no tab is open."
+      }
+    }
+  }
+}

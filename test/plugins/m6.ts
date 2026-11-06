@@ -1,7 +1,7 @@
 import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai"
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
 import { obj } from "@earendil-works/pi-schema"
-import { jobTool } from "../../src/jobs.ts"
+import { jobTool } from "../../plugins/jobs/jobs.ts"
 import type { Provider } from "../../src/module.ts"
 import type { Catalog } from "../../src/kernel/loader.ts"
 import { testPlugin } from "../kernel.ts"

@@ -24,7 +24,7 @@ $S call POST /v1/cmd '{"id":"m3-3","op":"conv.configure","args":{"model":{"provi
 $S call POST /v1/cmd '{"id":"m3-4","op":"credential.delete","args":{"provider":"openrouter"}}'
 ```
 
-The mid-run switch, the compaction after a switch to a smaller window and the sealed row are proven in `src/models.test.ts`. A real model answering needs a real key: the live run (`XIN_LIVE=1`).
+The mid-run switch, the compaction after a switch to a smaller window and the sealed row are proven in `plugins/models/models.test.ts`. A real model answering needs a real key: the live run (`XIN_LIVE=1`).
 
 ## Gotchas
 

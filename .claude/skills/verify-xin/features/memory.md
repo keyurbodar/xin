@@ -21,7 +21,7 @@ $S call POST /v1/cmd '{"id":"p1","op":"memory.profile","args":{}}'       # {prof
 $S call POST /v1/cmd '{"id":"f1","op":"memory.forget","args":{"query":"coffee"}}'   # {retired:n}
 ```
 
-Tool use and Dreamer passes need a model, so they are proven in `src/memory.test.ts` and `src/dreamer.test.ts` with faux providers.
+Tool use and Dreamer passes need a model, so they are proven in `plugins/memory/memory.test.ts` and `plugins/memory/dreamer.test.ts` with faux providers.
 
 ## Gotchas
 

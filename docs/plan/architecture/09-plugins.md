@@ -73,9 +73,9 @@ Turn, tool and request interception stay pi-native: install an extension with ho
 
 A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disabled?, group?, isolate? }`.
 
-- **Catalog.** `src/catalog.ts` maps each plugin name to `{ plugin, title, description, required?, source }`. The generated `src/catalog.gen.ts` adds the plugins of in-repo `plugins/*` packages and of installed dependencies.
+- **Catalog.** `src/catalog.ts` lists only the required kernel rows (`db`, `clock`, `pi`, `ops`, `http`, `wire`, `secrets`, `plugins`, `system`) in the `xin-base` bundle. Every feature is a package under `plugins/<name>/` (models, files, intake, memory, push, skills, mcp, workspace, schedules, orchestrator, jobs, questions, watchdog, failures, deploy-hook, time), and the generated `src/catalog.gen.ts` lists them and installed dependencies, one bundle per package. Entries are `{ plugin, title, description, required?, multiple?, source }`. A package can never declare a core plugin, bundle or row id.
 - **Feature modules** (models, files, intake and the rest) keep their `create(deps): HostModule` shape and mount through `hostModule(name, create)` (`src/kernel/hostmodule.ts`). It injects `harness` and turns each part into an effect: extensions through `pi.install`, ops through `ops.define`, routes, the home part, timers and typing. `start()` runs inside `apply` and may return a disposer. Their helpers take narrow ports (`{ db, arm }`) that tests build directly. New plugins write `apply(ctx)` against the services, as the time plugin does.
-- **Bundles.** A bundle is an ordered list of rows. `xin-base` holds every kernel and feature row. A package can ship its own bundle.
+- **Bundles.** A bundle is an ordered list of rows. `xin-base` holds the kernel rows. `xin.profile.json` names `xin-base` and every feature package's bundle. A package can ship its own bundle.
 - **Layers**, applied in order to an empty list (as in dsh):
   1. The bundles named in `xin.profile.json`, in order.
   2. That file's `patch`. It is build time and checked in.

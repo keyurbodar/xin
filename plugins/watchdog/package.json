@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-watchdog",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fails stalled threads and overdue jobs.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "watchdog": {
+        "module": "./index.ts",
+        "title": "Watchdog",
+        "description": "Fails stalled threads and overdue jobs."
+      }
+    }
+  }
+}

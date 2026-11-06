@@ -23,7 +23,7 @@ $S call POST /v1/cmd '{"id":"l1","op":"mcp.list","args":{}}'      # error shown,
 $S call POST /v1/cmd '{"id":"r1","op":"mcp.remove","args":{"name":"demo"}}'
 ```
 
-Tool discovery and `tools/call` are proven in `src/mcp.test.ts` against an in-process fake MCP server.
+Tool discovery and `tools/call` are proven in `plugins/mcp/mcp.test.ts` against an in-process fake MCP server.
 
 ## Gotchas
 

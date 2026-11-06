@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-models",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Run-time model catalog, credentials and set_model.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "models": {
+        "module": "./index.ts",
+        "title": "Models",
+        "description": "Run-time model catalog, credentials and set_model."
+      }
+    }
+  }
+}

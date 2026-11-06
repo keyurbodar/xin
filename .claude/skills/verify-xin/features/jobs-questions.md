@@ -31,6 +31,6 @@ Proof: the thread completes with "The logo will be blue." and `openRequests` dro
 
 ## Gotchas
 
-- Jobs and the watchdog need minutes of time to pass, so they are proven in `src/jobs.test.ts`, `src/watchdog.test.ts` and `src/mcp.test.ts`, which backdate `beatAt`/`deadlineAt` or hold one promise instead of sleeping for minutes.
+- Jobs and the watchdog need minutes of time to pass, so they are proven in `plugins/jobs/jobs.test.ts`, `plugins/watchdog/watchdog.test.ts` and `plugins/mcp/mcp.test.ts`, which backdate `beatAt`/`deadlineAt` or hold one promise instead of sleeping for minutes.
 - The watchdog never fails a job for age alone; only `deadlineAt` matters. A job that finishes after 8 s and reports is the success path, not a stall.
 - The coordinator also holds `pending_request` and may answer a thread's question itself before the owner does. Read `conv:<coordinatorId>` for a `pending_request` `respond` call. The owner's `request.respond` then returns `already_answered` with the coordinator's answer, which is the duplicate-answer proof. Evidence: `.verify/evidence/M6-questions-after-fix.txt`.

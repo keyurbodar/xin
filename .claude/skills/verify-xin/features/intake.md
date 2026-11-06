@@ -1,6 +1,6 @@
 # Intake and dispatch
 
-`message.send` lands a row in `inbound`. Rows for one conversation debounce (fire 2 s after the last, at most 8 s after the first; typing holds them) and are claimed in one `UPDATE ... RETURNING` as one batch, submitted as one pi input with `requestId "batch:<id>"`. The host picks start, steer, restart or stop from pi's live state (`src/dispatch.ts`).
+`message.send` lands a row in `inbound`. Rows for one conversation debounce (fire 2 s after the last, at most 8 s after the first; typing holds them) and are claimed in one `UPDATE ... RETURNING` as one batch, submitted as one pi input with `requestId "batch:<id>"`. The host picks start, steer, restart or stop from pi's live state (`plugins/intake/dispatch.ts`).
 
 ## Sub-features
 
@@ -24,7 +24,7 @@ $S call POST /v1/cmd '{"id":"vm-2","op":"message.send","args":{"text":"again"}}'
 $S call POST /v1/cmd '{"id":"vm-3","op":"message.withdraw","args":{"commandId":"vm-2"}}'      # withdrawn:true
 ```
 
-A reply needs a model (M3 credentials). 3 messages → 1 turn, restart vs steer, stop and crash re-fire are proven in `src/gateway.test.ts` with the faux model.
+A reply needs a model (M3 credentials). 3 messages → 1 turn, restart vs steer, stop and crash re-fire are proven in `plugins/intake/gateway.test.ts` with the faux model.
 
 ## Gotchas
 

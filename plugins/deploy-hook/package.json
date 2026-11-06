@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-deploy-hook",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deploys a new build by POSTing to a configured hook URL.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "deploy-hook": {
+        "module": "./deployhook.ts",
+        "title": "Deploy hook",
+        "description": "Deploys a new build by POSTing to a configured hook URL."
+      }
+    }
+  }
+}

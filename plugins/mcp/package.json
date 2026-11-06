@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP servers as deferred tools.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "mcp": {
+        "module": "./index.ts",
+        "title": "MCP",
+        "description": "MCP servers as deferred tools."
+      }
+    }
+  }
+}

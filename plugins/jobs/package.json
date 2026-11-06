@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-jobs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Slow tools as jobs that report back.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "jobs": {
+        "module": "./index.ts",
+        "title": "Jobs",
+        "description": "Slow tools as jobs that report back."
+      }
+    }
+  }
+}

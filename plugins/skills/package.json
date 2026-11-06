@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-skills",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Markdown skills loaded on demand.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "skills": {
+        "module": "./index.ts",
+        "title": "Skills",
+        "description": "Markdown skills loaded on demand."
+      }
+    }
+  }
+}

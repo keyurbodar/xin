@@ -24,7 +24,7 @@ $S call POST /v1/cmd '{"id":"u1","op":"push.unsubscribe","args":{"endpoint":"htt
 
 The sample keys are a real P-256 pair generated for this example; they are not secrets. A malformed key answers `{"ok":false,"error":{"code":"bad_args",...}}`.
 
-Encryption, VAPID claims, record budget and pruning are proven in `src/push.test.ts` and `src/webpush.test.ts`, which decrypt the captured POST bodies.
+Encryption, VAPID claims, record budget and pruning are proven in `plugins/push/push.test.ts` and `plugins/push/webpush.test.ts`, which decrypt the captured POST bodies.
 
 ## Gotchas
 

@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-failures",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Run failures as visible entries.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "failures": {
+        "module": "./index.ts",
+        "title": "Failures",
+        "description": "Run failures as visible entries."
+      }
+    }
+  }
+}

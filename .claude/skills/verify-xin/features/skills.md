@@ -22,7 +22,7 @@ $S call POST /v1/cmd '{"id":"vs-3","op":"skill.list"}'          # [{name:"resear
 $S call POST /v1/cmd '{"id":"vs-4","op":"skill.delete","args":{"name":"research"}}'
 ```
 
-That the model's request carries the section but not the body, and that the tool result carries the body, is proven through the gate in `src/skills.test.ts` (it needs a faux model).
+That the model's request carries the section but not the body, and that the tool result carries the body, is proven through the gate in `plugins/skills/skills.test.ts` (it needs a faux model).
 
 ## Gotchas
 

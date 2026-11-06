@@ -32,7 +32,7 @@ Proof: the `sha256` in the upload reply equals `sha256sum` of the local file, an
 
 - An escaping path (`..%2F..`) returns 400 on upload and `bad_args` on ops.
 - `POST /v1/files/commit` is internal. Over 4 KiB returns 413, and a key with no R2 bytes returns 409.
-- The sweep can't be driven under wrangler dev in reasonable time (24 h grace). `src/files.test.ts` covers it by passing a later `now`.
-- Agent tool writes need a model, so drive them through vitest (`src/files.test.ts`), not curl.
+- The sweep can't be driven under wrangler dev in reasonable time (24 h grace). `plugins/files/files.test.ts` covers it by passing a later `now`.
+- Agent tool writes need a model, so drive them through vitest (`plugins/files/files.test.ts`), not curl.
 
 Evidence from the last wrangler dev drive: `.verify/evidence/M4-files-after-fix.txt`.

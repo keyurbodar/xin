@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, it } from "vitest"
 import { answeringModels, LIVE_PROVIDER, liveEnabled, liveModels, type LiveModel } from "../test/live.ts"
 import { fresh } from "../test/support.ts"
 import type { Home } from "../test/worker.ts"
-import { ThreadDoc, WorkspaceDoc } from "./workspace.ts"
+import { ThreadDoc, WorkspaceDoc } from "../plugins/workspace/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 

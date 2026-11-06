@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-schedules",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RRULE and one-shot schedules.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "schedules": {
+        "module": "./index.ts",
+        "title": "Schedules",
+        "description": "RRULE and one-shot schedules."
+      }
+    }
+  }
+}

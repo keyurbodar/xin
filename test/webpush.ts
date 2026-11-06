@@ -1,4 +1,4 @@
-import { fromBase64Url, toBase64Url } from "../src/webpush.ts"
+import { fromBase64Url, toBase64Url } from "../plugins/push/webpush.ts"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
