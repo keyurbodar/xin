@@ -10,11 +10,12 @@ class R2Env implements ExecutionEnv {
   readText / openBinaryReader(path)            // files row → R2.get(r2_key, range)
   writeFile(path, bytes)                       // 1 R2.put("b/"+sha256)  2 upsert files row   (row never points at missing bytes)
   stat / openDirReader(path)                   // index only, no R2 call
-  exec()                                       // not_supported → pi's bash is simply not installed
+  exec()                                       // shell_unavailable → pi's bash is simply not installed
+  watch()                                      // not_supported (R2 has no change feed)
 }
 ```
 
-- **Tools**: pi's built-in `read`, `write` and `edit` run unchanged over R2Env. A `beforeTool` hook enforces scope: a thread writes only under `/projects/<its project>/`, and `/me` is coordinator-only.
-- **Uploads from the web** go `PUT /files/*` → Worker streams straight to R2 → one RPC to the DO to commit the row. Bytes never pass through the DO's 128 MB.
-- **Content-addressed blobs** mean identical files are stored once. The orphan sweep is a pi task that runs weekly and deletes R2 keys no row references.
+- **Tools**: pi's built-in `read`, `write` and `edit` run unchanged over R2Env. A `beforeTool` hook enforces scope through a `WriteScope` function: M4 ships `/me` as coordinator-only, and M5 adds the rule that a thread writes only under `/projects/<its project>/`. The hook resolves a tool's path against the conversation's `cwd`, the same value the env is built with, and blocks a path that escapes the files root. `file.put` and `file.delete` run the same scope, so a plugin or thread actor cannot write `/me`.
+- **Uploads from the web** go `PUT /files/<path>` → the Worker hashes the stream into a staging key `tmp/<uuid>`, copies it to `b/<sha256>` (always, which refreshes the blob's `uploaded` timestamp), then makes one `POST /v1/files/commit` call to the DO with metadata only (capped at 4 KiB). The DO checks `r2Key = b/<sha256>` and that R2 holds that many bytes before it writes the row. Bytes never pass through the DO's 128 MB. A request without `content-length` is buffered in the Worker instead.
+- **Content-addressed blobs** mean identical files are stored once, and every write puts the blob again so `uploaded` reflects the latest reference. The orphan sweep runs weekly from the files module's `due`/`fire` (kv `files:sweep_at`): it deletes `b/` keys no row references and `tmp/` staging keys, skipping anything younger than 24 h so an upload between its R2 put and its commit is never swept. For each `b/` candidate it rechecks the head, the age and the row inside `blockConcurrencyWhile` before deleting, so a commit that lands mid-sweep is never raced. `file.delete` drops only the row and leaves the blob to the sweep.
 - **Library** = `file.list("/projects/<slug>/")`. Artifacts a thread produces are just files it wrote.

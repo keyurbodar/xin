@@ -27,7 +27,7 @@ export default {
   async fetch(request, env): Promise<Response> {
     if (new URL(request.url).pathname === "/health") return new Response("ok")
     if (!authorized(request, env)) return new Response("unauthorized", { status: 401 })
-    const uploaded = await upload()
+    const uploaded = await upload(request, env)
     if (uploaded !== undefined) return uploaded
     const forwarded = new Request(request)
     const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((part) => part.trim())
