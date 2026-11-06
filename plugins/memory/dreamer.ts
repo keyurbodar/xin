@@ -12,6 +12,7 @@ import {
   type TaskRuntime,
   type Tx,
 } from "@earendil-works/pi-durable"
+import type { NoteDraft } from "../../src/contracts/memory.ts"
 import type { ModuleDeps } from "../../src/module.ts"
 import { ownerDefaults, resolveModel } from "../models/models.ts"
 import { liveSecrets } from "./dreamersecrets.ts"
@@ -43,14 +44,6 @@ export type NoteRow = {
   readonly id: number
   readonly scope: string
   readonly text: string
-  readonly at: number
-}
-
-export type NoteDraft = {
-  readonly text: string
-  readonly scope: string
-  readonly source: string
-  readonly originTask: string
   readonly at: number
 }
 

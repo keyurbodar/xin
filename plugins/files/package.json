@@ -10,6 +10,11 @@
         "module": "./index.ts",
         "title": "Files",
         "description": "R2-backed read, write and edit for pi's file tools."
+      },
+      "tool-files": {
+        "module": "./tools.ts",
+        "title": "Files tools",
+        "description": "The model-facing files tools. Disable to hide them; the files service keeps running."
       }
     }
   }

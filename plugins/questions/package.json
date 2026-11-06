@@ -10,6 +10,11 @@
         "module": "./index.ts",
         "title": "Questions",
         "description": "ask_user and pending requests."
+      },
+      "tool-questions": {
+        "module": "./tools.ts",
+        "title": "Questions tools",
+        "description": "The model-facing questions tools. Disable to hide them; the questions service keeps running."
       }
     }
   }

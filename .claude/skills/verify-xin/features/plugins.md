@@ -8,9 +8,10 @@ Xin's plugin layer is dsh's Cordis stack. Every part of Home is a loader row, ke
 - Row states: `active`, `pending` (a service it injects is missing), `disabled`, `failed` (with the error), `missing` (no code in this build). A failed start returns `application: "failed"` with the row and leaves the other rows running.
 - Required rows (the kernel) cannot be disabled. A failed required row makes `/v1/cmd` answer 503 `boot_failed`.
 - `system.version`, `system.restart {hard?}`, `system.update` through the `deployer` seam (default row `deploy-hook`, which needs its `url` secret).
-- Agent tool `plugin_manager`: reads always work. `enable` and `configure` work only with `plugins` config `allowAgent: true`.
+- Agent tool `plugin_manager`: reads always work. `enable` and `configure` work only with `tool-plugins` config `allowAgent: true`. Disabling the `tool-plugins` row hides the tool and keeps the `plugin.*` ops.
 - CLI (build time): `bun scripts/xin.ts plugin list | generate | add <spec> [--enable] | remove | enable | disable`.
 - Example package: `plugins/time` (`current_time` tool, `timezone` config).
+- Tool rows: each feature package ships `tool-<name>` next to its service row (`tool-files`, `tool-models`, `tool-memory`, `tool-questions`, `tool-skills`, `tool-schedules`, `tool-orchestrator`, `tool-mcp`, kernel `tool-plugins`). Disabling one hides those tools; the service row stays `active`.
 
 ## How to get to it (user POV)
 

@@ -5,10 +5,10 @@ import {
   type CallToolResult,
   type Tool as McpTool,
 } from "@earendil-works/pi-mcp"
-import { defineExtension, type Extension, type ToolRegistration } from "@earendil-works/pi-durable"
-import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search"
+import { type ToolRegistration } from "@earendil-works/pi-durable"
 import { arr, compile, map, obj, opt, str, unknown, type Static } from "@earendil-works/pi-schema"
 import { jobTool } from "../jobs/jobs.ts"
+import type { McpService } from "../../src/contracts/mcp.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, OpRejected, type Op } from "../../src/ops.ts"
 import { Sealer, SealedSchema, type Sealed } from "../../src/seal.ts"
@@ -89,14 +89,25 @@ type Row = { readonly name: string; readonly raw: string }
 export function create(deps: ModuleDeps): HostModule {
   const sealer = new Sealer(deps.env.KEK)
   const definitions = new Map<string, readonly ToolRegistration[]>()
-  let dispose: (() => void) | undefined
+  const listeners = new Set<() => void>()
 
-  const publish = (): void => {
+  const tools = (): readonly ToolRegistration[] => {
     const byName = new Map<string, ToolRegistration>()
     const sorted = [...definitions.entries()].toSorted(([left], [right]) => left.localeCompare(right))
-    for (const [, tools] of sorted) for (const tool of tools) if (!byName.has(tool.name)) byName.set(tool.name, tool)
-    dispose?.()
-    dispose = deps.install(defineExtension({ name: "mcp", tools: [...byName.values()] }))
+    for (const [, registered] of sorted)
+      for (const tool of registered) if (!byName.has(tool.name)) byName.set(tool.name, tool)
+    return [...byName.values()]
+  }
+
+  const watch = (listener: () => void): (() => void) => {
+    listeners.add(listener)
+    return () => {
+      listeners.delete(listener)
+    }
+  }
+
+  const changed = (): void => {
+    for (const listener of listeners) listener()
   }
 
   const rows = async (): Promise<readonly Row[]> => {
@@ -128,13 +139,13 @@ export function create(deps: ModuleDeps): HostModule {
   }
 
   const replaceServer = async (name: string, expected: string, next: StoredServer): Promise<boolean> => {
-    const changed = await deps.db.runCounted(
+    const updated = await deps.db.runCounted(
       "UPDATE kv SET value = ? WHERE key = ? AND value = ?",
       JSON.stringify(next),
       label(name),
       expected,
     )
-    return changed === 1
+    return updated === 1
   }
 
   const headersOf = async (name: string, sealed: Sealed): Promise<Record<string, string>> => {
@@ -195,12 +206,12 @@ export function create(deps: ModuleDeps): HostModule {
         ),
       ),
     )
-    publish()
+    changed()
   }
 
   const unregister = (name: string): void => {
     if (!definitions.delete(name)) return
-    publish()
+    changed()
   }
 
   const refresh = async (name: string): Promise<StoredServer | undefined> => {
@@ -211,8 +222,8 @@ export function create(deps: ModuleDeps): HostModule {
     let next: StoredServer
     let listed: StoredTool[] | undefined
     try {
-      const tools = await withClient(name, server, (client) => client.listTools())
-      listed = tools.map(cacheTool)
+      const fetched = await withClient(name, server, (client) => client.listTools())
+      listed = fetched.map(cacheTool)
       next = {
         url: server.url,
         ...(server.headers === undefined ? {} : { headers: server.headers }),
@@ -282,10 +293,10 @@ export function create(deps: ModuleDeps): HostModule {
       }),
   })
 
-  const extension: Extension = defineExtension({ name: "mcp" })
+  const service: McpService = { tools, watch }
 
   return {
-    extensions: [createToolSearchExtension(), extension],
+    provides: { mcp: service },
     ops: [add, remove, list],
     start: async () => {
       const names: string[] = []

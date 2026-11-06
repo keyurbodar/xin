@@ -53,7 +53,14 @@ Each service is a row in `xin-base`. A different row can provide the same key in
 
 Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `skills`, `mcp`, `workspace`, `threads`, `jobs`, `questions`). A feature that other features call provides a key. A feature that only adds tools, ops or timers provides none.
 
-**Extending pi-durable.** `ctx.pi.install(defineExtension({ ... }))` accepts any pi extension: tools, `wrapTool`, hooks, prompt sections, tasks, docs. It installs it in the live registry and calls `registry.uninstall` on dispose. pi treats a reinstall under the same name as a hot replace, so a reconfigured plugin swaps its extension in place.
+**Service rows and tool rows.** A feature package splits what it serves from what the model sees.
+
+- The service row (`<name>`) owns state, ops, routes, timers and the home part, and provides `ctx.<key>` (`files`, `models`, `threads`, `jobs`, `intake`, `memory`, `questions`, `skills`, `schedules`, `mcp`, `watchdog`, `push`, `workspace`). A `hostModule` feature returns it as `provides: { <key>: value }`.
+- The tool row (`tool-<name>`) is a plain plugin with `inject: ["pi", "<key>"]` that installs one extension, named `tool-<name>`, holding the model-facing tools (and their prompt sections). Disabling it removes those tools and leaves the service running.
+- Both rows are declared in the package's `xin.plugins` and listed in its `xin.bundle`.
+- Each service's interface lives in `src/contracts/<key>.ts`, which augments Cordis `Context` with `<key>: <Interface>`. That folder holds only types, doc definitions, schemas and pure helpers. A plugin may import `src/contracts/*`, `src/kernel/index.ts` and shared libs in `src/`, never another plugin's files. Calls into another feature go through `inject` (required) or `ctx.get(key)` (optional).
+
+ `ctx.pi.install(defineExtension({ ... }))` accepts any pi extension: tools, `wrapTool`, hooks, prompt sections, tasks, docs. It installs it in the live registry and calls `registry.uninstall` on dispose. pi treats a reinstall under the same name as a hot replace, so a reconfigured plugin swaps its extension in place.
 
 ## Events
 
@@ -108,7 +115,7 @@ A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disab
 
 Every mutating result carries `application: "applied" | "failed"` and the row's new state. A change applies live in place through Cordis disposal. New code always means a rebuild and `system.update`.
 
-The agent tool `plugin_manager` (`src/kernel/managertool.ts`) takes `action: list | catalog | tree | enable | configure`. It mutates only when the `plugins` row config has `allowAgent: true`, and otherwise tells the model which owner op to suggest. An owner op is always allowed.
+The agent tool `plugin_manager` is its own row, `tool-plugins` (`src/kernel/managertool.ts`, not required). It takes `action: list | catalog | tree | enable | configure`. It mutates only when the `tool-plugins` row config has `allowAgent: true`, and otherwise tells the model which owner op to suggest. An owner op is always allowed.
 
 A row whose new config or code fails to start is an outcome, not an error: the op returns `application: "failed"` with the row and its recorded error, and the other rows keep running.
 

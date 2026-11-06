@@ -1,4 +1,3 @@
-import type { JsonValue } from "@earendil-works/chord"
 import {
   AgentDoc,
   type ConversationId,
@@ -9,8 +8,8 @@ import {
   ToolTask,
   type ToolHooks,
 } from "@earendil-works/pi-durable"
-import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools"
 import { compile, int, obj, opt, str } from "@earendil-works/pi-schema"
+import type { FileEntry, FilesService } from "../../src/contracts/files.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { type Actor, defineOp, OpRejected } from "../../src/ops.ts"
 import { blobKey, FileIndex, type FileRow, normalizePath, putFile, R2Env, resolvePath } from "../../src/r2env.ts"
@@ -57,24 +56,45 @@ function scoped(scope: WriteScope): Extension {
   })
 }
 
-const textTools = defineExtension({
-  name: "xin.files",
-  tools: [createReadTool(), createWriteTool(), createEditTool()],
-})
+function entryOf(row: FileRow): FileEntry {
+  return {
+    path: row.path,
+    size: row.size,
+    type: row.type,
+    sha256: row.sha256,
+    project: row.project,
+    updated_at: row.updated_at,
+  }
+}
 
-const written = (row: FileRow): JsonValue => ({
-  path: row.path,
-  size: row.size,
-  type: row.type,
-  sha256: row.sha256,
-  project: row.project,
-  updated_at: row.updated_at,
-})
+function rootedPath(path: string): string {
+  const normalized = normalizePath("/", path)
+  if (normalized === undefined) throw new Error("path escapes the files root")
+  return normalized
+}
 
 export function create(deps: ModuleDeps, scope: WriteScope = coordinatorOnly): HostModule {
   const dirs = new Set<string>(["/"])
   const index = new FileIndex(deps.db)
   const envFor = (cwd: string | undefined): R2Env => new R2Env(deps.env.FILES, deps.db, { cwd: cwd ?? "/", dirs })
+
+  const files: FilesService = {
+    env: (target) => envFor(target.cwd),
+    list: async (prefix) => (await index.under(prefix ?? "/")).map(entryOf),
+    read: async (path) => {
+      const row = await index.row(rootedPath(path))
+      if (row === undefined) return undefined
+      const object = await deps.env.FILES.get(row.r2_key)
+      return object === null ? undefined : object.text()
+    },
+    stat: async (path) => {
+      const row = await index.row(rootedPath(path))
+      return row === undefined ? undefined : entryOf(row)
+    },
+    write: async (path, text) =>
+      entryOf(await putFile(deps.env.FILES, index, { path: rootedPath(path), content: text })),
+    remove: async (path) => index.drop(rootedPath(path)),
+  }
 
   const list = defineOp({
     name: "file.list",
@@ -83,8 +103,7 @@ export function create(deps: ModuleDeps, scope: WriteScope = coordinatorOnly): H
     run: async (_api, { prefix }) => {
       const base = normalizePath("/", prefix ?? "/")
       if (base === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const at = base === "/" ? "/" : `${base}/`
-      return (await index.under(at)).map(written)
+      return files.list(base === "/" ? "/" : `${base}/`)
     },
   })
 
@@ -93,11 +112,11 @@ export function create(deps: ModuleDeps, scope: WriteScope = coordinatorOnly): H
     args: obj({ path: str({ minLength: 1 }) }),
     actors: ["owner", "agent", "plugin"],
     run: async ({ actor }, { path }) => {
-      const absolute = normalizePath("/", path)
-      if (absolute === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = scope({ actor, path: absolute })
+      const target = normalizePath("/", path)
+      if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
+      const blocked = scope({ actor, path: target })
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
-      return { deleted: await index.drop(absolute) }
+      return { deleted: await files.remove(target) }
     },
   })
 
@@ -106,11 +125,11 @@ export function create(deps: ModuleDeps, scope: WriteScope = coordinatorOnly): H
     args: obj({ path: str({ minLength: 1 }), text: str() }),
     actors: ["owner", "agent", "plugin"],
     run: async ({ actor }, { path, text }) => {
-      const absolute = normalizePath("/", path)
-      if (absolute === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = scope({ actor, path: absolute })
+      const target = normalizePath("/", path)
+      if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
+      const blocked = scope({ actor, path: target })
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
-      return written(await putFile(deps.env.FILES, index, { path: absolute, content: text }))
+      return files.write(target, text)
     },
   })
 
@@ -142,10 +161,11 @@ export function create(deps: ModuleDeps, scope: WriteScope = coordinatorOnly): H
   }
 
   return {
-    extensions: [textTools, scoped(scope)],
+    provides: { files },
+    extensions: [scoped(scope)],
     ops: [list, remove, put],
     routes: { "POST /v1/files/commit": commit },
-    env: (target) => envFor(target.cwd),
+    env: (target) => files.env(target),
     start: () =>
       deps.db.run(
         "INSERT OR IGNORE INTO kv (key, value) VALUES (?, ?)",

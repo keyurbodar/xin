@@ -1,5 +1,7 @@
 import { defineExtension, defineTool, type Extension, type JsonObject } from "@earendil-works/pi-durable"
 import { bool, obj, oneOf, opt, str } from "@earendil-works/pi-schema"
+import type { Context } from "@deepseek-ai/cordis"
+import Schema from "@deepseek-ai/schemastery"
 import { OpRejected } from "../ops.ts"
 import type { Manager } from "./manager.ts"
 
@@ -15,9 +17,9 @@ const text = (value: unknown, isError = false) => ({
   ...(isError ? { isError: true } : {}),
 })
 
-export function pluginManagerTool(manager: Manager, allowAgent: boolean): Extension {
+function pluginManagerTool(manager: Manager, allowAgent: boolean): Extension {
   return defineExtension({
-    name: "plugins.tool",
+    name: "tool-plugins",
     tools: [
       defineTool({
         name: "plugin_manager",
@@ -67,4 +69,14 @@ export function pluginManagerTool(manager: Manager, allowAgent: boolean): Extens
       }),
     ],
   })
+}
+
+export const name = "tool-plugins"
+export const inject = ["pi", "plugins"]
+export const Config = Schema.object({
+  allowAgent: Schema.boolean().default(false).description("Let the agent enable and configure plugins."),
+})
+
+export function apply(ctx: Context, config: { allowAgent: boolean }): void {
+  ctx.pi.install(pluginManagerTool(ctx.plugins, config.allowAgent))
 }

@@ -119,3 +119,11 @@ Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](.
 **Proof (test that must pass)**: the whole suite passes unchanged after the move, and `bun scripts/xin.ts plugin list` shows every feature package enabled.
 
 **Depends on**: P1.
+
+## P3 · tools are their own rows
+
+**Builds**: every model-facing tool set is a `tool-<name>` row (`tool-files`, `tool-models`, `tool-memory`, `tool-questions`, `tool-skills`, `tool-schedules`, `tool-orchestrator`, `tool-mcp`, `tool-plugins`; `time` is already a tool-only row) that injects its service through `src/contracts/<key>.ts`.
+
+**Proof (test that must pass)**: `plugins/<name>/tools.test.ts` per package: disabling the tool row removes its tools from the next model request while the service row stays active and its ops still work; re-enabling restores them.
+
+**Depends on**: P2.

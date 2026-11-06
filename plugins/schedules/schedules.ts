@@ -6,14 +6,19 @@ import {
   type Cursor,
   defineExtension,
   defineTask,
-  defineTool,
   type Task,
   type TaskId,
   type TaskRuntime,
   type Tx,
 } from "@earendil-works/pi-durable"
-import { compile, int, lit, obj, opt, str, union } from "@earendil-works/pi-schema"
+import { compile, int, lit, obj, str, union } from "@earendil-works/pi-schema"
 import { enqueue } from "../intake/gateway.ts"
+import {
+  ID_SOURCE,
+  SCHEDULE_FIELDS,
+  type ScheduleRequest,
+  type SchedulesService,
+} from "../../src/contracts/schedules.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, type Op, type OpApi, OpRejected } from "../../src/ops.ts"
 import { type DueWindow, type Occurrence, parseRule, RuleError, slotsOf, validateZone, type When } from "./rrule.ts"
@@ -23,9 +28,7 @@ const context = BACKGROUND_CONTEXT
 
 export const SCHEDULE_TASK = "xin.schedule"
 export const SCHEDULE_VERSION = 1
-const ID_SOURCE = "^[A-Za-z0-9_-]{1,64}$"
 const ID = new RegExp(ID_SOURCE)
-const DEFAULT_TZ = "UTC"
 const MISSED = " (missed ×"
 const TITLE_LENGTH = 60
 const PAGE = 200
@@ -45,16 +48,6 @@ const INPUT = compile(
     when: WHEN,
   }),
 )
-
-const SCHEDULE_FIELDS = {
-  id: opt(str({ pattern: ID_SOURCE })),
-  rrule: opt(str({ minLength: 1, maxLength: 512 })),
-  at: opt(int({ minimum: 0 })),
-  tz: str({ minLength: 1, maxLength: 64 }),
-  prompt: str({ minLength: 1, maxLength: 4000 }),
-  conv: opt(int({ minimum: 0 })),
-  projectId: opt(str({ minLength: 1, maxLength: 64 })),
-}
 
 export type ScheduleInput = {
   readonly id: string
@@ -83,26 +76,21 @@ type LiveSchedule = {
   readonly until: number | undefined
 }
 
-export type ScheduleRequest = {
-  readonly id?: string
-  readonly rrule?: string
-  readonly at?: number
-  readonly tz: string
-  readonly prompt: string
-  readonly conv?: number
-  readonly projectId?: string
-}
-
 export function create(deps: ModuleDeps): HostModule {
   return {
-    extensions: [
-      defineExtension({
-        name: "schedules",
-        tools: [scheduleTool(deps), unscheduleTool(deps)],
-        tasks: [scheduleTask(deps)],
-      }),
-    ],
+    provides: { schedules: service(deps) },
+    extensions: [defineExtension({ name: "schedules", tasks: [scheduleTask(deps)] })],
     ops: [createOp(deps), cancelOp(deps), listOp(deps)],
+  }
+}
+
+function service(deps: ModuleDeps): SchedulesService {
+  return {
+    create: async (request, fallback, now, defaultId) => {
+      const created = await createSchedule(deps, request, fallback, now, defaultId)
+      return { id: created.id, created: created.created }
+    },
+    cancel: (id) => cancelSchedules(deps, id),
   }
 }
 
@@ -349,50 +337,4 @@ function listOp(deps: ModuleDeps): Op {
 async function fallbackConversation(deps: ModuleDeps, api: OpApi): Promise<ConversationId> {
   if (api.actor.kind === "agent") return api.actor.conversationId
   return (await deps.harness().root(context)).id
-}
-
-function scheduleTool(deps: ModuleDeps) {
-  return defineTool({
-    name: "schedule",
-    description:
-      "Create a prompt that arrives in this conversation later: a one-shot reminder with a time, or a recurrence with an rrule such as FREQ=DAILY;BYHOUR=9;BYMINUTE=0.",
-    parameters: obj({ ...SCHEDULE_FIELDS, tz: opt(str({ minLength: 1, maxLength: 64 })) }),
-    replay: "safe",
-    execute: async (args, api) => {
-      try {
-        const created = await createSchedule(
-          deps,
-          { ...args, tz: args.tz ?? DEFAULT_TZ, id: args.id ?? `call-${api.taskId}` },
-          api.conversationId,
-          api.now(),
-          `call-${api.taskId}`,
-        )
-        return said(created.created ? `Scheduled ${created.id}.` : `Schedule ${created.id} is already running.`)
-      } catch (error) {
-        if (error instanceof OpRejected || error instanceof RuleError) return refused(error.message)
-        throw error
-      }
-    },
-  })
-}
-
-function unscheduleTool(deps: ModuleDeps) {
-  return defineTool({
-    name: "unschedule",
-    description: "Cancel a schedule or reminder created with the schedule tool.",
-    parameters: obj({ id: str({ pattern: ID_SOURCE }) }),
-    replay: "safe",
-    execute: async (args) => {
-      const cancelled = await cancelSchedules(deps, args.id)
-      return said(cancelled ? `Cancelled ${args.id}.` : `No schedule ${args.id}.`)
-    },
-  })
-}
-
-function said(text: string) {
-  return { output: [{ type: "text" as const, text }] }
-}
-
-function refused(reason: string) {
-  return { output: [{ type: "text" as const, text: `Not scheduled: ${reason}.` }], isError: true }
 }

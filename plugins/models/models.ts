@@ -21,16 +21,14 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy"
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
 import {
-  defineExtension,
-  defineTool,
   ROOT_CONVERSATION_ID,
   type AgentChange,
   type ConversationId,
-  type Extension,
   type Harness,
   type ModelRef,
 } from "@earendil-works/pi-durable"
 import { arr, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
+import { ThinkingSchema, type ModelMatch, type ModelsService } from "../../src/contracts/models.ts"
 import type { CommandId } from "../../src/ids.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, type Actor, type Op, OpRejected } from "../../src/ops.ts"
@@ -60,7 +58,6 @@ export function resolveModel(input: {
 }
 
 export const ModelRefSchema = obj({ provider: str({ minLength: 1 }), modelId: str({ minLength: 1 }) })
-const ThinkingSchema = oneOf(["off", "low", "medium", "high"] as const)
 const RoleSchema = oneOf(["chat", "thread", "utility"] as const)
 const CustomSchema = obj({ baseUrl: str({ minLength: 1 }), key: str({ minLength: 1 }), api: str({ minLength: 1 }) })
 
@@ -360,9 +357,7 @@ function match(model: Model<Api>, query: string): number {
   return 0
 }
 
-type Hit = { readonly model: Model<Api>; readonly score: number }
-
-function search(catalog: readonly Model<Api>[], query: string): Hit[] {
+function search(catalog: readonly Model<Api>[], query: string): ModelMatch[] {
   return catalog
     .map((model) => ({ model, score: match(model, query) }))
     .filter((hit) => hit.score > 0)
@@ -405,24 +400,6 @@ function ranked(
     (left, right) =>
       weight(left) - weight(right) || left.provider.localeCompare(right.provider) || left.id.localeCompare(right.id),
   )
-}
-
-type Target =
-  | { readonly kind: "conversation"; readonly id: number }
-  | { readonly kind: "later"; readonly message: string }
-  | { readonly kind: "bad"; readonly message: string }
-
-function resolveTarget(target: string, mine: ConversationId): Target {
-  if (target === "this_chat") return { kind: "conversation", id: mine }
-  if (target.startsWith("thread:")) {
-    const id = Number(target.slice("thread:".length))
-    return Number.isSafeInteger(id) && id >= 0
-      ? { kind: "conversation", id }
-      : { kind: "bad", message: `"${target}" is not a thread id` }
-  }
-  if (target === "new_threads" || target === "project_default")
-    return { kind: "later", message: `"${target}" is not available yet; it arrives with projects and threads` }
-  return { kind: "bad", message: `unknown target "${target}"` }
 }
 
 // A tool call mints its own command id, so a rerun after a restart reuses the receipt.
@@ -535,85 +512,27 @@ export function create(deps: ModuleDeps): HostModule {
     },
   })
 
-  const setModel = defineTool({
-    name: "set_model",
-    description: "Switch the model a chat or thread uses. The switch applies from the next request.",
-    parameters: obj({
-      target: str({ minLength: 1, description: "this_chat, thread:<id>, new_threads or project_default" }),
-      query: str({ minLength: 1, description: "model name, id or provider to search for" }),
-      thinking: opt(ThinkingSchema),
-    }),
-    replay: "safe",
-    execute: async (args, api) => {
-      const target = resolveTarget(args.target, api.conversationId)
-      if (target.kind !== "conversation") return { output: [{ type: "text", text: target.message }] }
+  const service: ModelsService = {
+    search: async (query) => {
       const catalog = await available(registry)
-      const hits = search(catalog, args.query)
-      const top = hits[0]
-      if (top === undefined) {
-        const words = args.query
-          .toLowerCase()
-          .split(/\s+/)
-          .filter((word) => word.length > 1)
-        const close = catalog
-          .filter((model) =>
-            words.some((word) => `${model.provider} ${model.id} ${model.name}`.toLowerCase().includes(word)),
-          )
-          .slice(0, 3)
-          .map((model) => `${model.provider}/${model.id} (${model.name})`)
-        const hint = close.length > 0 ? `Close matches: ${close.join(", ")}. ` : ""
-        const text = `No model matches "${args.query}". ${hint}Ask the owner to add a provider key in Settings.`
-        return { output: [{ type: "text", text }], isError: true }
-      }
-      if (hits.length > 1 && (hits[1]?.score ?? 0) === top.score) {
-        const options = hits
-          .slice(0, 4)
-          .map((hit, index) => `${index + 1}. ${hit.model.provider}/${hit.model.id} (${hit.model.name})`)
-        const text = `Which model? Several match "${args.query}": ${options.join("; ")}. Ask the owner which one, then call set_model again with the provider and id.`
-        return { output: [{ type: "text", text }] }
-      }
-      const chosen = top.model
-      const outcome = await deps.run(
-        {
-          id: commandId(`set_model:${api.callId}`),
-          op: "conv.configure",
-          args: {
-            conv: target.id,
-            model: refOf(chosen),
-            ...(args.thinking === undefined ? {} : { thinking: args.thinking }),
-          },
-        },
-        { kind: "agent", conversationId: api.conversationId },
-      )
-      if (outcome.kind !== "ok") return { output: [{ type: "text", text: outcome.message }], isError: true }
-      const vision = chosen.input.includes("image")
-      const notes = [
-        vision ? undefined : "This model can't see images; they become placeholders.",
-        chosen.reasoning ? undefined : "It has no reasoning, so thinking is off.",
-      ].filter((note): note is string => note !== undefined)
-      const text = [
-        `Set ${chosen.provider}/${chosen.id} (${chosen.name}, ${chosen.contextWindow} tokens). It applies from the next request.`,
-        ...notes,
-      ].join(" ")
-      return {
-        output: [{ type: "text", text }],
-        details: {
-          model: refOf(chosen),
-          contextWindow: chosen.contextWindow,
-          vision,
-          reasoning: chosen.reasoning,
-          effectiveFrom: "next request",
-        },
-      }
+      return { catalog, matches: search(catalog, query) }
     },
-  })
+    switchModel: ({ conversation, caller, model, thinking, callId }) =>
+      deps.run(
+        {
+          id: commandId(`set_model:${callId}`),
+          op: "conv.configure",
+          args: { conv: conversation, model, ...(thinking === undefined ? {} : { thinking }) },
+        },
+        { kind: "agent", conversationId: caller },
+      ),
+  }
 
-  const extension: Extension = defineExtension({ name: "models", tools: [setModel] })
   const ops: readonly Op[] = [configure, list, setCredential, deleteCredential, setDefaults]
 
   return {
     models: () => registry.models,
-    extensions: [extension],
+    provides: { models: service },
     ops,
     start: () => registry.sync(),
   }

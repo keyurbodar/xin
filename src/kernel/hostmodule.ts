@@ -20,6 +20,7 @@ export function hostModule(name: string, create: (deps: ModuleDeps) => HostModul
         install: (extension) => ctx.pi.install(extension),
       }
       const module = create(deps)
+      for (const [key, value] of Object.entries(module.provides ?? {})) ctx.provide(key, value)
       for (const extension of module.extensions ?? []) ctx.pi.install(extension)
       for (const op of module.ops ?? []) ctx.ops.define(op)
       for (const [key, route] of Object.entries(module.routes ?? {})) ctx.http.route(key, route)

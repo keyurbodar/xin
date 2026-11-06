@@ -55,7 +55,7 @@ describe("plugin tools", () => {
       '"id":"time","plugin":"time"',
     )
 
-    const allowed = await cmd(stub, "allow", "plugin.configure", { id: "plugins", config: { allowAgent: true } })
+    const allowed = await cmd(stub, "allow", "plugin.configure", { id: "tool-plugins", config: { allowAgent: true } })
     expect(allowed.result).toMatchObject({ application: "applied", row: { state: { kind: "active" } } })
     respond([call("plugin_manager", { action: "enable", id: "time", enabled: false }), fauxAssistantMessage("done")])
     const [changed] = await turn(stub, "t2")

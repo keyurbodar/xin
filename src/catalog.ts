@@ -4,6 +4,7 @@ import { Http } from "./kernel/http.ts"
 import type { Row } from "./kernel/layers.ts"
 import type { Catalog, CatalogEntry } from "./kernel/loader.ts"
 import * as manager from "./kernel/manager.ts"
+import * as managerTool from "./kernel/managertool.ts"
 import { Ops } from "./kernel/ops.ts"
 import { Pi } from "./kernel/pi.ts"
 import { Secrets } from "./kernel/secrets.ts"
@@ -29,6 +30,12 @@ export const CORE_CATALOG: Catalog = {
   secrets: core(Secrets, "Secrets", "Sealed per-plugin secrets and tool-output redaction."),
   plugins: core(manager, "Plugin manager", "List, enable, configure, insert and remove plugin rows."),
   system: core(system, "System", "Version, restart and update."),
+  "tool-plugins": {
+    plugin: managerTool,
+    title: "Plugin manager tool",
+    description: "The plugin_manager agent tool. Disable to hide it; allowAgent lets it change rows.",
+    source: "xin",
+  },
 }
 
 const row = (id: string): Row => ({ id, name: `cordis:${id}` })

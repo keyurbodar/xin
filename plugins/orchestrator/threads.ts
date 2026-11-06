@@ -7,15 +7,13 @@ import {
   defineTask,
   type DocumentReader,
   type Harness,
-  type ModelRef,
   type Task,
   type TaskRuntime,
-  type ToolRegistration,
   type Tx,
 } from "@earendil-works/pi-durable"
 import { int, obj, oneOf, opt, str } from "@earendil-works/pi-schema"
+import type { CreateOutcome, CreateThreadArgs } from "../../src/contracts/threads.ts"
 import { enqueue } from "../intake/gateway.ts"
-import type { ProjectId } from "../../src/ids.ts"
 import type { ModuleDeps } from "../../src/module.ts"
 import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
@@ -24,7 +22,6 @@ import {
   threadInScope,
   transition,
   type ThreadDocState,
-  type ThreadRole,
   type ThreadStatus,
 } from "../workspace/threaddoc.ts"
 import { detailOf, textOf } from "../../src/transcript.ts"
@@ -185,26 +182,6 @@ function eventOf(status: ReportStatus): "done" | "unanswered" | "abort" {
     case "failed":
       return "unanswered"
   }
-}
-
-type LiveThread = { readonly id: number; readonly title: string; readonly status: ThreadStatus }
-
-export type CreateOutcome =
-  | { readonly kind: "created"; readonly threadId: number; readonly title: string }
-  | { readonly kind: "existing"; readonly threadId: number; readonly title: string }
-  | { readonly kind: "limit"; readonly live: readonly LiveThread[]; readonly limit: number }
-  | { readonly kind: "rejected"; readonly reason: string }
-
-export type CreateThreadArgs = {
-  readonly projectId: ProjectId
-  readonly parentId: ConversationId
-  readonly title: string
-  readonly role: ThreadRole
-  readonly task: string
-  readonly model: ModelRef
-  readonly clientRequestId: string
-  readonly requestId: string
-  readonly removeTools: readonly ToolRegistration[]
 }
 
 export type SendArgs = {

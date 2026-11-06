@@ -1,19 +1,12 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
-import { defineExtension, defineTool, section } from "@earendil-works/pi-durable"
 import { obj, str } from "@earendil-works/pi-schema"
+import { SKILL_NAME_PATTERN, type Skill, type SkillsService } from "../../src/contracts/skills.ts"
 import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
 
-export type Skill = {
-  readonly name: string
-  readonly description: string
-  readonly body: string
-}
-
 export const BUNDLED_SKILLS: readonly string[] = []
 
-const NAME_SOURCE = "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-const NAME = new RegExp(NAME_SOURCE)
+const NAME = new RegExp(SKILL_NAME_PATTERN)
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/
 const SKILL_KEY = "skill:"
 
@@ -62,15 +55,6 @@ export function skillsFrom(markdowns: readonly string[]): readonly Skill[] {
 
 const byName = (left: Skill, right: Skill): number => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0)
 
-function suggestions(name: string, known: readonly string[]): readonly string[] {
-  return known.filter(
-    (other) =>
-      other.startsWith(name) ||
-      name.startsWith(other) ||
-      (Math.abs(other.length - name.length) <= 2 && other.charAt(0) === name.charAt(0)),
-  )
-}
-
 async function ownerSkills(db: SqliteDatabase): Promise<readonly Skill[]> {
   const rows = await db.all<{ value: string }>("SELECT value FROM kv WHERE key LIKE 'skill:%'")
   return rows.map((row) => parseSkill(row.value))
@@ -85,39 +69,11 @@ export function create(deps: ModuleDeps): HostModule {
     return merged
   }
 
-  const skillsSection = section("skills", async () => {
-    const skills = [...(await loadSkills()).values()].toSorted(byName)
-    if (skills.length === 0) return undefined
-    return [
-      "Load a skill's full instructions with skill(name).",
-      ...skills.map((skill) => `- ${skill.name}: ${skill.description}`),
-    ].join("\n")
-  })
-
-  const skillTool = defineTool({
-    name: "skill",
-    description: "Load the full instructions of a skill listed in the skills section.",
-    parameters: obj({ name: str({ pattern: NAME_SOURCE }) }),
-    replay: "safe",
-    execute: async ({ name }) => {
-      const skills = await loadSkills()
-      const skill = skills.get(name)
-      if (skill !== undefined) return { output: [{ type: "text", text: skill.body }] }
-      const known = [...skills.keys()].toSorted()
-      const close = suggestions(name, known)
-      const hint =
-        close.length > 0
-          ? ` Did you mean ${close.map((other) => `"${other}"`).join(" or ")}?`
-          : known.length > 0
-            ? ` Known skills: ${known.join(", ")}.`
-            : ""
-      return { isError: true, output: [{ type: "text", text: `No skill "${name}".${hint}` }] }
-    },
-  })
+  const listSkills = async (): Promise<readonly Skill[]> => [...(await loadSkills()).values()].toSorted(byName)
 
   const put: Op = defineOp({
     name: "skill.put",
-    args: obj({ name: str({ pattern: NAME_SOURCE }), markdown: str({ minLength: 1 }) }),
+    args: obj({ name: str({ pattern: SKILL_NAME_PATTERN }), markdown: str({ minLength: 1 }) }),
     actors: ["owner"],
     run: async (_api, { name, markdown }) => {
       const skill = parsePut(markdown)
@@ -134,7 +90,7 @@ export function create(deps: ModuleDeps): HostModule {
 
   const remove: Op = defineOp({
     name: "skill.delete",
-    args: obj({ name: str({ pattern: NAME_SOURCE }) }),
+    args: obj({ name: str({ pattern: SKILL_NAME_PATTERN }) }),
     actors: ["owner"],
     run: async (_api, { name }) => {
       await deps.db.run("DELETE FROM kv WHERE key = ?", `${SKILL_KEY}${name}`)
@@ -146,12 +102,13 @@ export function create(deps: ModuleDeps): HostModule {
     name: "skill.list",
     args: obj({}),
     actors: ["owner"],
-    run: async () =>
-      [...(await loadSkills()).values()].toSorted(byName).map(({ name, description }) => ({ name, description })),
+    run: async () => (await listSkills()).map(({ name, description }) => ({ name, description })),
   })
 
+  const service: SkillsService = { list: listSkills }
+
   return {
-    extensions: [defineExtension({ name: "skills", tools: [skillTool], sections: [skillsSection] })],
+    provides: { skills: service },
     ops: [put, remove, list],
   }
 }

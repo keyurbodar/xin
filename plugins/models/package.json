@@ -10,6 +10,11 @@
         "module": "./index.ts",
         "title": "Models",
         "description": "Run-time model catalog, credentials and set_model."
+      },
+      "tool-models": {
+        "module": "./tools.ts",
+        "title": "Models tools",
+        "description": "The model-facing models tools. Disable to hide them; the models service keeps running."
       }
     }
   }

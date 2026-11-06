@@ -1,6 +1,9 @@
 import type { SqliteExecutor } from "@earendil-works/chord/sqlite"
-import { defineExtension, defineTool, section } from "@earendil-works/pi-durable"
+import { defineExtension } from "@earendil-works/pi-durable"
 import { obj, opt, str } from "@earendil-works/pi-schema"
+import type { MemoryService, Note } from "../../src/contracts/memory.ts"
+import type { HostModule, ModuleDeps } from "../../src/module.ts"
+import { defineOp, type Op } from "../../src/ops.ts"
 import {
   appendNote,
   CURSOR_KEY,
@@ -13,32 +16,26 @@ import {
   requestPass,
   writeKv,
 } from "./dreamer.ts"
-import { isScope, refusal, SCOPE_PATTERN } from "./dreamprompt.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
-import { defineOp, type Op } from "../../src/ops.ts"
-import { projectInScope } from "../workspace/threaddoc.ts"
+import { SCOPE_PATTERN } from "./dreamprompt.ts"
 
 const RECALL_LIMIT = 20
 const LIST_LIMIT = 100
 const OWNER_RETIREMENT = 0
 
-export type Note = {
-  readonly id: number
-  readonly scope: string
-  readonly text: string
-  readonly at: number
-}
-
 export function create(deps: ModuleDeps): HostModule {
+  const memory: MemoryService = {
+    remember: async (draft) => {
+      const inserted = await appendNote(deps.db, draft)
+      await requestPass(deps, draft.at + IDLE_MS)
+      return inserted
+    },
+    search: (query, scopes, now, limit) => searchNotes(deps.db, query, scopes, now, limit),
+    profile: () => readProfile(deps.db),
+  }
+
   return {
-    extensions: [
-      defineExtension({
-        name: "memory",
-        tools: [remember(deps), recall(deps)],
-        sections: [profileSection(deps)],
-        tasks: [dreamerTask(deps)],
-      }),
-    ],
+    provides: { memory },
+    extensions: [defineExtension({ name: "memory", tasks: [dreamerTask(deps)] })],
     ops: [forget(deps), list(deps), profile(deps)],
     start: async () => {
       const cursor = (await readNumber(deps.db, CURSOR_KEY)) ?? 0
@@ -59,69 +56,6 @@ export function create(deps: ModuleDeps): HostModule {
       await ensurePass(deps, now)
     },
   }
-}
-
-function remember(deps: ModuleDeps) {
-  return defineTool({
-    name: "remember",
-    description: "Save one durable fact about the owner or a project, so later turns can recall it.",
-    parameters: obj({
-      text: str({ minLength: 1, maxLength: 2000 }),
-      scope: opt(str({ pattern: SCOPE_PATTERN })),
-    }),
-    replay: "safe",
-    execute: async (args, api) => {
-      const text = args.text.trim()
-      if (text.length === 0) return refused("empty text")
-      const project = await projectInScope(api, api.conversationId)
-      const own = project === undefined ? undefined : `project:${project.projectId}`
-      const scope = args.scope ?? own ?? "me"
-      if (!isScope(scope)) return refused(`unknown scope ${scope}`)
-      if (scope !== "me" && scope !== own) return refused(`scope ${scope} belongs to another conversation`)
-      const denied = refusal(text)
-      if (denied !== undefined) return refused(denied)
-      const now = Date.now()
-      const inserted = await appendNote(deps.db, {
-        text,
-        scope,
-        source: "remember",
-        originTask: String(api.taskId),
-        at: now,
-      })
-      await requestPass(deps, now + IDLE_MS)
-      return said(inserted ? `Remembered (${scope}).` : `Already remembered (${scope}).`)
-    },
-  })
-}
-
-function recall(deps: ModuleDeps) {
-  return defineTool({
-    name: "recall",
-    description: "Search saved notes by keyword, newest and most relevant first.",
-    parameters: obj({
-      q: str({ minLength: 1, maxLength: 200 }),
-      scope: opt(str({ pattern: SCOPE_PATTERN })),
-    }),
-    replay: "safe",
-    execute: async (args, api) => {
-      const project = await projectInScope(api, api.conversationId)
-      const allowed = project === undefined ? ["me"] : ["me", `project:${project.projectId}`]
-      if (args.scope !== undefined) {
-        if (!isScope(args.scope)) return notRecalled(`unknown scope ${args.scope}`)
-        if (!allowed.includes(args.scope)) return notRecalled(`scope ${args.scope} belongs to another conversation`)
-      }
-      const notes = await searchNotes(deps.db, args.q, args.scope === undefined ? allowed : [args.scope], Date.now())
-      if (notes.length === 0) return said("No matching notes.")
-      return said(notes.map((note) => `- [${note.scope}] ${note.text}`).join("\n"))
-    },
-  })
-}
-
-function profileSection(deps: ModuleDeps) {
-  return section("profile", async () => {
-    const text = await readProfile(deps.db)
-    return text.trim().length === 0 ? undefined : text
-  })
 }
 
 function forget(deps: ModuleDeps): Op {
@@ -222,15 +156,3 @@ const quoted = (tokens: readonly string[]): string[] => tokens.map((token) => `"
 const ftsAny = (tokens: readonly string[]): string => quoted(tokens).join(" OR ")
 
 const ftsAll = (tokens: readonly string[]): string => quoted(tokens).join(" ")
-
-function said(text: string) {
-  return { output: [{ type: "text" as const, text }] }
-}
-
-function refused(reason: string) {
-  return { output: [{ type: "text" as const, text: `Not saved: ${reason}.` }], isError: true }
-}
-
-function notRecalled(reason: string) {
-  return { output: [{ type: "text" as const, text: `Cannot recall: ${reason}.` }], isError: true }
-}

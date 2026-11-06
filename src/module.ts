@@ -22,6 +22,7 @@ export type ModuleDeps = {
 export type Route = (request: Request) => Promise<Response>
 
 export type HostModule = {
+  readonly provides?: Readonly<Record<string, object>>
   readonly extensions?: readonly Extension[]
   readonly ops?: readonly Op[]
   readonly routes?: Readonly<Record<string, Route>>

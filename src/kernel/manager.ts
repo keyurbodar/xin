@@ -1,12 +1,10 @@
 import type { Context } from "@deepseek-ai/cordis"
-import Schema from "@deepseek-ai/schemastery"
 import type { JsonValue } from "@earendil-works/chord"
 import type { JsonObject } from "@earendil-works/pi-durable"
 import { bool, obj, str } from "@earendil-works/pi-schema"
 import { defineOp, OpRejected } from "../ops.ts"
 import { layerOf, type Row } from "./layers.ts"
 import { pluginOf, type RowState, type XinLoader } from "./loader.ts"
-import { pluginManagerTool } from "./managertool.ts"
 
 export type Application = "applied" | "failed"
 
@@ -165,15 +163,11 @@ export function createManager(loader: XinLoader): Manager {
 }
 
 export const name = "plugins"
-export const inject = ["kernel", "ops", "wire", "pi"]
-export const Config = Schema.object({
-  allowAgent: Schema.boolean().default(false).description("Let the agent enable and configure plugins."),
-})
+export const inject = ["kernel", "ops", "wire"]
 
-export function apply(ctx: Context, config: { allowAgent: boolean }): void {
+export function apply(ctx: Context): void {
   const manager = createManager(ctx.kernel)
   ctx.provide("plugins", manager)
-  ctx.pi.install(pluginManagerTool(manager, config.allowAgent))
   ctx.wire.home("plugins", async () => ({
     plugins: Object.fromEntries((await manager.list()).map((row) => [row.id, row.state.kind])),
   }))
