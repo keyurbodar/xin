@@ -43,6 +43,7 @@ const memoryPreset = {
   title: "Memory only",
   description: "Notes and skills, no files.",
   tools: ["tool-memory", "tool-skills"],
+  prompts: "all",
 }
 
 describe("preset row", () => {
@@ -110,6 +111,7 @@ describe("preset row", () => {
           title: "Minimal",
           description: "Memory and skills only.",
           tools: ["tool-memory", "tool-skills"],
+          prompts: "all",
         },
       ]),
     })

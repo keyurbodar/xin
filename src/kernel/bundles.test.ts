@@ -6,6 +6,7 @@ import { requests, script, SKILL_MODEL } from "../../test/plugins/skills.ts"
 import { cmd, field, fresh, rowOf, turn, type Stub } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import type { RuntimeBundle } from "./bundles.ts"
+import { writeActiveSetup } from "./bundles.ts"
 
 const PACKAGE = "xin-plugin-demo"
 
@@ -16,11 +17,24 @@ type BundleRowArg = {
   readonly disabled?: boolean
 }
 
-const put = (stub: Stub, name: string, rows: readonly BundleRowArg[], requires?: readonly string[]) =>
+type BundlePatchArg = {
+  readonly id: string
+  readonly config?: unknown
+  readonly disabled?: boolean
+}
+
+const put = (
+  stub: Stub,
+  name: string,
+  rows: readonly BundleRowArg[],
+  requires?: readonly string[],
+  patch?: readonly BundlePatchArg[],
+) =>
   cmd(stub, `put-${crypto.randomUUID()}`, "bundle.put", {
     package: name,
     rows,
     ...(requires === undefined ? {} : { requires }),
+    ...(patch === undefined ? {} : { patch }),
   })
 
 const list = async (stub: Stub): Promise<unknown> =>
@@ -37,6 +51,7 @@ const bundleOf = (name: string, text: string): RuntimeBundle => ({
   package: name,
   source: { kind: "local" },
   rows: [{ id: "greet", plugin: "k-echo", config: { text } }],
+  patch: [],
   requires: [],
 })
 
@@ -306,10 +321,10 @@ describe("runtime bundles", () => {
 
   it("rejects a row whose qualified id already exists outside the bundle", async () => {
     const stub = fresh()
+    const patch = [{ insert: [{ id: rowId("greet"), name: "cordis:k-echo", config: { text: "outer" } }] }]
     await runInDurableObject(stub, async (_home: Home, state) => {
-      state.storage.kv.put("plugins.patch", [
-        { insert: [{ id: rowId("greet"), name: "cordis:k-echo", config: { text: "outer" } }] },
-      ])
+      state.storage.kv.put("plugins.patch", patch)
+      writeActiveSetup(state.storage, [], patch)
     })
     await evictDurableObject(stub)
     expect(await put(stub, PACKAGE, [greeting("hello")])).toMatchObject({
@@ -391,10 +406,12 @@ describe("runtime bundles", () => {
       package: PACKAGE,
       source: { kind: "local" },
       rows: [{ id: "greet", plugin: "k-bundle-broken" }],
+      patch: [],
       requires: [],
     }
     await runInDurableObject(stub, async (_home: Home, state) => {
       state.storage.kv.put("plugins.bundles", [{ bundle: current, previous: broken }])
+      writeActiveSetup(state.storage, [current], [])
     })
     expect(await cmd(stub, "rb", "bundle.rollback", { package: PACKAGE })).toMatchObject({
       ok: true,
@@ -421,17 +438,16 @@ describe("runtime bundles", () => {
   it("does not mount a runtime bundle whose package is compiled into the build", async () => {
     const stub = fresh()
     const name = "xin-plugin-weather"
+    const bundle: RuntimeBundle = {
+      package: name,
+      source: { kind: "registry", version: "1.0.0", integrity: "sha512-AAAA" },
+      rows: [{ id: "greet", plugin: "k-echo", config: { text: "hello" } }],
+      patch: [],
+      requires: [],
+    }
     await runInDurableObject(stub, async (_home: Home, state) => {
-      state.storage.kv.put("plugins.bundles", [
-        {
-          bundle: {
-            package: name,
-            source: { kind: "registry", version: "1.0.0", integrity: "sha512-AAAA" },
-            rows: [{ id: "greet", plugin: "k-echo", config: { text: "hello" } }],
-            requires: [],
-          },
-        },
-      ])
+      state.storage.kv.put("plugins.bundles", [{ bundle }])
+      writeActiveSetup(state.storage, [bundle], [])
     })
     await evictDurableObject(stub)
 
@@ -445,17 +461,16 @@ describe("runtime bundles", () => {
   it("reports a duplicate non-multiple runtime row failed at boot", async () => {
     const stub = fresh()
     const name = "xin-plugin-duplicate"
+    const bundle: RuntimeBundle = {
+      package: name,
+      source: { kind: "local" },
+      rows: [{ id: "second", plugin: "m2" }],
+      patch: [],
+      requires: [],
+    }
     await runInDurableObject(stub, async (_home: Home, state) => {
-      state.storage.kv.put("plugins.bundles", [
-        {
-          bundle: {
-            package: name,
-            source: { kind: "local" },
-            rows: [{ id: "second", plugin: "m2" }],
-            requires: [],
-          },
-        },
-      ])
+      state.storage.kv.put("plugins.bundles", [{ bundle }])
+      writeActiveSetup(state.storage, [bundle], [])
     })
     await evictDurableObject(stub)
 
@@ -466,5 +481,147 @@ describe("runtime bundles", () => {
       },
     ])
     expect(await rowOf(stub, `${name}#second`)).toMatchObject({ state: { kind: "failed" } })
+  })
+
+  it("patches a compiled row in the runtime layer, with the owner override on top", async () => {
+    const stub = fresh()
+    expect(await put(stub, PACKAGE, [], undefined, [{ id: "k-config", config: { greeting: "bundle" } }])).toMatchObject(
+      { ok: true, result: { application: "applied" } },
+    )
+    expect(await rowOf(stub, "k-config")).toMatchObject({
+      layer: "runtime",
+      config: { greeting: "bundle" },
+      state: { kind: "active" },
+    })
+    expect(await list(stub)).toMatchObject([{ patch: [{ id: "k-config", state: "applied" }] }])
+    expect((await cmd(stub, "patch-g1", "k.greeting")).result).toBe("bundle")
+
+    await cmd(stub, "patch-c1", "plugin.configure", { id: "k-config", config: { greeting: "mine" } })
+    expect((await cmd(stub, "patch-g2", "k.greeting")).result).toBe("mine")
+    expect(await rowOf(stub, "k-config")).toMatchObject({ layer: "owner", config: { greeting: "mine" } })
+
+    await cmd(stub, "patch-r1", "plugin.reset", { id: "k-config" })
+    expect((await cmd(stub, "patch-g3", "k.greeting")).result).toBe("bundle")
+
+    await put(stub, PACKAGE, [], undefined, [])
+    expect((await cmd(stub, "patch-g4", "k.greeting")).result).toBe("hi")
+    expect(await rowOf(stub, "k-config")).toMatchObject({ layer: "bundle" })
+  })
+
+  it("lets a later bundle's patch win and restores the earlier one when it is removed", async () => {
+    const stub = fresh()
+    const first = "xin-plugin-first"
+    const second = "xin-plugin-second"
+    await put(stub, first, [], undefined, [{ id: "k-config", config: { greeting: "first" } }])
+    await put(stub, second, [], undefined, [{ id: "k-config", config: { greeting: "second" } }])
+    expect((await cmd(stub, "order-g1", "k.greeting")).result).toBe("second")
+    expect(field((await cmd(stub, "order-tree", "plugin.tree")).result, "layers")).toMatchObject({
+      "k-config": "runtime",
+    })
+    await cmd(stub, "order-rm", "bundle.remove", { package: second })
+    expect((await cmd(stub, "order-g2", "k.greeting")).result).toBe("first")
+  })
+
+  it("keeps an unknown patch target and reports it in bundle.list", async () => {
+    const stub = fresh()
+    expect(await put(stub, PACKAGE, [], undefined, [{ id: "ghost-row", disabled: true }])).toMatchObject({
+      ok: true,
+      result: { application: "applied" },
+    })
+    expect(await list(stub)).toMatchObject([{ patch: [{ id: "ghost-row", state: "unknown" }] }])
+    expect(await rowOf(stub, "ghost-row")).toBeUndefined()
+  })
+
+  it("rejects a patch on a required row, a runtime row or a bad config", async () => {
+    const stub = fresh()
+    const cases: readonly (readonly BundlePatchArg[])[] = [
+      [{ id: "pi", disabled: true }],
+      [{ id: `${PACKAGE}#greet`, disabled: true }],
+      [{ id: "k-config", config: { greeting: 7 } }],
+    ]
+    for (const patch of cases)
+      expect(await put(stub, PACKAGE, [], undefined, patch), JSON.stringify(patch)).toMatchObject({
+        ok: false,
+        error: { code: "bad_args" },
+      })
+    expect(await list(stub)).toEqual([])
+    expect((await cmd(stub, "negative-g", "k.greeting")).result).toBe("hi")
+  })
+
+  it("applies a bundle patch when its target appears later", async () => {
+    const stub = fresh()
+    expect(await put(stub, PACKAGE, [], undefined, [{ id: "later", config: { text: "patched" } }])).toMatchObject({
+      ok: true,
+      result: { application: "applied" },
+    })
+    expect(await list(stub)).toMatchObject([{ patch: [{ id: "later", state: "unknown" }] }])
+
+    expect(
+      await cmd(stub, "insert-later", "plugin.insert", { id: "later", plugin: "k-echo", config: { text: "mine" } }),
+    ).toMatchObject({ ok: true })
+    expect(await rowOf(stub, "later")).toMatchObject({ state: { kind: "active" }, config: { text: "patched" } })
+    expect(await stored(stub, "later")).toBe("patched")
+    expect(await list(stub)).toMatchObject([{ patch: [{ id: "later", state: "applied" }] }])
+  })
+
+  it("validates every bundle on replace and keeps the stored setup when one is bad", async () => {
+    const stub = fresh()
+    await put(stub, PACKAGE, [greeting("hello")])
+    const bad: RuntimeBundle = { ...bundleOf(PACKAGE, "bad"), package: "not a name" }
+    await expect(
+      runInDurableObject(stub, async (home: Home) => home.loader.ctx.packages.replace([bad], [])),
+    ).rejects.toThrow()
+    expect(await stored(stub, rowId("greet"))).toBe("hello")
+    expect(await list(stub)).toMatchObject([{ package: PACKAGE }])
+  })
+
+  it("reports every failed row from a replace, not only required rows", async () => {
+    const stub = fresh()
+    const broken: RuntimeBundle = {
+      package: PACKAGE,
+      source: { kind: "local" },
+      rows: [{ id: "boom", plugin: "k-bundle-broken" }],
+      patch: [],
+      requires: [],
+    }
+    const result = await runInDurableObject(stub, async (home: Home) => home.loader.ctx.packages.replace([broken], []))
+    expect(result).toMatchObject({
+      application: "failed",
+      rows: [{ id: `${PACKAGE}#boom`, error: "bundle row exploded" }],
+    })
+    expect(await list(stub)).toEqual([])
+    expect(await rowOf(stub, `${PACKAGE}#boom`)).toBeUndefined()
+  })
+
+  it("records requires from a replace", async () => {
+    const stub = fresh()
+    const remote: RuntimeBundle = {
+      package: "xin-plugin-remote",
+      source: { kind: "local" },
+      rows: [{ id: "a", plugin: "not-a-plugin" }],
+      patch: [],
+      requires: ["left-pad@1.3.0"],
+    }
+    expect(
+      await runInDurableObject(stub, async (home: Home) => home.loader.ctx.packages.replace([remote], [])),
+    ).toMatchObject({ application: "applied" })
+    expect(field((await cmd(stub, "pp-replace", "plugin.packages")).result, "pending")).toMatchObject({
+      add: ["left-pad@1.3.0"],
+    })
+  })
+
+  it("preserves previous versions for packages that stay across a replace", async () => {
+    const stub = fresh()
+    await put(stub, PACKAGE, [greeting("hello")])
+    await put(stub, PACKAGE, [greeting("bye")])
+    await runInDurableObject(stub, async (home: Home) =>
+      home.loader.ctx.packages.replace([bundleOf(PACKAGE, "bye")], []),
+    )
+    expect(await list(stub)).toMatchObject([{ package: PACKAGE, previous: "local" }])
+    expect(await cmd(stub, "rb-replace", "bundle.rollback", { package: PACKAGE })).toMatchObject({
+      ok: true,
+      result: { application: "applied" },
+    })
+    expect(await stored(stub, rowId("greet"))).toBe("hello")
   })
 })

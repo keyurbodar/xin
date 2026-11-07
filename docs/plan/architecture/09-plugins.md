@@ -92,7 +92,7 @@ Turn, tool and request interception stay pi-native: install an extension with ho
 
 A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disabled?, group?, isolate? }`.
 
-- **Catalog.** `src/catalog.ts` lists only the required kernel rows (`db`, `clock`, `pi`, `ops`, `http`, `wire`, `secrets`, `plugins`, `packages`, `system`) in the `xin-base` bundle. Every feature is a package under `plugins/<name>/` (models, files, intake, memory, push, skills, mcp, workspace, schedules, orchestrator, jobs, questions, watchdog, failures, deploy-hook, time), and the generated `src/catalog.gen.ts` lists them and installed dependencies, one bundle per package. Entries are `{ plugin, title, description, required?, multiple?, local?, source }`; `local: true` marks a package that lives in this repository. A package can never declare a core plugin, bundle or row id.
+- **Catalog.** `src/catalog.ts` lists the kernel rows in the `xin-base` bundle: the required ones (`db`, `clock`, `pi`, `ops`, `http`, `wire`, `secrets`, `plugins`, `packages`, `system`) and two that are not required, `tool-plugins` and `profiles` (§12 Setups). Every feature is a package under `plugins/<name>/` (models, files, intake, memory, push, skills, mcp, workspace, schedules, orchestrator, jobs, questions, watchdog, failures, deploy-hook, time), and the generated `src/catalog.gen.ts` lists them and installed dependencies, one bundle per package. Entries are `{ plugin, title, description, required?, multiple?, local?, source }`; `local: true` marks a package that lives in this repository. A package can never declare a core plugin, bundle or row id.
 - **Feature modules** are native Cordis plugins, as in dsh: `export const name`, `inject` and `apply(ctx, config)`. `apply` registers each part as an effect through the kernel services: `ctx.provide`, `ctx.pi.install`, `ctx.ops.define`, `ctx.http.route`, `ctx.wire.home`, `ctx.clock.timer`, `ctx.on("wire/typing")`, and `ctx.effect` for start-up work with a disposer. Helpers take narrow ports (`{ db, arm }`) that `apply` builds and tests build directly. (P1 to P4 mounted features through a `hostModule` adapter; P5 removed it.)
 - **Bundles.** A bundle is an ordered list of rows. `xin-base` holds the kernel rows. `xin.profile.json` names `xin-base` and every feature package's bundle. A package can ship its own bundle.
 - **Layers**, applied in order to an empty list (as in dsh):
@@ -150,9 +150,9 @@ A project can run its conversations with a named agent preset, as dsh does. The 
 }
 ```
 
-`tools` is `"all"` or an allowlist of tool-row ids. A config whose `default` is not declared fails the row (`failed`), and a project assigned a preset that a later config removes falls back to `default`.
+`tools` is `"all"` or an allowlist of tool-row ids. `prompts` is `"all"` (default), `"none"` or an allowlist of `prompt` row ids (§12 Presets beyond tools). A config whose `default` is not declared fails the row (`failed`), and a project assigned a preset that a later config removes falls back to `default`.
 
-A preset selects rows by the extension name a tool row installs. Every extension that carries tools is named `tool-*`: `ctx.pi.install` throws for any other name, so the prefix is enforced rather than assumed. A row's own id need not match (`time` installs `tool-time`, and its extra rows install `tool-time-tokyo`).
+A preset selects tool rows by the extension name a tool row installs, and prompt rows by the row id `ctx.pi.installed` records for each extension (`pi.install` stores the installing loader row id). Every extension that carries tools is named `tool-*`: `ctx.pi.install` throws for any other name, so the prefix is enforced rather than assumed. A row's own id need not match (`time` installs `tool-time`, and its extra rows install `tool-time-tokyo`).
 
 - **Assignment** lives in the plugin's own table (`presets`, created through `ctx.db.applySqliteMigrations("presets", …)`); a project with no row uses `default`. The service is `ctx.presets`: `list()` and `presetOf(projectId)`, both synchronous over the row's config and that table.
 - **Removals.** For a project, the removed extensions are every installed extension named `tool-*` that the preset's allowlist does not name; `"all"` removes none. Each apply computes the removals from the project's current effective assignment and the end state from `ctx.pi.installed`, and calls `configure({ extensions: { remove } })` (or `null` for `"all"`) only when the resolved extension set differs, so replay is harmless.
@@ -162,8 +162,8 @@ A preset selects rows by the extension name a tool row installs. Every extension
 
 | Op | Effect |
 | --- | --- |
-| `preset.list` | the presets and each project's effective preset id |
-| `preset.assign` | `{ projectId, preset }` stores the assignment and applies it live; an unknown project or preset is `bad_args` |
+| `preset.list` | the presets, each project's effective preset id, and the conversation assignments |
+| `preset.assign` | `{ projectId, preset }` or `{ conversation, preset }` (or `preset: null` to clear a conversation's) stores the assignment and applies it live; a conversation assignment wins over its project's; an unknown project, conversation or preset is `bad_args` |
 
 ## Install, update, restart
 

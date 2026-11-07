@@ -153,3 +153,27 @@ For a code package the same click records `name@1.1.0` pending, and the next `sy
 - A bundle's prompts and skills can still steer the model, so the client shows a bundle's rows before install.
 - Code packages are trusted by installing them, as in §15. Third-party code that should not run in the Home isolate should be an MCP server.
 - A capability manifest (`xin.capabilities`) and owner approval for risky actions come in P9.
+
+## Setups: bundle patches, profiles and export (P8)
+
+dsh lets a user keep several named profiles and share a whole setup. On the free plan a setup is data, so it is a bundle.
+
+**Bundle patches.** A bundle may carry `patch: [{ id, config?, disabled? }]` next to `rows`. Each entry targets a compiled row by its plain id and replaces those fields, as a profile patch does. It may not target a `required` row, a row another bundle owns, or a runtime row. Patches apply in the runtime layer, in install order, so a later bundle's patch wins, and the owner patch still wins over all of them. An unknown target is reported in `bundle.list` and kept until the row exists, as the owner patch does today. Validation runs the target plugin's `Config` schema over the patched config.
+
+**Profiles.** A profile is a named, stored set of runtime bundles plus an owner patch. The compiled layer is shared, because there is one build.
+
+| Op | Effect |
+| --- | --- |
+| `profile.list` | profile names, the active one, and each profile's bundle packages |
+| `profile.save` | `{ name }` stores the current runtime bundles and owner patch under `name` (replacing it) |
+| `profile.switch` | `{ name }` replaces the runtime bundles and the owner patch with the profile's, recomposes, and makes it active. If a required row ends not active, it restores the previous state and answers `application: "failed"` |
+| `profile.delete` | `{ name }` deletes a profile that is not active |
+| `profile.export` | `{ name?, package, version }` returns a publishable `package.json` object (`name`, `version`, `keywords: ["xin-plugin"]`, `xin: { bundle, patch, requires }`) built from the named profile or the current setup: every runtime bundle's rows (re-homed under the new package), every owner-inserted row of a `multiple` plugin, and as `patch` each bundle's own patch in bundle order followed by the owner patch on compiled rows (the owner's entry wins; `disabled: false` is kept). Secrets are never exported |
+
+Profiles live in the `kv` key `plugins.profiles` as `{ active, bundles, patch, profiles: { <name>: { bundles, patch } } }`. The top-level `bundles` and `patch` are the active setup, written in the same put as `active`, and it is the source of truth: at boot, when `plugins.bundles` or `plugins.patch` disagree with it, they are rewritten from it before composing, so a crash anywhere in a switch converges on the named profile. Switching and every bundle write run through one queue, and a switch validates each bundle like `bundle.put`. Only a missing key creates `default` from the current state; an unreadable value is kept, reported as a warning, and replaced only when the owner saves. The ops live in a kernel row `profiles`, which is not required.
+
+An exported setup installs anywhere through `market.install` or `bundle.put`, because it is an ordinary bundle.
+
+## Presets beyond tools (P8)
+
+A preset may also select prompt rows. `prompts` is `"all"` (default), `"none"`, or a list of `prompt` row ids; the removed extensions are the `prompt-*` extensions the selection excludes, computed and applied the same way as `tools`. `preset.assign` also accepts `{ conversation, preset }` for one conversation (a thread or a coordinator) and `{ conversation, preset: null }` to clear it; a conversation assignment wins over its project's. Thread conversations inherit their coordinator's effective preset when created, as today.

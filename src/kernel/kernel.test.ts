@@ -2,6 +2,7 @@ import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { cmd, field, fresh, rowOf } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
+import { writeActiveSetup } from "./bundles.ts"
 
 describe("plugin kernel", () => {
   it("lists every kernel and feature row as active and failed rows with their error", async () => {
@@ -58,7 +59,9 @@ describe("plugin kernel", () => {
   it("reports an owner row whose plugin left the build as missing, refuses config, and removes it", async () => {
     const stub = fresh()
     await runInDurableObject(stub, async (_home: Home, state) => {
-      state.storage.kv.put("plugins.patch", [{ insert: [{ id: "ghost", name: "cordis:not-in-build" }] }])
+      const patch = [{ insert: [{ id: "ghost", name: "cordis:not-in-build" }] }]
+      state.storage.kv.put("plugins.patch", patch)
+      writeActiveSetup(state.storage, [], patch)
     })
     await evictDurableObject(stub)
     expect(field(await rowOf(stub, "ghost"), "state")).toEqual({ kind: "missing" })

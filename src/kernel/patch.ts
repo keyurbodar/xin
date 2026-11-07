@@ -12,7 +12,12 @@ const OverrideSchema = obj({
   config: opt(unknown()),
   disabled: opt(bool()),
 })
-const patchCheck = compile(union([InsertSchema, OverrideSchema]))
+const PatchSchema = union([InsertSchema, OverrideSchema])
+const patchCheck = compile(PatchSchema)
+
+export const PatchArg = PatchSchema
+
+const OWNER_PATCH = "plugins.patch"
 
 const isPatch = (value: unknown): value is Patch => patchCheck.check(value)
 
@@ -35,4 +40,13 @@ export function parseOwnerPatch(value: unknown, warn: (message: string) => void)
     warn(`stored owner patch ${index} is not a row patch; ignored`)
     return false
   })
+}
+
+export function readOwnerPatch(storage: DurableObjectStorage, warn: (message: string) => void): Patch[] {
+  return parseOwnerPatch(storage.kv.get(OWNER_PATCH), warn)
+}
+
+export function writeOwnerPatch(storage: DurableObjectStorage, patch: readonly Patch[]): void {
+  if (patch.length === 0) storage.kv.delete(OWNER_PATCH)
+  else storage.kv.put(OWNER_PATCH, patch)
 }

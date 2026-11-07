@@ -44,7 +44,12 @@ const toJson = (value: unknown): JsonValue => (value === undefined ? null : JSON
 export function createManager(loader: XinLoader): Manager {
   const { catalog, profile } = loader.composition
   const runtimeIds = (): ReadonlySet<string> =>
-    new Set(loader.runtime.flatMap((bundle) => bundle.rows.map((row) => runtimeRowId(bundle.package, row.id))))
+    new Set(
+      loader.runtime.flatMap((bundle) => [
+        ...bundle.rows.map((row) => runtimeRowId(bundle.package, row.id)),
+        ...bundle.patch.map((entry) => entry.id),
+      ]),
+    )
   const find = (id: string): Row => {
     const row = loader.rows().find((candidate) => candidate.id === id)
     if (row === undefined) throw new OpRejected("bad_args", `no plugin row ${id}`)
@@ -106,6 +111,7 @@ export function createManager(loader: XinLoader): Manager {
           source: toJson(bundle.source),
           requires: [...bundle.requires],
           rows: bundle.rows.map((row) => runtimeRowId(bundle.package, row.id)),
+          patch: bundle.patch.map((entry) => entry.id),
         })),
         layers: Object.fromEntries(loader.rows().map((row) => [row.id, layerOf(row.id, profile, owner, ids)])),
         lower: toJson(loader.lower),

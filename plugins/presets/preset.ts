@@ -1,4 +1,5 @@
 import { rowId } from "../../src/contributions.ts"
+import type { PresetPrompts } from "../../src/contracts/presets.ts"
 import { type Context, Schema } from "../../src/kernel/index.ts"
 
 export const name = "preset"
@@ -11,6 +12,9 @@ export const Config = Schema.object({
   tools: Schema.union([Schema.const("all"), Schema.array(Schema.string())])
     .required()
     .description('"all", or the tool rows the preset offers.'),
+  prompts: Schema.union([Schema.const("all"), Schema.const("none"), Schema.array(Schema.string())])
+    .default("all")
+    .description('"all", "none", or the prompt rows the preset offers.'),
 })
 
 type Config = {
@@ -18,6 +22,7 @@ type Config = {
   readonly title: string
   readonly description: string
   readonly tools: "all" | readonly string[]
+  readonly prompts: PresetPrompts
 }
 
 export async function apply(ctx: Context, config: Config): Promise<() => Promise<void>> {
@@ -28,6 +33,7 @@ export async function apply(ctx: Context, config: Config): Promise<() => Promise
       title: config.title,
       description: config.description,
       tools: config.tools,
+      prompts: config.prompts,
     },
     row,
   )

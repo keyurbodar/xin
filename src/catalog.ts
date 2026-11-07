@@ -8,6 +8,7 @@ import * as managerTool from "./kernel/managertool.ts"
 import { Ops } from "./kernel/ops.ts"
 import * as packages from "./kernel/packages.ts"
 import { Pi } from "./kernel/pi.ts"
+import * as profiles from "./kernel/profiles.ts"
 import { Secrets } from "./kernel/secrets.ts"
 import * as system from "./kernel/system.ts"
 import { Wire } from "./kernel/wire.ts"
@@ -36,6 +37,12 @@ export const CORE_CATALOG: Catalog = {
     plugin: managerTool,
     title: "Plugin manager tool",
     description: "The plugin_manager agent tool. Disable to hide it; allowAgent lets it change rows.",
+    source: "xin",
+  },
+  profiles: {
+    plugin: profiles,
+    title: "Profiles",
+    description: "Named setups: save, switch, delete and export runtime bundles with the owner patch.",
     source: "xin",
   },
 }

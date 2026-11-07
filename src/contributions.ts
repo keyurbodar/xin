@@ -46,10 +46,15 @@ export function createContributions<T>({ key, label = (name) => name }: Contribu
 
 type LoaderLookup = { locate(fiber: Context["fiber"]): string | undefined }
 
-/** The loader id of the row this code runs in. Throws when it cannot be located. */
-export function rowId(ctx: Context): string {
+export function loaderRow(ctx: Context): string | undefined {
   const loader: LoaderLookup | undefined = ctx.get("loader")
   const id = loader?.locate(ctx.fiber)
-  if (id === undefined || id === "") throw new Error("this code is not running in a loader row, so it has no row id")
+  return id === "" ? undefined : id
+}
+
+/** The loader id of the row this code runs in. Throws when it cannot be located. */
+export function rowId(ctx: Context): string {
+  const id = loaderRow(ctx)
+  if (id === undefined) throw new Error("this code is not running in a loader row, so it has no row id")
   return id
 }

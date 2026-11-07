@@ -4,7 +4,17 @@ import { arr, compile, lit, obj, opt, str, union } from "@earendil-works/pi-sche
 import { isPackageName, MAX_PACKAGE_NAME } from "../npmname.ts"
 import { defineOp, OpRejected } from "../ops.ts"
 import { satisfies } from "../semver.ts"
-import { BundleRowArg, createBundles, type BundleApplication, type BundleView, type RuntimeBundle } from "./bundles.ts"
+import {
+  BundlePatchArg,
+  BundleRowArg,
+  createBundles,
+  normalizePatch,
+  normalizeRow,
+  type BundleApplication,
+  type BundleView,
+  type RuntimeBundle,
+} from "./bundles.ts"
+import type { Patch } from "./layers.ts"
 import type { Catalog } from "./loader.ts"
 
 declare const XIN_BUILD: string | undefined
@@ -35,6 +45,9 @@ export type PackagesService = {
   put(bundle: RuntimeBundle): Promise<BundleApplication>
   remove(name: string): Promise<{ readonly application: "applied"; readonly package: string }>
   rollback(name: string): Promise<BundleApplication>
+  queue<T>(work: () => Promise<T>): Promise<T>
+  replace(runtime: readonly RuntimeBundle[], owner: readonly Patch[]): Promise<BundleApplication>
+  replaceNow(runtime: readonly RuntimeBundle[], owner: readonly Patch[]): Promise<BundleApplication>
 }
 
 export type AddEntry = { readonly spec: PackageSpec; readonly build: string; readonly name?: string }
@@ -230,6 +243,7 @@ export const toJson = (value: unknown): JsonValue => (value === undefined ? null
 const BundleArgs = obj({
   package: PackageArg,
   rows: arr(BundleRowArg),
+  patch: opt(arr(BundlePatchArg)),
   requires: opt(arr(str({ minLength: 1, maxLength: MAX_SPEC }))),
 })
 
@@ -241,18 +255,23 @@ type BundleArgsValue = {
     readonly config?: unknown
     readonly disabled?: boolean
   }[]
+  readonly patch?: readonly {
+    readonly id: string
+    readonly config?: unknown
+    readonly disabled?: boolean
+  }[]
   readonly requires?: readonly string[]
 }
 
 const localBundle = (args: BundleArgsValue): RuntimeBundle => ({
   package: args.package,
   source: { kind: "local" },
-  rows: args.rows.map((row) => ({
-    id: row.id,
-    plugin: row.plugin,
-    ...(row.config === undefined ? {} : { config: toJson(row.config) }),
-    ...(row.disabled === undefined ? {} : { disabled: row.disabled }),
-  })),
+  rows: args.rows.map((row) =>
+    normalizeRow({ id: row.id, plugin: row.plugin, config: toJson(row.config), disabled: row.disabled }),
+  ),
+  patch: (args.patch ?? []).map((entry) =>
+    normalizePatch({ id: entry.id, config: toJson(entry.config), disabled: entry.disabled }),
+  ),
   requires: [...(args.requires ?? [])],
 })
 
@@ -293,6 +312,9 @@ export function apply(ctx: Context): void {
     put: (bundle) => bundles.put(bundle),
     remove: (pkg) => bundles.remove(pkg),
     rollback: (pkg) => bundles.rollback(pkg),
+    queue: <T>(work: () => Promise<T>) => bundles.queue(work),
+    replace: (runtime, owner) => bundles.replace(runtime, owner),
+    replaceNow: (runtime, owner) => bundles.replaceNow(runtime, owner),
   }
   writePending(storage, reconcilePending(readPending(storage), catalog, buildId()))
   ctx.provide("packages", service)

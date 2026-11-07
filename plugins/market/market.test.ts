@@ -382,6 +382,30 @@ describe("market", () => {
     skillLine(third, "- notes: Take notes from sources.")
   })
 
+  it("passes a bundle's patch through to the packages row", async () => {
+    const fake = await fakeRegistry([
+      {
+        name: NOTES,
+        versions: [
+          {
+            version: "1.0.0",
+            xin: { bundle: [], patch: [{ id: "k-config", config: { greeting: "market-patch" } }] },
+          },
+        ],
+      },
+    ])
+    serve(fake)
+    const stub = fresh()
+    expect(await cmd(stub, "patch-install", "market.install", { name: NOTES })).toMatchObject({
+      ok: true,
+      result: { application: "applied", kind: "bundle" },
+    })
+    expect((await cmd(stub, "patch-greeting", "k.greeting")).result).toBe("market-patch")
+    expect((await cmd(stub, "patch-list", "bundle.list")).result).toMatchObject([
+      { package: NOTES, patch: [{ id: "k-config", state: "applied" }] },
+    ])
+  })
+
   it("records a code package update as pending for the next build", async () => {
     const fake = await fakeRegistry([
       { name: TOOLS, versions: [{ version: "1.0.0", xin: codeXin("Tools") }] },
@@ -702,17 +726,23 @@ describe("market", () => {
     serve(fake)
     const stub = fresh()
     await runInDurableObject(stub, async (_home: Home, state) => {
-      state.storage.kv.put(
-        "plugins.bundles",
-        names.map((name) => ({
-          bundle: {
-            package: name,
-            source: { kind: "registry", version: "1.0.0", integrity: "sha512-AAAA" },
-            rows: [],
-            requires: [],
-          },
-        })),
-      )
+      const bundles = names.map((name) => ({
+        bundle: {
+          package: name,
+          source: { kind: "registry" as const, version: "1.0.0", integrity: "sha512-AAAA" },
+          rows: [],
+          patch: [],
+          requires: [],
+        },
+      }))
+      state.storage.kv.put("plugins.bundles", bundles)
+      const setup = bundles.map((entry) => entry.bundle)
+      state.storage.kv.put("plugins.profiles", {
+        active: "default",
+        bundles: setup,
+        patch: [],
+        profiles: { default: { bundles: setup, patch: [] } },
+      })
     })
     await evictDurableObject(stub)
     fake.urls.length = 0

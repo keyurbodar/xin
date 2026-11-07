@@ -51,15 +51,16 @@ export function compose(
   bundles: Readonly<Record<string, readonly Row[]>>,
   profile: Profile,
   runtime: readonly Row[],
+  runtimePatches: readonly Patch[],
   warn: (message: string) => void,
-): Row[] {
+): Applied {
   const patches: Patch[] = []
   for (const name of profile.bundles) {
     const rows = bundles[name]
     if (rows === undefined) warn(`profile names unknown bundle ${name}`)
     else patches.push({ insert: rows })
   }
-  return applyPatches([], [...patches, ...profile.patch, { insert: runtime }], warn).rows
+  return applyPatches([], [...patches, ...profile.patch, { insert: runtime }, ...runtimePatches], warn)
 }
 
 const normal = (field: (typeof FIELDS)[number], value: unknown): unknown =>

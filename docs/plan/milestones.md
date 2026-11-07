@@ -159,3 +159,11 @@ Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](.
 **Proof (test that must pass)**: `plugins/market/market.test.ts` against a fake registry transport: Lahn publishes 1.1.0 of an installed bundle, the check reports one update, `market.update` mounts 1.1.0 live, and `bundle.rollback` returns to 1.0.0; a code package update records `name@1.1.0` pending; a tarball with a wrong integrity is refused; an incompatible `engines.xin` is never offered.
 
 **Depends on**: P6.
+
+## P8 · setups: bundle patches, profiles, export, wider presets
+
+**Builds**: bundle `patch` entries on compiled rows; the `profiles` kernel row with `profile.list`, `profile.save`, `profile.switch`, `profile.delete`, `profile.export`; presets that select prompt rows and can be assigned per conversation (`docs/plan/architecture/12-market.md` §Setups and §Presets beyond tools).
+
+**Proof (test that must pass)**: `src/kernel/profiles.test.ts` (save two profiles with different bundles and a config override, switch between them and see the rows and config change live, a switch that breaks a required row rolls back, delete, export produces a package.json that `bundle.put` installs elsewhere with the same effect, survives eviction) and `src/kernel/bundles.test.ts` patch cases; `plugins/presets/presets.test.ts` (a preset hides a prompt row from the model; a conversation assignment wins over the project's and can be cleared).
+
+**Depends on**: P7.

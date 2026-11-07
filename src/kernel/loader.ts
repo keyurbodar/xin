@@ -1,9 +1,17 @@
 import { Context, type Fiber, type Plugin } from "@deepseek-ai/cordis"
 import { Loader } from "@deepseek-ai/cordis-plugin-loader"
-import { readBundles, runtimeRows, type RuntimeBundle } from "./bundles.ts"
+import {
+  readBundles,
+  reconcileActiveSetup,
+  runtimeRows,
+  writeActiveSetup,
+  type BundleFailure,
+  type RuntimeBundle,
+} from "./bundles.ts"
+import { normalizePatch } from "./bundlepatch.ts"
 import { applyPatches, compose, departures, pluginOf, type Patch, type Profile, type Row } from "./layers.ts"
 import { sourcePackage } from "./packages.ts"
-import { parseOwnerPatch } from "./patch.ts"
+import { readOwnerPatch, writeOwnerPatch } from "./patch.ts"
 import { isRuntimeRowId } from "../rowid.ts"
 import type { Runtime } from "./types.ts"
 
@@ -45,7 +53,6 @@ export type XinLoaderConfig = {
 
 const CORDIS_FIBER_ACTIVE = 2
 const CORDIS_FIBER_FAILED = 3
-const OWNER_PATCH = "plugins.patch"
 
 const failure = async (fiber: Fiber): Promise<string> =>
   fiber.await().then(
@@ -85,6 +92,7 @@ export class XinLoader extends Loader {
   private missing: Row[]
   private rejected: ReadonlyMap<string, string>
   private unresolved: readonly Patch[]
+  private runtimeUnresolved: readonly Patch[] = []
   private mounted = false
   private quiet = false
 
@@ -166,15 +174,37 @@ export class XinLoader extends Loader {
     return { kind: "pending" }
   }
 
+  async brokenRequired(): Promise<BundleFailure[]> {
+    const broken: BundleFailure[] = []
+    for (const row of this.rows()) {
+      if (!this.required(row.id)) continue
+      const state = await this.state(row.id)
+      if (state.kind !== "active")
+        broken.push({ id: row.id, error: state.kind === "failed" ? state.error : state.kind })
+    }
+    return broken
+  }
+
+  override async create(row: Row, parent?: string | null, position?: number): Promise<string> {
+    return super.create(this.patchedRow(row), parent, position)
+  }
+
+  private patchedRow(row: Row): Row {
+    const patches = this.runtimeUnresolved.filter((patch) => !("insert" in patch) && patch.id === row.id)
+    if (patches.length === 0) return row
+    const applied = applyPatches([row], patches, () => undefined).rows[0]
+    return applied ?? row
+  }
+
   async mount(): Promise<void> {
     for (const row of this.initial) if (this.has(row) && !this.rejected.has(row.id)) await this.create(row)
     await this.await()
     this.mounted = true
   }
 
-  async recompose(runtime: readonly RuntimeBundle[]): Promise<void> {
+  async recompose(runtime: readonly RuntimeBundle[], owner: readonly Patch[] = this.ownerPatch()): Promise<void> {
     const lower = this.lowerOf(runtime)
-    const applied = applyPatches(lower, this.ownerPatch(), (message) => this.warn(message))
+    const applied = applyPatches(lower, owner, (message) => this.warn(message))
     const rejected = duplicateFailures(applied.rows, this.composition.catalog)
     const present = applied.rows.filter((row) => this.has(row) && !rejected.has(row.id))
     const missing = applied.rows.filter((row) => !this.has(row) || rejected.has(row.id))
@@ -200,9 +230,15 @@ export class XinLoader extends Loader {
 
   private lowerOf(runtime: readonly RuntimeBundle[]): Row[] {
     const mounted = runtime.filter((bundle) => !this.compiled.has(bundle.package))
-    return compose(this.composition.bundles, this.composition.profile, runtimeRows(mounted), (message) =>
-      this.warn(message),
+    const applied = compose(
+      this.composition.bundles,
+      this.composition.profile,
+      runtimeRows(mounted),
+      mounted.flatMap((bundle) => bundle.patch.map((entry) => normalizePatch(entry))),
+      (message) => this.warn(message),
     )
+    this.runtimeUnresolved = applied.unresolved
+    return applied.rows
   }
 
   private warn(message: string): void {
@@ -223,29 +259,10 @@ export class XinLoader extends Loader {
   }
 }
 
-export function readOwnerPatch(storage: DurableObjectStorage, warn: (message: string) => void): Patch[] {
-  return parseOwnerPatch(storage.kv.get(OWNER_PATCH), warn)
-}
-
-export function writeOwnerPatch(storage: DurableObjectStorage, patch: readonly Patch[]): void {
-  if (patch.length === 0) storage.kv.delete(OWNER_PATCH)
-  else storage.kv.put(OWNER_PATCH, patch)
-}
-
 export type Kernel = {
   readonly root: Context
   readonly loader: XinLoader
   readonly failure: string | undefined
-}
-
-async function brokenRequired(loader: XinLoader): Promise<string[]> {
-  const broken: string[] = []
-  for (const row of loader.rows()) {
-    if (!loader.required(row.id)) continue
-    const state = await loader.state(row.id)
-    if (state.kind !== "active") broken.push(`${row.id}: ${state.kind === "failed" ? state.error : state.kind}`)
-  }
-  return broken
 }
 
 export async function boot(runtime: Runtime, composition: Composition): Promise<Kernel> {
@@ -253,6 +270,7 @@ export async function boot(runtime: Runtime, composition: Composition): Promise<
   root.provide("host", runtime)
   const storage = runtime.state.storage
   const warnings: string[] = []
+  reconcileActiveSetup(storage, (message) => void warnings.push(message))
   const owner = readOwnerPatch(storage, (message) => void warnings.push(message))
   const runtimeBundles = readBundles(storage, (message) => void warnings.push(message)).map((entry) => entry.bundle)
   await root.plugin(XinLoader, {
@@ -261,16 +279,27 @@ export async function boot(runtime: Runtime, composition: Composition): Promise<
     runtime: runtimeBundles,
     owner,
     warnings,
-    persist: (patch) => writeOwnerPatch(storage, patch),
+    persist: (patch) => {
+      writeOwnerPatch(storage, patch)
+      writeActiveSetup(
+        storage,
+        readBundles(storage, () => undefined).map((entry) => entry.bundle),
+        patch,
+      )
+    },
   })
   const loader = root.get("loader")
   if (!(loader instanceof XinLoader)) throw new Error("the loader did not start")
   root.provide("kernel", loader)
   await loader.mount()
-  const broken = await brokenRequired(loader)
+  const broken = await loader.brokenRequired()
   const harness = root.get("harness")
   if (broken.length > 0 || harness === undefined)
-    return { root, loader, failure: `required rows are not active (${broken.join("; ") || "no harness"})` }
+    return {
+      root,
+      loader,
+      failure: `required rows are not active (${broken.map((row) => `${row.id}: ${row.error}`).join("; ") || "no harness"})`,
+    }
   await root.clock.arm(harness.wake())
   harness.resume()
   return { root, loader, failure: undefined }

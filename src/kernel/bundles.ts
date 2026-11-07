@@ -1,34 +1,25 @@
-import type { JsonValue } from "@earendil-works/chord"
-import { arr, bool, compile, lit, obj, opt, str, union, unknown } from "@earendil-works/pi-schema"
+import { isFragment, isRuntimeRowId, runtimeRowId } from "../rowid.ts"
 import { OpRejected } from "../ops.ts"
-import { FragmentId, isFragment, runtimeRowId } from "../rowid.ts"
+import { patchStates, validatePatches } from "./bundlepatch.ts"
+import {
+  readBundles,
+  sameJson,
+  writeBundles,
+  type BundleFailure,
+  type BundleSource,
+  type RuntimeBundle,
+  type StoredBundle,
+} from "./bundlestore.ts"
+import type { BundlePatchState } from "./bundlepatch.ts"
 import { configSchemaOf, validateConfig } from "./config.ts"
-import { pluginOf, type Row } from "./layers.ts"
-import type { RowState, XinLoader } from "./loader.ts"
+import { pluginOf, type Patch } from "./layers.ts"
+import { readOwnerPatch, writeOwnerPatch } from "./patch.ts"
 import type { PackageSpec } from "./packages.ts"
+import type { RowState, XinLoader } from "./loader.ts"
 
-export type BundleSource =
-  | { readonly kind: "registry"; readonly version: string; readonly integrity: string }
-  | { readonly kind: "local" }
-
-export type BundleRow = {
-  readonly id: string
-  readonly plugin: string
-  readonly config?: JsonValue
-  readonly disabled?: boolean
-}
-
-export type RuntimeBundle = {
-  readonly package: string
-  readonly source: BundleSource
-  readonly rows: readonly BundleRow[]
-  readonly requires: readonly string[]
-}
-
-export type StoredBundle = {
-  readonly bundle: RuntimeBundle
-  readonly previous?: RuntimeBundle
-}
+export * from "./bundlestore.ts"
+export { BundlePatchArg, normalizePatch } from "./bundlepatch.ts"
+export type { BundlePatch, BundlePatchState, PatchInput } from "./bundlepatch.ts"
 
 export type BundleRowState = { readonly id: string; readonly state: RowState }
 
@@ -38,9 +29,8 @@ export type BundleView = {
   readonly requires: readonly string[]
   readonly previous: string | null
   readonly rows: readonly BundleRowState[]
+  readonly patch: readonly BundlePatchState[]
 }
-
-export type BundleFailure = { readonly id: string; readonly error: string }
 
 export type BundleApplication =
   | { readonly application: "applied" }
@@ -58,79 +48,13 @@ export type Bundles = {
   put(bundle: RuntimeBundle): Promise<BundleApplication>
   remove(name: string): Promise<{ readonly application: "applied"; readonly package: string }>
   rollback(name: string): Promise<BundleApplication>
+  queue<T>(work: () => Promise<T>): Promise<T>
+  replace(runtime: readonly RuntimeBundle[], owner: readonly Patch[]): Promise<BundleApplication>
+  replaceNow(runtime: readonly RuntimeBundle[], owner: readonly Patch[]): Promise<BundleApplication>
 }
 
-const BUNDLES_KEY = "plugins.bundles"
 const MAX_ROWS = 64
 const MAX_BYTES = 512 * 1024
-
-const SourceSchema = union([
-  obj({ kind: lit("registry"), version: str({ minLength: 1 }), integrity: str({ minLength: 1 }) }),
-  obj({ kind: lit("local") }),
-])
-export const BundleRowArg = obj({
-  id: FragmentId,
-  plugin: str({ minLength: 1 }),
-  config: opt(unknown()),
-  disabled: opt(bool()),
-})
-const BundleSchema = obj({
-  package: str({ minLength: 1 }),
-  source: SourceSchema,
-  rows: arr(BundleRowArg),
-  requires: arr(str()),
-})
-const StoredSchema = obj({ bundle: BundleSchema, previous: opt(BundleSchema) })
-const storedCheck = compile(StoredSchema)
-
-type JsonRecord = { readonly [key: string]: unknown }
-
-const isJsonRecord = (value: unknown): value is JsonRecord =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
-const sameJson = (left: unknown, right: unknown): boolean => {
-  if (left === right) return true
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false
-    return left.every((value, index) => sameJson(value, right[index]))
-  }
-  if (!isJsonRecord(left) || !isJsonRecord(right)) return false
-  const keys = Object.keys(left)
-  if (keys.length !== Object.keys(right).length) return false
-  return keys.every((key) => Object.hasOwn(right, key) && sameJson(left[key], right[key]))
-}
-
-export function bundleRows(bundle: RuntimeBundle): Row[] {
-  return bundle.rows.map((row) => ({
-    id: runtimeRowId(bundle.package, row.id),
-    name: `cordis:${row.plugin}`,
-    ...(row.config === undefined ? {} : { config: row.config }),
-    ...(row.disabled === undefined ? {} : { disabled: row.disabled }),
-  }))
-}
-
-export function runtimeRows(bundles: readonly RuntimeBundle[]): Row[] {
-  return bundles.flatMap(bundleRows)
-}
-
-export function readBundles(storage: DurableObjectStorage, warn: (message: string) => void): readonly StoredBundle[] {
-  const value: unknown = storage.kv.get(BUNDLES_KEY)
-  if (value === undefined) return []
-  if (!Array.isArray(value)) {
-    warn("stored runtime bundles are not a list; ignored")
-    return []
-  }
-  return value.flatMap((entry, index) => {
-    if (storedCheck.check(entry)) return [entry as StoredBundle]
-    warn(`stored runtime bundle ${index} is not a bundle; ignored`)
-    return []
-  })
-}
-
-export function writeBundles(storage: DurableObjectStorage, bundles: readonly StoredBundle[]): void {
-  if (bundles.length === 0) storage.kv.delete(BUNDLES_KEY)
-  else storage.kv.put(BUNDLES_KEY, bundles)
-}
 
 const read = (storage: DurableObjectStorage): readonly StoredBundle[] => readBundles(storage, () => undefined)
 
@@ -138,6 +62,13 @@ const runtimeOf = (stored: readonly StoredBundle[]): RuntimeBundle[] => stored.m
 
 const previousVersion = (previous: RuntimeBundle | undefined): string | null =>
   previous === undefined ? null : previous.source.kind === "registry" ? previous.source.version : "local"
+
+const nextEntry = (stored: readonly StoredBundle[], bundle: RuntimeBundle): StoredBundle => {
+  const prior = stored.find((entry) => entry.bundle.package === bundle.package)
+  if (prior === undefined) return { bundle }
+  const previous = sameJson(prior.bundle, bundle) ? prior.previous : prior.bundle
+  return { bundle, ...(previous === undefined ? {} : { previous }) }
+}
 
 function fail(message: string): never {
   throw new OpRejected("bad_args", message)
@@ -194,6 +125,9 @@ export function createBundles(loader: XinLoader, storage: DurableObjectStorage, 
       const schema = configSchemaOf(entry.plugin)
       if (schema !== undefined) validateConfig(row.plugin, schema, row.config ?? {})
     }
+    const compiled = new Map<string, string>()
+    for (const row of loader.lower) if (!isRuntimeRowId(row.id)) compiled.set(row.id, pluginOf(row))
+    validatePatches(bundle.package, bundle.patch, (id) => compiled.get(id), catalog)
     return requires
   }
 
@@ -209,9 +143,31 @@ export function createBundles(loader: XinLoader, storage: DurableObjectStorage, 
 
   const recompose = (stored: readonly StoredBundle[]): Promise<void> => loader.recompose(runtimeOf(stored))
 
+  const replaceNow = async (runtime: readonly RuntimeBundle[], owner: readonly Patch[]): Promise<BundleApplication> => {
+    const validated = runtime.map((bundle) => ({ bundle, requires: validate(bundle) }))
+    const stored = read(storage)
+    const previousOwner = readOwnerPatch(storage, () => undefined)
+    writeBundles(
+      storage,
+      validated.map((entry) => nextEntry(stored, entry.bundle)),
+    )
+    writeOwnerPatch(storage, owner)
+    await loader.recompose(runtime, owner)
+    const failures = (await Promise.all(runtime.map(failuresOf))).flat()
+    const broken = await loader.brokenRequired()
+    if (failures.length === 0 && broken.length === 0) {
+      for (const entry of validated) for (const spec of entry.requires) port.record(spec)
+      return { application: "applied" }
+    }
+    writeBundles(storage, stored)
+    writeOwnerPatch(storage, previousOwner)
+    await loader.recompose(runtimeOf(stored), previousOwner)
+    return { application: "failed", rows: [...failures, ...broken] }
+  }
+
   return {
-    list: async () =>
-      Promise.all(
+    list: async () => {
+      return Promise.all(
         read(storage).map(async (entry) => ({
           package: entry.bundle.package,
           source: entry.bundle.source,
@@ -226,8 +182,16 @@ export function createBundles(loader: XinLoader, storage: DurableObjectStorage, 
               return { id, state }
             }),
           ),
+          patch: patchStates(
+            entry.bundle.patch,
+            (id) =>
+              !loader.isSuperseded(entry.bundle.package) &&
+              !loader.isMissing(id) &&
+              loader.rows().some((row) => row.id === id),
+          ),
         })),
-      ),
+      )
+    },
 
     put: (bundle) =>
       serial(async () => {
@@ -279,5 +243,11 @@ export function createBundles(loader: XinLoader, storage: DurableObjectStorage, 
         const failures = await failuresOf(swapped.bundle)
         return failures.length === 0 ? { application: "applied" } : { application: "failed", rows: failures }
       }),
+
+    queue: serial,
+
+    replace: (runtime, owner) => serial(() => replaceNow(runtime, owner)),
+
+    replaceNow,
   }
 }

@@ -1,6 +1,6 @@
 import type { JsonValue } from "@earendil-works/chord"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import { obj, str } from "@earendil-works/pi-schema"
+import { int, nullable, obj, str, union } from "@earendil-works/pi-schema"
 import type { PresetView } from "../../src/contracts/presets.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { ProjectId } from "../../src/ids.ts"
@@ -21,18 +21,32 @@ export const Config = Schema.object({
       tools: Schema.union([Schema.const("all"), Schema.array(Schema.string())]).description(
         '"all", or the tool rows the preset offers.',
       ),
+      prompts: Schema.union([Schema.const("all"), Schema.const("none"), Schema.array(Schema.string())])
+        .default("all")
+        .description('"all", "none", or the prompt rows the preset offers.'),
     }),
   ).default({
-    full: { title: "Full", description: "Every tool row.", tools: "all" },
-    minimal: { title: "Minimal", description: "Memory and skills only.", tools: ["tool-memory", "tool-skills"] },
+    full: { title: "Full", description: "Every tool row.", tools: "all", prompts: "all" },
+    minimal: {
+      title: "Minimal",
+      description: "Memory and skills only.",
+      tools: ["tool-memory", "tool-skills"],
+      prompts: "all",
+    },
   } satisfies Record<string, PresetDefinition>),
 })
+
+const AssignArgs = union([
+  obj({ projectId: str({ minLength: 1 }), preset: str({ minLength: 1 }) }),
+  obj({ conversation: int({ minimum: 0 }), preset: nullable(str({ minLength: 1 })) }),
+])
 
 const viewJson = (view: PresetView): JsonValue => ({
   id: view.id,
   title: view.title,
   description: view.description,
   tools: view.tools === "all" ? "all" : [...view.tools],
+  prompts: typeof view.prompts === "string" ? view.prompts : [...view.prompts],
 })
 
 export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
@@ -40,7 +54,7 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
   const feature = await createPresets({
     db: ctx.db,
     harness: ctx.harness,
-    extensions: () => [...ctx.pi.installed.values()].map((installed) => installed.extension),
+    extensions: () => [...ctx.pi.installed.values()],
     config,
   })
   ctx.provide("presets", feature.service)
@@ -76,7 +90,10 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
           projectId,
           preset: feature.service.presetOf(projectId as ProjectId).id,
         }))
-        return { presets: feature.service.list().map(viewJson), projects }
+        const conversations = (workspace === undefined ? [] : feature.conversations(workspace)).map(
+          ({ conversation, preset }) => ({ conversation, preset: preset.id }),
+        )
+        return { presets: feature.service.list().map(viewJson), projects, conversations }
       },
     }),
   )
@@ -84,15 +101,22 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
   ctx.ops.define(
     defineOp({
       name: "preset.assign",
-      args: obj({ projectId: str({ minLength: 1 }), preset: str({ minLength: 1 }) }),
+      args: AssignArgs,
       actors: ["owner"],
       run: async (_api, args) => {
-        const outcome = await feature.assign(args.projectId, args.preset)
+        const outcome =
+          "conversation" in args
+            ? await feature.assign({ kind: "conversation", id: args.conversation }, args.preset)
+            : await feature.assign({ kind: "project", id: args.projectId }, args.preset)
         switch (outcome.kind) {
           case "bad_args":
             throw new OpRejected("bad_args", outcome.reason)
-          case "assigned":
-            return { projectId: outcome.projectId, preset: viewJson(outcome.preset) }
+          case "assigned": {
+            const preset = outcome.preset === null ? null : viewJson(outcome.preset)
+            return outcome.target.kind === "project"
+              ? { projectId: outcome.target.projectId, preset }
+              : { conversation: outcome.target.conversationId, preset }
+          }
         }
       },
     }),

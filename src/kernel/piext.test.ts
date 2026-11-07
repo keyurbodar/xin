@@ -54,6 +54,16 @@ async function observe(stub: Stub): Promise<void> {
 }
 
 describe("pi extensions installed by plugin rows", () => {
+  it("records the installing row id on the installed extension", async () => {
+    const stub = fresh()
+    const row = (name: string): Promise<string | undefined> =>
+      runInDurableObject(stub, (home: Home) => home.loader.ctx.pi.installed.get(name)?.row)
+
+    expect(await row("x-hook")).toBeUndefined()
+    await setRow(stub, "x-hook", true)
+    expect(await row("x-hook")).toBe("x-hook")
+  })
+
   it("runs a generation hook only while its row is active", async () => {
     const stub = fresh()
     expect(await installed(stub, "x-hook")).toBe(false)

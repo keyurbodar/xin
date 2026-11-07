@@ -11,8 +11,13 @@ import {
 } from "@earendil-works/pi-durable"
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
 import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare"
+import { loaderRow } from "../contributions.ts"
 
-type Installed = { readonly extension: Extension; readonly owner: number | null }
+export type Installed = {
+  readonly extension: Extension
+  readonly owner: number | null
+  readonly row: string | undefined
+}
 type EnvProvider = (target: EnvTarget) => ExecutionEnv | undefined
 
 export class Pi extends Service {
@@ -50,12 +55,13 @@ export class Pi extends Service {
     if (extension.tools !== undefined && extension.tools.length > 0 && !extension.name.startsWith("tool-"))
       throw new Error(`extension ${extension.name} carries tools but is not named tool-*`)
     const owner = this.ctx.fiber.uid
+    const row = loaderRow(this.ctx)
     const previous = this.installed.get(extension.name)
     if (previous !== undefined && previous.owner !== owner)
       throw new Error(`extension ${extension.name} is installed by another plugin`)
     return this.ctx.effect(() => {
       this.registry.install(extension)
-      this.installed.set(extension.name, { extension, owner })
+      this.installed.set(extension.name, { extension, owner, row })
       return () => {
         if (this.installed.get(extension.name)?.extension !== extension) return
         this.installed.delete(extension.name)

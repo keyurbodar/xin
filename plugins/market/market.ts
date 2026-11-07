@@ -3,11 +3,15 @@ import type { SqliteDatabase, SqliteMigration } from "@earendil-works/chord/sqli
 import type { JsonObject } from "@earendil-works/pi-durable"
 import { arr, compile, obj, opt, str } from "@earendil-works/pi-schema"
 import {
+  BundlePatchArg,
   BundleRowArg,
+  normalizePatch,
+  normalizeRow,
   Schema,
   sourcePackage,
   toJson,
   type BundleApplication,
+  type BundlePatch,
   type BundleRow,
   type BundleSource,
   type RuntimeBundle,
@@ -96,7 +100,11 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
 ]
 
 const BundleSchema = obj(
-  { bundle: arr(BundleRowArg), requires: opt(arr(str({ minLength: 1, maxLength: 200 }))) },
+  {
+    bundle: arr(BundleRowArg),
+    patch: opt(arr(BundlePatchArg)),
+    requires: opt(arr(str({ minLength: 1, maxLength: 200 }))),
+  },
   { open: true },
 )
 const bundleCheck = compile(BundleSchema)
@@ -114,7 +122,11 @@ function bad(message: string): never {
   throw new OpRejected("bad_args", message)
 }
 
-type Declaration = { readonly rows: readonly BundleRow[]; readonly requires: readonly string[] }
+type Declaration = {
+  readonly rows: readonly BundleRow[]
+  readonly patch: readonly BundlePatch[]
+  readonly requires: readonly string[]
+}
 
 function declarationOf(xin: unknown, label: string): Declaration {
   if (!bundleCheck.check(xin)) {
@@ -122,12 +134,12 @@ function declarationOf(xin: unknown, label: string): Declaration {
     return bad(`${label} declares an invalid bundle${first === undefined ? "" : `: ${first.path} ${first.message}`}`)
   }
   return {
-    rows: xin.bundle.map((row) => ({
-      id: row.id,
-      plugin: row.plugin,
-      ...(row.config === undefined || row.config === null ? {} : { config: toJson(row.config) }),
-      ...(row.disabled === undefined ? {} : { disabled: row.disabled }),
-    })),
+    rows: xin.bundle.map((row) =>
+      normalizeRow({ id: row.id, plugin: row.plugin, config: toJson(row.config), disabled: row.disabled }),
+    ),
+    patch: (xin.patch ?? []).map((entry) =>
+      normalizePatch({ id: entry.id, config: toJson(entry.config), disabled: entry.disabled }),
+    ),
     requires: [...(xin.requires ?? [])],
   }
 }
@@ -374,6 +386,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       package: name,
       source: { kind: "registry", version: target.version, integrity },
       rows: inlined.value,
+      patch: declaration.patch,
       requires: declaration.requires,
     })
     return {

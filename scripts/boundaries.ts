@@ -28,13 +28,16 @@ const CONTEXT_MEMBER = /^\s*([a-z][A-Za-z0-9]*)\??\s*:/gm
 const SERVICE_READ = /\bctx\.([a-z][A-Za-z0-9]*)\b/g
 const INJECT = /\binject\s*[:=]\s*\[([^\]]*)\]/g
 
-const services: ReadonlySet<string> = new Set(
-  files(join(ROOT, "src")).flatMap((file) =>
+const CORDIS_SERVICES: readonly string[] = ["loader", "registry"]
+
+const services: ReadonlySet<string> = new Set([
+  ...CORDIS_SERVICES,
+  ...files(join(ROOT, "src")).flatMap((file) =>
     [...readFileSync(file, "utf8").matchAll(CONTEXT_BLOCK)].flatMap((block) =>
       [...(block[1] ?? "").matchAll(CONTEXT_MEMBER)].flatMap((member) => (member[1] === undefined ? [] : [member[1]])),
     ),
   ),
-)
+])
 
 const injected = (text: string): ReadonlySet<string> | undefined => {
   const lists = [...text.matchAll(INJECT)].map((match) => match[1] ?? "")
