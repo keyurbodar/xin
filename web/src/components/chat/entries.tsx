@@ -124,6 +124,7 @@ export function OwnerBubble(props: {
 
 function QuestionItem(props: {
   row: BatchRow
+  threads: readonly ThreadSummary[]
   requests: readonly RequestRow[]
   onOpenThread: (id: number) => void
   onAnswer: (request: RequestRow, answer: string) => Promise<void>
@@ -134,8 +135,13 @@ function QuestionItem(props: {
       (candidate) => candidate.conversationId === threadId && candidate.question === props.row.text,
     )
   }
+  const thread = (): ThreadSummary | undefined =>
+    props.threads.find((candidate) => String(candidate.id) === props.row.threadId)
   return (
-    <Show when={request()} fallback={<QuestionInboundCard row={props.row} onOpenThread={props.onOpenThread} />}>
+    <Show
+      when={request()}
+      fallback={<QuestionInboundCard row={props.row} thread={thread()} onOpenThread={props.onOpenThread} />}
+    >
       {(found) => (
         <OpenQuestionCard
           title={props.row.title}
@@ -198,6 +204,7 @@ export function EntryItemView(props: { item: EntryItem; context: ItemContext }):
           <div class="min-w-0 flex-1">
             <QuestionItem
               row={item.row}
+              threads={props.context.threads}
               requests={props.context.requests}
               onOpenThread={props.context.onOpenThread}
               onAnswer={props.context.onAnswer}

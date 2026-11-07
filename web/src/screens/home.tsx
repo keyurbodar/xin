@@ -154,7 +154,7 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
           <div class="flex flex-col overflow-hidden rounded-[4px] border border-accent-line">
             <For each={rows()}>
               {(row) => (
-                <div class="flex items-center gap-3 border-b border-line bg-raised px-3.5 py-2.5 last:border-0">
+                <div class="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 border-b border-line bg-raised px-3.5 py-2.5 last:border-0 sm:flex sm:gap-3">
                   <StatusGlyph state={row.state} size={16} />
                   <span class="min-w-0 flex-1 text-left">
                     <span class="block truncate text-[13px] font-medium">{row.title}</span>
@@ -162,7 +162,7 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
                       {row.detail} · {ago(row.at)}
                     </span>
                   </span>
-                  <span class="flex shrink-0 items-center gap-1.5">
+                  <span class="col-span-2 flex flex-wrap items-center gap-1.5 sm:col-auto sm:shrink-0 sm:flex-nowrap">
                     <For each={row.options}>
                       {(option) => (
                         <button

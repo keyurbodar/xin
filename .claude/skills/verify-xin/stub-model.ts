@@ -14,26 +14,32 @@ const port = Number(process.argv[2] ?? 8790)
 const model = "stub-1"
 
 type Body = {
-  readonly messages?: readonly { readonly role?: string; readonly content?: unknown }[]
+  readonly messages?: readonly Message[]
   readonly tools?: readonly { readonly function?: { readonly name?: string } }[]
+}
+
+type Message = {
+  readonly role?: string
+  readonly content?: unknown
+  readonly tool_calls?: readonly { readonly function?: { readonly name?: string } }[]
 }
 
 function toolNames(body: Body): readonly string[] {
   return (body.tools ?? []).flatMap((tool) => (tool.function?.name === undefined ? [] : [tool.function.name]))
 }
 
-function lastText(body: Body): string {
-  const last = (body.messages ?? []).toReversed().find((message) => message.role === "user")
-  return typeof last?.content === "string" ? last.content : ""
+function called(message: Message): readonly string[] {
+  return (message.tool_calls ?? []).flatMap((call) => (call.function?.name === undefined ? [] : [call.function.name]))
 }
 
-/** A coordinator delegates; a thread asks, then answers once it has the answer in hand. */
+/** A coordinator delegates once; a thread asks once, then answers once it has the answer in hand. */
 function reply(body: Body): { readonly name: string; readonly args: Record<string, unknown> } | undefined {
   const tools = toolNames(body)
   const messages = body.messages ?? []
   const answered = messages.at(-1)?.role === "tool"
   if (answered) return undefined
   if (tools.includes("delegate_task")) {
+    if (messages.some((message) => called(message).includes("delegate_task"))) return undefined
     return {
       name: "delegate_task",
       args: {
@@ -45,6 +51,7 @@ function reply(body: Body): { readonly name: string; readonly args: Record<strin
     }
   }
   if (!tools.includes("ask_user")) return undefined
+  if (messages.some((message) => called(message).includes("ask_user"))) return undefined
   return {
     name: "ask_user",
     args: {

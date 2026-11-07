@@ -490,17 +490,15 @@ function createRegistry(port: Pick<ModelsPort, "db" | "kek" | "providers">): Reg
       custom.delete(id)
       restore(id)
     }
-    const registered: string[] = []
     for (const [id, endpoint] of endpoints) {
       const previous = custom.get(id)
       const unchanged = previous !== undefined && previous.baseUrl === endpoint.baseUrl && previous.api === endpoint.api
+      custom.set(id, endpoint)
       if (unchanged && models.getProvider(id) !== undefined) continue
       if (previous !== undefined) restore(id)
-      custom.set(id, endpoint)
       models.setProvider(endpointProvider(id, endpoint))
-      registered.push(id)
     }
-    if (registered.length > 0) await models.refresh({ providers: registered })
+    if (endpoints.size > 0) await models.refresh({ providers: [...endpoints.keys()] })
   }
 
   return { models, store, custom, sync, restore }
@@ -776,7 +774,6 @@ export function create(deps: ModelsPort): ModelsParts {
         throw new OpRejected("bad_args", "give either a key or a custom endpoint")
       }
       await store.set(args.provider, entry)
-      await registry.sync()
       registry.restore(args.provider)
       return { provider: args.provider, type: "api_key", custom: args.custom !== undefined }
     },
@@ -788,7 +785,6 @@ export function create(deps: ModelsPort): ModelsParts {
     actors: ["owner"],
     run: async (_api, { provider }) => {
       await store.delete(provider)
-      await registry.sync()
       registry.restore(provider)
       return { provider, deleted: true }
     },

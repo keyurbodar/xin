@@ -207,17 +207,35 @@ export function ReportCard(props: { row: BatchRow; onOpenThread: (id: number) =>
   )
 }
 
-export function QuestionInboundCard(props: { row: BatchRow; onOpenThread: (id: number) => void }): JSX.Element {
+export function QuestionInboundCard(props: {
+  row: BatchRow
+  thread: ThreadSummary | undefined
+  onOpenThread: (id: number) => void
+}): JSX.Element {
   const threadId = (): number | undefined => {
     const id = Number(props.row.threadId)
     return Number.isInteger(id) && id > 0 ? id : undefined
   }
+  const state = (): VisualState => (props.thread === undefined ? "waiting" : visualState(props.thread.status))
+  const label = (): string => {
+    if (props.thread === undefined) return "Needs your answer"
+    if (props.thread.status === "completed") return "Answered"
+    return props.thread.statusLine ?? STATE_WORD[state()]
+  }
   return (
-    <div class="max-w-[560px] overflow-hidden rounded-[4px] border border-accent-line bg-raised">
-      <div class="flex items-center gap-2.5 border-b border-accent-line bg-accent-dim px-3.5 py-2.5">
-        <StatusGlyph state="waiting" size={16} />
+    <div
+      class="max-w-[560px] overflow-hidden rounded-[4px] border bg-raised"
+      classList={{ "border-accent-line": state() === "waiting", "border-line-inner": state() !== "waiting" }}
+    >
+      <div
+        class="flex items-center gap-2.5 border-b px-3.5 py-2.5"
+        classList={{ "border-accent-line bg-accent-dim": state() === "waiting", "border-line": state() !== "waiting" }}
+      >
+        <StatusGlyph state={state()} size={16} />
         <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{props.row.title}</span>
-        <span class="text-[11px] text-accent-text">Needs your answer</span>
+        <span class="text-[11px]" classList={{ "text-accent-text": state() === "waiting", "text-fg-3": state() !== "waiting" }}>
+          {label()}
+        </span>
       </div>
       <div class="px-3.5 py-3 text-[13.5px] leading-[1.6] text-fg">{props.row.text}</div>
       <div class="flex items-center gap-2 border-t border-line px-3.5 py-2">
@@ -228,10 +246,12 @@ export function QuestionInboundCard(props: { row: BatchRow; onOpenThread: (id: n
             </Button>
           )}
         </Show>
-        <Button variant="ghost" onClick={() => navigate("/inbox")}>
-          Answer in Inbox
-        </Button>
-        <span class="ml-auto mono-meta">Choices arrive on the thread card</span>
+        <Show when={state() === "waiting"}>
+          <Button variant="ghost" onClick={() => navigate("/inbox")}>
+            Answer in Inbox
+          </Button>
+          <span class="ml-auto mono-meta">Choices arrive on the thread card</span>
+        </Show>
       </div>
     </div>
   )
