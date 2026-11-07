@@ -1,11 +1,11 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { ConversationId } from "@earendil-works/pi-durable"
-import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
+import { type ConversationId, defineTask } from "@earendil-works/pi-durable"
+import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import type { CommandId } from "../../src/ids.ts"
-import { dueOf, type ScheduleInput, SCHEDULE_TASK, sendDue, slotKey } from "./schedules.ts"
 import { eventually, field, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
+import { dueOf, SCHEDULE_TASK, type SchedulesPort, sendDue, slotKey, type StoredSchedule } from "./schedules.ts"
 
 type Row = {
   readonly kind: string
@@ -22,20 +22,48 @@ const run = (home: Home, id: string, op: string, args: unknown = {}) =>
 const rows = (home: Home) =>
   home.db.all<Row>("SELECT kind, command_id, body, client_ts, target, status FROM inbound ORDER BY id")
 
-const live = async (home: Home) =>
+const timers = async (home: Home) =>
   (await home.harness.inspect(BACKGROUND_CONTEXT)).tasks.filter((task) => task.record.kind === SCHEDULE_TASK)
 
-const ports = (home: Home) => ({ intake: home.loader.ctx.intake, arm: async () => home.arm(home.harness.wake()) })
+const ports = (home: Home): SchedulesPort => ({
+  harness: home.harness,
+  intake: home.loader.ctx.intake,
+  arm: async () => home.arm(home.harness.wake()),
+})
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)))
 
-const hourly = (target: ConversationId): ScheduleInput => ({
+const ANCHOR = Date.parse("2026-01-01T00:00:00Z")
+const HOUR = 3_600_000
+
+const record = (target: StoredSchedule["target"], overrides: Partial<StoredSchedule> = {}): StoredSchedule => ({
   id: "hydrate",
+  title: "hydrate",
   prompt: "hydrate",
   tz: "UTC",
-  target,
-  anchor: Date.parse("2026-01-01T00:00:00Z"),
+  anchor: ANCHOR,
   when: { kind: "rrule", rrule: "FREQ=HOURLY;BYMINUTE=0" },
+  target,
+  origin: 1,
+  active: true,
+  revision: 1,
+  createdAt: ANCHOR,
+  updatedAt: new Date(ANCHOR).toISOString(),
+  cursor: { last: ANCHOR - 1, index: 0 },
+  ...overrides,
+})
+
+const legacyTimer = defineTask<
+  { readonly id: string; readonly revision: number },
+  { readonly phase: "wait" },
+  null,
+  object
+>({
+  name: SCHEDULE_TASK,
+  version: 1,
+  initial: () => ({ phase: "wait" }),
+  phases: { wait: async () => undefined },
+  abort: async () => undefined,
 })
 
 describe("schedules", () => {
@@ -45,6 +73,7 @@ describe("schedules", () => {
       const slot = Date.now() + 400
       const outcome = await run(home, "s1-create", "schedule.create", {
         id: "reminder-1",
+        title: "Pills",
         at: slot,
         tz: "UTC",
         prompt: "take pills",
@@ -52,7 +81,7 @@ describe("schedules", () => {
       expect(outcome, JSON.stringify(outcome)).toMatchObject({ kind: "ok" })
       return slot
     })
-    await eventually(stub, async (home: Home) => (await live(home)).length === 1)
+    await eventually(stub, async (home: Home) => (await timers(home)).length === 1)
     await delay(at - Date.now() + 50)
     expect(await runDurableObjectAlarm(stub)).toBe(true)
     await eventually(stub, async (home: Home) => (await rows(home)).length === 1)
@@ -62,47 +91,40 @@ describe("schedules", () => {
     expect(JSON.parse(stored[0]?.body ?? "{}")).toEqual({
       kind: "job",
       threadId: "reminder-1",
-      title: "take pills",
+      title: "Pills",
       status: "scheduled",
       text: "take pills",
     })
-    await eventually(stub, async (home: Home) => (await live(home)).length === 0)
+    await eventually(stub, async (home: Home) => (await timers(home)).length === 0)
   })
 
   it("replays the send step without a second row", async () => {
     const evidence = await runInDurableObject(fresh(), async (home: Home) => {
-      const input = hourly((await home.root()).id)
-      const due = dueOf(input, input.anchor - 1, 0, input.anchor)
-      const recomputed = dueOf(input, input.anchor - 1, 0, input.anchor + 3 * 3_600_000)
+      const delivered = record({ kind: "this_session", conversationId: (await home.root()).id })
+      const due = dueOf(delivered, ANCHOR + 1)
+      const recomputed = dueOf(delivered, ANCHOR + 3 * HOUR)
       if (due === undefined || recomputed === undefined) throw new Error("expected a due window")
-      await sendDue(ports(home), input, due)
-      await sendDue(ports(home), input, due)
+      await sendDue(ports(home), delivered, due, ANCHOR)
+      await sendDue(ports(home), delivered, due, ANCHOR)
       return { due, recomputed, stored: await rows(home) }
     })
-    expect(evidence.due).toEqual({ count: 1, latest: Date.parse("2026-01-01T00:00:00Z"), index: 0 })
-    expect(evidence.recomputed).toEqual({ count: 4, latest: Date.parse("2026-01-01T03:00:00Z"), index: 3 })
+    expect(evidence.due).toEqual({ count: 1, latest: ANCHOR, index: 0 })
+    expect(evidence.recomputed).toEqual({ count: 4, latest: ANCHOR + 3 * HOUR, index: 3 })
     expect(evidence.stored).toHaveLength(1)
-    expect(evidence.stored[0]?.command_id).toBe(slotKey("hydrate", Date.parse("2026-01-01T00:00:00Z")))
+    expect(evidence.stored[0]?.command_id).toBe(slotKey("hydrate", ANCHOR))
   })
 
   it("collapses three missed slots into one fire", async () => {
     const evidence = await runInDurableObject(fresh(), async (home: Home) => {
-      const input = hourly((await home.root()).id)
-      const due = dueOf(input, input.anchor - 1, 0, input.anchor + 3 * 3_600_000 - 1)
+      const delivered = record({ kind: "this_session", conversationId: (await home.root()).id })
+      const due = dueOf(delivered, ANCHOR + 3 * HOUR - 1)
       if (due === undefined) throw new Error("expected a due window")
-      await sendDue(ports(home), input, due)
-      return { due, stored: await rows(home) }
+      const next = await sendDue(ports(home), delivered, due, ANCHOR)
+      return { due, next, stored: await rows(home) }
     })
-    expect(evidence.due).toEqual({
-      count: 3,
-      latest: Date.parse("2026-01-01T02:00:00Z"),
-      index: 2,
-    })
+    expect(evidence.due).toEqual({ count: 3, latest: ANCHOR + 2 * HOUR, index: 2 })
     expect(evidence.stored).toHaveLength(1)
-    expect(evidence.stored[0]).toMatchObject({
-      kind: "job",
-      command_id: slotKey("hydrate", Date.parse("2026-01-01T02:00:00Z")),
-    })
+    expect(evidence.stored[0]).toMatchObject({ kind: "job", command_id: slotKey("hydrate", ANCHOR + 2 * HOUR) })
     expect(JSON.parse(evidence.stored[0]?.body ?? "{}")).toEqual({
       kind: "job",
       threadId: "hydrate",
@@ -110,79 +132,229 @@ describe("schedules", () => {
       status: "scheduled",
       text: "hydrate (missed ×3)",
     })
+    expect(evidence.next.cursor).toEqual({ last: ANCHOR + 2 * HOUR, index: 3 })
   })
 
   it("creates one task when two creates race for the same id", async () => {
     const evidence = await runInDurableObject(fresh(), async (home: Home) => {
       const at = Date.now() + 600_000
-      const args = { id: "same-id", at, tz: "UTC", prompt: "ping" }
+      const args = { id: "same-id", title: "Ping", at, tz: "UTC", prompt: "ping" }
+      await home.root()
       const outcomes = await Promise.all([
         run(home, "race-a", "schedule.create", args),
         run(home, "race-b", "schedule.create", args),
       ])
-      return { outcomes, tasks: (await live(home)).length }
+      return { outcomes, tasks: (await timers(home)).length }
     })
     expect(evidence.tasks).toBe(1)
-    expect(evidence.outcomes.map((outcome) => outcome.kind)).toEqual(["ok", "ok"])
+    expect(
+      evidence.outcomes.map((outcome) => outcome.kind),
+      JSON.stringify(evidence.outcomes),
+    ).toEqual(["ok", "ok"])
     const created = evidence.outcomes.map((outcome) => field(field(outcome, "result"), "created"))
     expect(created.filter((flag) => flag === true)).toHaveLength(1)
     expect(created.filter((flag) => flag === false)).toHaveLength(1)
   })
 
-  it("targets a project's coordinator and rejects an unknown project", async () => {
+  it("creates the same id twice in sequence and answers the stored task both times", async () => {
     const evidence = await runInDurableObject(fresh(), async (home: Home) => {
-      const project = await run(home, "proj-create", "project.create", {
-        slug: "writing",
-        name: "Writing",
-      })
       const at = Date.now() + 600_000
-      const created = await run(home, "proj-schedule", "schedule.create", {
-        id: "proj-slot",
-        at,
-        tz: "UTC",
-        prompt: "draft",
-        projectId: field(field(project, "result"), "id"),
-      })
-      const missing = await run(home, "proj-missing", "schedule.create", {
-        id: "gone",
-        at,
-        tz: "UTC",
-        prompt: "draft",
-        projectId: "prj_nope",
-      })
-      const listed = await run(home, "proj-list", "schedule.list")
-      return { coordinator: field(field(project, "result"), "coordinatorId"), created, missing, listed }
+      const args = { id: "twice", title: "Ping", at, tz: "UTC", prompt: "ping" }
+      await home.root()
+      const first = await run(home, "twice-a", "schedule.create", args)
+      const second = await run(home, "twice-b", "schedule.create", args)
+      return { outcomes: [first, second], tasks: (await timers(home)).length }
     })
-    expect(evidence.created, JSON.stringify(evidence.created)).toMatchObject({ kind: "ok" })
-    expect(evidence.missing).toMatchObject({ kind: "rejected", code: "bad_args", message: "no project prj_nope" })
-    const schedules = field(field(evidence.listed, "result"), "schedules") as readonly { id: string; target: number }[]
-    expect(schedules.find((schedule) => schedule.id === "proj-slot")?.target).toBe(evidence.coordinator)
+    expect(evidence.tasks).toBe(1)
+    expect(
+      evidence.outcomes.map((outcome) => [outcome.kind, field(field(outcome, "result"), "created")]),
+      JSON.stringify(evidence.outcomes),
+    ).toEqual([
+      ["ok", true],
+      ["ok", false],
+    ])
+    expect(
+      evidence.outcomes.map((outcome) => field(field(field(outcome, "result"), "task"), "id")),
+      JSON.stringify(evidence.outcomes),
+    ).toEqual(["twice", "twice"])
   })
 
-  it("cancel stops a pending schedule", async () => {
+  it("delivers to the conversation that created the task", async () => {
+    const evidence = await runInDurableObject(fresh(), async (home: Home) => {
+      const origin = (await home.root()).id
+      const delivered = record({ kind: "this_session", conversationId: origin })
+      const due = dueOf(delivered, ANCHOR + 1)
+      if (due === undefined) throw new Error("expected a due window")
+      await sendDue(ports(home), delivered, due, ANCHOR)
+      return { origin, stored: await rows(home) }
+    })
+    expect(evidence.stored).toHaveLength(1)
+    expect(evidence.stored[0]?.target).toBe(evidence.origin)
+  })
+
+  it("opens one conversation at the first delivery of a new_once task and reuses it", async () => {
+    const evidence = await runInDurableObject(fresh(), async (home: Home) => {
+      const origin = (await home.root()).id
+      const first = record({ kind: "new_once" })
+      const due = dueOf(first, ANCHOR + 1)
+      if (due === undefined) throw new Error("expected a due window")
+      const after = await sendDue(ports(home), first, due, ANCHOR)
+      const second = dueOf(after, ANCHOR + HOUR + 1)
+      if (second === undefined) throw new Error("expected a second due window")
+      await sendDue(ports(home), after, second, ANCHOR + HOUR)
+      const opened = after.target.kind === "new_once" ? after.target.conversationId : undefined
+      return {
+        origin,
+        opened,
+        exists:
+          opened === undefined
+            ? false
+            : (await home.harness.conversation(opened as ConversationId, BACKGROUND_CONTEXT)) !== undefined,
+        stored: await rows(home),
+      }
+    })
+    expect(evidence.opened).toBeDefined()
+    expect(evidence.opened).not.toBe(evidence.origin)
+    expect(evidence.exists).toBe(true)
+    expect(evidence.stored).toHaveLength(2)
+    expect(evidence.stored.map((row) => row.target)).toEqual([evidence.opened, evidence.opened])
+  })
+
+  it("opens a different conversation for every delivery of a new task", async () => {
+    const evidence = await runInDurableObject(fresh(), async (home: Home) => {
+      const delivered = record({ kind: "new" })
+      const due = dueOf(delivered, ANCHOR + 1)
+      if (due === undefined) throw new Error("expected a due window")
+      await sendDue(ports(home), delivered, due, ANCHOR)
+      const second = dueOf({ ...delivered, cursor: { last: ANCHOR, index: 1 } }, ANCHOR + HOUR + 1)
+      if (second === undefined) throw new Error("expected a second due window")
+      await sendDue(ports(home), delivered, second, ANCHOR + HOUR)
+      return { stored: await rows(home) }
+    })
+    expect(evidence.stored).toHaveLength(2)
+    const targets = evidence.stored.map((row) => row.target)
+    expect(targets[0]).not.toBe(targets[1])
+  })
+
+  it("keeps an edit after an eviction", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      const at = Date.now() + 600_000
+      const created = await run(home, "e1-create", "schedule.create", {
+        id: "edited",
+        title: "Hydrate",
+        at,
+        tz: "UTC",
+        prompt: "drink water",
+      })
+      expect(created, JSON.stringify(created)).toMatchObject({ kind: "ok" })
+      const edited = await run(home, "e1-edit", "schedule.edit", {
+        id: "edited",
+        action: "update",
+        prompt: "drink more water",
+      })
+      expect(edited, JSON.stringify(edited)).toMatchObject({ kind: "ok", result: { prompt: "drink more water" } })
+    })
+    await evictDurableObject(stub)
+    const viewed = await runInDurableObject(stub, (home: Home) =>
+      run(home, "e1-view", "schedule.view", { id: "edited" }),
+    )
+    expect(viewed, JSON.stringify(viewed)).toMatchObject({
+      kind: "ok",
+      result: { id: "edited", title: "Hydrate", prompt: "drink more water", active: true },
+    })
+  })
+
+  it("refuses to resume a rule with no future occurrence", async () => {
+    const stub = fresh()
+    const at = await runInDurableObject(stub, async (home: Home) => {
+      const slot = Date.now() + 400
+      await run(home, "x1-create", "schedule.create", {
+        id: "spent",
+        title: "Once",
+        at: slot,
+        tz: "UTC",
+        prompt: "once",
+      })
+      return slot
+    })
+    await eventually(stub, async (home: Home) => (await timers(home)).length === 1)
+    await delay(at - Date.now() + 50)
+    await runDurableObjectAlarm(stub)
+    await eventually(stub, async (home: Home) => (await rows(home)).length === 1)
+    await eventually(stub, async (home: Home) => {
+      const viewed = await run(home, `x1-view-${crypto.randomUUID()}`, "schedule.view", { id: "spent" })
+      return field(field(viewed, "result"), "nextAt") === null
+    })
+    const resumed = await runInDurableObject(stub, (home: Home) =>
+      run(home, "x1-resume", "schedule.edit", { id: "spent", action: "update", active: true }),
+    )
+    expect(resumed).toMatchObject({
+      kind: "rejected",
+      code: "bad_args",
+      message: "This task has no future occurrence. Set a new rrule before resuming it.",
+    })
+  })
+
+  it("cancel stops a pending schedule and answers not found afterwards", async () => {
     const stub = fresh()
     const at = await runInDurableObject(stub, async (home: Home) => {
       const slot = Date.now() + 500
-      await run(home, "s4-create", "schedule.create", { id: "doomed", at: slot, tz: "UTC", prompt: "ping" })
+      await run(home, "c1-create", "schedule.create", {
+        id: "doomed",
+        title: "Ping",
+        at: slot,
+        tz: "UTC",
+        prompt: "ping",
+      })
       return slot
     })
-    await eventually(stub, async (home: Home) => (await live(home)).length === 1)
+    await eventually(stub, async (home: Home) => (await timers(home)).length === 1)
 
-    const before = await runInDurableObject(stub, (home: Home) => run(home, "s4-list", "schedule.list"))
+    const before = await runInDurableObject(stub, (home: Home) => run(home, "c1-list", "schedule.list"))
     expect(before, JSON.stringify(before)).toMatchObject({
       kind: "ok",
-      result: { schedules: [{ id: "doomed", at, prompt: "ping" }] },
+      result: { schedules: [{ id: "doomed", title: "Ping", prompt: "ping", at: new Date(at).toISOString() }] },
     })
 
     const cancelled = await runInDurableObject(stub, (home: Home) =>
-      run(home, "s4-cancel", "schedule.cancel", { id: "doomed" }),
+      run(home, "c1-cancel", "schedule.cancel", { id: "doomed" }),
     )
     expect(cancelled, JSON.stringify(cancelled)).toMatchObject({ kind: "ok", result: { cancelled: true } })
-    await eventually(stub, async (home: Home) => (await live(home)).length === 0)
+    await eventually(stub, async (home: Home) => (await timers(home)).length === 0)
 
     await delay(at - Date.now() + 50)
     await runDurableObjectAlarm(stub)
     await delay(300)
     expect(await runInDurableObject(stub, (home: Home) => rows(home))).toHaveLength(0)
+    const viewed = await runInDurableObject(stub, (home: Home) =>
+      run(home, "c1-view", "schedule.view", { id: "doomed" }),
+    )
+    expect(viewed).toMatchObject({ kind: "ok", result: { id: "doomed", code: "schedule_not_found" } })
+  })
+
+  it("retires a version 1 timer instead of running it beside the new record", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      const origin = (await home.root()).id
+      const created = await run(home, "legacy-create", "schedule.create", {
+        id: "shared",
+        title: "Shared",
+        at: Date.now() + 600_000,
+        tz: "UTC",
+        prompt: "ping",
+      })
+      expect(created, JSON.stringify(created)).toMatchObject({ kind: "ok" })
+      await home.harness.commit(async (tx) => {
+        await tx.createTask(
+          legacyTimer,
+          { id: "shared", revision: 1 },
+          { ownership: { kind: "conversation" }, conversationId: origin, background: true },
+        )
+      }, BACKGROUND_CONTEXT)
+    })
+    await eventually(stub, async (home: Home) => (await timers(home)).length === 1)
+    const tasks = await runInDurableObject(stub, (home: Home) => timers(home))
+    expect(tasks.map((task) => task.record.version)).toEqual([2])
   })
 })

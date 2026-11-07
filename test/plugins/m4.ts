@@ -7,16 +7,9 @@ import {
 } from "@earendil-works/pi-ai"
 import type { Provider } from "../../src/module.ts"
 import type { Catalog } from "../../src/kernel/loader.ts"
+import { lastOwnerText } from "../support.ts"
 
 export const M4_MODEL = { provider: "m4", modelId: "m4-faux" } as const
-
-function lastUserText(messages: readonly Message[]): string {
-  const user = messages.findLast((message) => message.role === "user")
-  if (user === undefined) return ""
-  if (typeof user.content === "string") return user.content
-  if (!Array.isArray(user.content)) return ""
-  return user.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
-}
 
 function toolText(message: Message): string {
   return message.role === "toolResult"
@@ -25,7 +18,7 @@ function toolText(message: Message): string {
 }
 
 const step: FauxResponseStep = (context) => {
-  const match = /^m4 write (\S+)\n([\s\S]*)$/.exec(lastUserText(context.messages))
+  const match = /^m4 write (\S+)\n([\s\S]*)$/.exec(lastOwnerText(context.messages))
   const path = match?.[1]
   const content = match?.[2]
   if (path === undefined || content === undefined) return fauxAssistantMessage("unscripted")

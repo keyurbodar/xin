@@ -1,7 +1,8 @@
+import { runInDurableObject } from "cloudflare:test"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { respond } from "../../test/plugins/m8.ts"
 import { integrityOf, tarball } from "../../test/plugins/market.ts"
-import { cmd, field, fresh, recordOffers, turn, type Ack, type Stub } from "../../test/support.ts"
+import { cmd, field, fresh, type Ack, type Stub } from "../../test/support.ts"
+import type { Home } from "../../test/worker.ts"
 
 const REGISTRY = "https://registry.npmjs.org"
 const REGISTRY_HOST = "registry.npmjs.org"
@@ -250,6 +251,16 @@ const entriesOf = (ack: Ack): readonly unknown[] => {
 const indexHits = (transport: Fake): number =>
   transport.urls.filter((url) => url.startsWith("https://index.test/")).length
 
+const installedClock = (stub: Stub, row: string): Promise<boolean> =>
+  runInDurableObject(stub, (home: Home) => {
+    try {
+      home.extension(`clock-${row}`)
+      return true
+    } catch {
+      return false
+    }
+  })
+
 afterEach(() => vi.restoreAllMocks())
 
 describe("market", () => {
@@ -303,10 +314,7 @@ describe("market", () => {
       },
     ])
 
-    const first = recordOffers()
-    respond([first.step("ok")])
-    await turn(stub, `market-turn-${crypto.randomUUID()}`)
-    expect(first.latest().tools).toContain("current_time_market_time")
+    expect(await installedClock(stub, "market-time")).toBe(true)
 
     expect((await op(stub, "market.entry", { name: NOTES })).result).toMatchObject({
       kind: "bundle",
@@ -323,11 +331,8 @@ describe("market", () => {
       ok: true,
       result: { application: "applied", version: "1.1.0" },
     })
-    const second = recordOffers()
-    respond([second.step("ok")])
-    await turn(stub, `market-turn-${crypto.randomUUID()}`)
-    expect(second.latest().tools).toContain("current_time_market_time")
-    expect(second.latest().tools).toContain("current_time_market_clock")
+    expect(await installedClock(stub, "market-time")).toBe(true)
+    expect(await installedClock(stub, "market-clock")).toBe(true)
 
     expect(await op(stub, "market.update", { name: NOTES, version: "0.9.0" })).toMatchObject({
       ok: false,
@@ -347,13 +352,10 @@ describe("market", () => {
       { package: NOTES, source: { kind: "registry", version: "1.1.0" } },
       { package: FLAKY, source: { kind: "registry", version: "1.0.0" } },
     ])
-    const third = recordOffers()
-    respond([third.step("ok")])
-    await turn(stub, `market-turn-${crypto.randomUUID()}`)
-    expect(third.latest().tools).toContain("current_time_market_time")
-    expect(third.latest().tools).toContain("current_time_market_clock")
-    expect(third.latest().tools).toContain("current_time_flaky_time")
-    expect(third.latest().tools).not.toContain("current_time_flaky_bad")
+    expect(await installedClock(stub, "market-time")).toBe(true)
+    expect(await installedClock(stub, "market-clock")).toBe(true)
+    expect(await installedClock(stub, "flaky-time")).toBe(true)
+    expect(await installedClock(stub, "flaky-bad")).toBe(false)
   })
 
   it("records a git version and a code package as pending installs", async () => {

@@ -29,7 +29,7 @@ describe("skills tool row", () => {
     respond([offers.step("ok")])
     await turn(stub, "tool-skills-turn-2")
     expect(offers.latest().tools).not.toContain("skill")
-    expect(offers.latest().tools).toContain("current_time")
+    expect(offers.latest().tools).toContain("remember")
     expect(offers.latest().system).not.toContain(RESEARCH_LINE)
     expect(await rowState(stub, "skills")).toEqual({ kind: "active" })
     expect(await rowState(stub, "tool-skills")).toEqual({ kind: "disabled" })

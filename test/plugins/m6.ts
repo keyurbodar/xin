@@ -5,6 +5,7 @@ import { obj } from "@earendil-works/pi-schema"
 import type { JobTool, JobWork } from "../../src/contracts/jobs.ts"
 import type { Provider } from "../../src/module.ts"
 import type { Catalog } from "../../src/kernel/loader.ts"
+import { lastOwnerIndex, lastOwnerText } from "../support.ts"
 
 export const M6_MODEL = { provider: "m6", modelId: "m6-faux" } as const
 
@@ -20,21 +21,6 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
     if (signal.aborted) abort()
     else signal.addEventListener("abort", abort, { once: true })
   })
-}
-
-function textOf(message: { readonly content: unknown }): string {
-  if (typeof message.content === "string") return message.content
-  if (!Array.isArray(message.content)) return ""
-  return message.content
-    .map((part: unknown) =>
-      typeof part === "object" && part !== null && "text" in part && typeof part.text === "string" ? part.text : "",
-    )
-    .join("")
-}
-
-function lastUserText(messages: readonly { readonly role: string; readonly content: unknown }[]): string {
-  const user = messages.findLast((message) => message.role === "user")
-  return user === undefined ? "" : textOf(user)
 }
 
 function sectionsText(messages: readonly { readonly role: string }[]): string {
@@ -92,8 +78,8 @@ const stuck = defineTool({
 const step: FauxResponseStep = async (context) => {
   const messages = context.messages
   if (sectionsText(messages).includes("You are a thread")) {
-    const brief = lastUserText(messages)
-    const lastUser = messages.findLastIndex((message) => message.role === "user")
+    const brief = lastOwnerText(messages)
+    const lastUser = lastOwnerIndex(messages)
     if (messages.slice(lastUser + 1).some((message) => message.role === "toolResult"))
       return fauxAssistantMessage(`thread answer: ${brief}`)
     if (brief.includes("ask"))
@@ -113,8 +99,8 @@ const step: FauxResponseStep = async (context) => {
       })
     return fauxAssistantMessage(`thread answer: ${brief}`)
   }
-  const prompt = lastUserText(messages)
-  const lastUser = messages.findLastIndex((message) => message.role === "user")
+  const prompt = lastOwnerText(messages)
+  const lastUser = lastOwnerIndex(messages)
   const results = messages.slice(lastUser + 1).filter((message) => message.role === "toolResult")
   if (prompt.includes("Which color") && results.length === 0)
     return fauxAssistantMessage(

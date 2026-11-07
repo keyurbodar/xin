@@ -4,6 +4,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai"
 import type { EntryRecord, JsonObject } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { M8_MODEL, respond } from "../../test/plugins/m8.ts"
+import { clearObservations, latest, record } from "../../test/plugins/piext.ts"
 import { cmd, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
@@ -11,6 +12,11 @@ type Stub = ReturnType<typeof fresh>
 
 const call = (name: string, args: JsonObject) =>
   fauxAssistantMessage([fauxToolCall(name, args, { id: `${name}-${crypto.randomUUID()}` })], { stopReason: "toolUse" })
+
+const reading = (): string =>
+  latest()
+    .users.filter((text) => text.startsWith("Time sampled while preparing turn "))
+    .join("\n")
 
 async function turn(stub: Stub, requestId: string): Promise<string[]> {
   return runInDurableObject(stub, async (home: Home) => {
@@ -62,16 +68,23 @@ describe("plugin tools", () => {
     expect(refused).toContain("required")
   })
 
-  it("runs the out-of-tree time plugin, reconfigures it, and fails a bad timezone without touching other rows", async () => {
+  it("runs the composed time row, reconfigures it, and fails a bad timezone without touching other rows", async () => {
     const stub = fresh()
-    respond([call("current_time", {}), fauxAssistantMessage("done")])
-    const [utc] = await turn(stub, "c1")
-    expect(utc).toContain("(UTC, ")
+    clearObservations()
+    respond([record("done")])
+    await turn(stub, "c1")
+    expect(reading()).toContain("Owner time zone: UTC.")
 
-    await cmd(stub, "tz1", "plugin.configure", { id: "time", config: { timezone: "Asia/Kolkata" } })
-    respond([call("current_time", {}), fauxAssistantMessage("done")])
-    const [kolkata] = await turn(stub, "c2")
-    expect(kolkata).toContain("(Asia/Kolkata, ")
+    const configured = await cmd(stub, "tz1", "plugin.configure", {
+      id: "time",
+      config: { timezone: "Asia/Tokyo", refreshIntervalMs: 0 },
+    })
+    expect(configured.result).toMatchObject({ application: "applied" })
+    clearObservations()
+    respond([record("done")])
+    await turn(stub, "c2")
+    expect(reading()).toContain("Owner time zone: Asia/Tokyo.")
+    expect(reading()).toContain("[Asia/Tokyo]")
 
     const bad = await cmd(stub, "tz2", "plugin.configure", { id: "time", config: { timezone: "Mars/Olympus" } })
     expect(bad.result).toMatchObject({ application: "failed", row: { state: { kind: "failed" } } })

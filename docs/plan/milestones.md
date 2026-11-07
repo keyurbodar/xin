@@ -181,3 +181,27 @@ Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](.
 **Builds**: a `tools/pre-execute` waterfall over model tool calls (allow, deny, cancel, ask) and a swappable `user-approval` service that answers `ask` through a question card. Nothing else.
 
 **Depends on**: P9.
+
+## P11 · always-on: the clock, manual compaction and the loop guard
+
+**Builds**: `docs/plan/architecture/13-always-on.md`. The `time` row becomes dsh `context/time-context`: a `GenerationTask.beforeRequest` hook appends a durable reading (ISO time, zone, elapsed) when the last one is older than `refreshIntervalMs`, and the `current_time` tool is removed. The new `compact` row adds `conv.compact` (dsh `command-compact`) over pi's manual `conversation.compact()`, answering `busy` during a live run. The new `guard` row is dsh `guard/repeat-tool-reminder`: identical `{name, arguments}` repeats counted per conversation, reminders appended to the tool result at 3, 5 and 8, cleared by a new owner message, advisory only.
+
+**Proof (test that must pass)**: `plugins/time/time.test.ts` (one reading before the first request, a second one suppressed inside `refreshIntervalMs` and written when `0`, elapsed against the last message then against the previous reading, a bad zone fails the row); `plugins/compact/compact.test.ts` (compacts an idle conversation, `busy` while a run is live, `instructions` reach the summarizer); `plugins/guard/guard.test.ts` (reminders at 3, 5 and 8 with the arguments preview, no reminder for changing arguments, counts cleared by a new message, a blocked or error result still counts). The whole suite passes with zero boundary violations.
+
+**Depends on**: P9. Parallel with P12 and P13.
+
+## P12 · scheduled tasks, dsh shape
+
+**Builds**: `docs/plan/architecture/13-always-on.md` §Scheduled tasks (dsh `schedule`, `tool-schedule`). The task record gains `title`, `active` and `updatedAt`, and the target becomes `this_session | new_once | new`. Four tools replace `schedule`/`unschedule`: `schedule_create`, `schedule_list`, `schedule_view`, `schedule_edit` with `expectedUpdatedAt` conflicts, pause and resume, `schedule_not_found`, the `subagent_session` refusal and the shared authorization section. Ops keep `schedule.create`, `schedule.cancel`, `schedule.list` and gain `schedule.edit`, `schedule.view`.
+
+**Proof (test that must pass)**: `plugins/schedules/tools.test.ts` (create, list with `active` filter and paging, view an unknown id, edit a prompt and an rrule, pause stops delivery and resume restarts it, a stale `expectedUpdatedAt` changes nothing, a delegated caller is refused) and `plugins/schedules/schedules.test.ts` (all three targets deliver once where they should, an edit survives eviction, a resume with an exhausted rule is refused). The whole suite passes with zero boundary violations.
+
+**Depends on**: P9. Parallel with P11 and P13.
+
+## P13 · goals (dsh `goal`, `tool-goal`, `goal-round-driver`)
+
+**Builds**: `docs/plan/architecture/13-always-on.md` §Goals. New rows `goals` (state in `kv` per conversation, ops `goal.get` and `goal.set` with a discriminated action, compare-and-set on `{id, revision}`, instance-local armed set), `tool-goals` (`get_goal`, `create_goal`, `update_goal` with dsh's schemas, shared output JSON and policy paragraph) and `goal-rounds` (the driver). The driver reserves a round from `GenerationTask.afterRun` by enqueuing an `inbound` row of kind `job` whose command id starts `goal:`, the claim re-checks the goal and spends exactly one round, the cap blocks with code `round-limit`, and a pending round is dropped when an owner message arrives.
+
+**Proof (test that must pass)**: `plugins/goals/goals.test.ts` (create, edit, pause, resume, complete, block and clear with revision conflicts; one goal per conversation; an unfinished goal must be cleared before another; armed is cleared by a new instance); `plugins/goals/rounds.test.ts` (a goal runs round after round while idle, each round is one turn with the `<goal_round>` prompt, a stale reservation spends no round, the cap blocks with `round-limit`, an owner message cancels a pending round, a disarmed goal does not continue after eviction, and disabling the row leaves the goal usable by hand); `plugins/goals/tools.test.ts` (the three tools answer the shared JSON, `blocked_reason` is required only for `blocked`). The whole suite passes with zero boundary violations.
+
+**Depends on**: P9. Parallel with P11 and P12.

@@ -1,8 +1,8 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { Context } from "@earendil-works/chord"
+import type { Context, JsonValue } from "@earendil-works/chord"
 import {
   type ConversationId,
-  type Cursor,
+  defineDoc,
   defineExtension,
   defineTask,
   type Extension,
@@ -12,79 +12,129 @@ import {
   type TaskRuntime,
   type Tx,
 } from "@earendil-works/pi-durable"
-import { compile, int, lit, obj, str, union } from "@earendil-works/pi-schema"
+import { bool, compile, int, lit, map, obj, opt, type Static, str, union } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
+  DEFAULT_LIST_LIMIT,
+  editRequest,
   ID_SOURCE,
-  SCHEDULE_FIELDS,
-  type ScheduleRequest,
+  MAX_LIST_LIMIT,
+  MAX_PROMPT,
+  MAX_RULE,
+  MAX_TITLE,
+  ScheduleEditArgsSchema,
+  ScheduleInputError,
+  type CreatedSchedule,
+  type ScheduleCreateRequest,
+  type ScheduleEditRequest,
+  type ScheduleEditResult,
+  type ScheduleListPage,
+  type ScheduleListRequest,
+  type SchedulePatch,
+  type ScheduleTargetChoice,
+  type ScheduleTask,
+  type ScheduleViewResult,
   type SchedulesService,
+  TargetSchema,
 } from "../../src/contracts/schedules.ts"
-import { defineOp, type Op, type OpApi, OpRejected } from "../../src/ops.ts"
-import { type DueWindow, type Occurrence, parseRule, RuleError, slotsOf, validateZone, type When } from "./rrule.ts"
-import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import { defineOp, OpRejected, type Op, type OpApi } from "../../src/ops.ts"
+import { serial } from "../../src/serial.ts"
+import {
+  type DueWindow,
+  type Occurrence,
+  type ParsedWhen,
+  parseRuleText,
+  RuleError,
+  slotsOf,
+  type When,
+  zoneOf,
+} from "./rrule.ts"
 
 const context = BACKGROUND_CONTEXT
 
 export const SCHEDULE_TASK = "xin.schedule"
-export const SCHEDULE_VERSION = 1
-const ID = new RegExp(ID_SOURCE)
+export const SCHEDULE_VERSION = 2
 const MISSED = " (missed ×"
-const TITLE_LENGTH = 60
-const PAGE = 200
+const ID = new RegExp(ID_SOURCE)
 
-const WHEN = union([
+const WhenSchema = union([
   obj({ kind: lit("at"), at: int({ minimum: 0 }) }),
-  obj({ kind: lit("rrule"), rrule: str({ minLength: 1, maxLength: 512 }) }),
+  obj({ kind: lit("rrule"), rrule: str({ minLength: 1, maxLength: MAX_RULE }) }),
 ])
 
-const INPUT = compile(
-  obj({
-    id: str({ minLength: 1, maxLength: 64 }),
-    prompt: str({ minLength: 1, maxLength: 4000 }),
-    tz: str({ minLength: 1, maxLength: 64 }),
-    target: int({ minimum: 0 }),
-    anchor: int({ minimum: 0 }),
-    when: WHEN,
-  }),
-)
+const StoredTargetSchema = union([
+  obj({ kind: lit("this_session"), conversationId: int({ minimum: 0 }) }),
+  obj({ kind: lit("new_once"), conversationId: opt(int({ minimum: 0 })) }),
+  obj({ kind: lit("new") }),
+])
 
-export type ScheduleInput = {
-  readonly id: string
-  readonly prompt: string
-  readonly tz: string
-  readonly target: ConversationId
-  readonly anchor: number
-  readonly when: When
-}
+const PositionSchema = obj({ last: int(), index: int({ minimum: 0 }) })
 
-type Progress = { readonly last: number; readonly index: number }
+const LastDeliverySchema = obj({
+  scheduledAt: str({ minLength: 1, maxLength: 100 }),
+  deliveredAt: str({ minLength: 1, maxLength: 100 }),
+  targetSessionId: int({ minimum: 0 }),
+})
 
-type ScheduleState =
-  | ({ readonly phase: "wait" } & Progress)
-  | ({ readonly phase: "fire" } & Progress)
-  | ({ readonly phase: "send"; readonly due: DueWindow } & Progress)
+export const ScheduleRecordSchema = obj({
+  id: str({ pattern: ID_SOURCE }),
+  title: str({ minLength: 1, maxLength: MAX_TITLE }),
+  prompt: str({ minLength: 1, maxLength: MAX_PROMPT }),
+  tz: str({ minLength: 1, maxLength: 64 }),
+  anchor: int(),
+  when: WhenSchema,
+  target: StoredTargetSchema,
+  origin: int({ minimum: 0 }),
+  active: bool(),
+  revision: int({ minimum: 1 }),
+  createdAt: int({ minimum: 0 }),
+  updatedAt: str({ minLength: 1, maxLength: 100 }),
+  cursor: PositionSchema,
+  lastDelivery: opt(LastDeliverySchema),
+})
 
-export type FirePorts = {
+export const SchedulesStateSchema = obj({ records: map(ScheduleRecordSchema) })
+
+export type StoredSchedule = Static<typeof ScheduleRecordSchema>
+type StoredTarget = Static<typeof StoredTargetSchema>
+
+type Position = Static<typeof PositionSchema>
+
+type SchedulesState = Static<typeof SchedulesStateSchema>
+
+const RECORD = compile(ScheduleRecordSchema)
+const SCHEDULES = compile(SchedulesStateSchema)
+
+export const SchedulesDoc = defineDoc<SchedulesState>({
+  kind: "xin.schedules",
+  version: 1,
+  scope: "session",
+  initial: () => ({ records: {} }),
+  checkpointWhen: () => false,
+})
+
+export type SchedulesPort = {
+  readonly harness: Harness
   readonly intake: Pick<IntakeService, "enqueue">
   readonly arm: () => Promise<void>
 }
 
-export type SchedulesPort = FirePorts & { readonly harness: Harness }
+type TimerInput = { readonly id: string; readonly revision: number }
 
-type LiveSchedule = {
-  readonly taskId: TaskId
-  readonly input: ScheduleInput
-  readonly until: number | undefined
-}
+type ScheduleState =
+  | { readonly phase: "wait" }
+  | { readonly phase: "fire" }
+  | { readonly phase: "send"; readonly due: DueWindow }
+  | { readonly phase: "retired" }
 
 export function schedulesService(port: SchedulesPort): SchedulesService {
+  const queue = serial()
   return {
-    create: async (request, fallback, now, defaultId) => {
-      const created = await createSchedule(port, request, fallback, now, defaultId)
-      return { id: created.id, created: created.created }
-    },
-    cancel: (id) => cancelSchedules(port, id),
+    create: (request, fallback, now, defaultId) => queue(() => createSchedule(port, request, fallback, now, defaultId)),
+    cancel: (id) => queue(() => cancelSchedule(port, id)),
+    view: (id) => viewSchedule(port, id),
+    list: (request) => listSchedules(port, request),
+    edit: (request, fallback, now) => queue(() => editSchedule(port, request, fallback, now)),
   }
 }
 
@@ -92,251 +142,564 @@ export function schedulesExtension(port: SchedulesPort): Extension {
   return defineExtension({ name: "schedules", tasks: [scheduleTask(port)] })
 }
 
-export function scheduleOps(port: SchedulesPort): readonly Op[] {
-  return [createOp(port), cancelOp(port), listOp(port)]
+export function scheduleOps(service: SchedulesService): readonly Op[] {
+  const root = rootConversation()
+  return [createOp(service, root), cancelOp(service), listOp(service), viewOp(service), editOp(service, root)]
 }
 
-function complete(runtime: TaskRuntime<ScheduleInput, ScheduleState, null, object>, ctx: Context): Promise<void> {
-  return runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), ctx)
-}
-
-export function scheduleTask(port: SchedulesPort): Task<ScheduleInput, ScheduleState, null, object> {
-  return defineTask<ScheduleInput, ScheduleState, null, object>({
+export function scheduleTask(port: SchedulesPort): Task<TimerInput, ScheduleState, null, object> {
+  return defineTask<TimerInput, ScheduleState, null, object>({
     name: SCHEDULE_TASK,
     version: SCHEDULE_VERSION,
-    initial: (input): ScheduleState => ({ phase: "wait", last: input.anchor - 1, index: 0 }),
+    initial: () => ({ phase: "wait" }),
+    migrate: (input, _checkpoint, fromVersion) => {
+      if (fromVersion !== 1) throw new Error(`no schedule timer migration from version ${fromVersion}`)
+      return { input: { id: retiredIdOf(input), revision: 0 }, checkpoint: { phase: "retired" } }
+    },
     phases: {
       wait: async (task, runtime, ctx) => {
-        const { last, index } = task.state.checkpoint
-        const next = nextSlot(task.input, last, index)
+        const record = await liveRecord(port, task.input, ctx)
+        if (record === undefined) return complete(runtime, ctx)
+        const next = nextOf(record)
         if (next === undefined) return complete(runtime, ctx)
-        if (next.slot > runtime.now()) return runtime.sleepUntil(next.slot, { phase: "fire", last, index }, ctx)
-        await runtime.commit(() => ({ status: "running", checkpoint: { phase: "fire", last, index } }), ctx)
+        if (next.slot > runtime.now()) return runtime.sleepUntil(next.slot, { phase: "fire" }, ctx)
+        await runtime.commit(() => ({ status: "running", checkpoint: { phase: "fire" } }), ctx)
       },
       fire: async (task, runtime, ctx) => {
-        const { last, index } = task.state.checkpoint
-        const due = dueOf(task.input, last, index, runtime.now())
-        const checkpoint: ScheduleState =
-          due === undefined ? { phase: "wait", last, index } : { phase: "send", last, index, due }
+        const record = await liveRecord(port, task.input, ctx)
+        if (record === undefined) return complete(runtime, ctx)
+        const due = dueOf(record, runtime.now())
+        const checkpoint: ScheduleState = due === undefined ? { phase: "wait" } : { phase: "send", due }
         await runtime.commit(() => ({ status: "running", checkpoint }), ctx)
       },
       send: async (task, runtime, ctx) => {
-        const { due } = task.state.checkpoint
-        await sendDue(port, task.input, due)
-        await runtime.commit(
-          () => ({ status: "running", checkpoint: { phase: "wait", last: due.latest, index: due.index } }),
-          ctx,
-        )
+        const record = await liveRecord(port, task.input, ctx)
+        if (record === undefined) return complete(runtime, ctx)
+        const delivered = await sendDue(port, record, task.state.checkpoint.due, runtime.now())
+        await runtime.commit(async (tx) => {
+          const doc = await tx.doc(SchedulesDoc)
+          const stored = doc.records[delivered.id]
+          if (stored !== undefined && stored.revision === delivered.revision) doc.records[delivered.id] = delivered
+          return { status: "running", checkpoint: { phase: "wait" } }
+        }, ctx)
       },
+      retired: (_task, runtime, ctx) => complete(runtime, ctx),
     },
     abort: (_task, runtime, ctx) => runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx),
   })
 }
 
-function nextSlot(input: ScheduleInput, last: number, index: number): Occurrence | undefined {
-  return slotsOf(input.when, input.tz, input.anchor).next(last, index)
+function complete(runtime: TaskRuntime<TimerInput, ScheduleState, null, object>, ctx: Context): Promise<void> {
+  return runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), ctx)
 }
 
-export function dueOf(input: ScheduleInput, last: number, index: number, now: number): DueWindow | undefined {
-  return slotsOf(input.when, input.tz, input.anchor).due(last, index, now)
+function retiredIdOf(input: JsonValue): string {
+  if (typeof input !== "object" || input === null) return ""
+  const id: unknown = Reflect.get(input, "id")
+  return typeof id === "string" ? id : ""
 }
 
-export async function sendDue(ports: FirePorts, input: ScheduleInput, due: DueWindow): Promise<void> {
-  await ports.intake.enqueue({
-    target: input.target,
-    commandId: slotKey(input.id, due.latest),
-    kind: "job",
-    threadId: input.id,
-    title: titleOf(input.prompt),
-    status: "scheduled",
-    text: due.count > 1 ? `${input.prompt}${MISSED}${due.count})` : input.prompt,
-    clientTs: due.latest,
-  })
-  await ports.arm()
+function recordsOf(state: SchedulesState | undefined): Readonly<Record<string, StoredSchedule>> {
+  if (state === undefined) return {}
+  if (!SCHEDULES.check(state)) {
+    const reason = SCHEDULES.errors(state)
+      .map((error) => `${error.path} ${error.message}`)
+      .join("; ")
+    throw new Error(`xin.schedules is not a valid stored document: ${reason}`)
+  }
+  return state.records
 }
 
-function titleOf(prompt: string): string {
-  return prompt.length <= TITLE_LENGTH ? prompt : `${prompt.slice(0, TITLE_LENGTH)}...`
+function recordOf(records: Readonly<Record<string, StoredSchedule>>, id: string): StoredSchedule | undefined {
+  const stored: unknown = records[id]
+  if (stored === undefined) return undefined
+  if (!RECORD.check(stored)) {
+    const reason = RECORD.errors(stored)
+      .map((error) => `${error.path} ${error.message}`)
+      .join("; ")
+    throw new Error(`schedule "${id}" is not a valid stored record: ${reason}`)
+  }
+  return stored
+}
+
+async function liveRecord(port: SchedulesPort, input: TimerInput, ctx: Context): Promise<StoredSchedule | undefined> {
+  const state = await port.harness.snapshot(SchedulesDoc, ctx)
+  const record = recordOf(recordsOf(state), input.id)
+  return record === undefined || record.revision !== input.revision || !record.active ? undefined : record
+}
+
+export function nextOf(record: StoredSchedule): Occurrence | undefined {
+  return slotsOf(record.when, record.tz, record.anchor).next(record.cursor.last, record.cursor.index)
+}
+
+export function dueOf(record: StoredSchedule, now: number): DueWindow | undefined {
+  return slotsOf(record.when, record.tz, record.anchor).due(record.cursor.last, record.cursor.index, now)
 }
 
 export function slotKey(id: string, slot: number): string {
   return `sched:${id}:${new Date(slot).toISOString()}`
 }
 
+export async function sendDue(
+  port: SchedulesPort,
+  record: StoredSchedule,
+  due: DueWindow,
+  now: number,
+): Promise<StoredSchedule> {
+  const delivered = await deliveryOf(port, record)
+  await port.intake.enqueue({
+    target: delivered.target,
+    commandId: slotKey(record.id, due.latest),
+    kind: "job",
+    threadId: record.id,
+    title: record.title,
+    status: "scheduled",
+    text: due.count > 1 ? `${record.prompt}${MISSED}${due.count})` : record.prompt,
+    clientTs: due.latest,
+  })
+  await port.arm()
+  return {
+    ...delivered.record,
+    cursor: { last: due.latest, index: due.index + 1 },
+    lastDelivery: {
+      scheduledAt: iso(due.latest),
+      deliveredAt: iso(now),
+      targetSessionId: delivered.target,
+    },
+  }
+}
+
+type Delivery = { readonly target: ConversationId; readonly record: StoredSchedule }
+
+async function deliveryOf(port: SchedulesPort, record: StoredSchedule): Promise<Delivery> {
+  switch (record.target.kind) {
+    case "this_session":
+      return { target: record.target.conversationId as ConversationId, record }
+    case "new_once": {
+      const reserved = record.target.conversationId
+      if (reserved !== undefined) return { target: reserved as ConversationId, record }
+      const created = await createConversation(port)
+      return { target: created, record: { ...record, target: { kind: "new_once", conversationId: created } } }
+    }
+    case "new":
+      return { target: await createConversation(port), record }
+    default: {
+      const _exhaustive: never = record.target
+      return _exhaustive
+    }
+  }
+}
+
+function createConversation(port: SchedulesPort): Promise<ConversationId> {
+  return port.harness.createConversation({ ownership: { kind: "ownerless" } }, context).then((created) => created.id)
+}
+
 async function createSchedule(
   port: SchedulesPort,
-  request: ScheduleRequest,
+  request: ScheduleCreateRequest,
   fallback: ConversationId,
   now: number,
   defaultId: string,
-): Promise<{ id: string; taskId: number; created: boolean }> {
-  const when = whenOf(request)
-  checkZone(request.tz)
-  if (when.kind === "rrule") checkRule(when.rrule)
+): Promise<CreatedSchedule> {
+  const title = titleOf(request.title)
+  const prompt = promptOf(request.prompt)
+  const parsed = parsedWhen(request, now)
   const id = request.id ?? defaultId
-  if (!ID.test(id)) throw new OpRejected("bad_args", `schedule id "${id}" must be 1-64 letters, digits, "_" or "-"`)
-  const target = await targetOf(port, request, fallback)
-  const input: ScheduleInput = { id, prompt: request.prompt, tz: request.tz, target, anchor: now, when }
+  if (!ID.test(id)) throw invalid(`schedule id "${id}" must be 1-64 letters, digits, "_" or "-"`)
+  const cursor = firstCursor(parsed.when, parsed.tz, parsed.anchor, now)
+  const record: StoredSchedule = {
+    id,
+    title,
+    prompt,
+    tz: parsed.tz,
+    anchor: parsed.anchor,
+    when: parsed.when,
+    target: storedTarget(request.target, fallback),
+    origin: fallback,
+    active: true,
+    revision: 1,
+    createdAt: now,
+    updatedAt: iso(now),
+    cursor,
+  }
   const created = await port.harness.commit(async (tx) => {
-    const existing = await scheduledTask(tx, id)
-    if (existing !== undefined) return { id, taskId: existing, created: false }
-    const taskId = await tx.createTask(scheduleTask(port), input, {
-      ownership: { kind: "conversation" },
-      conversationId: target,
-      background: true,
-    })
-    return { id, taskId, created: true }
+    const doc = await tx.doc(SchedulesDoc)
+    const existing = recordOf(doc.records, id)
+    // A doc draft, and every container in it, expires when the commit settles: project the plain task here.
+    if (existing !== undefined) return { created: false, task: taskOf(existing) }
+    doc.records[id] = record
+    await startTimer(tx, port, record)
+    return { created: true, task: taskOf(record) }
   }, context)
   if (created.created) await port.arm()
-  return created
+  return { id, created: created.created, task: created.task }
 }
 
-function whenOf(request: ScheduleRequest): When {
-  const at = request.at
-  const rrule = request.rrule
-  if (at !== undefined && rrule !== undefined) throw new OpRejected("bad_args", "give rrule or at, not both")
-  if (at !== undefined) return { kind: "at", at }
-  if (rrule !== undefined) return { kind: "rrule", rrule }
-  throw new OpRejected("bad_args", "give exactly one of rrule or at")
-}
-
-async function targetOf(
+async function editSchedule(
   port: SchedulesPort,
-  request: ScheduleRequest,
+  request: ScheduleEditRequest,
   fallback: ConversationId,
-): Promise<ConversationId> {
-  if (request.projectId !== undefined) {
-    if (request.conv !== undefined) throw new OpRejected("bad_args", "give conv or projectId, not both")
-    return coordinatorOf(port, request.projectId)
-  }
-  return request.conv === undefined ? fallback : conversationOf(port, request.conv)
-}
-
-async function coordinatorOf(port: SchedulesPort, projectId: string): Promise<ConversationId> {
-  const workspace = await port.harness.snapshot(WorkspaceDoc, context)
-  const project = workspace?.projects[projectId]
-  if (project === undefined) throw new OpRejected("bad_args", `no project ${projectId}`)
-  return project.coordinatorId as ConversationId
-}
-
-function checkZone(tz: string): void {
-  try {
-    validateZone(tz)
-  } catch (error) {
-    throw reject(error)
-  }
-}
-
-function checkRule(text: string): void {
-  try {
-    parseRule(text)
-  } catch (error) {
-    throw reject(error)
-  }
-}
-
-function reject(error: unknown): Error {
-  return error instanceof RuleError
-    ? new OpRejected("bad_args", error.message)
-    : error instanceof Error
-      ? error
-      : new Error(String(error))
-}
-
-async function conversationOf(port: SchedulesPort, conv: number): Promise<ConversationId> {
-  const found = await port.harness.conversation(conv as ConversationId, context)
-  if (found === undefined) throw new OpRejected("bad_args", `no conversation ${conv}`)
-  return found.id
-}
-
-async function scheduledTask(tx: Tx, id: string): Promise<TaskId | undefined> {
-  let cursor: Cursor | undefined
-  for (;;) {
-    const page = await tx.scanTasks({ kind: SCHEDULE_TASK }, PAGE, cursor)
-    for (const record of page.items) {
-      if (record.abortRequested || record.state.status === "terminal") continue
-      if (scheduleInputOf(record.input)?.id === id) return record.id
+  now: number,
+): Promise<ScheduleEditResult> {
+  if (request.action === "delete") {
+    const deleted = await deleteSchedule(port, request.id, request.expectedUpdatedAt)
+    switch (deleted) {
+      case "not_found":
+        return { id: request.id, code: "schedule_not_found" }
+      case "conflict":
+        return { id: request.id, code: "schedule_conflict" }
+      case "deleted":
+        return { id: request.id, deleted: true }
+      default: {
+        const _exhaustive: never = deleted
+        return _exhaustive
+      }
     }
-    if (page.next === undefined) return undefined
-    cursor = page.next
+  }
+  const outcome = await port.harness.commit(async (tx) => {
+    const doc = await tx.doc(SchedulesDoc)
+    const current = recordOf(doc.records, request.id)
+    if (current === undefined) return { kind: "not_found" as const }
+    if (request.expectedUpdatedAt !== undefined && request.expectedUpdatedAt !== current.updatedAt)
+      return { kind: "conflict" as const }
+    const next = revised(current, request.patch, fallback, now)
+    doc.records[next.id] = next
+    const timer = live(next) ? await startTimer(tx, port, next) : undefined
+    return { kind: "updated" as const, task: taskOf(next), timer }
+  }, context)
+  switch (outcome.kind) {
+    case "not_found":
+      return { id: request.id, code: "schedule_not_found" }
+    case "conflict":
+      return { id: request.id, code: "schedule_conflict" }
+    case "updated":
+      await stopTimers(port, request.id, outcome.timer)
+      await port.arm()
+      return outcome.task
+    default: {
+      const _exhaustive: never = outcome
+      return _exhaustive
+    }
   }
 }
 
-async function liveSchedules(port: SchedulesPort): Promise<readonly LiveSchedule[]> {
-  const inspection = await port.harness.inspect(context)
-  const live: LiveSchedule[] = []
-  for (const task of inspection.tasks) {
-    if (task.record.kind !== SCHEDULE_TASK || task.record.abortRequested) continue
-    const input = scheduleInputOf(task.record.input)
-    if (input === undefined) continue
-    live.push({ taskId: task.record.id, input, until: task.state.kind === "sleeping" ? task.state.until : undefined })
+type DeleteOutcome = "deleted" | "not_found" | "conflict"
+
+async function deleteSchedule(port: SchedulesPort, id: string, expectedUpdatedAt?: string): Promise<DeleteOutcome> {
+  const outcome = await port.harness.commit(async (tx) => {
+    const doc = await tx.doc(SchedulesDoc)
+    const current = recordOf(doc.records, id)
+    if (current === undefined) return "not_found" as const
+    if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== current.updatedAt) return "conflict" as const
+    delete doc.records[id]
+    return "deleted" as const
+  }, context)
+  if (outcome === "deleted") {
+    await stopTimers(port, id)
+    await port.arm()
   }
-  return live
+  return outcome
 }
 
-function scheduleInputOf(value: unknown): ScheduleInput | undefined {
-  if (!INPUT.check(value)) return undefined
+async function cancelSchedule(port: SchedulesPort, id: string): Promise<boolean> {
+  return (await deleteSchedule(port, id)) === "deleted"
+}
+
+async function viewSchedule(port: SchedulesPort, id: string): Promise<ScheduleViewResult> {
+  const state = await port.harness.snapshot(SchedulesDoc, context)
+  const record = recordOf(recordsOf(state), id)
+  return record === undefined ? { id, code: "schedule_not_found" } : taskOf(record)
+}
+
+async function listSchedules(port: SchedulesPort, request: ScheduleListRequest): Promise<ScheduleListPage> {
+  const limit = request.limit ?? DEFAULT_LIST_LIMIT
+  const offset = request.offset ?? 0
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > MAX_LIST_LIMIT ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0
+  )
+    throw invalid(`limit must be 1-${MAX_LIST_LIMIT} and offset must be a non-negative integer`)
+  const state = await port.harness.snapshot(SchedulesDoc, context)
+  const stored = recordsOf(state)
+  const records: readonly StoredSchedule[] = Object.keys(stored).flatMap((id) => {
+    const record = recordOf(stored, id)
+    return record === undefined ? [] : [record]
+  })
+  const matching = records.filter((record) => matches(record, request.active)).toSorted(compare)
+  const items = matching.slice(offset, offset + limit).map(taskOf)
+  return { items, shown: items.length, total: matching.length, limit, offset }
+}
+
+function matches(record: StoredSchedule, active: boolean | undefined): boolean {
+  return active === undefined ? true : active === live(record)
+}
+
+function live(record: StoredSchedule): boolean {
+  return record.active && nextOf(record) !== undefined
+}
+
+function compare(left: StoredSchedule, right: StoredSchedule): number {
+  const leftLive = live(left) ? 0 : 1
+  const rightLive = live(right) ? 0 : 1
+  if (leftLive !== rightLive) return leftLive - rightLive
+  if (leftLive === 0) {
+    const first = nextOf(left)?.slot ?? 0
+    const second = nextOf(right)?.slot ?? 0
+    return first - second || left.id.localeCompare(right.id)
+  }
+  return recent(right).localeCompare(recent(left)) || left.id.localeCompare(right.id)
+}
+
+function recent(record: StoredSchedule): string {
+  return record.lastDelivery?.deliveredAt ?? record.updatedAt
+}
+
+function taskOf(record: StoredSchedule): ScheduleTask {
+  const next = nextOf(record)
   return {
-    id: value.id,
-    prompt: value.prompt,
-    tz: value.tz,
-    anchor: value.anchor,
-    target: value.target as ConversationId,
-    when: value.when,
+    id: record.id,
+    title: record.title,
+    prompt: record.prompt,
+    ...(record.when.kind === "rrule" ? { rrule: record.when.rrule } : { at: iso(record.when.at) }),
+    target: record.target.kind,
+    active: record.active,
+    nextAt: next === undefined ? null : iso(next.slot),
+    updatedAt: record.updatedAt,
+    ...(record.lastDelivery === undefined ? {} : { lastDelivery: record.lastDelivery }),
   }
 }
 
-async function cancelSchedules(port: SchedulesPort, id: string): Promise<boolean> {
-  const matching = (await liveSchedules(port)).filter((schedule) => schedule.input.id === id)
-  for (const schedule of matching) await port.harness.abortTask(schedule.taskId, context)
-  if (matching.length > 0) await port.arm()
-  return matching.length > 0
+async function startTimer(tx: Tx, port: SchedulesPort, record: StoredSchedule): Promise<TaskId<null>> {
+  return tx.createTask(
+    scheduleTask(port),
+    { id: record.id, revision: record.revision },
+    {
+      ownership: { kind: "conversation" },
+      conversationId: record.origin as ConversationId,
+      background: true,
+    },
+  )
+}
+
+async function stopTimers(port: SchedulesPort, id: string, keep?: TaskId): Promise<void> {
+  const inspection = await port.harness.inspect(context)
+  for (const task of inspection.tasks) {
+    if (task.record.kind !== SCHEDULE_TASK) continue
+    if (keep !== undefined && task.record.id === keep) continue
+    if (timerInputOf(task.record.input)?.id !== id) continue
+    await port.harness.abortTask(task.record.id, context)
+  }
+}
+
+function timerInputOf(value: unknown): TimerInput | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  const id: unknown = Reflect.get(value, "id")
+  const revision: unknown = Reflect.get(value, "revision")
+  return typeof id === "string" && typeof revision === "number" ? { id, revision } : undefined
+}
+
+function revised(current: StoredSchedule, patch: SchedulePatch, fallback: ConversationId, now: number): StoredSchedule {
+  const title = patch.title === undefined ? current.title : titleOf(patch.title)
+  const prompt = patch.prompt === undefined ? current.prompt : promptOf(patch.prompt)
+  const target = patch.target === undefined ? current.target : storedTarget(patch.target, fallback)
+  let next = current
+  if (patch.rrule !== undefined) {
+    const parsed = guarded(() => parseRuleText(patch.rrule ?? "", current.tz, now))
+    next = {
+      ...current,
+      when: parsed.when,
+      tz: parsed.tz,
+      anchor: parsed.anchor,
+      cursor: firstCursor(parsed.when, parsed.tz, parsed.anchor, now),
+    }
+  }
+  if (patch.active === true) {
+    const advanced = advance(next, now)
+    if (advanced === undefined)
+      throw invalid("This task has no future occurrence. Set a new rrule before resuming it.", "not_future")
+    next = { ...next, cursor: advanced }
+  }
+  return {
+    ...next,
+    title,
+    prompt,
+    target,
+    active: patch.active ?? current.active,
+    revision: current.revision + 1,
+    updatedAt: revisedAt(current.updatedAt, now),
+  }
+}
+
+function revisedAt(current: string, now: number): string {
+  return iso(Math.max(now, Date.parse(current) + 1))
+}
+
+function advance(record: StoredSchedule, now: number): Position | undefined {
+  const slots = slotsOf(record.when, record.tz, record.anchor)
+  const missed = slots.due(record.cursor.last, record.cursor.index, now)
+  const cursor = missed === undefined ? record.cursor : { last: missed.latest, index: missed.index + 1 }
+  return slots.next(cursor.last, cursor.index) === undefined ? undefined : cursor
+}
+
+function firstCursor(when: When, tz: string, anchor: number, now: number): Position {
+  const slots = slotsOf(when, tz, anchor)
+  const missed = slots.due(anchor - 1, 0, now)
+  const cursor =
+    missed === undefined ? { last: anchor - 1, index: 0 } : { last: missed.latest, index: missed.index + 1 }
+  if (slots.next(cursor.last, cursor.index) === undefined)
+    throw invalid("the rule has no future occurrence", "not_future")
+  return cursor
+}
+
+function storedTarget(choice: ScheduleTargetChoice | undefined, fallback: ConversationId): StoredTarget {
+  const chosen: ScheduleTargetChoice = choice ?? "this_session"
+  switch (chosen) {
+    case "this_session":
+      return { kind: "this_session", conversationId: fallback }
+    case "new_once":
+      return { kind: "new_once" }
+    case "new":
+      return { kind: "new" }
+    default: {
+      const _exhaustive: never = chosen
+      return _exhaustive
+    }
+  }
+}
+
+function parsedWhen(request: ScheduleCreateRequest, now: number): ParsedWhen {
+  const { at, rrule } = request
+  if (at !== undefined && rrule !== undefined) throw invalid("give rrule or at, not both")
+  if (at !== undefined) return guarded(() => ({ when: { kind: "at", at }, tz: zoneOf(request.tz), anchor: at }))
+  if (rrule !== undefined) return guarded(() => parseRuleText(rrule, request.tz, now))
+  throw invalid("give exactly one of rrule or at")
+}
+
+function guarded<T>(run: () => T): T {
+  try {
+    return run()
+  } catch (error) {
+    if (error instanceof RuleError) throw invalid(error.message)
+    throw error
+  }
+}
+
+function titleOf(value: string): string {
+  const title = value.trim()
+  if (title.length === 0) throw invalid("title must be non-empty after trimming", "invalid_prompt")
+  if (title.length > MAX_TITLE) throw invalid(`title must be at most ${MAX_TITLE} characters`, "invalid_prompt")
+  return title
+}
+
+function promptOf(value: string): string {
+  const prompt = value.trim()
+  if (prompt.length === 0) throw invalid("prompt must be non-empty after trimming", "invalid_prompt")
+  if (prompt.length > MAX_PROMPT) throw invalid(`prompt must be at most ${MAX_PROMPT} characters`, "invalid_prompt")
+  return prompt
+}
+
+function invalid(message: string, code: ScheduleInputError["code"] = "invalid_rule"): ScheduleInputError {
+  return new ScheduleInputError(code, message)
+}
+
+function iso(ms: number): string {
+  return new Date(ms).toISOString()
+}
+
+const CREATE_ARGS = obj({
+  id: opt(str({ pattern: ID_SOURCE })),
+  title: str({ minLength: 1, maxLength: MAX_TITLE }),
+  prompt: str({ minLength: 1, maxLength: MAX_PROMPT }),
+  rrule: opt(str({ minLength: 1, maxLength: MAX_RULE })),
+  at: opt(int({ minimum: 0 })),
+  tz: opt(str({ minLength: 1, maxLength: 64 })),
+  target: opt(TargetSchema),
+})
+
+const LIST_ARGS = obj({
+  active: opt(bool()),
+  limit: opt(int({ minimum: 1, maximum: MAX_LIST_LIMIT })),
+  offset: opt(int({ minimum: 0 })),
+})
+
+const VIEW_ARGS = obj({ id: str({ pattern: ID_SOURCE }) })
+
+type RootConversation = (api: OpApi) => Promise<ConversationId>
+
+function rootConversation(): RootConversation {
+  let pending: Promise<ConversationId> | undefined
+  return (api) => {
+    if (api.actor.kind === "agent") return Promise.resolve(api.actor.conversationId)
+    pending ??= api.harness.root(context).then(
+      (conversation) => conversation.id,
+      (error: unknown) => {
+        pending = undefined
+        throw error
+      },
+    )
+    return pending
+  }
+}
+
+function createOp(service: SchedulesService, root: RootConversation): Op {
+  return defineOp({
+    name: "schedule.create",
+    args: CREATE_ARGS,
+    actors: ["owner", "agent"],
+    run: async (api, args) =>
+      guardOp(async () => service.create(args, await root(api), Date.now(), args.id ?? stableId(api.commandId))),
+  })
+}
+
+function cancelOp(service: SchedulesService): Op {
+  return defineOp({
+    name: "schedule.cancel",
+    args: VIEW_ARGS,
+    actors: ["owner", "agent"],
+    run: async (_api, args) => guardOp(async () => ({ id: args.id, cancelled: await service.cancel(args.id) })),
+  })
+}
+
+function listOp(service: SchedulesService): Op {
+  return defineOp({
+    name: "schedule.list",
+    args: LIST_ARGS,
+    actors: ["owner", "agent"],
+    run: async (_api, args) => guardOp(async () => ({ schedules: (await service.list(args)).items })),
+  })
+}
+
+function viewOp(service: SchedulesService): Op {
+  return defineOp({
+    name: "schedule.view",
+    args: VIEW_ARGS,
+    actors: ["owner", "agent"],
+    run: async (_api, args) => guardOp(() => service.view(args.id)),
+  })
+}
+
+function editOp(service: SchedulesService, root: RootConversation): Op {
+  return defineOp({
+    name: "schedule.edit",
+    args: ScheduleEditArgsSchema,
+    actors: ["owner", "agent"],
+    run: async (api, args) => guardOp(async () => service.edit(editRequest(args), await root(api), Date.now())),
+  })
+}
+
+async function guardOp<T extends JsonValue>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch (error) {
+    if (error instanceof ScheduleInputError) throw new OpRejected("bad_args", error.message)
+    throw error
+  }
 }
 
 function stableId(source: string): string {
   const cleaned = source.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 64)
   return cleaned === "" ? crypto.randomUUID() : cleaned
-}
-
-function createOp(port: SchedulesPort): Op {
-  return defineOp({
-    name: "schedule.create",
-    args: obj(SCHEDULE_FIELDS),
-    actors: ["owner", "agent"],
-    run: async (api, args) =>
-      createSchedule(port, args, await fallbackConversation(port, api), Date.now(), args.id ?? stableId(api.commandId)),
-  })
-}
-
-function cancelOp(port: SchedulesPort): Op {
-  return defineOp({
-    name: "schedule.cancel",
-    args: obj({ id: str({ pattern: ID_SOURCE }) }),
-    actors: ["owner", "agent"],
-    run: async (_api, args) => ({ id: args.id, cancelled: await cancelSchedules(port, args.id) }),
-  })
-}
-
-function listOp(port: SchedulesPort): Op {
-  return defineOp({
-    name: "schedule.list",
-    args: obj({}),
-    actors: ["owner", "agent"],
-    run: async () => ({
-      schedules: (await liveSchedules(port)).map((schedule) => ({
-        id: schedule.input.id,
-        prompt: schedule.input.prompt,
-        tz: schedule.input.tz,
-        target: schedule.input.target,
-        ...(schedule.input.when.kind === "at" ? { at: schedule.input.when.at } : {}),
-        ...(schedule.input.when.kind === "rrule" ? { rrule: schedule.input.when.rrule } : {}),
-        ...(schedule.until === undefined ? {} : { nextAt: schedule.until }),
-      })),
-    }),
-  })
-}
-
-async function fallbackConversation(port: SchedulesPort, api: OpApi): Promise<ConversationId> {
-  if (api.actor.kind === "agent") return api.actor.conversationId
-  return (await port.harness.root(context)).id
 }

@@ -14,6 +14,12 @@ export type Rule = {
 
 export type When = { readonly kind: "at"; readonly at: number } | { readonly kind: "rrule"; readonly rrule: string }
 
+export type ParsedWhen = {
+  readonly when: When
+  readonly tz: string
+  readonly anchor: number
+}
+
 export type Occurrence = {
   readonly slot: number
   readonly index: number
@@ -83,6 +89,19 @@ export function validateZone(tz: string): void {
   } catch {
     throw new RuleError(`unknown time zone "${tz}"`)
   }
+}
+
+export type Instant = {
+  readonly year: number
+  readonly month: number
+  readonly day: number
+  readonly hour: number
+  readonly minute: number
+}
+
+export function zonedInstant(time: Instant, tz: string): number {
+  validateZone(tz)
+  return zonedTime(time, tz)
 }
 
 function localParts(ms: number, tz: string): CivilTime & { readonly second: number } {
@@ -282,6 +301,64 @@ export function parseRule(input: string): Rule {
     ...(count === undefined ? {} : { count }),
     ...(until === undefined ? {} : { until }),
   }
+}
+
+const STAMP = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/
+const START = /^DTSTART(?:;TZID=([^:]+))?:(.+)$/i
+
+/** The validated zone, defaulting to UTC; throws `RuleError` for an unknown zone. */
+export function zoneOf(tz: string | undefined): string {
+  const zone = tz ?? "UTC"
+  validateZone(zone)
+  return zone
+}
+
+/**
+ * Parse the `rrule` wire text: one RRULE body, or one DTSTART line and one RRULE line. DTSTART is
+ * `YYYYMMDDTHHMMSS` ending in Z, or carrying `TZID` with an IANA zone.
+ */
+export function parseRuleText(text: string, fallbackTz: string | undefined, now: number): ParsedWhen {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  const startLine = lines.find((line) => /^DTSTART/i.test(line))
+  const ruleLine = lines.find((line) => /^RRULE:/i.test(line))
+  if (lines.length === 1 && startLine === undefined) {
+    const body = lines[0] ?? ""
+    parseRule(body)
+    return { when: { kind: "rrule", rrule: body }, tz: zoneOf(fallbackTz), anchor: now }
+  }
+  if (ruleLine === undefined) throw new RuleError("the rule needs one DTSTART line and one RRULE line")
+  const body = ruleLine.replace(/^RRULE:/i, "").trim()
+  parseRule(body)
+  const start = startLine === undefined ? undefined : startOf(startLine)
+  return {
+    when: { kind: "rrule", rrule: body },
+    tz: start?.tz ?? zoneOf(fallbackTz),
+    anchor: start?.at ?? now,
+  }
+}
+
+function startOf(line: string): { readonly at: number; readonly tz: string } {
+  const match = START.exec(line)
+  if (match === null) throw new RuleError("DTSTART must be DTSTART:... or DTSTART;TZID=Zone:...")
+  const stamp = STAMP.exec(match[2] ?? "")
+  if (stamp === null) throw new RuleError("DTSTART must be a YYYYMMDDTHHMMSS date-time")
+  const time = {
+    year: Number(stamp[1]),
+    month: Number(stamp[2]),
+    day: Number(stamp[3]),
+    hour: Number(stamp[4]),
+    minute: Number(stamp[5]),
+  }
+  const zone = match[1]
+  if (stamp[7] === "Z") {
+    if (zone !== undefined) throw new RuleError("DTSTART cannot carry both TZID and Z")
+    return { at: Date.UTC(time.year, time.month - 1, time.day, time.hour, time.minute, Number(stamp[6])), tz: "UTC" }
+  }
+  if (zone === undefined) throw new RuleError("DTSTART must end in Z or carry TZID")
+  return { at: zonedInstant(time, zone), tz: zone }
 }
 
 function planOf(rule: Rule, tz: string, anchor: number): Plan {

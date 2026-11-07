@@ -15,7 +15,7 @@ export type Outcome =
   | { readonly kind: "ok"; readonly result: JsonValue }
   | {
       readonly kind: "rejected"
-      readonly code: "unknown_op" | "bad_args" | "forbidden" | "failed" | "unavailable"
+      readonly code: "unknown_op" | "bad_args" | "forbidden" | "failed" | "unavailable" | "busy"
       readonly message: string
     }
 
@@ -31,7 +31,7 @@ const RECEIPT_TTL_MS = 24 * 60 * 60_000
 
 export class OpRejected extends Error {
   constructor(
-    readonly code: "bad_args" | "forbidden",
+    readonly code: "bad_args" | "forbidden" | "busy",
     message: string,
   ) {
     super(message)
@@ -99,7 +99,11 @@ export class Commands {
       if (isOutcome(stored)) return stored
     }
     const outcome = await this.deps.around(command, actor, () => this.#invoke(command, actor))
-    if (outcome.kind === "rejected" && (outcome.code === "failed" || outcome.code === "unavailable")) return outcome
+    if (
+      outcome.kind === "rejected" &&
+      (outcome.code === "failed" || outcome.code === "unavailable" || outcome.code === "busy")
+    )
+      return outcome
     const now = Date.now()
     await this.deps.db.run(
       "INSERT OR IGNORE INTO receipts (command_id, outcome, at) VALUES (?, ?, ?)",

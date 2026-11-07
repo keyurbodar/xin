@@ -48,5 +48,6 @@ flowchart LR
 - [10 Time](./architecture/10-time.md): schedules as pi tasks and the single owned timer.
 - [11 Failures and cost](./architecture/11-failures-and-cost.md): the failure matrix and the DO row-cost model.
 - [12 Market](./architecture/12-market.md): runtime bundles, contribution rows, discovery and updates on the free plan.
+- [13 Always-on](./architecture/13-always-on.md): the ambient clock, manual compaction, the loop guard, scheduled tasks and goals.
 - [Provenance](./provenance.md): what came from pi-durable, pi-ai, t3code, kiko and the other sources.
 - [Milestones](./milestones.md): build order, each with its proof, dependencies and parallel work.

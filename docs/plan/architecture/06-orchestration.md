@@ -18,7 +18,8 @@ The coordinator gets this tool surface. Threads get a narrower version (no `dele
 | `thread_read` | `{threadId, after?}` | entries after a cursor, text only, bounded at 4k tokens |
 | `thread_list` | `{projectId?, status?}` | projection of the workspace and thread docs |
 | `pending_request` | `{action:"list"\|"read"\|"respond", threadId?, requestId?, answer?}` | §11 |
-| `schedule` / `unschedule` | `{rrule\|at, prompt, projectId}` | §16 |
+| `schedule_create` / `schedule_list` / `schedule_view` / `schedule_edit` | dsh `tool-schedule` | §16, [§19](./13-always-on.md) |
+| `get_goal` / `create_goal` / `update_goal` | dsh `tool-goal` | [`goal.set`](13-always-on.md), controlled by the `goal-rounds` row |
 | `set_model` | §7 | |
 
 > **A child receives only its brief and role, never the parent's history.** This is the t3 rule. Briefs have to be self-contained, threads start cheap and focused, and nothing private leaks into a thread by accident. A thread pulls what it needs with `read`, `recall` and `thread_read`.

@@ -31,6 +31,30 @@ export const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Pro
 export const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
 
+export const CLOCK_READING_PREFIX = "Time sampled while preparing turn "
+
+export const contentText = (content: unknown): string => {
+  if (typeof content === "string") return content
+  if (!Array.isArray(content)) return ""
+  return content
+    .map((part: unknown) =>
+      typeof part === "object" && part !== null && "text" in part && typeof part.text === "string" ? part.text : "",
+    )
+    .join("")
+}
+
+type MessageLike = { readonly role: string; readonly content?: unknown }
+
+const isOwnerMessage = (message: MessageLike): boolean =>
+  message.role === "user" && !contentText(message.content).startsWith(CLOCK_READING_PREFIX)
+
+export const lastOwnerIndex = (messages: readonly MessageLike[]): number => messages.findLastIndex(isOwnerMessage)
+
+export const lastOwnerText = (messages: readonly MessageLike[]): string => {
+  const owner = messages.findLast(isOwnerMessage)
+  return owner === undefined ? "" : contentText(owner.content)
+}
+
 export const rowOf = async (stub: Stub, id: string): Promise<unknown> => {
   const listed = await cmd(stub, `list-${id}-${crypto.randomUUID()}`, "plugin.list")
   return Array.isArray(listed.result) ? listed.result.find((row) => field(row, "id") === id) : undefined

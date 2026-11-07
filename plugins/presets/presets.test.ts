@@ -108,7 +108,7 @@ describe("presets", () => {
     await turn(stub, project.coordinatorId, "go", [coordinatorStep(offers)])
 
     for (const name of FILES) expect(offers.latest().tools, name).not.toContain(name)
-    expect(offers.latest().tools).not.toContain("current_time")
+    expect(offers.latest().tools).not.toContain("set_model")
     expect(offers.latest().tools).toContain("remember")
     expect(offers.latest().tools).toContain("recall")
   }, 20_000)

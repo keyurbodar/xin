@@ -78,12 +78,12 @@ describe("orchestrator tool row", () => {
 
     await turn(stub, project.coordinatorId, "what can you do", [offers.step()])
     expect(offers.latest().tools).toEqual(expect.arrayContaining([...TOOLS]))
-    expect(offers.latest().tools).toContain("current_time")
+    expect(offers.latest().tools).toContain("remember")
 
     await setRow(stub, "tool-orchestrator", false)
     await turn(stub, project.coordinatorId, "still there", [offers.step()])
     for (const name of TOOLS) expect(offers.latest().tools, name).not.toContain(name)
-    expect(offers.latest().tools).toContain("current_time")
+    expect(offers.latest().tools).toContain("remember")
 
     expect(await rowState(stub, "orchestrator")).toEqual({ kind: "active" })
     expect(await rowState(stub, "tool-orchestrator")).toEqual({ kind: "disabled" })

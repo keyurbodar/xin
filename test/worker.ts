@@ -22,6 +22,7 @@ import * as skills from "./plugins/skills.ts"
 import type { Composition, Catalog } from "../src/kernel/loader.ts"
 import type { Extension } from "@earendil-works/pi-durable"
 import { testPlugin } from "./kernel.ts"
+import { lastOwnerText } from "./support.ts"
 import { defineOp } from "../src/ops.ts"
 import { int, obj, opt } from "@earendil-works/pi-schema"
 import { env } from "cloudflare:workers"
@@ -161,7 +162,7 @@ export class Home extends ProductHome {
 
   #step(): FauxResponseStep {
     return (context, options) => {
-      const prompt = lastUserText(context.messages)
+      const prompt = lastOwnerText(context.messages)
       const pings = /^ping (\d+)$/.exec(prompt)
       if (pings !== null) {
         const done = context.messages.filter((message) => message.role === "toolResult").length
@@ -182,16 +183,4 @@ export class Home extends ProductHome {
       })
     }
   }
-}
-
-function lastUserText(messages: readonly { role: string; content?: unknown }[]): string {
-  const user = messages.findLast((message) => message.role === "user")
-  if (user === undefined) return ""
-  if (typeof user.content === "string") return user.content
-  if (!Array.isArray(user.content)) return ""
-  return user.content
-    .map((part: unknown) =>
-      typeof part === "object" && part !== null && "text" in part && typeof part.text === "string" ? part.text : "",
-    )
-    .join("")
 }

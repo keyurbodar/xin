@@ -10,7 +10,8 @@ export function apply(ctx: Context): void {
     intake: ctx.intake,
     arm: () => ctx.clock.arm(),
   }
-  ctx.provide("schedules", schedulesService(port))
+  const service = schedulesService(port)
+  ctx.provide("schedules", service)
   ctx.pi.install(schedulesExtension(port))
-  for (const op of scheduleOps(port)) ctx.ops.define(op)
+  for (const op of scheduleOps(service)) ctx.ops.define(op)
 }

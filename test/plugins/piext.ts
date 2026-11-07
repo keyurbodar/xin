@@ -82,9 +82,9 @@ const sectionExtension = defineExtension({
   sections: [section("x-section", () => SECTION_MARK)],
 })
 
-const currentTime: ToolRegistration = {
-  name: "current_time",
-  description: "The time row's tool, wrapped by x-wrap.",
+const pingTool: ToolRegistration = {
+  name: "ping",
+  description: "The test row's tool, wrapped by x-wrap.",
   parameters: obj({}),
   execute: async () => ({ output: [] }),
 }
@@ -92,7 +92,7 @@ const currentTime: ToolRegistration = {
 const wrapExtension = defineExtension({
   name: "x-wrap",
   wraps: [
-    wrapTool(currentTime, (tool) => ({
+    wrapTool(pingTool, (tool) => ({
       ...tool,
       execute: async (args, api, context) => {
         const result = await tool.execute(args, api, context)

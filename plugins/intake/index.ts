@@ -1,6 +1,7 @@
 import { int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { Context } from "../../src/kernel/index.ts"
 import type { IntakeBatch, IntakeBatchResult } from "../../src/contracts/intake.ts"
+import { MessageSendArgsSchema } from "../../src/contracts/message.ts"
 import { defineOp } from "../../src/ops.ts"
 import { type BatchLedger, createGateway, enqueue, type IntakeHost, resolve, stop } from "./gateway.ts"
 
@@ -25,11 +26,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.ops.define(
     defineOp({
       name: "message.send",
-      args: obj({
-        conv: opt(int({ minimum: 0 })),
-        text: str({ minLength: 1 }),
-        clientTs: opt(int({ minimum: 0 })),
-      }),
+      args: MessageSendArgsSchema,
       actors: ["owner"],
       run: async (api, args) => {
         const target = await resolve(host, args.conv)

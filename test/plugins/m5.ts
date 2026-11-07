@@ -10,6 +10,7 @@ import {
 } from "@earendil-works/pi-ai"
 import type { Provider } from "../../src/module.ts"
 import type { Catalog } from "../../src/kernel/loader.ts"
+import { lastOwnerText } from "../support.ts"
 
 export const M5_MODEL = { provider: "m5", modelId: "m5-faux" } as const
 
@@ -21,21 +22,6 @@ function hang(options: SimpleStreamOptions | undefined): Promise<AssistantMessag
     if (options?.signal?.aborted === true) abort()
     else options?.signal?.addEventListener("abort", abort, { once: true })
   })
-}
-
-function textOf(message: { readonly content: unknown }): string {
-  if (typeof message.content === "string") return message.content
-  if (!Array.isArray(message.content)) return ""
-  return message.content
-    .map((part: unknown) =>
-      typeof part === "object" && part !== null && "text" in part && typeof part.text === "string" ? part.text : "",
-    )
-    .join("")
-}
-
-function lastUserText(messages: readonly { readonly role: string; readonly content: unknown }[]): string {
-  const user = messages.findLast((message) => message.role === "user")
-  return user === undefined ? "" : textOf(user)
 }
 
 function delegate(index: number, clientRequestId: string, task = `do task ${index}`): AssistantMessage {
@@ -66,7 +52,7 @@ const step: FauxResponseStep = async (context, options) => {
   const messages = context.messages
   const system = sectionsText(messages)
   if (system.includes("You are a thread")) {
-    const brief = lastUserText(messages)
+    const brief = lastOwnerText(messages)
     if (brief.includes("slow"))
       await new Promise((resolve) => setTimeout(resolve, brief.includes("very") ? 6_000 : 2_000))
     if (brief.includes("fail"))
@@ -75,7 +61,7 @@ const step: FauxResponseStep = async (context, options) => {
       return fauxAssistantMessage([fauxThinking("soft drops kiss the earth"), fauxText(`thread answer: ${brief}`)])
     return fauxAssistantMessage(`thread answer: ${brief}`)
   }
-  const prompt = lastUserText(messages)
+  const prompt = lastOwnerText(messages)
   const results = messages.filter((message) => message.role === "toolResult")
   if (results.length > 0) {
     if (prompt.includes("delegate stop")) return hang(options)

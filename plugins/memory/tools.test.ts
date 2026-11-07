@@ -35,7 +35,7 @@ describe("memory tool row", () => {
     await turn(stub, "p3-memory-off")
     const without = offers.latest().tools
     for (const name of MEMORY_TOOLS) expect(without).not.toContain(name)
-    expect(without).toContain("current_time")
+    expect(without).toContain("capabilities")
 
     expect((await cmd(stub, "p3-memory-list-2", "memory.list")).result).toMatchObject({ notes: [NOTE] })
 
