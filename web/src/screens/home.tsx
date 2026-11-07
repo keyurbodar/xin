@@ -1,8 +1,18 @@
-import { For, onMount, Show, type JSX } from "solid-js"
-import { activeProjects, counts, homeLoaded, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
+import { createSignal, For, onMount, Show, type JSX } from "solid-js"
+import {
+  activeProjects,
+  counts,
+  homeLoaded,
+  homeRequests,
+  type ProjectSummary,
+  type ThreadSummary,
+} from "../state/home.ts"
+import { respondToQuestion, retryThread } from "../state/requests.ts"
+import { errorMessage } from "../state/extensions.ts"
 import { ago, greeting, longDate, money } from "../lib/format.ts"
 import { StatusGlyph } from "../components/ui/status-glyph.tsx"
 import type { VisualState } from "../lib/status.ts"
+import type { RequestRow } from "../state/conversation.ts"
 import { Morph } from "../components/ui/morph.tsx"
 import { Skullet } from "../components/ui/skeleton.tsx"
 import { Icon } from "../components/ui/icon.tsx"
@@ -35,33 +45,90 @@ export function HomeScreen(): JSX.Element {
   )
 }
 
-type Need = { readonly id: string; readonly state: VisualState; readonly title: string; readonly detail: string; readonly at: number | undefined }
-
-function needs(): readonly Need[] {
-  const rows: Need[] = []
-  for (const project of activeProjects()) {
-    for (const thread of project.threads.waiting) rows.push(need(project, thread, "waiting"))
-    for (const thread of project.threads.failed) rows.push(need(project, thread, "failed"))
-  }
-  return rows.sort((left, right) => (right.at ?? 0) - (left.at ?? 0))
+type Need = {
+  readonly id: string
+  readonly state: VisualState
+  readonly title: string
+  readonly detail: string
+  readonly at: number | undefined
+  readonly options: readonly string[]
+  readonly question: RequestRow | undefined
+  readonly threadId: number | undefined
 }
 
-function need(project: ProjectSummary, thread: ThreadSummary, state: VisualState): Need {
-  return {
-    id: `${project.id}:${thread.id}`,
-    state,
-    title: thread.title,
-    detail: [project.name, thread.statusLine].filter((part): part is string => part !== undefined && part !== "").join(" · "),
-    at: thread.beatAt,
+/** Pending questions come first, because they can be answered here; failed threads offer a Retry. */
+function needs(): readonly Need[] {
+  const rows: Need[] = []
+  const live = new Set(activeProjects().map((project) => project.id))
+  for (const request of homeRequests()) {
+    if (!live.has(request.projectId)) continue
+    rows.push({
+      id: `q:${request.id}`,
+      state: "waiting",
+      title: request.question,
+      detail: [request.projectName, request.threadTitle].filter((part) => part !== undefined && part !== "").join(" · "),
+      at: request.askedAt,
+      options: request.options,
+      question: request,
+      threadId: undefined,
+    })
   }
+  for (const project of activeProjects()) {
+    for (const thread of project.threads.failed) {
+      rows.push({
+        id: `f:${project.id}:${thread.id}`,
+        state: "failed",
+        title: thread.title,
+        detail: [project.name, thread.statusLine].filter((part): part is string => part !== undefined && part !== "").join(" · "),
+        at: thread.beatAt,
+        options: [],
+        question: undefined,
+        threadId: thread.id,
+      })
+    }
+  }
+  return rows.sort((left, right) => (right.at ?? 0) - (left.at ?? 0))
 }
 
 function HomeBody(props: { loaded: boolean }): JSX.Element {
   const numbers = () => (props.loaded ? counts() : { waiting: 0, working: 0, finished: 0, failed: 0 })
   const rows = () => (props.loaded ? needs() : [])
+  const [busy, setBusy] = createSignal<string | undefined>(undefined)
+  const [problem, setProblem] = createSignal<string | undefined>(undefined)
+
+  const answer = async (row: Need, option: string): Promise<void> => {
+    if (row.question === undefined) return
+    setBusy(row.id)
+    setProblem(undefined)
+    try {
+      await respondToQuestion(row.question, option)
+    } catch (failure: unknown) {
+      setProblem(errorMessage(failure))
+    } finally {
+      setBusy(undefined)
+    }
+  }
+
+  const retry = async (row: Need): Promise<void> => {
+    if (row.threadId === undefined) return
+    setBusy(row.id)
+    setProblem(undefined)
+    try {
+      await retryThread(row.threadId)
+    } catch (failure: unknown) {
+      setProblem(errorMessage(failure))
+    } finally {
+      setBusy(undefined)
+    }
+  }
+
+  const openProject = (projectId: string): void => {
+    const project = activeProjects().find((entry) => entry.id === projectId)
+    navigate(project === undefined ? "/inbox" : `/p/${project.slug}`)
+  }
 
   return (
-    <div class="flex flex-col gap-7 px-4 pb-12 pt-5 sm:px-10 sm:pt-7">
+    <div class="flex min-h-full flex-col gap-7 px-4 pb-32 pt-5 sm:px-10 sm:pb-12 sm:pt-7">
       <div>
         <div class="label mb-2.5">{longDate()}</div>
         <h1 class="text-[32px] font-light leading-[1.1] tracking-[-0.03em]">{greeting()}.</h1>
@@ -87,23 +154,47 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
           <div class="flex flex-col overflow-hidden rounded-[4px] border border-accent-line">
             <For each={rows()}>
               {(row) => (
-                <button
-                  type="button"
-                  class="flex items-center gap-3 border-b border-line bg-raised px-3.5 py-2.5 text-left last:border-0 hover:bg-hover"
-                  onClick={() => navigate(`/inbox`)}
-                >
+                <div class="flex items-center gap-3 border-b border-line bg-raised px-3.5 py-2.5 last:border-0">
                   <StatusGlyph state={row.state} size={16} />
-                  <span class="min-w-0 flex-1">
+                  <span class="min-w-0 flex-1 text-left">
                     <span class="block truncate text-[13px] font-medium">{row.title}</span>
                     <span class="block truncate text-[12px] text-fg-3">
                       {row.detail} · {ago(row.at)}
                     </span>
                   </span>
-                  <span class="chip">Open thread</span>
-                </button>
+                  <span class="flex shrink-0 items-center gap-1.5">
+                    <For each={row.options}>
+                      {(option) => (
+                        <button
+                          type="button"
+                          class="chip hover:border-line-strong hover:bg-selected"
+                          disabled={busy() === row.id}
+                          onClick={() => void answer(row, option)}
+                        >
+                          {option}
+                        </button>
+                      )}
+                    </For>
+                    <Show when={row.threadId !== undefined}>
+                      <button type="button" class="chip hover:border-line-strong" onClick={() => void retry(row)}>
+                        Retry
+                      </button>
+                    </Show>
+                    <button
+                      type="button"
+                      class="chip hover:border-line-strong"
+                      onClick={() => (row.question === undefined ? navigate("/inbox") : openProject(row.question.projectId))}
+                    >
+                      {row.question === undefined ? "Open thread" : "Open project"}
+                    </button>
+                  </span>
+                </div>
               )}
             </For>
           </div>
+          <Show when={problem()}>
+            {(message) => <p class="mt-2 text-[12px] text-bad">{message()}</p>}
+          </Show>
         </section>
       </Show>
 
@@ -118,13 +209,24 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
           <button
             type="button"
             onClick={() => navigate("/new")}
-            class="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-line-inner text-fg-3 transition-none hover:border-line-strong hover:text-fg-2"
+            class="hidden min-h-[180px] flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-line-inner text-fg-3 transition-none hover:border-line-strong hover:text-fg-2 sm:flex"
           >
             <Icon name="plus" size={18} />
             <span class="text-[12.5px]">New project</span>
           </button>
         </div>
       </section>
+
+      <div class="fixed inset-x-4 bottom-[88px] z-10 sm:hidden">
+        <button
+          type="button"
+          onClick={() => navigate("/new")}
+          class="flex h-11 w-full items-center justify-center gap-2 rounded-[2px] bg-accent text-[14px] font-medium text-ink"
+        >
+          <Icon name="plus" size={16} />
+          New project
+        </button>
+      </div>
     </div>
   )
 }

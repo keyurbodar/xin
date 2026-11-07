@@ -1,8 +1,8 @@
 import type { Context } from "../../src/kernel/index.ts"
-import { createQuestions, listOp, type QuestionsPort, respondOp } from "./questions.ts"
+import { createQuestions, HOME_REQUESTS, homeRequests, listOp, type QuestionsPort, respondOp } from "./questions.ts"
 
 export const name = "questions"
-export const inject = ["harness", "ops", "clock", "intake", "threads", "watchdog"]
+export const inject = ["harness", "ops", "clock", "intake", "threads", "watchdog", "wire"]
 
 export function apply(ctx: Context): void {
   const port: QuestionsPort = {
@@ -16,4 +16,5 @@ export function apply(ctx: Context): void {
   ctx.provide("questions", createQuestions(port))
   ctx.ops.define(respondOp(port))
   ctx.ops.define(listOp())
+  ctx.wire.home("requests", () => homeRequests(ctx.harness, HOME_REQUESTS))
 }

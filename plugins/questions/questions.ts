@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Context as ChordContext, JsonValue } from "@earendil-works/chord"
-import type { ConversationId, DocumentReader, Harness, Tx } from "@earendil-works/pi-durable"
+import type { ConversationId, DocumentReader, Harness, JsonObject, Tx } from "@earendil-works/pi-durable"
 import { int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
@@ -140,48 +140,56 @@ export function listOp(): Op {
       projectId: opt(str({ minLength: 1 })),
     }),
     actors: ["owner"],
-    run: async (api, args) => {
-      const limit = args.limit ?? DEFAULT_LISTED
-      const workspace = await api.harness.snapshot(WorkspaceDoc, context)
-      const projects = Object.entries(workspace?.projects ?? {}).filter(
-        ([projectId, project]) => !project.archived && (args.projectId === undefined || args.projectId === projectId),
-      )
-      const perProject = await Promise.all(
-        projects.map(async ([projectId, project]) =>
-          (
-            await Promise.all(
-              project.threadIds.map(async (conversationId): Promise<PendingRequest[]> => {
-                const [requests, thread] = await Promise.all([
-                  api.harness.snapshot(RequestsDoc, conversationId as ConversationId, context),
-                  api.harness.snapshot(ThreadDoc, conversationId as ConversationId, context),
-                ])
-                if (requests === undefined) return []
-                return Object.entries(requests.open).map(([requestId, request]) => ({
-                  id: requestId,
-                  conversationId,
-                  projectId,
-                  projectName: project.name,
-                  ...(thread === undefined ? {} : { threadTitle: thread.title }),
-                  question: request.question,
-                  ...(request.options === undefined ? {} : { options: [...request.options] }),
-                  askedAt: request.at,
-                }))
-              }),
-            )
-          ).flat(),
-        ),
-      )
-      const listed = perProject
-        .flat()
-        .toSorted(
-          (left, right) =>
-            right.askedAt - left.askedAt ||
-            left.conversationId - right.conversationId ||
-            left.id.localeCompare(right.id),
-        )
-      return { requests: listed.slice(0, limit) }
-    },
+    run: async (api, args) => ({
+      requests: await pendingRequests(api.harness, args.limit ?? DEFAULT_LISTED, args.projectId),
+    }),
   })
+}
+
+/** The few pending questions the home carries, so its Needs You rows can answer without opening the Inbox. */
+export const HOME_REQUESTS = 5
+
+export async function homeRequests(harness: Harness, limit: number): Promise<JsonObject> {
+  return { requests: await pendingRequests(harness, limit) }
+}
+
+async function pendingRequests(harness: Harness, limit: number, projectId?: string): Promise<PendingRequest[]> {
+  const workspace = await harness.snapshot(WorkspaceDoc, context)
+  const projects = Object.entries(workspace?.projects ?? {}).filter(
+    ([id, project]) => !project.archived && (projectId === undefined || projectId === id),
+  )
+  const perProject = await Promise.all(
+    projects.map(async ([id, project]) =>
+      (
+        await Promise.all(
+          project.threadIds.map(async (conversationId): Promise<PendingRequest[]> => {
+            const [requests, thread] = await Promise.all([
+              harness.snapshot(RequestsDoc, conversationId as ConversationId, context),
+              harness.snapshot(ThreadDoc, conversationId as ConversationId, context),
+            ])
+            if (requests === undefined) return []
+            return Object.entries(requests.open).map(([requestId, request]) => ({
+              id: requestId,
+              conversationId,
+              projectId: id,
+              projectName: project.name,
+              ...(thread === undefined ? {} : { threadTitle: thread.title }),
+              question: request.question,
+              ...(request.options === undefined ? {} : { options: [...request.options] }),
+              askedAt: request.at,
+            }))
+          }),
+        )
+      ).flat(),
+    ),
+  )
+  return perProject
+    .flat()
+    .toSorted(
+      (left, right) =>
+        right.askedAt - left.askedAt || left.conversationId - right.conversationId || left.id.localeCompare(right.id),
+    )
+    .slice(0, limit)
 }
 
 async function answer(

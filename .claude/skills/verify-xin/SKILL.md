@@ -57,5 +57,7 @@ Save each proof under `.verify/evidence/<milestone>-<feature>.txt`: the exact co
 ## Helpers
 
 - `xin.sh`: launch, doctor, call, ws, stop (shown above).
-- Phone-width client shots: the current agent-browser build has no `viewport` command. Close the daemon and relaunch at the window size you want, then sign in again because the browser profile is fresh: `agent-browser close --all && agent-browser --args "--window-size=390,844" open "http://localhost:5174/#/"`. The same build reads `screenshot [selector] [path]`, so pass `body` first (`agent-browser screenshot body .verify/shots/x.png`); a bare path is taken as a selector and the image lands in a temp dir under its own name, which is how a failed mobile chain once wrote desktop shots under mobile names. Check the image before citing it.
+- `push-firefox.py`: proves push all the way to a browser. Chromium here cannot subscribe, so it drives Firefox ESR through geckodriver, turns push on in the real Settings pane, calls `push.test`, and reads the payload the service worker heard. Needs `firefox-esr` and `geckodriver` (`/tmp/geckodriver`), and `/usr/bin/python3` with selenium (Debian's `python3-selenium`; mise's python does not see it).
+  `/usr/bin/python3 .claude/skills/verify-xin/push-firefox.py --wait 40`
+- Phone width: `agent-browser set viewport 390 844` (this build has `set viewport`, not a bare `viewport`). Screenshots are `agent-browser screenshot body <path>`; a bare path is read as a selector and the image lands in a temp dir.
 - `ws.ts`: the socket client behind `xin.sh ws` (Bun's WebSocket). The env overrides are `XIN_PORT`, `XIN_RUN` and `XIN_TOKEN`.

@@ -5,7 +5,7 @@ The first-party client is a SolidJS app in `web/` that talks to the same contrac
 ## Sub-features
 
 - `#/signin` — owner token, verified with `GET /v1/status`, kept in `localStorage`.
-- `#/` — Home: greeting, the five counts, Needs You, the project grid, all from the `home` stream.
+- `#/` — Home: greeting, the five counts, Needs You, the project grid, all from the `home` stream. The stream also carries up to five pending questions (`requests`), so a Needs You row shows the question and its option chips and answers with `request.respond`; a failed row carries Retry (`thread.send`). At phone width the dashed New project tile is replaced by a full-width button above the tab bar.
 - `#/p/:slug` — project chat: transcript over `conv:<coordinatorId>`, composer with a paperclip that uploads to `PUT /files/projects/<slug>/attachments/...` and sends `message.send.attachments`, right panel (Threads, Files, Memory, Schedules, Jobs; Jobs reads `job.list`). A transcript past the snapshot window shows a "Load older messages" button that pages `history.page` from the snapshot's own `before` and keeps the scroll position.
 - `#/inbox` — pending questions (`request.list`) plus waiting and failed threads.
 - `#/extensions` — Discover, Installed, Updates, Customize, Sources over `plugin.*`, `market.*`.

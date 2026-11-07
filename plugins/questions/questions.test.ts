@@ -9,6 +9,7 @@ import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { RequestsDoc } from "../../src/contracts/questions.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
+import { homeRequests } from "./questions.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -230,6 +231,8 @@ describe("questions", () => {
 
     const limited = await cmd(stub, "list-2", "request.list", { limit: 1 })
     expect(listed(limited.result)).toHaveLength(1)
+    const carried = await runInDurableObject(stub, (home: Home) => homeRequests(home.harness, 5))
+    expect(carried).toMatchObject({ requests: rows.map((row) => ({ id: row.id, projectName: row.projectName })) })
     expect(await cmd(stub, "list-3", "request.list", { limit: 0 })).toMatchObject({
       ok: false,
       error: { code: "bad_args" },
