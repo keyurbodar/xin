@@ -471,10 +471,11 @@ function createRegistry(port: Pick<ModelsPort, "db" | "kek" | "providers">): Reg
   const models: MutableModels = createModels({ credentials: store })
   for (const provider of [...builtins.values(), ...extra.values()]) models.setProvider(provider)
 
+  /** Re-register a static provider after its credential changes; a custom endpoint is registered by `sync`. */
   function restore(id: string): void {
     const provider = builtins.get(id) ?? extra.get(id)
-    if (provider === undefined) models.deleteProvider(id)
-    else models.setProvider(provider)
+    if (provider !== undefined) models.setProvider(provider)
+    else if (!custom.has(id)) models.deleteProvider(id)
   }
 
   async function sync(): Promise<void> {
@@ -489,13 +490,17 @@ function createRegistry(port: Pick<ModelsPort, "db" | "kek" | "providers">): Reg
       custom.delete(id)
       restore(id)
     }
+    const registered: string[] = []
     for (const [id, endpoint] of endpoints) {
       const previous = custom.get(id)
-      if (previous !== undefined && previous.baseUrl === endpoint.baseUrl && previous.api === endpoint.api) continue
+      const unchanged = previous !== undefined && previous.baseUrl === endpoint.baseUrl && previous.api === endpoint.api
+      if (unchanged && models.getProvider(id) !== undefined) continue
       if (previous !== undefined) restore(id)
       custom.set(id, endpoint)
       models.setProvider(endpointProvider(id, endpoint))
+      registered.push(id)
     }
+    if (registered.length > 0) await models.refresh({ providers: registered })
   }
 
   return { models, store, custom, sync, restore }

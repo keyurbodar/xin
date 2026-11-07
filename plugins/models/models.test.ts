@@ -331,6 +331,30 @@ describe("models", () => {
     }
   })
 
+  it("keeps a stored custom endpoint resolvable without listing its models first", async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ object: "list", data: [{ id: "stub-1", object: "model" }] }), {
+        headers: { "content-type": "application/json" },
+      })
+    try {
+      const set = await cmd("custom-1", "credential.set", {
+        provider: "endpoint",
+        key: "endpoint-key",
+        custom: { baseUrl: "https://endpoint.test/v1", key: "endpoint-key", api: "openai-completions" },
+      })
+      expect(set).toMatchObject({ ok: true })
+      const accepted = await cmd("custom-2", "owner.defaults", {
+        role: "chat",
+        model: { provider: "endpoint", modelId: "stub-1" },
+      })
+      expect(accepted).toMatchObject({ ok: true })
+    } finally {
+      globalThis.fetch = original
+      await cmd("custom-3", "credential.delete", { provider: "endpoint" })
+    }
+  })
+
   it("rejects an unknown model and keeps owner defaults", async () => {
     const rejected = await cmd("conf-1", "conv.configure", { model: { provider: "faux-alt", modelId: "nope" } })
     expect(rejected).toMatchObject({ ok: false, error: { code: "bad_args" } })
