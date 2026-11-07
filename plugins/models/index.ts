@@ -11,6 +11,8 @@ export async function apply(ctx: Context): Promise<void> {
     kek: ctx.host.env.KEK,
     providers: ctx.host.providers,
     run: (command, actor) => ctx.ops.run(command, actor),
+    notify: (notification) => ctx.get("push")?.notify(notification) ?? Promise.resolve(),
+    alertsOn: async () => (await ctx.get("push")?.prefs())?.spend ?? true,
   })
   ctx.provide("models", parts.service)
   ctx.pi.models(parts.models)

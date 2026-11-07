@@ -1,13 +1,43 @@
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { describe, expect, it } from "vitest"
-import { connect, owner } from "../test/support.ts"
+import { connect, cmd, field, owner } from "../test/support.ts"
 import { FAUX_MODEL, type Home } from "../test/worker.ts"
 import { SNAPSHOT_ENTRIES } from "./wire.ts"
 
 type View = { entries: { id: number; kind: string }[] }
 const isView = (value: unknown): value is View =>
   typeof value === "object" && value !== null && "entries" in value && Array.isArray(value.entries)
+
+type Session = { id: string; since: number; origin: string }
+
+const sessions = async (): Promise<Session[]> => {
+  const reply = await cmd(owner(), `sessions-${crypto.randomUUID()}`, "session.list")
+  if (!Array.isArray(reply.result)) throw new Error(`session.list: ${JSON.stringify(reply)}`)
+  return reply.result.map((row) => {
+    const id = field(row, "id")
+    const since = field(row, "since")
+    const origin = field(row, "origin")
+    if (typeof id !== "string" || typeof since !== "number" || typeof origin !== "string")
+      throw new Error(`session row is malformed: ${JSON.stringify(row)}`)
+    return { id, since, origin }
+  })
+}
+
+const until = async (check: () => Promise<boolean>): Promise<void> => {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (await check()) return
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error("condition not reached")
+}
+
+const closeAll = async (): Promise<number> => {
+  const reply = await cmd(owner(), `sessions-${crypto.randomUUID()}`, "session.close", {})
+  const closed = field(reply.result, "closed")
+  if (typeof closed !== "number") throw new Error(`session.close: ${JSON.stringify(reply)}`)
+  return closed
+}
 
 describe("wire protocol", () => {
   it("acks commands over the socket and answers pings without the object", async () => {
@@ -63,5 +93,35 @@ describe("wire protocol", () => {
     socket.send({ t: "sub", stream: "conv:999999" })
     expect(await socket.next((f) => f.t === "error")).toMatchObject({ message: "unknown stream conv:999999" })
     socket.close()
+  })
+
+  it("lists a live socket and closes it by id", async () => {
+    await closeAll()
+    await until(async () => (await sessions()).length === 0)
+
+    const socket = await connect()
+    const [live] = await sessions()
+    if (live === undefined) throw new Error("the socket is not listed")
+    expect(live.id.length).toBeGreaterThan(0)
+    expect(live.origin).toBe("")
+    expect(live.since).toBeGreaterThan(0)
+
+    const reply = await cmd(owner(), `close-${crypto.randomUUID()}`, "session.close", { id: live.id })
+    expect(reply).toMatchObject({ ok: true, result: { closed: 1 } })
+    await until(async () => (await sessions()).length === 0)
+    socket.close()
+  })
+
+  it("closes every live socket and reports the count", async () => {
+    await closeAll()
+    await until(async () => (await sessions()).length === 0)
+
+    const first = await connect()
+    const second = await connect()
+    expect(await sessions()).toHaveLength(2)
+    expect(await closeAll()).toBe(2)
+    await until(async () => (await sessions()).length === 0)
+    first.close()
+    second.close()
   })
 })

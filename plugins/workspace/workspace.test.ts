@@ -2,7 +2,8 @@ import { runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId, Harness, Tx } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
-import { cmd, connect, fresh, owner } from "../../test/support.ts"
+import { respond } from "../../test/plugins/m8.ts"
+import { cmd, connect, fresh, owner, recordOffers, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import type { ProjectId, ThreadId } from "../../src/ids.ts"
 import { ThreadDoc, transition, type ThreadEvent, type ThreadStatus } from "../../src/contracts/threaddoc.ts"
@@ -184,6 +185,28 @@ describe("workspace", () => {
         else expect(result).toEqual({ kind: "ok", status: arrow.to })
       }
     }
+  })
+
+  it("puts the owner's name and workspace instructions in the system prompt", async () => {
+    const stub = fresh()
+    const set = await cmd(stub, "owner-set-1", "owner.set", { name: "Ada", instructions: "Answer in Latin." })
+    expect(set).toMatchObject({ ok: true, result: { name: "Ada", instructions: "Answer in Latin." } })
+    expect((await cmd(stub, "owner-read-1", "owner.read")).result).toEqual({
+      name: "Ada",
+      instructions: "Answer in Latin.",
+    })
+
+    const offers = recordOffers()
+    respond([offers.step("ok")])
+    await turn(stub, "owner-turn-1")
+    expect(offers.latest().system).toContain("<owner>")
+    expect(offers.latest().system).toContain("Answer in Latin.")
+
+    await cmd(stub, "owner-set-2", "owner.set", { instructions: "   " })
+    const cleared = recordOffers()
+    respond([cleared.step("ok")])
+    await turn(stub, "owner-turn-2")
+    expect(cleared.latest().system).not.toContain("<owner>")
   })
 
   it("archives a project without losing its threads", async () => {

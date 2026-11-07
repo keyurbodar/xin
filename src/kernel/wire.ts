@@ -1,8 +1,12 @@
 import { type Context, Service } from "@deepseek-ai/cordis"
 import type { JsonObject } from "@earendil-works/pi-durable"
+import { obj, opt, str } from "@earendil-works/pi-schema"
+import { defineOp } from "../ops.ts"
 import { ack, decodeCommand, Sockets } from "../wire.ts"
 
 type HomePart = () => Promise<JsonObject>
+
+const OWNER = ["owner"] as const
 
 export class Wire extends Service {
   static readonly inject = ["host", "ops", "http", "clock"]
@@ -21,8 +25,22 @@ export class Wire extends Service {
     ctx.http.route("GET /v1/socket", async (request) => {
       if (request.headers.get("upgrade") !== "websocket" || this.sockets === undefined)
         return new Response("not found", { status: 404 })
-      return this.sockets.accept(request.headers.get("x-xin-protocol") ?? undefined)
+      return this.sockets.accept(
+        request.headers.get("x-xin-protocol") ?? undefined,
+        request.headers.get("origin") ?? "",
+      )
     })
+    ctx.ops.define(
+      defineOp({ name: "session.list", args: obj({}), actors: OWNER, run: async () => this.sockets?.list() ?? [] }),
+    )
+    ctx.ops.define(
+      defineOp({
+        name: "session.close",
+        args: obj({ id: opt(str({ minLength: 1 })) }),
+        actors: OWNER,
+        run: async (_api, args) => ({ closed: this.sockets?.close(args.id) ?? 0 }),
+      }),
+    )
     ctx.inject(["harness"], async (inner) => {
       const sockets = new Sockets({
         ctx: ctx.host.state,

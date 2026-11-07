@@ -93,9 +93,10 @@ describe("history.page", () => {
   it("rejects an unknown conversation and an empty window before the first entry", async () => {
     const stub = fresh()
     const rootId = await runInDurableObject(stub, async (home: Home) => (await home.root()).id)
-    expect(
-      await cmd(stub, "history-missing", "history.page", { conversationId: rootId + 1_000 }),
-    ).toMatchObject({ ok: false, error: { code: "bad_args" } })
+    expect(await cmd(stub, "history-missing", "history.page", { conversationId: rootId + 1_000 })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
     const empty = await cmd(stub, "history-zero", "history.page", { conversationId: rootId, before: 0 })
     expect(empty.ok).toBe(true)
     expect(pageOf(empty.result).ids).toEqual([])

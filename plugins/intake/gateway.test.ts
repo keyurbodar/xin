@@ -58,6 +58,24 @@ async function fireNow(stub: ReturnType<typeof fresh>): Promise<void> {
 }
 
 describe("gateway intake and dispatch", () => {
+  it("refuses a new message once the month's spend reaches the cap, and takes it again once raised", async () => {
+    const stub = fresh()
+    const day = new Date().toISOString().slice(0, 10)
+    expect(await command(stub, "cap-set", "usage.cap.set", { usd: 5 })).toMatchObject({ kind: "ok" })
+    expect(await command(stub, "cap-msg-1", "message.send", { text: "before the cap", clientTs: 1 })).toMatchObject({
+      kind: "ok",
+    })
+    await runInDurableObject(stub, (home: Home) =>
+      home.db.run("INSERT INTO usage_daily (day, spend, tokens) VALUES (?, 6, 1)", day),
+    )
+    const refused = await command(stub, "cap-msg-2", "message.send", { text: "over the cap", clientTs: 2 })
+    expect(refused).toMatchObject({ kind: "rejected", code: "forbidden" })
+    expect(await command(stub, "cap-clear", "usage.cap.set", { clear: true })).toMatchObject({ kind: "ok" })
+    expect(await command(stub, "cap-msg-3", "message.send", { text: "cap raised", clientTs: 3 })).toMatchObject({
+      kind: "ok",
+    })
+  })
+
   it("answers a burst of three messages with one turn", async () => {
     const stub = fresh()
     await runInDurableObject(stub, async (home: Home) => {

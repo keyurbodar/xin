@@ -1,17 +1,29 @@
-import { createSignal, For, onMount, Show, type JSX } from "solid-js"
+import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
 import {
   errorMessage,
   models,
+  owner,
   providers,
   roles,
   ROLE_LABEL,
   setDefault,
+  setOwner,
   type ModelInfo,
   type ModelRole,
   type ModelsList,
+  type OwnerSettings,
 } from "../../state/settings.ts"
-import { Failure, MissingOp, Note, Pending, failureOf } from "../extensions/chrome.tsx"
+import { Failure, INPUT, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Group, Row, Saved, SelectField, type Choice } from "./parts.tsx"
+
+const BLANK: OwnerSettings = { name: "", instructions: "" }
+
+const LIMIT: Readonly<Record<keyof OwnerSettings, number>> = { name: 120, instructions: 4000 }
+
+type Field = keyof OwnerSettings
+
+const SAVE_DELAY = 700
+const TICK_FOR = 2400
 
 function catalog(): ModelsList {
   const state = models.state()
@@ -31,14 +43,80 @@ export function General(): JSX.Element {
   const [chosen, setChosen] = createSignal<Partial<Record<ModelRole, string>>>({})
   const [error, setError] = createSignal<string | undefined>(undefined)
 
+  const [draft, setDraft] = createSignal<OwnerSettings | undefined>(undefined)
+  const [savedField, setSavedField] = createSignal<Field | undefined>(undefined)
+  const [saveError, setSaveError] = createSignal<string | undefined>(undefined)
+  const edits: Record<Field, number> = { name: 0, instructions: 0 }
+  let timer: number | undefined
+
   onMount(() => {
     void models.reload()
+    void owner.reload()
+  })
+
+  onCleanup(() => {
+    if (timer === undefined) return
+    void flush()
   })
 
   const list = (): readonly ModelInfo[] => {
     const state = models.state()
     return state.kind === "ready" ? state.value.models : []
   }
+
+  const stored = (): OwnerSettings => {
+    const state = owner.state()
+    return state.kind === "ready" ? state.value : BLANK
+  }
+
+  const valueOf = (field: Field): string => draft()?.[field] ?? stored()[field]
+
+  const flush = async (): Promise<void> => {
+    if (timer !== undefined) {
+      window.clearTimeout(timer)
+      timer = undefined
+    }
+    const current = draft()
+    if (current === undefined) return
+    const base = stored()
+    const patch: { name?: string; instructions?: string } = {}
+    const touched: Field[] = []
+    for (const field of ["name", "instructions"] as const) {
+      if (current[field] === base[field]) continue
+      patch[field] = current[field]
+      touched.push(field)
+    }
+    const last = touched[touched.length - 1]
+    if (last === undefined) return
+    const at = { ...edits }
+    setSaveError(undefined)
+    try {
+      const next = await setOwner(patch)
+      setDraft((now) => {
+        if (now === undefined) return undefined
+        const merged = { ...now }
+        for (const field of touched) if (edits[field] === at[field]) merged[field] = next[field]
+        return merged
+      })
+      setSavedField(last)
+      window.setTimeout(() => setSavedField((now) => (now === last ? undefined : now)), TICK_FOR)
+    } catch (failure: unknown) {
+      setSaveError(errorMessage(failure))
+    }
+  }
+
+  const edit = (field: Field, next: string): void => {
+    const clipped = next.slice(0, LIMIT[field])
+    edits[field] += 1
+    setDraft((now) => {
+      const base = now ?? stored()
+      return field === "name" ? { ...base, name: clipped } : { ...base, instructions: clipped }
+    })
+    if (timer !== undefined) window.clearTimeout(timer)
+    timer = window.setTimeout(() => void flush(), SAVE_DELAY)
+  }
+
+  const readable = (): boolean => owner.state().kind === "ready"
 
   const choose = async (role: ModelRole, value: string): Promise<void> => {
     setError(undefined)
@@ -63,8 +141,13 @@ export function General(): JSX.Element {
 
   return (
     <div class="flex max-w-[820px] flex-col gap-6">
-      <Show when={error()}>
-        {(message) => <Failure message={message()} />}
+      <Show when={error()}>{(message) => <Failure message={message()} />}</Show>
+      <Show when={saveError()}>{(message) => <Failure message={message()} onRetry={() => void flush()} />}</Show>
+      <Show when={owner.state().kind === "loading"}>
+        <Pending label="Reading your settings" />
+      </Show>
+      <Show when={failureOf(owner.state())}>
+        {(message) => <Failure message={message()} onRetry={() => void owner.reload()} />}
       </Show>
 
       <Group title="Model defaults" detail="Projects and threads can override these">
@@ -111,9 +194,9 @@ export function General(): JSX.Element {
               </For>
             </div>
             <Note>
-              A model that is not in the catalog cannot be set. The picker lists what your providers answered with; nothing here
-              is hard-coded. Setting a default writes it straight away, and the picker opens on Catalog default because no op
-              reads the current defaults back.
+              A model that is not in the catalog cannot be set. The picker lists what your providers answered with;
+              nothing here is hard-coded. Setting a default writes it straight away, and the picker opens on Catalog
+              default because no op reads the current defaults back.
             </Note>
           </div>
         </Show>
@@ -124,7 +207,19 @@ export function General(): JSX.Element {
           <span class="text-[12.5px] text-fg-2">Not stored yet</span>
         </Row>
         <Row title="Your name" detail="How the coordinator greets you">
-          <span class="text-[12.5px] text-fg-2">Owner</span>
+          <div class="flex items-center gap-2">
+            <input
+              type="text"
+              aria-label="Your name"
+              class={`${INPUT} max-w-[320px]`}
+              value={valueOf("name")}
+              maxLength={LIMIT.name}
+              disabled={!readable()}
+              onInput={(event) => edit("name", event.currentTarget.value)}
+              onBlur={() => void flush()}
+            />
+            <Saved show={savedField() === "name"} />
+          </div>
         </Row>
         <Row title="Time zone" detail="Used by schedules and timestamps">
           <span class="font-mono text-[12px] text-fg-2">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
@@ -132,26 +227,42 @@ export function General(): JSX.Element {
         <Row title="Density" detail="Rows and spacing across the app">
           <span class="text-[12.5px] text-fg-2">Default</span>
         </Row>
-        <div class="pt-2">
-          <MissingOp
-            op="owner.profile"
-            detail="The client reads the browser's time zone and locale; name, avatar and density have no server field."
-          />
+      </Group>
+
+      <Group
+        title="Instructions for every project"
+        detail="Read by the coordinator and every thread, before project instructions"
+      >
+        <div class="flex flex-col gap-2 pt-1">
+          <div class="overflow-hidden rounded-[4px] border border-line-inner focus-within:border-accent-line">
+            <textarea
+              rows={7}
+              aria-label="Instructions for every project"
+              class="w-full resize-y bg-page px-3 py-2.5 text-[13px] leading-relaxed text-fg focus:bg-surface focus:outline-none disabled:opacity-40"
+              value={valueOf("instructions")}
+              maxLength={LIMIT.instructions}
+              disabled={!readable()}
+              onInput={(event) => edit("instructions", event.currentTarget.value)}
+              onBlur={() => void flush()}
+            />
+            <div class="flex items-baseline gap-2 border-t border-line px-3 py-1.5">
+              <Show when={owner.state().kind !== "loading" && valueOf("instructions").trim() === ""}>
+                <span class="text-[11.5px] text-fg-3">No workspace instructions are stored.</span>
+              </Show>
+              <Saved show={savedField() === "instructions"} />
+              <span class="ml-auto font-mono text-[10.5px] text-fg-4">
+                {valueOf("instructions").length.toLocaleString("en-US")} / 4,000 · Markdown works
+              </span>
+            </div>
+          </div>
+          <Note>
+            Every conversation's system prompt carries this block first, before the instructions of the project it
+            belongs to.
+          </Note>
         </div>
       </Group>
 
-      <Group title="Instructions for every project" detail="Read before project instructions">
-        <div class="rounded-[4px] border border-dashed border-line-inner px-3.5 py-4">
-          <p class="text-[12.5px] text-fg-2">No workspace instructions are stored.</p>
-          <p class="mt-1 text-[11.5px] text-fg-3">
-            Project instructions live with each project. The dreamer keeps a profile of durable facts, shown under Profile;
-            a workspace-level instruction block is a separate, owner-written field the server does not have.
-          </p>
-          <div class="mt-2">
-            <MissingOp op="owner.instructions" />
-          </div>
-        </div>
-      </Group>
+      <Note>Changes save as you type.</Note>
     </div>
   )
 }

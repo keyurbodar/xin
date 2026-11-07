@@ -43,7 +43,9 @@ export function listJobsOp(): Op {
         state: stateOf(job),
         ...(job.result === undefined ? {} : { result: job.result.text }),
       }))
-      return { jobs: jobs.toSorted((left, right) => right.startedAt - left.startedAt).slice(0, args.limit ?? MAX_LISTED) }
+      return {
+        jobs: jobs.toSorted((left, right) => right.startedAt - left.startedAt).slice(0, args.limit ?? MAX_LISTED),
+      }
     },
   })
 }

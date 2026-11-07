@@ -12,12 +12,14 @@ import { SettingsScreen } from "../../screens/settings.tsx"
 import { SchedulesScreen } from "../../screens/schedules.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
 import { navigate } from "../../lib/router.ts"
+import { owner } from "../../state/settings.ts"
 
 export function Shell(): JSX.Element {
   const first = () => route().parts[0]
   const [palette, setPalette] = createSignal(false)
 
   onMount(() => {
+    void owner.reload()
     const onKey = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault()

@@ -341,10 +341,10 @@ export function notificationOf(prefs: NotifyPrefs, row: IntakeBatchRow): Notific
     case "job":
       return undefined
     case "question":
-      return prefs.waiting ? notification(row) : undefined
+      return prefs.waiting ? notification(row, "waiting") : undefined
     case "report": {
       const kind: NotifyKind = row.status === "failed" ? "failed" : "finished"
-      return prefs[kind] ? notification(row) : undefined
+      return prefs[kind] ? notification(row, kind) : undefined
     }
     default: {
       const _exhaustive: never = row
@@ -353,8 +353,11 @@ export function notificationOf(prefs: NotifyPrefs, row: IntakeBatchRow): Notific
   }
 }
 
-function notification(row: { readonly title: string; readonly text: string; readonly commandId: string }): Notification {
-  return { threadTitle: row.title, title: row.title, body: row.text, tag: row.commandId }
+function notification(
+  row: { readonly title: string; readonly text: string; readonly commandId: string },
+  kind: NotifyKind,
+): Notification {
+  return { threadTitle: row.title, title: row.title, body: row.text, tag: row.commandId, kind }
 }
 
 async function submit(

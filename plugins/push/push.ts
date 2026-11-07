@@ -1,10 +1,12 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
-import { bool, obj, opt, str } from "@earendil-works/pi-schema"
+import { bool, int, obj, opt, str } from "@earendil-works/pi-schema"
 import {
   DEFAULT_PREFS,
+  DEFAULT_QUIET,
   type Notification,
   type NotifyPrefs,
   type PushService,
+  type QuietHours,
 } from "../../src/contracts/push.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
@@ -26,6 +28,7 @@ import {
 
 const VAPID_KEY = "vapid"
 const PREFS_KEY = "notify.prefs"
+const QUIET_KEY = "notify.quiet"
 const TTL_S = 24 * 60 * 60
 const URGENCY = "high"
 const PUSH_HEADERS = { "content-encoding": "aes128gcm", "content-type": "application/octet-stream" }
@@ -49,7 +52,7 @@ type Delivery =
 
 const send: Fetcher = (request) => fetch(request)
 
-export function notifier(port: PushPort, fetcher: Fetcher = send): Notifier {
+export function notifier(port: PushPort, fetcher: Fetcher = send, now: () => number = Date.now): Notifier {
   let signer: Promise<VapidSigner> | undefined
   const signing = (): Promise<VapidSigner> => {
     signer ??= loadVapid(port.db)
@@ -65,6 +68,7 @@ export function notifier(port: PushPort, fetcher: Fetcher = send): Notifier {
     notify: async (notification) => {
       if (port.state.getWebSockets().length > 0) return
       try {
+        if (notification.kind !== "waiting" && inQuietHours(await readQuiet(port.db), now())) return
         await deliverAll(port.db, fetcher, signing, notification)
       } catch (failure) {
         console.warn("push: delivery pass failed", failure)
@@ -89,7 +93,7 @@ export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly O
     }),
     defineOp({
       name: "notify.set",
-      args: obj({ waiting: opt(bool()), finished: opt(bool()), failed: opt(bool()) }),
+      args: obj({ waiting: opt(bool()), finished: opt(bool()), failed: opt(bool()), spend: opt(bool()) }),
       actors: ["owner"],
       run: async (_api, args) => {
         const current = await readPrefs(db)
@@ -97,10 +101,40 @@ export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly O
           waiting: args.waiting ?? current.waiting,
           finished: args.finished ?? current.finished,
           failed: args.failed ?? current.failed,
+          spend: args.spend ?? current.spend,
         }
         await db.run(
           "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
           PREFS_KEY,
+          JSON.stringify(next),
+        )
+        return next
+      },
+    }),
+    defineOp({
+      name: "notify.quiet",
+      args: obj({}),
+      actors: ["owner"],
+      run: async () => readQuiet(db),
+    }),
+    defineOp({
+      name: "notify.quiet.set",
+      args: obj({
+        enabled: opt(bool()),
+        start: opt(int({ minimum: 0, maximum: 1439 })),
+        end: opt(int({ minimum: 0, maximum: 1439 })),
+      }),
+      actors: ["owner"],
+      run: async (_api, args) => {
+        const current = await readQuiet(db)
+        const next: QuietHours = {
+          enabled: args.enabled ?? current.enabled,
+          start: args.start ?? current.start,
+          end: args.end ?? current.end,
+        }
+        await db.run(
+          "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+          QUIET_KEY,
           JSON.stringify(next),
         )
         return next
@@ -132,6 +166,15 @@ export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly O
       },
     }),
     defineOp({
+      name: "push.list",
+      args: obj({}),
+      actors: ["owner"],
+      run: async () => {
+        const rows = await db.all<{ endpoint: string }>("SELECT endpoint FROM push_subs ORDER BY endpoint")
+        return rows.map((row) => ({ endpoint: row.endpoint, origin: origin(row.endpoint) }))
+      },
+    }),
+    defineOp({
       name: "push.unsubscribe",
       args: obj({ endpoint: str({ minLength: 1, maxLength: 2048 }) }),
       actors: ["owner"],
@@ -158,7 +201,34 @@ export async function readPrefs(db: SqliteDatabase): Promise<NotifyPrefs> {
     waiting: record.waiting === false ? false : DEFAULT_PREFS.waiting,
     finished: record.finished === false ? false : DEFAULT_PREFS.finished,
     failed: record.failed === false ? false : DEFAULT_PREFS.failed,
+    spend: record.spend === false ? false : DEFAULT_PREFS.spend,
   }
+}
+
+export async function readQuiet(db: SqliteDatabase): Promise<QuietHours> {
+  const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", QUIET_KEY)
+  if (row === undefined) return DEFAULT_QUIET
+  const parsed: unknown = parseJson(row.value)
+  if (typeof parsed !== "object" || parsed === null) return DEFAULT_QUIET
+  const record = parsed as Record<string, unknown>
+  return {
+    enabled: record.enabled === true,
+    start: minuteOfDay(record.start) ?? DEFAULT_QUIET.start,
+    end: minuteOfDay(record.end) ?? DEFAULT_QUIET.end,
+  }
+}
+
+function minuteOfDay(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 1439 ? value : undefined
+}
+
+/** A window whose start is past its end wraps midnight; equal ends mean all day. */
+function inQuietHours(quiet: QuietHours, now: number): boolean {
+  if (!quiet.enabled) return false
+  const minute = Math.floor(now / 60_000) % 1440
+  if (quiet.start === quiet.end) return true
+  if (quiet.start < quiet.end) return minute >= quiet.start && minute < quiet.end
+  return minute >= quiet.start || minute < quiet.end
 }
 
 /** One notification to every subscribed browser, sockets or not: the owner asked to see it arrive. */
@@ -168,6 +238,7 @@ export function testPush(db: SqliteDatabase, fetcher: Fetcher = send): Promise<n
     title: "Push works",
     body: "This is a test notification from Xin.",
     tag: "test",
+    kind: "finished",
   })
 }
 

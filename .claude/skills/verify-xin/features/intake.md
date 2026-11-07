@@ -9,7 +9,13 @@
 - `conv.stop {conv?}`: aborts the running turn.
 - Socket `{t:"typing", conv, on:true}`: holds the batch, never past first+8 s.
 - Crash safety: on open, due pending rows fire and claimed rows resubmit with the same requestId.
-- `notify.prefs` / `notify.set {waiting?, finished?, failed?}`: which of the three push kinds is delivered; `announce` skips a disabled kind before it reaches `push.notify`.
+- `notify.prefs` / `notify.set {waiting?, finished?, failed?, spend?}`: which push kinds are delivered; `announce` skips a disabled kind before it reaches `push.notify`. `spend` covers the daily and cap alerts from the models plugin.
+- `notify.quiet` / `notify.quiet.set {enabled?, start?, end?}`: minutes since UTC midnight; while the window is on, every kind but `waiting` waits.
+- `push.list` / `push.unsubscribe {endpoint}`: the subscribed browsers as `[{endpoint, origin}]`, and removal of one.
+- `owner.read` / `owner.set {name?, instructions?}`: the owner's name and the workspace instructions, rendered as the `<owner>` system section for every conversation.
+- `session.list` / `session.close {id?}`: live sockets as `[{id, since, origin}]`; close one or all, answering `{closed}`.
+- `system.metrics`: `{uptimeMs, storageBytes, sockets, rows:{total,active}, pushDevices}`, all measured.
+- `usage.cap` / `usage.cap.set {usd?, clear?}` and `usage.alert` / `usage.alert.set {usd}`: the monthly cap and the daily alert. While the month's spend is at or above the cap, `message.send` answers `forbidden` and the thread pauses.
 
 ## How to get to it (user POV)
 

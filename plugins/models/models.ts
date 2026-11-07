@@ -23,13 +23,14 @@ import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.l
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
 import {
   ROOT_CONVERSATION_ID,
+  UsageDoc,
   type AgentChange,
   type ConversationId,
   type Harness,
   type ModelRef,
   type UsageState,
 } from "@earendil-works/pi-durable"
-import { arr, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
+import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
 import {
   ModelRefSchema,
   ThinkingSchema,
@@ -37,6 +38,8 @@ import {
   type ModelMatch,
   type ModelsService,
 } from "../../src/contracts/models.ts"
+import type { Notification } from "../../src/contracts/push.ts"
+import { parseWorkspace, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
 import type { Provider } from "../../src/module.ts"
 import { defineOp, type Actor, type Command, type Op, OpRejected, type Outcome } from "../../src/ops.ts"
@@ -66,11 +69,29 @@ const bucketOf = (usage: UsageState["models"][string]): UsageBucket => ({
 })
 
 const USAGE_TOTAL = "usage.total"
+const USAGE_CAP = "usage.cap"
+const USAGE_ALERT = "usage.alerted"
+const USAGE_ALERT_DAY = "usage.alerted.day"
+const USAGE_ALERT_USD = "usage.alert"
+const DEFAULT_DAILY_ALERT = 8
+const ALERT_SHARE = 0.8
 
 type Total = { readonly spend: number; readonly tokens: number }
 
+type Alert = { readonly month: string; readonly level: number }
+
+export type Spend = { readonly month: number; readonly cap: number | null }
+
+export type ProjectSpend = {
+  readonly id: string
+  readonly name: string
+  readonly spend: number
+  readonly tokens: number
+}
+
 const dayOf = (now: number): string => new Date(now).toISOString().slice(0, 10)
 
+const monthOf = (now: number): string => dayOf(now).slice(0, 7)
 function usageRecorder(db: SqliteDatabase, harness: Harness): () => Promise<UsageState> {
   let queue: Promise<UsageState> = Promise.resolve({ models: {}, tools: {} })
   return () => {
@@ -150,6 +171,126 @@ async function datedUsage(db: SqliteExecutor): Promise<{ today: Total; month: To
 function monthBefore(day: string): string {
   const [year, month] = day.split("-").map(Number)
   return new Date(Date.UTC(year ?? 1970, (month ?? 1) - 2, 1)).toISOString().slice(0, 10)
+}
+
+async function readCap(db: SqliteExecutor): Promise<number | null> {
+  const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", USAGE_CAP)
+  if (row === undefined) return null
+  try {
+    const parsed: unknown = JSON.parse(row.value)
+    if (typeof parsed !== "object" || parsed === null) return null
+    const usd = (parsed as Record<string, unknown>).usd
+    return typeof usd === "number" && Number.isFinite(usd) ? usd : null
+  } catch {
+    return null
+  }
+}
+
+async function readAlert(db: SqliteExecutor): Promise<Alert | undefined> {
+  const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", USAGE_ALERT)
+  if (row === undefined) return undefined
+  try {
+    const parsed: unknown = JSON.parse(row.value)
+    if (typeof parsed !== "object" || parsed === null) return undefined
+    const record = parsed as Record<string, unknown>
+    if (typeof record.month !== "string" || typeof record.level !== "number") return undefined
+    return { month: record.month, level: record.level }
+  } catch {
+    return undefined
+  }
+}
+
+async function readDayMark(db: SqliteExecutor): Promise<string | undefined> {
+  const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", USAGE_ALERT_DAY)
+  if (row === undefined) return undefined
+  try {
+    const parsed: unknown = JSON.parse(row.value)
+    if (typeof parsed !== "object" || parsed === null) return undefined
+    const day = (parsed as Record<string, unknown>).day
+    return typeof day === "string" ? day : undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function readDailyAlert(db: SqliteExecutor): Promise<number> {
+  const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", USAGE_ALERT_USD)
+  if (row === undefined) return DEFAULT_DAILY_ALERT
+  try {
+    const parsed: unknown = JSON.parse(row.value)
+    if (typeof parsed !== "object" || parsed === null) return DEFAULT_DAILY_ALERT
+    const usd = (parsed as Record<string, unknown>).usd
+    return typeof usd === "number" && Number.isFinite(usd) && usd >= 0 ? usd : DEFAULT_DAILY_ALERT
+  } catch {
+    return DEFAULT_DAILY_ALERT
+  }
+}
+
+const spendNotice = (title: string, body: string): Notification => ({
+  threadTitle: "Xin",
+  title,
+  body,
+  tag: "spend",
+  kind: "spend",
+})
+
+/** One push per threshold: a day past the daily alert, and the month past 80% of the cap and past the cap itself. */
+async function alertSpend(
+  db: SqliteDatabase,
+  notify: ((notification: Notification) => Promise<void>) | undefined,
+  alertsOn: () => Promise<boolean>,
+): Promise<void> {
+  if (notify === undefined || !(await alertsOn())) return
+  const [dated, cap, daily] = await Promise.all([datedUsage(db), readCap(db), readDailyAlert(db)])
+  const day = dayOf(Date.now())
+  const month = monthOf(Date.now())
+  const pending: Notification[] = []
+  if (daily > 0 && dated.today.spend >= daily && (await readDayMark(db)) !== day) {
+    await writeKv(db, USAGE_ALERT_DAY, { day })
+    pending.push(
+      spendNotice("Passed today's spend alert", `${dated.today.spend.toFixed(2)} of ${daily.toFixed(2)} USD today.`),
+    )
+  }
+  if (cap !== null && cap > 0) {
+    const level = dated.month.spend >= cap ? 100 : dated.month.spend >= cap * ALERT_SHARE ? 80 : 0
+    const alerted = await readAlert(db)
+    if (level > 0 && !(alerted?.month === month && alerted.level >= level)) {
+      await writeKv(db, USAGE_ALERT, { month, level })
+      pending.push(
+        spendNotice(
+          level === 100 ? "Monthly cap reached" : "Spend passed 80% of the cap",
+          `${dated.month.spend.toFixed(2)} of ${cap.toFixed(2)} USD this month.`,
+        ),
+      )
+    }
+  }
+  for (const notification of pending)
+    await notify(notification).catch((failure: unknown) => console.warn("models: spend alert failed", failure))
+}
+
+/** Spend per project, from each coordinator and thread's own `pi.usage` document. */
+async function projectSpend(harness: Harness): Promise<ProjectSpend[]> {
+  const workspace = await harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
+  if (workspace === undefined || !parseWorkspace.check(workspace)) return []
+  const projects = await Promise.all(
+    Object.entries(workspace.projects).map(async ([id, project]) => {
+      const conversations: ConversationId[] = [
+        project.coordinatorId as ConversationId,
+        ...project.threadIds.map((threadId) => threadId as ConversationId),
+      ]
+      const ledgers = await Promise.all(
+        conversations.map((conversation) => harness.snapshot(UsageDoc, conversation, BACKGROUND_CONTEXT)),
+      )
+      const total = ledgers
+        .flatMap((ledger) => (ledger === undefined ? [] : [ledgerTotal(ledger)]))
+        .reduce((sum, usage) => ({ spend: sum.spend + usage.spend, tokens: sum.tokens + usage.tokens }), {
+          spend: 0,
+          tokens: 0,
+        })
+      return { id, name: project.name, spend: total.spend, tokens: total.tokens }
+    }),
+  )
+  return projects.toSorted((left, right) => right.spend - left.spend || left.name.localeCompare(right.name))
 }
 
 const addUsage = (sum: UsageBucket, usage: UsageBucket): UsageBucket => ({
@@ -310,6 +451,8 @@ export type ModelsPort = {
   readonly kek: string
   readonly providers: readonly Provider[]
   run(command: Command, actor: Actor): Promise<Outcome>
+  notify?: (notification: Notification) => Promise<void>
+  alertsOn?: () => Promise<boolean>
 }
 
 export type ModelsParts = {
@@ -546,6 +689,11 @@ const commandId = (value: string): CommandId => value as CommandId
 export function create(deps: ModelsPort): ModelsParts {
   const { db, harness, run } = deps
   const recordUsage = usageRecorder(db, harness)
+  const flush = async (): Promise<UsageState> => {
+    const ledger = await recordUsage()
+    await alertSpend(db, deps.notify, deps.alertsOn ?? (async () => true))
+    return ledger
+  }
   const registry = createRegistry(deps)
   const store = registry.store
 
@@ -656,12 +804,48 @@ export function create(deps: ModelsPort): ModelsParts {
     },
   })
 
+  const readCapOp = defineOp({
+    name: "usage.cap",
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => ({ usd: await readCap(db) }),
+  })
+
+  const setCapOp = defineOp({
+    name: "usage.cap.set",
+    args: obj({ usd: opt(num({ minimum: 0 })), clear: opt(bool()) }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      if (args.clear === true) await db.run("DELETE FROM kv WHERE key = ?", USAGE_CAP)
+      else if (args.usd !== undefined) await writeKv(db, USAGE_CAP, { usd: args.usd })
+      else throw new OpRejected("bad_args", "give usd, or clear to remove the cap")
+      return { usd: await readCap(db) }
+    },
+  })
+
+  const alertOp = defineOp({
+    name: "usage.alert",
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => ({ usd: await readDailyAlert(db) }),
+  })
+
+  const setAlertOp = defineOp({
+    name: "usage.alert.set",
+    args: obj({ usd: num({ minimum: 0 }) }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      await writeKv(db, USAGE_ALERT_USD, { usd: args.usd })
+      return { usd: await readDailyAlert(db) }
+    },
+  })
+
   const summary = defineOp({
     name: "usage.summary",
     args: obj({}),
     actors: ["owner"],
     run: async () => {
-      const ledger = await recordUsage()
+      const ledger = await flush()
       const byModel = Object.entries(ledger.models)
         .map(([key, usage]) => {
           const slash = key.indexOf("/")
@@ -689,8 +873,11 @@ export function create(deps: ModelsPort): ModelsParts {
         today: dated.today,
         month: dated.month,
         days: dated.days,
+        cap: await readCap(db),
+        alert: await readDailyAlert(db),
         byModel,
         byTool,
+        byProject: await projectSpend(harness),
       }
     },
   })
@@ -702,6 +889,7 @@ export function create(deps: ModelsPort): ModelsParts {
       return found === undefined ? false : found.input.includes("image")
     },
     credentialSecrets: () => credentialSecrets(db, store),
+    spend: async () => ({ month: (await datedUsage(db)).month.spend, cap: await readCap(db) }),
     search: async (query) => {
       const catalog = await available(registry)
       return { catalog, matches: search(catalog, query) }
@@ -717,13 +905,24 @@ export function create(deps: ModelsPort): ModelsParts {
       ),
   }
 
-  const ops: readonly Op[] = [configure, list, setCredential, deleteCredential, setDefaults, summary]
+  const ops: readonly Op[] = [
+    configure,
+    list,
+    setCredential,
+    deleteCredential,
+    setDefaults,
+    summary,
+    readCapOp,
+    setCapOp,
+    alertOp,
+    setAlertOp,
+  ]
 
   return {
     service,
     ops,
     models: () => registry.models,
-    flush: recordUsage,
+    flush,
     start: async () => {
       await registry.sync()
       await seedUsage(db, harness)

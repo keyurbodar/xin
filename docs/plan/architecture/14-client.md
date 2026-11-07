@@ -54,14 +54,23 @@ The client needed seven ops the agent never asks for: four reads, the two writes
 | Op | Args | Result |
 | --- | --- | --- |
 | `request.list` | `{ limit?, projectId? }` | pending questions across live projects, or one project's: `{ requests: [{ id, conversationId, projectId, projectName, threadTitle?, question, options?, askedAt }] }`. Reads run in parallel and never read a coordinator, which cannot hold an open request |
-| `usage.summary` | `{}` | pi's usage ledger, summed: `{ spend, tokens, today, month, days[], byModel[], byTool[] }`. `spend`/`tokens` are all time; `today` and `month` are `{ spend, tokens }` from `usage_daily`, flushed before the read |
+| `usage.summary` | `{}` | pi's usage ledger, summed: `{ spend, tokens, today, month, days[], cap, alert, byModel[], byTool[], byProject[] }`. `spend`/`tokens` are all time; `today` and `month` are `{ spend, tokens }` from `usage_daily`, flushed before the read; `cap` is the monthly cap or null, `alert` the daily alert in USD, and `byProject` sums each project's coordinator and threads |
+| `usage.cap` / `usage.cap.set` | `{}` / `{ usd?, clear? }` | the monthly cap in USD or null; a cap at or below the month's spend makes `message.send` answer `forbidden` |
+| `usage.alert` / `usage.alert.set` | `{}` / `{ usd }` | the daily alert threshold in USD (default 8) |
 | `job.list` | `{ limit? }` | background jobs the jobs plugin holds: `{ jobs: [{ id, tool, title, parentId, startedAt, deadlineAt, detached, state: running\|completed\|failed, result? }] }` |
 | `push.test` | `{}` | delivers one notification to every subscribed browser and answers `{ sent }`; it ignores open sockets, because the owner asked to see it arrive |
-| `notify.prefs` | `{}` | `{ waiting, finished, failed }`, all true by default |
-| `notify.set` | `{ waiting?, finished?, failed? }` | the stored prefs after the patch; `announce` skips a kind that is off |
+| `notify.prefs` | `{}` | `{ waiting, finished, failed, spend }`, all true by default |
+| `notify.set` | `{ waiting?, finished?, failed?, spend? }` | the stored prefs after the patch; `announce` skips a kind that is off |
+| `notify.quiet` / `notify.quiet.set` | `{}` / `{ enabled?, start?, end? }` | the quiet window as minutes since UTC midnight, defaults 22:00–07:00 and off; while it is on every kind but a question waits |
+| `push.list` | `{}` | `[{ endpoint, origin }]`, one row per subscribed browser, for the pane's Other devices list |
+| `owner.read` / `owner.set` | `{}` / `{ name?, instructions? }` | `{ name, instructions }`, trimmed on write; the instructions render as the `<owner>` system section for every conversation |
+| `session.list` / `session.close` | `{}` / `{ id? }` | one row per live socket `{ id, since, origin }`; close drops that socket, or every socket when the id is omitted, and answers `{ closed }` |
+| `system.metrics` | `{}` | `{ uptimeMs, storageBytes, sockets, rows: { total, active }, pushDevices }`, all measured |
 | `history.page` | `{ conversationId, before?, limit? }` | older entries than the socket snapshot: `{ entries, nextBefore? }`. `before` is inclusive, the same value the view reports as its first missing entry, so the first page starts at the snapshot's own boundary; `nextBefore` is the oldest returned id minus one |
 
-The Home cell and the sidebar footer show `today.spend` and are labelled "Spend today". The Usage pane is the S2 frame: range tabs (7 days, this month, last month), a four-up row (spend and tokens for the range, models and tools in this home), a daily bar chart with a hover tooltip and a Table toggle that lists the same days, then by model and by tool. A day is cut at UTC midnight (11), and the pane says so. With a model that reports no cost the chart says so instead of drawing a flat row of bars.
+The Home cell and the sidebar footer show `today.spend` and are labelled "Spend today"; the sidebar footer also shows the owner's name from `owner.read`. The Usage pane is the S2 frame: range tabs (7 days, this month, last month), a four-up row (spend and tokens for the range, models and tools in this home), a daily bar chart with a hover tooltip, the dashed daily-alert line and a Table toggle that lists the same days, then by project, by model and by tool, and a Monthly cap row with the month's progress, the 80% marker and the cap input. A day is cut at UTC midnight (11), and the pane says so. With a model that reports no cost the chart says so instead of drawing a flat row of bars.
+
+The Notifications pane is the S4 left pane: the browser's subscription and Send test, the four kind switches, quiet hours with two time fields in local time, and Other devices with a Remove per endpoint. The Profile pane is the S4 middle pane: the owner's name, the live sockets with a Sign out per socket and Sign out everywhere, and it states that the owner token is the whole identity. The System pane is the S4 right pane: the build, the plugin rows, measured services (plugin rows, storage, sockets, push devices, uptime), update and restart.
 
 ## Screens
 

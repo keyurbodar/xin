@@ -51,6 +51,8 @@ export interface ModelsService {
   credentialSecrets(): Promise<readonly string[]>
   search(query: string): Promise<ModelSearch>
   switchModel(input: ModelSwitch): Promise<Outcome>
+  /** Month-to-date spend against the owner's cap, for a surface that has to stop before it spends more. */
+  spend(): Promise<{ readonly month: number; readonly cap: number | null }>
 }
 
 declare module "@deepseek-ai/cordis" {

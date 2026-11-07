@@ -46,14 +46,17 @@ type Slice = {
   readonly cost: number
 }
 type Dated = { readonly spend: number; readonly tokens: number }
+type Project = { readonly id: string; readonly name: string; readonly spend: number; readonly tokens: number }
 type Summary = {
   readonly spend: number
   readonly tokens: number
   readonly today: Dated
   readonly month: Dated
   readonly days: readonly (Dated & { readonly day: string })[]
+  readonly cap: number | null
   readonly byModel: readonly Slice[]
   readonly byTool: readonly Slice[]
+  readonly byProject: readonly Project[]
 }
 
 function datedOf(value: unknown): Dated {
@@ -87,6 +90,7 @@ function summaryOf(value: unknown): Summary {
   const tokens = Reflect.get(value, "tokens")
   const byModel = Reflect.get(value, "byModel")
   const byTool = Reflect.get(value, "byTool")
+  const cap = Reflect.get(value, "cap")
   if (typeof spend !== "number" || typeof tokens !== "number") throw new Error("bad usage summary")
   return {
     spend,
@@ -100,6 +104,16 @@ function summaryOf(value: unknown): Summary {
     }),
     byModel: Array.isArray(byModel) ? byModel.map(sliceOf) : [],
     byTool: Array.isArray(byTool) ? byTool.map(sliceOf) : [],
+    cap: typeof cap === "number" ? cap : null,
+    byProject: (Array.isArray(Reflect.get(value, "byProject")) ? Reflect.get(value, "byProject") : []).flatMap(
+      (row: unknown) => {
+        if (typeof row !== "object" || row === null) return []
+        const id = Reflect.get(row, "id")
+        const name = Reflect.get(row, "name")
+        if (typeof id !== "string" || typeof name !== "string") return []
+        return [{ id, name, ...datedOf(row) }]
+      },
+    ),
   }
 }
 
@@ -243,6 +257,53 @@ describe("models", () => {
     const later = summaryOf((await call(stub, "seed-sum-2", "usage.summary", {})).result)
     expect(later.today.tokens).toBeGreaterThan(0)
     expect(later.today.tokens).toBeLessThan(later.tokens)
+  }, 30_000)
+
+  it("records a monthly cap and reports it in the summary", async () => {
+    const stub = fresh()
+    expect((await call(stub, "cap-1", "usage.cap", {})).result).toEqual({ usd: null })
+    expect((await call(stub, "cap-2", "usage.cap.set", { usd: 25 })).result).toEqual({ usd: 25 })
+    expect(summaryOf((await call(stub, "cap-3", "usage.summary", {})).result).cap).toBe(25)
+    expect((await call(stub, "cap-4", "usage.cap.set", { clear: true })).result).toEqual({ usd: null })
+    expect((await call(stub, "cap-5", "usage.cap.set", {})).error).toMatchObject({ code: "bad_args" })
+  })
+
+  it("notes each spend threshold once a month as the month's total crosses it", async () => {
+    const stub = fresh()
+    const day = new Date().toISOString().slice(0, 10)
+    const now = new Date().toISOString().slice(0, 7)
+    const alerted = () =>
+      runInDurableObject(stub, (home: Home) =>
+        home.db.get<{ value: string }>("SELECT value FROM kv WHERE key = 'usage.alerted'"),
+      )
+    await call(stub, "alert-cap", "usage.cap.set", { usd: 10 })
+    await runInDurableObject(stub, (home: Home) =>
+      home.db.run("INSERT INTO usage_daily (day, spend, tokens) VALUES (?, ?, 1)", day, 8),
+    )
+    await call(stub, "alert-sum-1", "usage.summary", {})
+    expect(JSON.parse((await alerted())?.value ?? "null")).toEqual({ month: now, level: 80 })
+
+    await runInDurableObject(stub, (home: Home) => home.db.run("UPDATE usage_daily SET spend = 11 WHERE day = ?", day))
+    await call(stub, "alert-sum-2", "usage.summary", {})
+    expect(JSON.parse((await alerted())?.value ?? "null")).toEqual({ month: now, level: 100 })
+
+    await call(stub, "alert-sum-3", "usage.summary", {})
+    expect(JSON.parse((await alerted())?.value ?? "null")).toEqual({ month: now, level: 100 })
+  })
+
+  it("splits spend by project and leaves the home chat out of it", async () => {
+    const stub = fresh()
+    const created = await call(stub, "project-spend", "project.create", { slug: "billing", name: "Billing" })
+    expect(created.result).toMatchObject({ slug: "billing" })
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["one answer"])
+      await home.chooseModel(FAUX_MODEL)
+      await home.submit("spend outside any project", "project-spend-chat")
+      await home.harness.waitForIdle(context)
+    })
+    const summary = summaryOf((await call(stub, "project-spend-sum", "usage.summary", {})).result)
+    expect(summary.tokens).toBeGreaterThan(0)
+    expect(summary.byProject).toEqual([{ id: expect.any(String), name: "Billing", spend: 0, tokens: 0 }])
   }, 30_000)
 
   it("stores a credential sealed and lists its provider", async () => {

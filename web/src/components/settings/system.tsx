@@ -1,8 +1,28 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
-import { errorMessage, systemRestart, systemUpdate, systemVersion, type SystemVersion } from "../../state/settings.ts"
+import { bytes, count } from "../../lib/format.ts"
+import {
+  errorMessage,
+  systemMetrics,
+  systemRestart,
+  systemUpdate,
+  systemVersion,
+  type SystemMetrics,
+  type SystemVersion,
+} from "../../state/settings.ts"
 import { Button, Chip, Failure, MissingOp, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { Group, Row } from "./parts.tsx"
+
+/** Elapsed time since the home woke: minutes and seconds under an hour, hours above it. */
+function uptime(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  return hours === 0 ? `${minutes}m ${seconds}s` : `${hours}h ${minutes}m`
+}
+
+type ServiceFigure = { readonly label: string; readonly figure: string; readonly tone: "ok" | "warn" | "unknown" }
 
 export function System(): JSX.Element {
   const [confirming, setConfirming] = createSignal(false)
@@ -12,11 +32,42 @@ export function System(): JSX.Element {
 
   onMount(() => {
     void systemVersion.reload()
+    void systemMetrics.reload()
   })
 
   const value = (): SystemVersion | undefined => {
     const state = systemVersion.state()
     return state.kind === "ready" ? state.value : undefined
+  }
+
+  const metrics = (): SystemMetrics | undefined => {
+    const state = systemMetrics.state()
+    return state.kind === "ready" ? state.value : undefined
+  }
+
+  /** Every figure comes from the home; a figure it has not answered yet reads as a dash, never as a zero. */
+  const figures = (): readonly ServiceFigure[] => {
+    const live = metrics()
+    if (live === undefined) {
+      return [
+        { label: "Plugin rows", figure: "—", tone: "unknown" },
+        { label: "Storage", figure: "—", tone: "unknown" },
+        { label: "Sockets", figure: "—", tone: "unknown" },
+        { label: "Push", figure: "—", tone: "unknown" },
+        { label: "Uptime", figure: "—", tone: "unknown" },
+      ]
+    }
+    return [
+      {
+        label: "Plugin rows",
+        figure: `${live.rows.active} active of ${live.rows.total}`,
+        tone: live.rows.active === live.rows.total ? "ok" : "warn",
+      },
+      { label: "Storage", figure: `${bytes(live.storageBytes)} used`, tone: "ok" },
+      { label: "Sockets", figure: `${live.sockets} connected`, tone: "ok" },
+      { label: "Push", figure: count(live.pushDevices, "device"), tone: "ok" },
+      { label: "Uptime", figure: `${uptime(live.uptimeMs)} since this home woke`, tone: "ok" },
+    ]
   }
 
   const restart = async (): Promise<void> => {
@@ -51,10 +102,9 @@ export function System(): JSX.Element {
     }
   }
 
-  const counts = (): { readonly active: number; readonly failed: readonly string[]; readonly missing: readonly string[] } => {
+  const counts = (): { readonly failed: readonly string[]; readonly missing: readonly string[] } => {
     const rows = value()?.rows ?? []
     return {
-      active: rows.filter((row) => row.state === "active").length,
       failed: rows.filter((row) => row.state === "failed").map((row) => row.id),
       missing: rows.filter((row) => row.state === "missing").map((row) => row.id),
     }
@@ -114,25 +164,30 @@ export function System(): JSX.Element {
               </div>
             </Group>
 
-            <Group title="Services">
+            <Group title="Services" detail="Read from this home">
+              <Show when={systemMetrics.state().kind === "loading"}>
+                <Pending label="Reading this home" />
+              </Show>
+              <Show when={failureOf(systemMetrics.state())}>
+                {(message) => <Failure message={message()} onRetry={() => void systemMetrics.reload()} />}
+              </Show>
               <Panel>
-                <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2 text-[12.5px] last:border-0">
-                  <span class="h-1.5 w-1.5 rounded-[1px]" classList={{ "bg-ok": !version().degraded, "bg-warn": version().degraded }} />
-                  <span class="min-w-0 flex-1 text-fg">Plugin rows</span>
-                  <span class="font-mono text-[11.5px] text-fg-3">
-                    {counts().active} active of {version().rows.length}
-                  </span>
-                </div>
-                <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2 text-[12.5px] last:border-0">
-                  <span class="h-1.5 w-1.5 rounded-[1px] bg-ok" />
-                  <span class="min-w-0 flex-1 text-fg">Bundles</span>
-                  <span class="font-mono text-[11.5px] text-fg-3">{version().bundles.length}</span>
-                </div>
-                <div class="flex items-center gap-2.5 px-3.5 py-2 text-[12.5px]">
-                  <span class="h-1.5 w-1.5 rounded-[1px]" classList={{ "bg-ok": !version().degraded, "bg-bad": version().degraded }} />
-                  <span class="min-w-0 flex-1 text-fg">Runtime</span>
-                  <span class="font-mono text-[11.5px] text-fg-3">{version().degraded ? "degraded" : "up"}</span>
-                </div>
+                <For each={figures()}>
+                  {(service) => (
+                    <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2 text-[12.5px] last:border-0">
+                      <span
+                        class="h-1.5 w-1.5 rounded-[1px]"
+                        classList={{
+                          "bg-ok": service.tone === "ok",
+                          "bg-warn": service.tone === "warn",
+                          "bg-fg-4": service.tone === "unknown",
+                        }}
+                      />
+                      <span class="min-w-0 flex-1 text-fg">{service.label}</span>
+                      <span class="font-mono text-[11.5px] text-fg-3">{service.figure}</span>
+                    </div>
+                  )}
+                </For>
               </Panel>
               <Show when={counts().failed.length + counts().missing.length > 0}>
                 <div class="flex flex-col gap-1 pt-1">
@@ -146,8 +201,11 @@ export function System(): JSX.Element {
                   </For>
                 </div>
               </Show>
-              <div class="pt-2">
-                <MissingOp op="system.metrics" detail="Uptime, memory and push delivery are not exposed as figures." />
+              <div class="flex items-center gap-2 pt-1">
+                <Button size="sm" variant="quiet" onClick={() => void systemMetrics.reload()}>
+                  <Glyph name="refresh" size={14} />
+                  Refresh
+                </Button>
               </div>
             </Group>
 

@@ -4,7 +4,7 @@ import { navigate, route } from "../../lib/router.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
 import { projectIcon } from "../../lib/project-icon.ts"
 import { money } from "../../lib/format.ts"
-import { usage } from "../../state/settings.ts"
+import { usage, owner, ownerName } from "../../state/settings.ts"
 
 function summary(project: ProjectSummary): string {
   const waiting = project.openRequests + project.threads.waiting.length
@@ -22,7 +22,16 @@ function summary(project: ProjectSummary): string {
 }
 
 export function Sidebar(props: { onSearch: () => void }): JSX.Element {
-  onMount(() => void usage.reload())
+  onMount(() => {
+    void usage.reload()
+    void owner.reload()
+  })
+
+  const initial = (): string | undefined => {
+    const state = owner.state()
+    if (state.kind !== "ready") return undefined
+    return state.value.name.trim().slice(0, 1).toUpperCase() || undefined
+  }
 
   const onProject = (slug: string): boolean => route().parts[0] === "p" && route().parts[1] === slug
   const needsYou = (project: ProjectSummary): boolean =>
@@ -108,8 +117,10 @@ export function Sidebar(props: { onSearch: () => void }): JSX.Element {
           <span class="text-[12.5px] text-fg-2">Settings</span>
         </button>
         <div class="flex h-9 items-center gap-2.5 px-2">
-          <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-line-inner text-[11px] text-fg-2">O</span>
-          <span class="min-w-0 flex-1 truncate text-[12.5px] text-fg-2">Owner</span>
+          <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-line-inner text-[11px] text-fg-2">
+            {initial() ?? <Icon name="users" size={12} class="text-fg-3" />}
+          </span>
+          <span class="min-w-0 flex-1 truncate text-[12.5px] text-fg-2">{ownerName()}</span>
           <span class="mono-meta">{spend() > 0 ? money(spend()) : "Owner"}</span>
         </div>
       </div>

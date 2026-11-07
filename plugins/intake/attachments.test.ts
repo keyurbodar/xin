@@ -80,8 +80,13 @@ describe("attachments", () => {
     })
 
     const parts = await userParts(stub)
-    expect(parts.map((part) => part.type), JSON.stringify(parts).slice(0, 600)).toContain("image")
-    const text = parts.flatMap((part) => (part.type === "text" && part.text !== undefined ? [part.text] : [])).join("\n")
+    expect(
+      parts.map((part) => part.type),
+      JSON.stringify(parts).slice(0, 600),
+    ).toContain("image")
+    const text = parts
+      .flatMap((part) => (part.type === "text" && part.text !== undefined ? [part.text] : []))
+      .join("\n")
     expect(text).toContain("<attachments>")
     expect(text).toContain("- diagram.png (image/png, 12 bytes) at /projects/attach/diagram.png")
     expect(text).toContain("- brief.txt (text/plain, 5 bytes) at /projects/attach/brief.txt")
@@ -137,7 +142,10 @@ describe("the attachment policy", () => {
   it("inlines images only up to one turn budget", async () => {
     const half = new Uint8Array(Math.floor((INLINE_BUDGET_BYTES * 3) / 4)).fill(7)
     const port = portOf({ "/a/one.png": half, "/a/two.png": half }, true)
-    const content = await renderTurn(port, 1 as ConversationId, "look", [file("one.png", "image/png"), file("two.png", "image/png")])
+    const content = await renderTurn(port, 1 as ConversationId, "look", [
+      file("one.png", "image/png"),
+      file("two.png", "image/png"),
+    ])
     expect(Array.isArray(content) ? content.filter((part) => part.type === "image") : []).toHaveLength(1)
     expect(JSON.stringify(content)).toContain("two.png (image/png, ")
   }, 30_000)
@@ -148,7 +156,10 @@ describe("the attachment policy", () => {
       file("real.txt", "text/plain", "/a/real.txt"),
       file("ghost.txt", "text/plain", "/a/ghost.txt"),
     ])
-    const text = typeof content === "string" ? content : content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+    const text =
+      typeof content === "string"
+        ? content
+        : content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
     expect(text).toContain("real.txt")
     expect(text).not.toContain("ghost.txt")
   }, 30_000)

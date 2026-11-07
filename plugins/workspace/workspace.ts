@@ -59,15 +59,30 @@ type Projection = {
   requests: Map<ConversationId, number>
 }
 
+export type OwnerKv = {
+  get<T>(key: string): Promise<T | undefined> | undefined
+  put(key: string, value: unknown): Promise<void> | void
+}
+
+export type OwnerSettings = {
+  readonly name: string
+  readonly instructions: string
+}
+
 export type WorkspacePort = {
   readonly harness: Harness
+  readonly kv: OwnerKv
   publishHome(): Promise<void>
 }
+
+const OWNER_NAME = "owner.name"
+const OWNER_INSTRUCTIONS = "owner.instructions"
 
 export type WorkspaceFeature = {
   readonly ops: readonly Op[]
   start(): Promise<() => void>
   home(): Promise<JsonObject>
+  instructions(): Promise<string | undefined>
 }
 
 const defaultSettings = (): ProjectSettings => ({
@@ -309,8 +324,35 @@ export function create(port: WorkspacePort): WorkspaceFeature {
     run: async () => ({ projects: projectSummaries(projection) }),
   })
 
+  const owner = async (): Promise<OwnerSettings> => ({
+    name: (await port.kv.get<string>(OWNER_NAME)) ?? "",
+    instructions: (await port.kv.get<string>(OWNER_INSTRUCTIONS)) ?? "",
+  })
+
+  const readOwner = defineOp({
+    name: "owner.read",
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => owner(),
+  })
+
+  const setOwner = defineOp({
+    name: "owner.set",
+    args: obj({ name: opt(str({ maxLength: 120 })), instructions: opt(str({ maxLength: 4_000 })) }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      if (args.name !== undefined) await port.kv.put(OWNER_NAME, args.name.trim())
+      if (args.instructions !== undefined) await port.kv.put(OWNER_INSTRUCTIONS, args.instructions.trim())
+      return owner()
+    },
+  })
+
   return {
-    ops: [createProject, updateProject, archiveProject, renameThread, readWorkspace],
+    ops: [createProject, updateProject, archiveProject, renameThread, readWorkspace, readOwner, setOwner],
+    instructions: async () => {
+      const text = (await port.kv.get<string>(OWNER_INSTRUCTIONS)) ?? ""
+      return text.trim() === "" ? undefined : text
+    },
     async start() {
       const harness = port.harness
       const observation = harness.observeCommits({ advance: apply, end: () => undefined })

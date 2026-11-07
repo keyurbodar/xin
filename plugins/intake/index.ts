@@ -41,6 +41,12 @@ export async function apply(ctx: Context): Promise<void> {
       run: async (api, args) => {
         if (args.text.trim() === "" && (args.attachments ?? []).length === 0)
           throw new OpRejected("bad_args", "a message needs text or a file")
+        const spend = await ctx.models.spend()
+        if (spend.cap !== null && spend.month >= spend.cap)
+          throw new OpRejected(
+            "forbidden",
+            `the monthly cap of ${spend.cap.toFixed(2)} USD is reached; raise it in Usage first`,
+          )
         const target = await resolve(host, args.conv)
         const accepted = await enqueue(
           ctx.db,

@@ -27,7 +27,16 @@ export type ServerFrame =
   | { readonly t: "ev"; readonly stream: string; readonly events: readonly unknown[] }
   | { readonly t: "error"; readonly message: string }
 
-type Attachment = { readonly subs: readonly string[] }
+type Attachment = {
+  readonly subs: readonly string[]
+  readonly id: string
+  readonly since: number
+  readonly origin: string
+}
+
+export type Session = { readonly id: string; readonly since: number; readonly origin: string }
+
+const NO_ATTACHMENT: Attachment = { subs: [], id: "", since: 0, origin: "" }
 
 export function streamName(stream: Stream): string {
   return stream.kind === "home" ? "home" : `conv:${stream.id}`
@@ -44,12 +53,29 @@ export function ack(id: string, outcome: Outcome): ServerFrame {
     : { t: "ack", id, ok: false, error: { code: outcome.code, message: outcome.message } }
 }
 
+const read = (value: unknown, key: string): unknown =>
+  typeof value === "object" && value !== null && key in value ? Reflect.get(value, key) : undefined
+
 const attachment = (ws: WebSocket): Attachment => {
-  const value: unknown = ws.deserializeAttachment()
-  return typeof value === "object" && value !== null && "subs" in value && Array.isArray(value.subs)
-    ? { subs: value.subs.filter((sub): sub is string => typeof sub === "string") }
-    : { subs: [] }
+  let value: unknown
+  try {
+    value = ws.deserializeAttachment()
+  } catch {
+    return NO_ATTACHMENT
+  }
+  const subs = read(value, "subs")
+  const id = read(value, "id")
+  const since = read(value, "since")
+  const origin = read(value, "origin")
+  return {
+    subs: Array.isArray(subs) ? subs.filter((sub): sub is string => typeof sub === "string") : [],
+    id: typeof id === "string" ? id : "",
+    since: typeof since === "number" ? since : 0,
+    origin: typeof origin === "string" ? origin : "",
+  }
 }
+
+const write = (ws: WebSocket, next: Attachment) => ws.serializeAttachment(next)
 
 const send = (ws: WebSocket, frame: ServerFrame) => ws.send(JSON.stringify(frame))
 
@@ -69,12 +95,32 @@ export class Sockets {
     deps.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"_tag":"Ping"}', '{"_tag":"Pong"}'))
   }
 
-  accept(protocol: string | undefined): Response {
+  accept(protocol: string | undefined, origin: string): Response {
     const { 0: client, 1: server } = new WebSocketPair()
     this.deps.ctx.acceptWebSocket(server)
-    server.serializeAttachment({ subs: [] } satisfies Attachment)
+    server.serializeAttachment({ subs: [], id: crypto.randomUUID(), since: Date.now(), origin } satisfies Attachment)
     const headers = protocol === undefined ? undefined : { "sec-websocket-protocol": protocol }
     return new Response(null, { status: 101, webSocket: client, ...(headers === undefined ? {} : { headers }) })
+  }
+
+  list(): Session[] {
+    return this.deps.ctx
+      .getWebSockets()
+      .map((ws) => attachment(ws))
+      .toSorted((left, right) => left.since - right.since)
+      .map(({ id, since, origin }) => ({ id, since, origin }))
+  }
+
+  close(id: string | undefined): number {
+    const targets = this.deps.ctx.getWebSockets().filter((ws) => id === undefined || attachment(ws).id === id)
+    for (const ws of targets) {
+      try {
+        ws.close(1000, "signed out")
+      } catch {
+        // A socket already closing counts as handled.
+      }
+    }
+    return targets.length
   }
 
   async rehydrate(): Promise<void> {
@@ -138,14 +184,15 @@ export class Sockets {
   async #subscribe(ws: WebSocket, name: string): Promise<void> {
     const stream = await this.#resolve(name)
     if (stream === undefined) return send(ws, { t: "error", message: `unknown stream ${name}` })
-    const { subs } = attachment(ws)
-    if (!subs.includes(name)) ws.serializeAttachment({ subs: [...subs, name] } satisfies Attachment)
+    const current = attachment(ws)
+    if (!current.subs.includes(name)) write(ws, { ...current, subs: [...current.subs, name] })
     const value = stream.kind === "home" ? await this.deps.home() : (await this.#watch(stream.id)).value
     send(ws, { t: "snap", stream: name, value })
   }
 
   async #unsubscribe(ws: WebSocket, name: string): Promise<void> {
-    ws.serializeAttachment({ subs: attachment(ws).subs.filter((sub) => sub !== name) } satisfies Attachment)
+    const current = attachment(ws)
+    write(ws, { ...current, subs: current.subs.filter((sub) => sub !== name) })
     const stream = await this.#resolve(name)
     if (stream?.kind !== "conv" || this.#subscribers(name).length > 0) return
     const watch = this.#watches.get(stream.id)

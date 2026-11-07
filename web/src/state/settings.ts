@@ -117,9 +117,19 @@ export type UsageSummary =
       readonly today: number
       readonly month: number
       readonly days: readonly UsageDay[]
+      readonly cap: number | null
+      readonly alert: number
       readonly byModel: readonly ModelUsage[]
       readonly byTool: readonly ToolUsage[]
+      readonly byProject: readonly ProjectSpend[]
     }
+
+export type ProjectSpend = {
+  readonly id: string
+  readonly name: string
+  readonly spend: number
+  readonly tokens: number
+}
 
 function numberFrom(record: Readonly<Record<string, unknown>>, keys: readonly string[]): number | undefined {
   for (const key of keys) {
@@ -147,12 +157,23 @@ export const parseUsage = (value: unknown): UsageSummary => {
   if (spend === undefined) return { recorded: false }
   const models: readonly unknown[] = Array.isArray(value["byModel"]) ? value["byModel"] : []
   const tools: readonly unknown[] = Array.isArray(value["byTool"]) ? value["byTool"] : []
+  const projects: readonly unknown[] = Array.isArray(value["byProject"]) ? value["byProject"] : []
+  const cap = value["cap"]
   return {
     recorded: true,
     spend,
     tokens: numberFrom(value, ["tokens", "totalTokens"]) ?? 0,
     today: bucketOf(value["today"]).cost,
     month: bucketOf(value["month"]).cost,
+    cap: typeof cap === "number" && Number.isFinite(cap) ? cap : null,
+    alert: numberFrom(value, ["alert"]) ?? 0,
+    byProject: projects.flatMap((entry) => {
+      if (!isRecord(entry)) return []
+      const id = entry["id"]
+      const name = entry["name"]
+      if (typeof id !== "string" || typeof name !== "string") return []
+      return [{ id, name, spend: bucketOf(entry).cost, tokens: bucketOf(entry).totalTokens }]
+    }),
     days: (Array.isArray(value["days"]) ? value["days"] : []).flatMap((row) => {
       if (!isRecord(row)) return []
       const day = row["day"]
@@ -191,6 +212,16 @@ export const usage: RemoteHandle<UsageSummary> = remote(async () => {
     throw error
   }
 }, parseUsage)
+
+export async function setUsageCap(usd: number | null): Promise<void> {
+  await cmd("usage.cap.set", usd === null ? { clear: true } : { usd })
+  await usage.reload()
+}
+
+export async function setUsageAlert(usd: number): Promise<void> {
+  await cmd("usage.alert.set", { usd })
+  await usage.reload()
+}
 
 
 export type SystemVersion = {
@@ -236,6 +267,50 @@ export async function systemRestart(hard: boolean): Promise<void> {
   await systemVersion.reload()
 }
 
+export type SystemMetrics = {
+  readonly uptimeMs: number
+  readonly storageBytes: number
+  readonly sockets: number
+  readonly rows: { readonly total: number; readonly active: number }
+  readonly pushDevices: number
+}
+
+export const parseSystemMetrics = (value: unknown): SystemMetrics => {
+  const root = isRecord(value) ? value : {}
+  const rows = isRecord(root["rows"]) ? root["rows"] : {}
+  const count = (candidate: unknown): number => (typeof candidate === "number" ? candidate : 0)
+  return {
+    uptimeMs: count(root["uptimeMs"]),
+    storageBytes: count(root["storageBytes"]),
+    sockets: count(root["sockets"]),
+    rows: { total: count(rows["total"]), active: count(rows["active"]) },
+    pushDevices: count(root["pushDevices"]),
+  }
+}
+
+export const systemMetrics: RemoteHandle<SystemMetrics> = remote(() => cmd("system.metrics"), parseSystemMetrics)
+
+export type Session = { readonly id: string; readonly since: number; readonly origin: string }
+
+export const parseSessions = (value: unknown): readonly Session[] =>
+  (Array.isArray(value) ? value : []).flatMap((entry) => {
+    if (!isRecord(entry)) return []
+    const id = entry["id"]
+    const since = entry["since"]
+    const origin = entry["origin"]
+    if (typeof id !== "string" || id === "") return []
+    return [{ id, since: typeof since === "number" ? since : 0, origin: typeof origin === "string" ? origin : "" }]
+  })
+
+export const sessions: RemoteHandle<readonly Session[]> = remote(() => cmd("session.list"), parseSessions)
+
+/** Closes one live socket, or all of them when no id is given; returns how many closed. */
+export async function closeSessions(id?: string): Promise<number> {
+  const value = await cmd<unknown>("session.close", id === undefined ? {} : { id })
+  await sessions.reload()
+  return isRecord(value) && typeof value["closed"] === "number" ? value["closed"] : 0
+}
+
 
 export async function setDefault(role: ModelRole, model: ModelRef): Promise<void> {
   await cmd("owner.defaults", { role, model })
@@ -255,18 +330,23 @@ export async function deleteCredential(provider: string): Promise<void> {
 }
 
 
-export type NotifyKind = "waiting" | "finished" | "failed"
+export type NotifyKind = "waiting" | "finished" | "failed" | "spend"
 
 export type NotifyPrefs = Readonly<Record<NotifyKind, boolean>>
 
 export const parseNotifyPrefs = (value: unknown): NotifyPrefs => {
   const root = isRecord(value) ? value : {}
-  return { waiting: root["waiting"] !== false, finished: root["finished"] !== false, failed: root["failed"] !== false }
+  return {
+    waiting: root["waiting"] !== false,
+    finished: root["finished"] !== false,
+    failed: root["failed"] !== false,
+    spend: root["spend"] !== false,
+  }
 }
 
 export const notifyPrefs: RemoteHandle<NotifyPrefs> = remote(() => cmd("notify.prefs"), parseNotifyPrefs)
 
-export const DEFAULT_NOTIFY: NotifyPrefs = { waiting: true, finished: true, failed: true }
+export const DEFAULT_NOTIFY: NotifyPrefs = { waiting: true, finished: true, failed: true, spend: true }
 
 /** The prefs a switch shows: the server's once they arrive, all on until then. */
 export function notifyNow(): NotifyPrefs {
@@ -280,6 +360,70 @@ export async function setNotifyPrefs(patch: Partial<NotifyPrefs>): Promise<void>
 }
 
 export type PushSubscriptionKeys = { readonly p256dh: string; readonly auth: string }
+
+export type OwnerSettings = { readonly name: string; readonly instructions: string }
+
+export const parseOwner = (value: unknown): OwnerSettings => {
+  const root = isRecord(value) ? value : {}
+  return {
+    name: typeof root["name"] === "string" ? root["name"] : "",
+    instructions: typeof root["instructions"] === "string" ? root["instructions"] : "",
+  }
+}
+
+export const owner: RemoteHandle<OwnerSettings> = remote(() => cmd("owner.read"), parseOwner)
+
+export async function setOwner(patch: { name?: string; instructions?: string }): Promise<OwnerSettings> {
+  const next = parseOwner(await cmd("owner.set", patch))
+  await owner.reload()
+  return next
+}
+
+/** The owner's name, or "Owner" until one is stored. */
+export function ownerName(): string {
+  const state = owner.state()
+  if (state.kind !== "ready" || state.value.name.trim() === "") return "Owner"
+  return state.value.name
+}
+
+export type QuietHours = { readonly enabled: boolean; readonly start: number; readonly end: number }
+
+export const DEFAULT_QUIET: QuietHours = { enabled: false, start: 1320, end: 420 }
+
+export const parseQuiet = (value: unknown): QuietHours => {
+  const root = isRecord(value) ? value : {}
+  const start = root["start"]
+  const end = root["end"]
+  return {
+    enabled: root["enabled"] === true,
+    start: typeof start === "number" ? start : DEFAULT_QUIET.start,
+    end: typeof end === "number" ? end : DEFAULT_QUIET.end,
+  }
+}
+
+export const quietHours: RemoteHandle<QuietHours> = remote(() => cmd("notify.quiet"), parseQuiet)
+
+export async function setQuietHours(patch: Partial<QuietHours>): Promise<void> {
+  await cmd("notify.quiet.set", patch)
+  await quietHours.reload()
+}
+
+export type PushDevice = { readonly endpoint: string; readonly origin: string }
+
+export const parsePushDevices = (value: unknown): readonly PushDevice[] =>
+  (Array.isArray(value) ? value : []).flatMap((entry) => {
+    if (!isRecord(entry)) return []
+    const endpoint = entry["endpoint"]
+    const origin = entry["origin"]
+    return typeof endpoint === "string" && typeof origin === "string" ? [{ endpoint, origin }] : []
+  })
+
+export const pushDevices: RemoteHandle<readonly PushDevice[]> = remote(() => cmd("push.list"), parsePushDevices)
+
+export async function removePushDevice(endpoint: string): Promise<void> {
+  await cmd("push.unsubscribe", { endpoint })
+  await pushDevices.reload()
+}
 
 /** Deliver one notification to every subscribed browser; the count comes back from the Worker. */
 export async function pushTest(): Promise<number> {

@@ -12,12 +12,38 @@ export type Deployer = { deploy(request: DeployRequest): Promise<Deployed> }
 
 export type System = { version(): Promise<JsonObject> }
 
+export type Metrics = {
+  readonly uptimeMs: number
+  readonly storageBytes: number
+  readonly sockets: number
+  readonly rows: { readonly total: number; readonly active: number }
+  readonly pushDevices: number
+}
+
+const PUSH_DEVICES_SQL = "SELECT count(*) AS count FROM push_subs"
+
+// Module top level runs inside the Worker's startup snapshot, where Date.now() is zero; the boot itself is the origin.
+let startedAt = 0
+
 const OWNER = ["owner"] as const
 
 export const name = "system"
-export const inject = ["host", "http", "kernel", "ops", "packages"]
+export const inject = ["db", "host", "http", "kernel", "ops", "packages"]
 
 export function apply(ctx: Context): void {
+  startedAt = Date.now()
+  const metrics = async (): Promise<Metrics> => {
+    const states = await Promise.all(ctx.kernel.rows().map((row) => ctx.kernel.state(row.id)))
+    const push = await ctx.db.get<{ count: number }>(PUSH_DEVICES_SQL)
+    if (push === undefined) throw new Error("push device count returned no row")
+    return {
+      uptimeMs: Date.now() - startedAt,
+      storageBytes: ctx.host.state.storage.sql.databaseSize,
+      sockets: ctx.host.state.getWebSockets().length,
+      rows: { total: states.length, active: states.filter((state) => state.kind === "active").length },
+      pushDevices: push.count,
+    }
+  }
   const version = async (): Promise<JsonObject> => {
     const rows = await Promise.all(
       ctx.kernel.rows().map(async (row) => ({ id: row.id, state: (await ctx.kernel.state(row.id)).kind })),
@@ -34,6 +60,7 @@ export function apply(ctx: Context): void {
     Response.json({ wake: ctx.get("harness")?.wake() ?? null, ...(await version()) }),
   )
   ctx.ops.define(defineOp({ name: "system.version", args: obj({}), actors: OWNER, run: async () => version() }))
+  ctx.ops.define(defineOp({ name: "system.metrics", args: obj({}), actors: OWNER, run: async () => metrics() }))
   ctx.ops.define(
     defineOp({
       name: "system.restart",

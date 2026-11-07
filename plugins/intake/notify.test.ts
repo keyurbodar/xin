@@ -16,9 +16,10 @@ describe("what a dispatch announces", () => {
       title: "Parser",
       body: "done",
       tag: "c",
+      kind: "waiting",
     })
-    expect(notificationOf(DEFAULT_PREFS, row("report"))).toBeDefined()
-    expect(notificationOf(DEFAULT_PREFS, row("report", "failed"))).toBeDefined()
+    expect(notificationOf(DEFAULT_PREFS, row("report"))).toMatchObject({ kind: "finished" })
+    expect(notificationOf(DEFAULT_PREFS, row("report", "failed"))).toMatchObject({ kind: "failed" })
     expect(notificationOf(DEFAULT_PREFS, row("user"))).toBeUndefined()
     expect(notificationOf(DEFAULT_PREFS, row("job"))).toBeUndefined()
   })
@@ -26,7 +27,7 @@ describe("what a dispatch announces", () => {
   it("keeps a kind the owner switched off quiet and leaves the others alone", () => {
     const quiet = { ...DEFAULT_PREFS, finished: false }
     expect(notificationOf(quiet, row("report"))).toBeUndefined()
-    expect(notificationOf(quiet, row("question"))).toBeDefined()
-    expect(notificationOf(quiet, row("report", "failed"))).toBeDefined()
+    expect(notificationOf(quiet, row("question"))).toMatchObject({ kind: "waiting" })
+    expect(notificationOf(quiet, row("report", "failed"))).toMatchObject({ kind: "failed" })
   })
 })

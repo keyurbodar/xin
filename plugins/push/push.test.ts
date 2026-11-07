@@ -1,6 +1,6 @@
 import { runInDurableObject } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
-import { api, connect, owner } from "../../test/support.ts"
+import { api, cmd, connect, fresh, owner, type Stub } from "../../test/support.ts"
 import { decodeVapid, decrypt, encoder, fromBase64Url, subscriber, tokenParts } from "../../test/webpush.ts"
 import type { Home } from "../../test/worker.ts"
 import { notifier, testPush, type Notification } from "./push.ts"
@@ -24,8 +24,8 @@ async function reject(id: string, endpoint: string, keys: unknown): Promise<void
   expect(await reply.json()).toMatchObject({ ok: false, error: { code: "bad_args" } })
 }
 
-function message(tag: string): Notification {
-  return { threadTitle: "Parser thread", title: "Parser thread", body: "Ready for review", tag }
+function message(tag: string, kind: Notification["kind"] = "finished"): Notification {
+  return { threadTitle: "Parser thread", title: "Parser thread", body: "Ready for review", tag, kind }
 }
 
 async function verifyVapid(request: Request, audience: string): Promise<void> {
@@ -88,7 +88,12 @@ describe("web push delivery", () => {
         const request = matches[0]
         if (request === undefined) throw new Error("missing request")
         await verifyVapid(request, new URL(target.endpoint).origin)
-        expect(await decrypt(target, new Uint8Array(await request.arrayBuffer()))).toEqual(notification)
+        expect(await decrypt(target, new Uint8Array(await request.arrayBuffer()))).toEqual({
+          threadTitle: notification.threadTitle,
+          title: notification.title,
+          body: notification.body,
+          tag: notification.tag,
+        })
       }
     })
   })
@@ -159,6 +164,7 @@ describe("web push delivery", () => {
       title: "t".repeat(5000),
       body: "b".repeat(20_000),
       tag: "thread-big",
+      kind: "finished",
     }
 
     await runInDurableObject(owner(), async (home: Home, state) => {
@@ -224,5 +230,103 @@ describe("web push delivery", () => {
       expect(second).toBe(first)
       expect(other).not.toBe(first)
     })
+  })
+})
+
+async function listen(stub: Stub, endpoint: string): Promise<void> {
+  const target = await subscriber(endpoint)
+  const ack = await cmd(stub, `sub-${crypto.randomUUID()}`, "push.subscribe", {
+    endpoint: target.endpoint,
+    keys: target.keys,
+  })
+  expect(ack).toMatchObject({ ok: true })
+}
+
+function deliverAt(stub: Stub, at: string, notification: Notification): Promise<string[]> {
+  return runInDurableObject(stub, async (home: Home, state) => {
+    const sent: string[] = []
+    await notifier(
+      { state, db: home.db },
+      async (request) => {
+        sent.push(request.url)
+        return new Response(null, { status: 201 })
+      },
+      () => Date.parse(at),
+    ).notify(notification)
+    return sent
+  })
+}
+
+describe("quiet hours", () => {
+  it("sends a question through the night and holds every other kind", async () => {
+    const stub = fresh()
+    const endpoint = "https://push.example.com/night"
+    const quiet = { enabled: true, start: 1320, end: 420 }
+    expect((await cmd(stub, "quiet-night", "notify.quiet.set", quiet)).result).toEqual(quiet)
+    await listen(stub, endpoint)
+
+    expect(await deliverAt(stub, "2026-11-07T23:30:00Z", message("night-finished"))).toEqual([])
+    expect(await deliverAt(stub, "2026-11-07T23:30:00Z", message("night-failed", "failed"))).toEqual([])
+    expect(await deliverAt(stub, "2026-11-07T23:30:00Z", message("night-waiting", "waiting"))).toEqual([endpoint])
+  })
+
+  it("delivers everything by day, and at night when quiet hours are off", async () => {
+    const stub = fresh()
+    const endpoint = "https://push.example.com/day"
+    await listen(stub, endpoint)
+    expect((await cmd(stub, "quiet-day", "notify.quiet.set", { enabled: true, start: 1320, end: 420 })).ok).toBe(true)
+
+    expect(await deliverAt(stub, "2026-11-07T12:00:00Z", message("day-finished"))).toEqual([endpoint])
+    expect(await deliverAt(stub, "2026-11-07T12:00:00Z", message("day-waiting", "waiting"))).toEqual([endpoint])
+
+    expect((await cmd(stub, "quiet-off", "notify.quiet.set", { enabled: false })).ok).toBe(true)
+    expect(await deliverAt(stub, "2026-11-07T23:30:00Z", message("off-finished"))).toEqual([endpoint])
+  })
+})
+
+describe("notification settings", () => {
+  it("merges quiet hours one field at a time", async () => {
+    const stub = fresh()
+    expect((await cmd(stub, "quiet-enable", "notify.quiet.set", { enabled: true })).result).toEqual({
+      enabled: true,
+      start: 1320,
+      end: 420,
+    })
+    expect((await cmd(stub, "quiet-start", "notify.quiet.set", { start: 600 })).result).toEqual({
+      enabled: true,
+      start: 600,
+      end: 420,
+    })
+    expect((await cmd(stub, "quiet-read", "notify.quiet")).result).toEqual({ enabled: true, start: 600, end: 420 })
+  })
+
+  it("rejects a minute outside a day", async () => {
+    const stub = fresh()
+    for (const args of [{ start: 1440 }, { start: -1 }, { start: 1.5 }]) {
+      expect(await cmd(stub, `quiet-bad-${args.start}`, "notify.quiet.set", args)).toMatchObject({
+        ok: false,
+        error: { code: "bad_args" },
+      })
+    }
+  })
+})
+
+describe("devices", () => {
+  it("lists a subscribed device by endpoint and origin, and drops it on unsubscribe", async () => {
+    const stub = fresh()
+    const target = await subscriber("https://push.example.com/phone")
+    expect(await cmd(stub, "devices-empty", "push.list")).toMatchObject({ ok: true, result: [] })
+
+    expect(
+      await cmd(stub, "devices-sub", "push.subscribe", { endpoint: target.endpoint, keys: target.keys }),
+    ).toMatchObject({ ok: true })
+    expect((await cmd(stub, "devices-one", "push.list")).result).toEqual([
+      { endpoint: target.endpoint, origin: "https://push.example.com" },
+    ])
+
+    expect(await cmd(stub, "devices-unsub", "push.unsubscribe", { endpoint: target.endpoint })).toMatchObject({
+      ok: true,
+    })
+    expect((await cmd(stub, "devices-none", "push.list")).result).toEqual([])
   })
 })
