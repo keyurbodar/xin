@@ -161,6 +161,7 @@ A `preset` row config is `{ id, name?, description?, order?, tools }`, where `to
 | --- | --- |
 | `preset.list` | the presets in `order`, the default, and each conversation's recorded preset |
 | `preset.select` | `{ conversation, preset }` for a conversation with no turns; otherwise, or for an unknown conversation or preset, `bad_args` |
+| `prompt.list` / `prompt.put` / `prompt.delete` | owner slash commands in kv `prompts`, a name-to-`{ description?, text }` map: list sorts by name, put replaces whole (name `^[a-z][a-z0-9-]*$`, text at most 8,000 characters), delete is idempotent. The composer expands `/name rest` through these before `message.send` |
 
 ## Install, update, restart
 
