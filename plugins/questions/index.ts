@@ -1,5 +1,5 @@
 import type { Context } from "../../src/kernel/index.ts"
-import { createQuestions, type QuestionsPort, respondOp } from "./questions.ts"
+import { createQuestions, listOp, type QuestionsPort, respondOp } from "./questions.ts"
 
 export const name = "questions"
 export const inject = ["harness", "ops", "clock", "intake", "threads", "watchdog"]
@@ -15,4 +15,5 @@ export function apply(ctx: Context): void {
   }
   ctx.provide("questions", createQuestions(port))
   ctx.ops.define(respondOp(port))
+  ctx.ops.define(listOp())
 }

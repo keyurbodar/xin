@@ -1,15 +1,10 @@
-import { For, Show, type JSX } from "solid-js"
-import { activeProjects, type ProjectSummary } from "../../state/home.ts"
+import { For, onMount, Show, type JSX } from "solid-js"
+import { activeProjects, counts, type ProjectSummary } from "../../state/home.ts"
 import { navigate, route } from "../../lib/router.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
-
-const PROJECT_ICONS: readonly IconName[] = ["users", "file", "folder", "layers", "grid", "brain"]
-
-function projectIcon(slug: string): IconName {
-  let hash = 0
-  for (const char of slug) hash = (hash + char.charCodeAt(0)) % PROJECT_ICONS.length
-  return PROJECT_ICONS[hash] ?? "folder"
-}
+import { projectIcon } from "../../lib/project-icon.ts"
+import { money } from "../../lib/format.ts"
+import { usage } from "../../state/settings.ts"
 
 function summary(project: ProjectSummary): string {
   const waiting = project.openRequests + project.threads.waiting.length
@@ -19,11 +14,16 @@ function summary(project: ProjectSummary): string {
   if (waiting > 0) parts.push(`${waiting} waiting`)
   if (working > 0) parts.push(`${working} working`)
   if (failed > 0) parts.push(`${failed} failed`)
-  if (parts.length === 0) parts.push(project.threads.completed.length > 0 ? `Idle · ${project.threads.completed.length} reports` : "Idle")
+  if (parts.length === 0) {
+    const reports = project.threads.completed.length
+    parts.push(reports > 0 ? `Idle · ${reports} ${reports === 1 ? "report" : "reports"}` : "Idle")
+  }
   return parts.join(" · ")
 }
 
-export function Sidebar(): JSX.Element {
+export function Sidebar(props: { onSearch: () => void }): JSX.Element {
+  onMount(() => void usage.reload())
+
   const onProject = (slug: string): boolean => route().parts[0] === "p" && route().parts[1] === slug
   const needsYou = (project: ProjectSummary): boolean =>
     project.openRequests > 0 || project.threads.waiting.length > 0 || project.threads.failed.length > 0
@@ -32,7 +32,7 @@ export function Sidebar(): JSX.Element {
     <aside class="flex h-full w-[264px] shrink-0 flex-col border-r border-line bg-surface p-2">
       <button
         type="button"
-        onClick={() => navigate("/search")}
+        onClick={props.onSearch}
         class="flex h-9 items-center gap-2.5 rounded-[2px] px-2 text-left transition-none hover:bg-hover"
       >
         <IconBox name="search" />
@@ -47,7 +47,7 @@ export function Sidebar(): JSX.Element {
           label="Inbox"
           active={route().parts[0] === "inbox"}
           onClick={() => navigate("/inbox")}
-          dot={activeProjects().some(needsYou)}
+          count={counts().waiting}
         />
         <NavRow
           icon="grid"
@@ -75,7 +75,7 @@ export function Sidebar(): JSX.Element {
             <button
               type="button"
               onClick={() => navigate(`/p/${project.slug}`)}
-              class="flex h-9 w-full shrink-0 items-center gap-2.5 rounded-[2px] px-2 text-left transition-none hover:bg-hover"
+              class="flex h-10 w-full shrink-0 items-center gap-2.5 rounded-[2px] px-2 text-left transition-none hover:bg-hover"
               classList={{ "bg-selected hover:bg-selected": onProject(project.slug) }}
             >
               <span
@@ -84,14 +84,14 @@ export function Sidebar(): JSX.Element {
               >
                 <Icon name={projectIcon(project.slug)} size={14} />
               </span>
-              <span class="min-w-0 flex-1 leading-[1.2]">
-                <span class="block truncate text-[12.5px]" classList={{ "text-fg": onProject(project.slug), "text-fg-2": !onProject(project.slug) }}>
-                  {project.name}
-                </span>
-                <span class="block truncate text-[11.5px] text-fg-3">{summary(project)}</span>
+              <span
+                class="min-w-0 flex-1 truncate text-[12.5px]"
+                classList={{ "text-fg": onProject(project.slug), "text-fg-2": !onProject(project.slug) }}
+              >
+                {project.name}
               </span>
-              <Show when={needsYou(project)}>
-                <span class="h-1.5 w-1.5 shrink-0 rounded-[1px] bg-accent" />
+              <Show when={needsYou(project)} fallback={<span class="mono-meta shrink-0">{summary(project)}</span>}>
+                <span class="shrink-0 font-mono text-[10.5px] text-accent-text">{summary(project)}</span>
               </Show>
             </button>
           )}
@@ -110,7 +110,7 @@ export function Sidebar(): JSX.Element {
         <div class="flex h-9 items-center gap-2.5 px-2">
           <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-line-inner text-[11px] text-fg-2">O</span>
           <span class="min-w-0 flex-1 truncate text-[12.5px] text-fg-2">Owner</span>
-          <span class="mono-meta">Owner</span>
+          <span class="mono-meta">{spend() > 0 ? money(spend()) : "Owner"}</span>
         </div>
       </div>
     </aside>
@@ -130,7 +130,7 @@ function NavRow(props: {
   label: string
   active: boolean
   onClick: () => void
-  dot?: boolean
+  count?: number
 }): JSX.Element {
   return (
     <button
@@ -143,9 +143,17 @@ function NavRow(props: {
       <span class="text-[12.5px]" classList={{ "text-fg": props.active, "text-fg-2": !props.active }}>
         {props.label}
       </span>
-      <Show when={props.dot === true}>
-        <span class="ml-auto h-1.5 w-1.5 rounded-[1px] bg-accent" />
+      <Show when={(props.count ?? 0) > 0}>
+        <span class="ml-auto grid h-4 min-w-4 place-items-center rounded-[2px] bg-accent px-1 font-mono text-[10px] font-medium text-[#160700]">
+          {props.count}
+        </span>
       </Show>
     </button>
   )
+}
+
+function spend(): number {
+  const state = usage.state()
+  if (state.kind !== "ready" || !state.value.recorded) return 0
+  return state.value.spend
 }

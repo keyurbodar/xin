@@ -43,6 +43,18 @@ The client talks to the Worker over the same contract the agent uses.
 
 Deviations from the backend spec that the UI needs are logged in `docs/log/decisions.tsv` as they land.
 
+## Ops the client adds
+
+The client needed three reads the agent never asked for. Each is owner-only, reads state that already exists, and adds no storage.
+
+| Op | Args | Result |
+| --- | --- | --- |
+| `request.list` | `{ limit? }` | pending questions across live projects: `{ requests: [{ id, conversationId, projectId, projectName, threadTitle?, question, options?, askedAt }] }` |
+| `usage.summary` | `{}` | pi's usage ledger, summed: `{ spend, tokens, byModel[], byTool[] }` |
+| `history.page` | `{ conversationId, before?, limit? }` | older entries than the socket snapshot: `{ entries, nextBefore? }` |
+
+`usage.summary` reads the lifetime ledger; the ledger carries no day bucket, so the Home cell is labelled "Spend", not "Spend today".
+
 ## Screens
 
 | Route | Frame | What it is |

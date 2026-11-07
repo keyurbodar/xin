@@ -4,6 +4,7 @@ import type { IntakeBatch, IntakeBatchResult } from "../../src/contracts/intake.
 import { MessageSendArgsSchema } from "../../src/contracts/message.ts"
 import { defineOp } from "../../src/ops.ts"
 import { type BatchLedger, createGateway, enqueue, type IntakeHost, resolve, stop } from "./gateway.ts"
+import { historyOp } from "./history.ts"
 
 export const name = "intake"
 export const inject = ["db", "harness", "ops", "clock", "host"]
@@ -65,6 +66,7 @@ export async function apply(ctx: Context): Promise<void> {
       },
     }),
   )
+  ctx.ops.define(historyOp())
   ctx.on("wire/typing", async (conversation, on) => gateway.typing(conversation, on))
   ctx.clock.timer({ due: () => gateway.due(), fire: (now) => gateway.fire(now) })
   await gateway.start()

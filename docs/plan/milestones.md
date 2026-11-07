@@ -205,3 +205,11 @@ Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](.
 **Proof (test that must pass)**: `plugins/goals/goals.test.ts` (create, edit, pause, resume, complete, block and clear with revision conflicts; one goal per conversation; an unfinished goal must be cleared before another; armed is cleared by a new instance); `plugins/goals/rounds.test.ts` (a goal runs round after round while idle, each round is one turn with the `<goal_round>` prompt, a stale reservation spends no round, the cap blocks with `round-limit`, an owner message cancels a pending round, a disarmed goal does not continue after eviction, and disabling the row leaves the goal usable by hand); `plugins/goals/tools.test.ts` (the three tools answer the shared JSON, `blocked_reason` is required only for `blocked`). The whole suite passes with zero boundary violations.
 
 **Depends on**: P9. Parallel with P11 and P12.
+
+## P14 · the web client
+
+**Builds**: `docs/plan/architecture/14-client.md`. A SolidJS + Vite + Tailwind client in `web/`, a separate package so the Worker gate never compiles it, built against the Doop canvas `fTzMMHDuiN`: owner-token sign-in (O1), Home (D3), project chat with the right panel (D1, D2, D5, D6, D8), Inbox (D7), the new-project dialog (D4), Extensions (E1–E7), Settings (S1–S4), Onboarding (O2–O5), the landing page (L1), the ⌘K palette (D6), the D Grid status glyphs (I2), skullet skeletons, torph counters, and the F4 motion tokens. Below 1024px the sidebar becomes a bottom tab bar (M1) and the panel becomes a bottom sheet (M3). It adds `request.list` to the backend so the Inbox can show a question; `usage.summary` and `history.page` are attempted and deferred with the reason logged if the data does not exist.
+
+**Proof (test that must pass)**: `web/` builds and typechecks (`bun run build`, `bun run typecheck`), and the verification skill drives every route once against the real Worker and a real `wrangler dev` home: sign in with the owner token, Home renders the greeting and the five counts from a live snapshot, the palette opens on ⌘K and navigates, a project route renders its transcript from the conversation stream, Inbox lists what waits, Extensions and Settings read their real ops, and a schedule pauses and resumes. Each route is captured as a screenshot compared with its frame.
+
+**Depends on**: P13.

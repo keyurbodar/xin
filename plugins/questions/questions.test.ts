@@ -8,6 +8,7 @@ import type { Home } from "../../test/worker.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { RequestsDoc } from "../../src/contracts/questions.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import type { CommandId } from "../../src/ids.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -37,6 +38,17 @@ async function fireNow(stub: Stub): Promise<void> {
   await runInDurableObject(stub, (home: Home) =>
     home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
   )
+  await runDurableObjectAlarm(stub)
+}
+
+async function fireUsers(stub: Stub): Promise<void> {
+  await runInDurableObject(stub, async (home: Home) => {
+    await home.db.run(
+      "UPDATE inbound SET fire_at = ? WHERE status = 'pending' AND kind = 'question'",
+      Date.now() + 3_600_000,
+    )
+    await home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending' AND kind = 'user'", Date.now() - 1)
+  })
   await runDurableObjectAlarm(stub)
 }
 
@@ -90,11 +102,11 @@ const questions = (home: Home): Promise<{ command_id: string; status: string }[]
 
 type Asked = { projectId: string; threadId: number; requestId: string }
 
-async function askThread(stub: Stub, slug: string): Promise<Asked> {
+async function askThread(stub: Stub, slug: string, fire: (stub: Stub) => Promise<void> = fireNow): Promise<Asked> {
   const project = await makeProject(stub, slug)
   await chooseModel(stub, project.coordinatorId)
   await send(stub, `${slug}-1`, project.coordinatorId, "delegate ask")
-  await fireNow(stub)
+  await fire(stub)
   await eventually(stub, async (home: Home) => (await threadOf(home, project.id))?.status === "waiting")
   const thread = await runInDurableObject(stub, (home: Home) => threadOf(home, project.id))
   if (thread === undefined) throw new Error("no thread")
@@ -102,6 +114,27 @@ async function askThread(stub: Stub, slug: string): Promise<Asked> {
   const requestId = open.open[0]?.requestId
   if (requestId === undefined) throw new Error("no open request")
   return { projectId: project.id, threadId: thread.id, requestId }
+}
+
+type ListedRequest = {
+  readonly id: string
+  readonly conversationId: number
+  readonly projectId?: string
+  readonly projectName?: string
+  readonly threadTitle?: string
+  readonly question: string
+  readonly options?: readonly string[]
+  readonly askedAt: number
+}
+
+function listed(value: unknown): ListedRequest[] {
+  if (typeof value !== "object" || value === null) return []
+  const requests = Reflect.get(value, "requests")
+  if (!Array.isArray(requests)) return []
+  return requests.filter((row): row is ListedRequest => {
+    if (typeof row !== "object" || row === null) return false
+    return typeof Reflect.get(row, "id") === "string" && typeof Reflect.get(row, "askedAt") === "number"
+  })
 }
 
 describe("questions", () => {
@@ -169,4 +202,54 @@ describe("questions", () => {
     const asked = await runInDurableObject(stub, questions)
     expect(asked.find((row) => row.command_id === `question:${requestId}`)?.status).not.toBe("pending")
   }, 20_000)
+
+  it("lists pending questions newest first, bounded, and drops answered ones", async () => {
+    const stub = fresh()
+    const first = await askThread(stub, "list-a")
+    const second = await askThread(stub, "list-b", fireUsers)
+
+    const all = await cmd(stub, "list-1", "request.list", {})
+    expect(all.ok, JSON.stringify(all)).toBe(true)
+    const rows = listed(all.result)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]?.askedAt).toBeGreaterThanOrEqual(rows[1]?.askedAt ?? 0)
+    const byId = new Map(rows.map((row) => [row.id, row]))
+    expect(byId.get(first.requestId)).toMatchObject({
+      conversationId: first.threadId,
+      projectId: first.projectId,
+      projectName: "list-a",
+      question: "Which color?",
+      options: ["red", "blue"],
+    })
+    expect(byId.get(first.requestId)?.threadTitle).toContain("delegate ask")
+    expect(byId.get(second.requestId)).toMatchObject({
+      conversationId: second.threadId,
+      projectId: second.projectId,
+      projectName: "list-b",
+    })
+
+    const limited = await cmd(stub, "list-2", "request.list", { limit: 1 })
+    expect(listed(limited.result)).toHaveLength(1)
+    expect(await cmd(stub, "list-3", "request.list", { limit: 0 })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+
+    const denied = await runInDurableObject(stub, (home: Home) =>
+      home.commands.run(
+        { id: "list-agent" as CommandId, op: "request.list", args: {} },
+        { kind: "agent", conversationId: first.threadId as ConversationId },
+      ),
+    )
+    expect(denied).toMatchObject({ kind: "rejected", code: "forbidden" })
+
+    const answered = await cmd(stub, "list-respond", "request.respond", {
+      threadId: first.threadId,
+      requestId: first.requestId,
+      answer: "red",
+    })
+    expect(answered.ok, JSON.stringify(answered)).toBe(true)
+    const after = listed((await cmd(stub, "list-4", "request.list", {})).result)
+    expect(after.map((row) => row.id)).toEqual([second.requestId])
+  }, 30_000)
 })

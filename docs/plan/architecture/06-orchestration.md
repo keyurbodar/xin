@@ -95,6 +95,7 @@ flowchart LR
 ```
 
 - `respond` also DELETEs the question's inbound row if still pending, so the coordinator never gets a turn about an answered question.
+- `request.list` reads every open request in active projects, newest first, for the Inbox and the Home "Needs you" block. It reads the same `xin.requests` documents the coordinator resolves, so the card the owner answers is the card the model asked.
 - Why not a tool that waits for the answer: a held tool task across hours of eviction needs replay tricks; a finished run needs nothing.
 - `respond` returns `{kind:"answered", run}` or, on a replay after the first answer, `{kind:"already_answered", answer}`. An unknown request, a thread that is not waiting, or a thread with no parent is `bad_args`, checked before the request document changes.
 

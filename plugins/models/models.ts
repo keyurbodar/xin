@@ -27,6 +27,7 @@ import {
   type ConversationId,
   type Harness,
   type ModelRef,
+  type UsageState,
 } from "@earendil-works/pi-durable"
 import { arr, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
 import {
@@ -43,6 +44,35 @@ import { Sealer, SealedSchema } from "../../src/seal.ts"
 
 const MAX_LISTED = 40
 const MAX_RECENT = 8
+
+type UsageBucket = {
+  readonly input: number
+  readonly output: number
+  readonly cacheRead: number
+  readonly cacheWrite: number
+  readonly totalTokens: number
+  readonly cost: number
+}
+
+const EMPTY_USAGE: UsageBucket = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: 0 }
+
+const bucketOf = (usage: UsageState["models"][string]): UsageBucket => ({
+  input: usage.input,
+  output: usage.output,
+  cacheRead: usage.cacheRead,
+  cacheWrite: usage.cacheWrite,
+  totalTokens: usage.totalTokens,
+  cost: usage.cost.total,
+})
+
+const addUsage = (sum: UsageBucket, usage: UsageBucket): UsageBucket => ({
+  input: sum.input + usage.input,
+  output: sum.output + usage.output,
+  cacheRead: sum.cacheRead + usage.cacheRead,
+  cacheWrite: sum.cacheWrite + usage.cacheWrite,
+  totalTokens: sum.totalTokens + usage.totalTokens,
+  cost: sum.cost + usage.cost,
+})
 
 const RoleSchema = oneOf(["chat", "thread", "utility"] as const)
 const CustomSchema = obj({ baseUrl: str({ minLength: 1 }), key: str({ minLength: 1 }), api: str({ minLength: 1 }) })
@@ -530,6 +560,36 @@ export function create(deps: ModelsPort): ModelsParts {
     },
   })
 
+  const summary = defineOp({
+    name: "usage.summary",
+    args: obj({}),
+    actors: ["owner"],
+    run: async (api) => {
+      const ledger = await api.harness.usage(BACKGROUND_CONTEXT)
+      const byModel = Object.entries(ledger.models)
+        .map(([key, usage]) => {
+          const slash = key.indexOf("/")
+          return {
+            name: key,
+            provider: slash === -1 ? key : key.slice(0, slash),
+            modelId: slash === -1 ? "" : key.slice(slash + 1),
+            ...bucketOf(usage),
+          }
+        })
+        .toSorted(
+          (left, right) =>
+            right.cost - left.cost ||
+            left.provider.localeCompare(right.provider) ||
+            left.modelId.localeCompare(right.modelId),
+        )
+      const byTool = Object.entries(ledger.tools)
+        .map(([name, usage]) => ({ name, ...bucketOf(usage) }))
+        .toSorted((left, right) => right.cost - left.cost || left.name.localeCompare(right.name))
+      const total = [...byModel, ...byTool].reduce(addUsage, EMPTY_USAGE)
+      return { spend: total.cost, tokens: total.totalTokens, byModel, byTool }
+    },
+  })
+
   const service: ModelsService = {
     ownerDefaults: () => ownerDefaults(db),
     credentialSecrets: () => credentialSecrets(db, store),
@@ -548,7 +608,7 @@ export function create(deps: ModelsPort): ModelsParts {
       ),
   }
 
-  const ops: readonly Op[] = [configure, list, setCredential, deleteCredential, setDefaults]
+  const ops: readonly Op[] = [configure, list, setCredential, deleteCredential, setDefaults, summary]
 
   return {
     service,

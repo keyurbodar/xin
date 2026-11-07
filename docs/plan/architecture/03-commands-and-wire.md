@@ -30,7 +30,10 @@ The op set:
 ops: message.send · message.withdraw · conv.configure(model, thinking) · conv.stop
      project.create/update/archive · thread.send(mode) · thread.stop · thread.rename
      request.respond · file.put/delete · memory.forget · plugin.enable/configure · credential.set
+reads (owner): history.page(conversationId, before?, limit?) · request.list(limit?) · usage.summary
 ```
+
+Reads take the same path, so the Inbox, the transcript and the Usage pane see exactly the state the agent's tools see. `request.list` returns every open `xin.requests` entry in active projects, newest first and bounded by `limit` (default 50, max 200). `history.page` pages the same entry projection the conversation snapshot carries, taking the snapshot's `before` entry id as an exclusive cursor and returning entries oldest first plus `nextBefore` while older entries remain. `usage.summary` reports pi's `pi.usage` ledger as `spend` and `tokens` totals plus `byModel` and `byTool` slices (per-model slices carry `provider`, `modelId`, `input`, `output`, `cacheRead`, `cacheWrite`, `totalTokens`, `cost`).
 
 Receipts store `ok` and deterministic rejections (`unknown_op`, `bad_args`, `forbidden`). A `failed` outcome (the op threw) stores none, so a retry runs it again. The op's effect and its receipt are separate writes, so every op must also be idempotent through its derived key. The same command layer is reachable over HTTP as `POST /v1/cmd {id, op, args?}`, and an omitted `args` means `{}`. Concurrent duplicates inside one object share one in-flight run.
 
@@ -50,5 +53,6 @@ server → {t:"ev",   stream, events[]}                 pi watchEvents deltas: t
 - Sockets use `ctx.acceptWebSocket()`. Each socket's subscriptions live in `serializeAttachment()`, so they survive hibernation.
 - There is **one pi conversation watch per subscribed conversation** (`Conversation.watch`, a window of 60 to 120 entries), shared by all sockets. It starts on the first `sub`, and again on wake for every stream in the surviving sockets' attachments, so a hibernated tab keeps getting events. It stops when the last subscriber leaves. `ev.events` are the watch's delta ops against the snapshot's view.
 - **Reconnect = fresh snapshot.** pi doesn't replay, and that's fine: the snapshot is bounded and the client keeps its own cache. Cursor replay (kiko and t3) adds a sequence log we don't need.
+- **Loading earlier entries** is one read op, not a replay: the snapshot value carries `before`, the entry just older than its window, and `history.page` passes it back as an exclusive cursor. The client prepends each page and keeps the newest `nextBefore` until a page omits it.
 - The `home` stream is a projection: projects, each project's Overview (threads grouped by status), the open-request count, and running jobs. It is recomputed from docs on every commit that touches `xin.*` docs, then diffed and sent.
 - When no socket is connected and a report or question lands, the DO sends one Web Push (VAPID, sent with `fetch`) carrying the thread title.

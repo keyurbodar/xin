@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Context as ChordContext, JsonValue } from "@earendil-works/chord"
 import type { ConversationId, DocumentReader, Harness, Tx } from "@earendil-works/pi-durable"
-import { int, obj, str } from "@earendil-works/pi-schema"
+import { int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
   type AskInput,
@@ -20,6 +20,19 @@ import type { CommandId } from "../../src/ids.ts"
 import { type Actor, type Command, defineOp, type Op, OpRejected, type Outcome } from "../../src/ops.ts"
 
 const context = BACKGROUND_CONTEXT
+const DEFAULT_LISTED = 50
+const MAX_LISTED = 200
+
+type PendingRequest = {
+  readonly id: string
+  readonly conversationId: number
+  readonly projectId: string
+  readonly projectName: string
+  readonly threadTitle?: string
+  readonly question: string
+  readonly options?: string[]
+  readonly askedAt: number
+}
 
 type AnswerOutcome =
   | { readonly kind: "answered"; readonly run: number }
@@ -115,6 +128,49 @@ export function respondOp(port: QuestionsPort): Op {
       )
       if (outcome.kind === "answered") await port.intake.withdraw(`question:${args.requestId}`)
       return { threadId: args.threadId, requestId: args.requestId, ...outcome }
+    },
+  })
+}
+
+export function listOp(): Op {
+  return defineOp({
+    name: "request.list",
+    args: obj({ limit: opt(int({ minimum: 1, maximum: MAX_LISTED })) }),
+    actors: ["owner"],
+    run: async (api, args) => {
+      const limit = args.limit ?? DEFAULT_LISTED
+      const workspace = await api.harness.snapshot(WorkspaceDoc, context)
+      const found: PendingRequest[] = []
+      for (const [projectId, project] of Object.entries(workspace?.projects ?? {})) {
+        if (project.archived) continue
+        for (const conversationId of [project.coordinatorId, ...project.threadIds]) {
+          const requests = await api.harness.snapshot(RequestsDoc, conversationId as ConversationId, context)
+          if (requests === undefined) continue
+          const threadTitle =
+            conversationId === project.coordinatorId
+              ? undefined
+              : (await api.harness.snapshot(ThreadDoc, conversationId as ConversationId, context))?.title
+          for (const [requestId, request] of Object.entries(requests.open)) {
+            found.push({
+              id: requestId,
+              conversationId,
+              projectId,
+              projectName: project.name,
+              ...(threadTitle === undefined ? {} : { threadTitle }),
+              question: request.question,
+              ...(request.options === undefined ? {} : { options: [...request.options] }),
+              askedAt: request.at,
+            })
+          }
+        }
+      }
+      const listed = found.toSorted(
+        (left, right) =>
+          right.askedAt - left.askedAt ||
+          left.conversationId - right.conversationId ||
+          left.id.localeCompare(right.id),
+      )
+      return { requests: listed.slice(0, limit) }
     },
   })
 }

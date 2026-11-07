@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest"
 // @ts-expect-error Vite inlines ?raw imports at bundle time
 import source from "./models.ts?raw"
 import { resolveModel } from "../../src/contracts/models.ts"
-import { api, fresh, owner } from "../../test/support.ts"
+import { api, cmd as call, fresh, owner } from "../../test/support.ts"
 import { WIDE_MODEL } from "../../test/plugins/m3.ts"
-import type { Home } from "../../test/worker.ts"
+import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -37,6 +37,52 @@ const firstOf = (entries: readonly EntryRecord[], kind: string): EntryRecord | u
 
 const cmd = (id: string, op: string, args?: unknown) =>
   api("/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }).then((reply) => reply.json())
+
+type Slice = {
+  readonly name?: string
+  readonly provider?: string
+  readonly modelId?: string
+  readonly totalTokens: number
+  readonly cost: number
+}
+type Summary = {
+  readonly spend: number
+  readonly tokens: number
+  readonly byModel: readonly Slice[]
+  readonly byTool: readonly Slice[]
+}
+
+function sliceOf(value: unknown): Slice {
+  if (typeof value !== "object" || value === null) throw new Error("no usage slice")
+  const totalTokens = Reflect.get(value, "totalTokens")
+  const cost = Reflect.get(value, "cost")
+  if (typeof totalTokens !== "number" || typeof cost !== "number") throw new Error("bad usage slice")
+  const name = Reflect.get(value, "name")
+  const provider = Reflect.get(value, "provider")
+  const modelId = Reflect.get(value, "modelId")
+  return {
+    totalTokens,
+    cost,
+    ...(typeof name === "string" ? { name } : {}),
+    ...(typeof provider === "string" ? { provider } : {}),
+    ...(typeof modelId === "string" ? { modelId } : {}),
+  }
+}
+
+function summaryOf(value: unknown): Summary {
+  if (typeof value !== "object" || value === null) throw new Error("no usage summary")
+  const spend = Reflect.get(value, "spend")
+  const tokens = Reflect.get(value, "tokens")
+  const byModel = Reflect.get(value, "byModel")
+  const byTool = Reflect.get(value, "byTool")
+  if (typeof spend !== "number" || typeof tokens !== "number") throw new Error("bad usage summary")
+  return {
+    spend,
+    tokens,
+    byModel: Array.isArray(byModel) ? byModel.map(sliceOf) : [],
+    byTool: Array.isArray(byTool) ? byTool.map(sliceOf) : [],
+  }
+}
 
 describe("models", () => {
   it("applies a mid-run switch to the next request in the same run", async () => {
@@ -95,6 +141,26 @@ describe("models", () => {
     const answer = entries.findLast((entry) => entry.kind === "pi.assistant")
     expect(compaction?.id).toBeLessThan(answer?.id ?? 0)
   }, 30_000)
+
+  it("sums the pi usage ledger for the owner", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["one answer"])
+      await home.chooseModel(FAUX_MODEL)
+      await home.submit("spend one", "usage-1")
+      await home.harness.waitForIdle(context)
+    })
+    const ack = await call(stub, "usage-1", "usage.summary", {})
+    expect(ack.ok, JSON.stringify(ack)).toBe(true)
+    const summary = summaryOf(ack.result)
+    expect(summary.byModel).toHaveLength(1)
+    const model = summary.byModel[0]
+    expect(model).toMatchObject({ name: "faux/faux-1", provider: "faux", modelId: "faux-1", cost: 0 })
+    expect(model?.totalTokens ?? 0).toBeGreaterThan(0)
+    expect(summary.byTool).toEqual([])
+    expect(summary.tokens).toBe(model?.totalTokens)
+    expect(summary.spend).toBe(0)
+  })
 
   it("stores a credential sealed and lists its provider", async () => {
     const key = "sk-test-not-a-real-key"

@@ -1,4 +1,4 @@
-import { For, Show, type JSX } from "solid-js"
+import { For, onMount, Show, type JSX } from "solid-js"
 import { activeProjects, counts, homeLoaded, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
 import { ago, greeting, longDate, money } from "../lib/format.ts"
 import { StatusGlyph } from "../components/ui/status-glyph.tsx"
@@ -7,9 +7,12 @@ import { Morph } from "../components/ui/morph.tsx"
 import { Skullet } from "../components/ui/skeleton.tsx"
 import { Icon } from "../components/ui/icon.tsx"
 import { navigate } from "../lib/router.ts"
+import { projectIcon } from "../lib/project-icon.ts"
+import { usage } from "../state/settings.ts"
 import { TopBar, TopButton } from "../components/shell/topbar.tsx"
 
 export function HomeScreen(): JSX.Element {
+  onMount(() => void usage.reload())
   return (
     <>
       <TopBar
@@ -56,18 +59,18 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
   const rows = () => (props.loaded ? needs() : [])
 
   return (
-    <div class="flex flex-col gap-7 px-10 pb-12 pt-7">
+    <div class="flex flex-col gap-7 px-4 pb-12 pt-5 sm:px-10 sm:pt-7">
       <div>
         <div class="label mb-2.5">{longDate()}</div>
         <h1 class="text-[32px] font-light leading-[1.1] tracking-[-0.03em]">{greeting()}.</h1>
       </div>
 
-      <div class="flex overflow-hidden rounded-[4px] border border-line bg-surface">
+      <div class="hidden overflow-hidden rounded-[4px] border border-line bg-surface sm:flex">
         <Cell label="Waiting on you" value={numbers().waiting} tone="accent" />
         <Cell label="Working now" value={numbers().working} tone="working" />
         <Cell label="Finished overnight" value={numbers().finished} />
         <Cell label="Failed" value={numbers().failed} />
-        <Cell label="Spend today" text={money(0)} mono />
+        <Cell label="Spend" text={money(spend())} mono />
       </div>
 
       <Show when={rows().length > 0}>
@@ -108,7 +111,7 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
           <span class="text-[12px] text-fg-3">{activeProjects().length}</span>
           <span class="ml-auto link">Sort: recent activity</span>
         </div>
-        <div class="grid grid-cols-3 gap-3">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <For each={activeProjects()}>{(project) => <ProjectCard project={project} />}</For>
           <button
             type="button"
@@ -122,6 +125,12 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
       </section>
     </div>
   )
+}
+
+function spend(): number {
+  const state = usage.state()
+  if (state.kind !== "ready" || !state.value.recorded) return 0
+  return state.value.spend
 }
 
 function Cell(props: { label: string; value?: number; text?: string; tone?: "accent" | "working"; mono?: boolean }): JSX.Element {
@@ -176,7 +185,7 @@ function ProjectCard(props: { project: ProjectSummary }): JSX.Element {
     >
       <div class="flex items-center gap-2.5">
         <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-surface text-fg-2">
-          <Icon name="folder" size={16} />
+          <Icon name={projectIcon(props.project.slug)} size={16} />
         </span>
         <span class="min-w-0">
           <span class="block truncate text-[14px] font-medium">{props.project.name}</span>
