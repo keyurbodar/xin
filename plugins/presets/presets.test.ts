@@ -262,3 +262,57 @@ describe("presets", () => {
     })
   }, 20_000)
 })
+
+describe("prompts", () => {
+  it("round-trips prompts in name order and deletes them", async () => {
+    const stub = fresh()
+
+    expect(await cmd(stub, "prompt-put-1", "prompt.put", { name: "tone", text: "Be terse." })).toMatchObject({
+      ok: true,
+      result: { name: "tone", text: "Be terse." },
+    })
+    expect(
+      await cmd(stub, "prompt-put-2", "prompt.put", {
+        name: "format",
+        description: "How to shape a reply.",
+        text: "Use bullets.",
+      }),
+    ).toMatchObject({
+      ok: true,
+      result: { name: "format", description: "How to shape a reply.", text: "Use bullets." },
+    })
+    expect(await cmd(stub, "prompt-put-3", "prompt.put", { name: "tone", text: "Be brief." })).toMatchObject({
+      ok: true,
+      result: { name: "tone", text: "Be brief." },
+    })
+
+    expect((await cmd(stub, "prompt-list-1", "prompt.list")).result).toEqual([
+      { name: "format", description: "How to shape a reply.", text: "Use bullets." },
+      { name: "tone", text: "Be brief." },
+    ])
+
+    expect((await cmd(stub, "prompt-delete-1", "prompt.delete", { name: "tone" })).result).toEqual({ name: "tone" })
+    expect((await cmd(stub, "prompt-delete-2", "prompt.delete", { name: "tone" })).result).toEqual({ name: "tone" })
+    expect((await cmd(stub, "prompt-list-2", "prompt.list")).result).toEqual([
+      { name: "format", description: "How to shape a reply.", text: "Use bullets." },
+    ])
+  }, 20_000)
+
+  it("rejects a bad prompt name and text over the limit", async () => {
+    const stub = fresh()
+
+    expect(await cmd(stub, "prompt-bad-1", "prompt.put", { name: "Bad Name", text: "x" })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    expect(await cmd(stub, "prompt-bad-2", "prompt.put", { name: "a".repeat(65), text: "x" })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    expect(await cmd(stub, "prompt-bad-3", "prompt.put", { name: "ok", text: "x".repeat(8_001) })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    expect((await cmd(stub, "prompt-list-3", "prompt.list")).result).toEqual([])
+  }, 20_000)
+})

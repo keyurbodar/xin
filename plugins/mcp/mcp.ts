@@ -412,11 +412,23 @@ export function create(ports: McpPorts): McpModule {
     },
   })
 
+  const read: Op = defineOp({
+    name: "mcp.tools",
+    args: obj({ name: str({ pattern: NAME_SOURCE }) }),
+    actors: ["owner"],
+    run: async (_api, { name }) => {
+      const raw = await readRaw(name)
+      const cached = raw !== undefined ? (decodeServer(raw)?.tools ?? []) : contributed.get(name)?.value.tools
+      if (cached === undefined) throw new OpRejected("bad_args", `no MCP server ${name}`)
+      return { name, tools: cached.map((tool) => ({ name: tool.name, description: tool.description })) }
+    },
+  })
+
   const service: McpService = { tools, connect }
 
   return {
     service,
-    ops: [add, remove, list],
+    ops: [add, remove, list, read],
     start: async () => {
       const names: string[] = []
       for (const row of await rows()) {

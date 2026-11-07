@@ -14,7 +14,7 @@ import {
   type PushDevice,
   type QuietHours,
 } from "../../state/settings.ts"
-import { Button, Chip, Failure, MissingOp, Note, Panel, Pending, Toggle, failureOf } from "../extensions/chrome.tsx"
+import { Button, Chip, Failure, Note, Panel, Pending, Toggle, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { Group, Row } from "./parts.tsx"
 
@@ -334,13 +334,21 @@ export function Notifications(): JSX.Element {
             <Saving show={saving() === "spend"} />
           </div>
         </Row>
-        <Row title="A schedule runs" detail="Results still land in chat">
-          <MissingOp op="schedule.notify" detail="A schedule's run notifies only when it opens a thread." />
+        <Row title="A schedule runs" detail="Off: results still land in chat">
+          <div class="flex items-center gap-2.5">
+            <Toggle
+              on={notifyNow()["schedule"]}
+              disabled={saving() !== undefined}
+              label="A schedule runs"
+              onChange={(next) => void change("schedule", next)}
+            />
+            <Saving show={saving() === "schedule"} />
+          </div>
         </Row>
         <div class="pt-2">
           <Note>
-            Push is skipped while this tab is open: the socket already shows the change. Quiet hours pause everything
-            but a question.
+            Push is skipped while this tab is open: the socket already shows the change. During quiet hours a report waits
+            for the window to end; a question comes through once it has waited two hours.
           </Note>
         </div>
       </Group>

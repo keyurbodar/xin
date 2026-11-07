@@ -69,12 +69,14 @@ export type MarketSummary = {
   readonly homepage?: string | undefined
   readonly repository?: string | undefined
   readonly status: MarketStatus
+  readonly skipped: boolean
 }
 
 export type MarketVersion = {
   readonly version: string
   readonly publishTimestamp?: number | undefined
   readonly compatible: boolean
+  readonly skipped: boolean
 }
 
 export type MarketDeclaration = {
@@ -314,6 +316,7 @@ function parseSummary(item: Readonly<Record<string, unknown>>): MarketSummary | 
     homepage: strOf(item["homepage"]),
     repository: repositoryOf(item["repository"]),
     status: marketStatusOf(item["status"]),
+    skipped: item["skipped"] === true,
   }
 }
 
@@ -348,6 +351,7 @@ export const parseMarketDetail = (value: unknown): MarketDetail | undefined => {
           version,
           publishTimestamp: numOf(item["publishTimestamp"]),
           compatible: boolOf(item["compatible"]),
+          skipped: item["skipped"] === true,
         },
       ]
     }),
@@ -493,6 +497,107 @@ export async function updateFromMarket(name: string, version: string): Promise<I
   const result = parseInstall(await cmd("market.update", { name, version }))
   await Promise.all([rows.reload(), packages.reload(), market.reload(), marketDetail(name).reload()])
   return result
+}
+
+export type RefreshResult = {
+  readonly indexes: readonly { readonly url: string; readonly error?: string | undefined }[]
+  readonly applied: readonly { readonly package: string; readonly version: string; readonly application: string }[]
+}
+
+export async function refreshMarket(): Promise<RefreshResult> {
+  const value = await cmd<unknown>("market.refresh")
+  await Promise.all([market.reload(), packages.reload(), rows.reload()])
+  if (!isRecord(value)) return { indexes: [], applied: [] }
+  return {
+    indexes: records(value["indexes"]).flatMap((item) => {
+      const url = strOf(item["url"])
+      if (url === undefined) return []
+      return [{ url, error: strOf(item["error"]) }]
+    }),
+    applied: records(value["applied"]).flatMap((item) => {
+      const packageName = strOf(item["package"])
+      const version = strOf(item["version"])
+      if (packageName === undefined || version === undefined) return []
+      return [{ package: packageName, version, application: strOf(item["application"]) ?? "failed" }]
+    }),
+  }
+}
+
+export type Prompt = { readonly name: string; readonly description?: string | undefined; readonly text: string }
+
+export const parsePrompts = (value: unknown): readonly Prompt[] =>
+  (Array.isArray(value) ? value : []).flatMap((entry) => {
+    if (!isRecord(entry)) return []
+    const name = strOf(entry["name"])
+    const text = strOf(entry["text"])
+    if (name === undefined || text === undefined) return []
+    return [{ name, description: strOf(entry["description"]), text }]
+  })
+
+export const prompts: RemoteHandle<readonly Prompt[]> = remote(() => cmd("prompt.list"), parsePrompts)
+
+export async function putPrompt(name: string, text: string, description?: string): Promise<void> {
+  await cmd("prompt.put", description === undefined ? { name, text } : { name, text, description })
+  await prompts.reload()
+}
+
+export async function deletePrompt(name: string): Promise<void> {
+  await cmd("prompt.delete", { name })
+  await prompts.reload()
+}
+
+export type SkillBody = { readonly name: string; readonly description: string; readonly markdown: string }
+
+export async function readSkill(name: string): Promise<SkillBody> {
+  const value = await cmd<unknown>("skill.read", { name })
+  if (!isRecord(value)) throw new Error(`skill.read returned nothing for ${name}`)
+  return {
+    name: strOf(value["name"]) ?? name,
+    description: strOf(value["description"]) ?? "",
+    markdown: strOf(value["markdown"]) ?? "",
+  }
+}
+
+export type McpTool = { readonly name: string; readonly description?: string | undefined }
+
+export async function readMcpTools(name: string): Promise<readonly McpTool[]> {
+  const value = await cmd<unknown>("mcp.tools", { name })
+  const tools = isRecord(value) && Array.isArray(value["tools"]) ? value["tools"] : []
+  return tools.flatMap((tool) => {
+    if (!isRecord(tool)) return []
+    const toolName = strOf(tool["name"])
+    return toolName === undefined ? [] : [{ name: toolName, description: strOf(tool["description"]) }]
+  })
+}
+
+export async function skipMarketVersion(name: string, version: string | undefined): Promise<void> {
+  await cmd("market.skip", version === undefined ? { name } : { name, version })
+  await Promise.all([market.reload(), marketDetail(name).reload()])
+}
+
+export async function unskipMarketVersion(name: string): Promise<void> {
+  await cmd("market.unskip", { name })
+  await Promise.all([market.reload(), marketDetail(name).reload()])
+}
+
+export type RollbackResult = { readonly application: string; readonly reason?: string | undefined }
+
+export async function rollbackPackage(name: string): Promise<RollbackResult> {
+  const value = await cmd<unknown>("market.rollback", { name })
+  await Promise.all([rows.reload(), packages.reload(), market.reload()])
+  if (!isRecord(value)) return { application: "failed" }
+  return { application: strOf(value["application"]) ?? "failed", reason: strOf(value["reason"]) }
+}
+
+export type MarketPolicy = { readonly autoUpdate: boolean }
+
+export const marketPolicy: RemoteHandle<MarketPolicy> = remote(() => cmd("market.policy"), (value) => ({
+  autoUpdate: isRecord(value) && value["autoUpdate"] === true,
+}))
+
+export async function setMarketPolicy(autoUpdate: boolean): Promise<void> {
+  await cmd("market.policy.set", { autoUpdate })
+  await marketPolicy.reload()
 }
 
 export async function installSpec(spec: string): Promise<void> {

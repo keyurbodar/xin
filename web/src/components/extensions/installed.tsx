@@ -2,6 +2,7 @@ import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import {
   errorMessage,
   packages,
+  rollbackPackage,
   rows,
   setRowEnabled,
   uninstallPackage,
@@ -9,7 +10,7 @@ import {
   type BundleView,
   type PluginRow,
 } from "../../state/extensions.ts"
-import { Button, Chip, Empty, Failure, MissingOp, Note, Panel, Pending, StateChip, Toggle, failureOf } from "./chrome.tsx"
+import { Button, Chip, Empty, Failure, Note, Panel, Pending, StateChip, Toggle, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
 
 type Membership = { readonly bundle: BundleView }
@@ -186,6 +187,24 @@ function RowPanel(props: {
   const [confirming, setConfirming] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
+  const [note, setNote] = createSignal<string | undefined>(undefined)
+
+  const rollback = async (): Promise<void> => {
+    const bundle = props.bundle
+    if (bundle === undefined) return
+    setBusy(true)
+    setError(undefined)
+    setNote(undefined)
+    try {
+      const result = await rollbackPackage(bundle.package)
+      if (result.application === "applied") setNote(`${bundle.package} rolled back to the version recorded before this one.`)
+      else setError(result.reason ?? "The rollback did not apply.")
+    } catch (failure: unknown) {
+      setError(errorMessage(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const uninstall = async (): Promise<void> => {
     const bundle = props.bundle
@@ -271,15 +290,24 @@ function RowPanel(props: {
             <Note>This row is compiled into the build. Disable it here or change its config; it cannot be uninstalled.</Note>
           </Show>
 
-          <section>
-            <span class="label mb-2 block">Rollback</span>
-            <div class="flex items-center gap-2">
-              <Button size="sm" variant="quiet" disabled>Roll back to the previous version</Button>
-            </div>
-            <div class="mt-1.5">
-              <MissingOp op="market.rollback" detail="Only forward updates are recorded today." />
-            </div>
-          </section>
+          <Show when={props.bundle}>
+            {(bundle) => (
+              <section>
+                <span class="label mb-2 block">Rollback</span>
+                <div class="flex items-center gap-2">
+                  <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void rollback()}>
+                    Roll back {bundle().package}
+                  </Button>
+                  <Show when={note()}>
+                    {(message) => <span class="text-[11.5px] text-fg-3">{message()}</span>}
+                  </Show>
+                </div>
+                <p class="mt-1.5 text-[11.5px] leading-snug text-fg-3">
+                  Every applied install is recorded, so this returns to the version that ran before the current one.
+                </p>
+              </section>
+            )}
+          </Show>
 
           <Show when={error()}>
             {(message) => <Failure message={message()} />}

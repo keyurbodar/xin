@@ -112,6 +112,17 @@ describe("wire protocol", () => {
     socket.close()
   })
 
+  it("rotates the owner token and drops every socket", async () => {
+    await closeAll()
+    await until(async () => (await sessions()).length === 0)
+
+    const socket = await connect()
+    const reply = await cmd(owner(), `rotate-${crypto.randomUUID()}`, "session.rotate")
+    expect(field(reply.result, "token")).toMatch(/^own_[A-Za-z0-9_-]{43}$/u)
+    await until(async () => (await sessions()).length === 0)
+    socket.close()
+  })
+
   it("closes every live socket and reports the count", async () => {
     await closeAll()
     await until(async () => (await sessions()).length === 0)

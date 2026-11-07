@@ -370,4 +370,27 @@ describe("mcp servers", () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]?.command_id).toMatch(/^job:\d+$/)
   }, 30_000)
+
+  it("answers a server's cached tools and rejects an unknown name", async () => {
+    const stub = fresh()
+    serve(fakeServer())
+    await cmd(stub, "mcp-tools-add-1", "mcp.add", { name: "demo", url: "https://mcp.test/mcp" })
+    await cmd(stub, "mcp-tools-add-2", "mcp.add", { name: "dead", url: "https://mcp.test/dead" })
+
+    expect((await cmd(stub, "mcp-tools-1", "mcp.tools", { name: "demo" })).result).toEqual({
+      name: "demo",
+      tools: [
+        { name: "echo", description: "Echo text back to the caller." },
+        { name: "fail", description: "Always reports a failure." },
+      ],
+    })
+    expect((await cmd(stub, "mcp-tools-2", "mcp.tools", { name: "dead" })).result).toEqual({
+      name: "dead",
+      tools: [],
+    })
+    expect(await cmd(stub, "mcp-tools-3", "mcp.tools", { name: "nope" })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args", message: "no MCP server nope" },
+    })
+  })
 })

@@ -2,12 +2,13 @@ import type { Context } from "../../src/kernel/index.ts"
 import { scheduleOps, schedulesExtension, schedulesService, type SchedulesPort } from "./schedules.ts"
 
 export const name = "schedules"
-export const inject = ["harness", "intake", "clock", "pi", "ops"]
+export const inject = ["harness", "intake", "clock", "pi", "ops", "push"]
 
 export function apply(ctx: Context): void {
   const port: SchedulesPort = {
     harness: ctx.harness,
     intake: ctx.intake,
+    notify: ctx.push,
     arm: () => ctx.clock.arm(),
   }
   const service = schedulesService(port)

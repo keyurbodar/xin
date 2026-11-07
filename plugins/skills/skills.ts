@@ -62,9 +62,17 @@ export function skillsFrom(markdowns: readonly string[]): readonly Skill[] {
 
 const byName = (left: Skill, right: Skill): number => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0)
 
+const toMarkdown = (skill: Skill): string =>
+  `---\nname: ${skill.name}\ndescription: ${skill.description}\n---\n${skill.body}\n`
+
 async function ownerSkills(db: SqliteDatabase): Promise<readonly Skill[]> {
   const rows = await db.all<{ value: string }>("SELECT value FROM kv WHERE key LIKE 'skill:%'")
   return rows.map((row) => skillOf(row.value))
+}
+
+async function storedMarkdown(db: SqliteDatabase, name: string): Promise<string | undefined> {
+  const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", `${SKILL_KEY}${name}`)
+  return row?.value
 }
 
 export type SkillsModule = {
@@ -126,7 +134,19 @@ export function createSkills(db: SqliteDatabase): SkillsModule {
     run: async () => (await listSkills()).map(({ name, description }) => ({ name, description })),
   })
 
+  const read: Op = defineOp({
+    name: "skill.read",
+    args: obj({ name: str({ pattern: SKILL_NAME_PATTERN }) }),
+    actors: ["owner"],
+    run: async (_api, { name }) => {
+      const entry = (await loadSkills()).get(name)
+      if (entry === undefined) throw new OpRejected("bad_args", `no skill ${name}`)
+      const markdown = entry.source.kind === "stored" ? await storedMarkdown(db, name) : undefined
+      return { name: entry.name, description: entry.description, markdown: markdown ?? toMarkdown(entry) }
+    },
+  })
+
   const service: SkillsService = { list: listSkills, contribute }
 
-  return { service, ops: [put, remove, list] }
+  return { service, ops: [put, remove, list, read] }
 }

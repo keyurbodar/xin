@@ -257,8 +257,35 @@ function deliverAt(stub: Stub, at: string, notification: Notification): Promise<
   })
 }
 
+function holdAt(stub: Stub, at: string, notification: Notification): Promise<number | undefined> {
+  return runInDurableObject(stub, async (home: Home, state) => {
+    const push = notifier(
+      { state, db: home.db },
+      () => Promise.reject(new Error("nothing should be sent during quiet hours")),
+      () => Date.parse(at),
+    )
+    await push.notify(notification)
+    return push.due()
+  })
+}
+
+function flushAt(stub: Stub, at: string): Promise<string[]> {
+  return runInDurableObject(stub, async (home: Home, state) => {
+    const sent: string[] = []
+    await notifier(
+      { state, db: home.db },
+      async (request) => {
+        sent.push(request.url)
+        return new Response(null, { status: 201 })
+      },
+      () => Date.parse(at),
+    ).flush(Date.parse(at))
+    return sent
+  })
+}
+
 describe("quiet hours", () => {
-  it("sends a question through the night and holds every other kind", async () => {
+  it("holds every kind through the night", async () => {
     const stub = fresh()
     const endpoint = "https://push.example.com/night"
     const quiet = { enabled: true, start: 1320, end: 420 }
@@ -267,7 +294,7 @@ describe("quiet hours", () => {
 
     expect(await deliverAt(stub, "2026-11-07T23:30:00Z", message("night-finished"))).toEqual([])
     expect(await deliverAt(stub, "2026-11-07T23:30:00Z", message("night-failed", "failed"))).toEqual([])
-    expect(await deliverAt(stub, "2026-11-07T23:30:00Z", message("night-waiting", "waiting"))).toEqual([endpoint])
+    expect(await deliverAt(stub, "2026-11-07T23:30:00Z", message("night-waiting", "waiting"))).toEqual([])
   })
 
   it("delivers everything by day, and at night when quiet hours are off", async () => {
@@ -281,6 +308,61 @@ describe("quiet hours", () => {
 
     expect((await cmd(stub, "quiet-off", "notify.quiet.set", { enabled: false })).ok).toBe(true)
     expect(await deliverAt(stub, "2026-11-07T23:30:00Z", message("off-finished"))).toEqual([endpoint])
+  })
+
+  it("holds a report until the window ends, then sends it once", async () => {
+    const stub = fresh()
+    const endpoint = "https://push.example.com/morning"
+    await listen(stub, endpoint)
+    await cmd(stub, "queue-quiet", "notify.quiet.set", { enabled: true, start: 1320, end: 420 })
+
+    expect(await holdAt(stub, "2026-11-07T23:30:00Z", message("queued-finished"))).toBe(
+      Date.parse("2026-11-08T07:00:00Z"),
+    )
+    expect(await flushAt(stub, "2026-11-08T06:59:00Z")).toEqual([])
+    expect(await flushAt(stub, "2026-11-08T07:00:00Z")).toEqual([endpoint])
+    expect(await flushAt(stub, "2026-11-08T09:00:00Z")).toEqual([])
+  })
+
+  it("releases a question after two hours paused, before the window ends", async () => {
+    const stub = fresh()
+    const endpoint = "https://push.example.com/night-question"
+    await listen(stub, endpoint)
+    await cmd(stub, "queue-question", "notify.quiet.set", { enabled: true, start: 1320, end: 420 })
+
+    expect(await holdAt(stub, "2026-11-07T23:30:00Z", message("queued-waiting", "waiting"))).toBe(
+      Date.parse("2026-11-08T01:30:00Z"),
+    )
+    expect(await flushAt(stub, "2026-11-08T01:29:00Z")).toEqual([])
+    expect(await flushAt(stub, "2026-11-08T01:30:00Z")).toEqual([endpoint])
+    expect(await flushAt(stub, "2026-11-08T08:00:00Z")).toEqual([])
+  })
+
+  it("releases a question when the window ends first", async () => {
+    const stub = fresh()
+    await listen(stub, "https://push.example.com/dawn-question")
+    await cmd(stub, "queue-dawn", "notify.quiet.set", { enabled: true, start: 1320, end: 420 })
+
+    expect(await holdAt(stub, "2026-11-08T06:30:00Z", message("dawn-waiting", "waiting"))).toBe(
+      Date.parse("2026-11-08T07:00:00Z"),
+    )
+  })
+
+  it("sends a test push even during quiet hours", async () => {
+    const stub = fresh()
+    const endpoint = "https://push.example.com/test"
+    await listen(stub, endpoint)
+    await cmd(stub, "queue-test", "notify.quiet.set", { enabled: true, start: 0, end: 1439 })
+
+    const sent = await runInDurableObject(stub, async (home: Home) => {
+      const urls: string[] = []
+      await testPush(home.db, async (request) => {
+        urls.push(request.url)
+        return new Response(null, { status: 201 })
+      })
+      return urls
+    })
+    expect(sent).toEqual([endpoint])
   })
 })
 

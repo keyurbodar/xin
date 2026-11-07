@@ -1,5 +1,5 @@
 import type { SqliteDatabase, SqliteMigration } from "@earendil-works/chord/sqlite"
-import { arr, compile, obj, opt, str } from "@earendil-works/pi-schema"
+import { arr, bool, compile, map, obj, opt, str, type Static } from "@earendil-works/pi-schema"
 import type { JsonValue } from "@earendil-works/chord"
 import {
   BundlePatchArg,
@@ -34,6 +34,8 @@ import { extractBundle, fetchTarball } from "./tarball.ts"
 
 const MAX_REQUESTS = 40
 const OWNER = ["owner"] as const
+const POLICY_KEY = "market.policy"
+const SKIPPED_KEY = "market.skipped"
 
 export const Config = Schema.object({
   registry: Schema.string()
@@ -68,6 +70,7 @@ export type MarketPorts = {
   readonly config: MarketConfig
   readonly fetch: typeof fetch
   readonly db: SqliteDatabase
+  readonly kv: SyncKvStorage
   readonly packages: PackagesPort
 }
 
@@ -113,6 +116,19 @@ const UpdateArgs = obj({
   name: str({ minLength: 1, maxLength: 200 }),
   version: str({ minLength: 1, maxLength: 100 }),
 })
+const PolicySchema = obj({
+  autoUpdate: bool({ description: "Install newer versions without being asked." }),
+})
+const SkipArgs = obj({
+  name: str({ minLength: 1, maxLength: 200 }),
+  version: opt(str({ minLength: 1, maxLength: 100 })),
+})
+const policyCheck = compile(PolicySchema)
+const skippedCheck = compile(map(str({ minLength: 1, maxLength: 100 })))
+
+type Policy = Static<typeof PolicySchema>
+type Skipped = Readonly<Record<string, string>>
+type HistoryRow = { readonly version: string }
 
 type Declaration = {
   readonly rows: readonly BundleRow[]
@@ -205,8 +221,32 @@ function factOf(
 }
 
 export function createMarket(ports: MarketPorts): MarketFeature {
-  const { config, db } = ports
+  const { config, db, kv } = ports
   const xinVersion = ports.packages.version
+
+  const readPolicy = (): Policy => {
+    const stored: unknown = kv.get(POLICY_KEY)
+    return policyCheck.check(stored) ? stored : { autoUpdate: false }
+  }
+
+  const writePolicy = (policy: Policy): Policy => {
+    kv.put(POLICY_KEY, policy)
+    return policy
+  }
+
+  const readSkipped = (): Skipped => {
+    const stored: unknown = kv.get(SKIPPED_KEY)
+    return skippedCheck.check(stored) ? stored : {}
+  }
+
+  const record = (name: string, version: string): Promise<void> =>
+    db.run(
+      "INSERT INTO market_history (package, version, at) VALUES (?, ?, ?) " +
+        "ON CONFLICT (package, version) DO UPDATE SET at = excluded.at",
+      name,
+      version,
+      Date.now(),
+    )
 
   const installedFacts = async (): Promise<ReadonlyMap<string, InstalledFact>> => {
     const facts = new Map<string, InstalledFact>()
@@ -294,6 +334,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
   const search = async (query: string | undefined, category: string | undefined): Promise<JsonValue> => {
     const loaded = await load({ left: MAX_REQUESTS }, false)
     const facts = await installedFacts()
+    const skipped = readSkipped()
     const found = loaded.plugins.filter(
       (plugin) => matches(plugin, query) && (category === undefined || plugin.metadata.category === category),
     )
@@ -313,6 +354,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
             offered === undefined
               ? "not-installed"
               : installationOf(offered.version, factOf(facts, plugin.name, offered)),
+          skipped: offered !== undefined && skipped[plugin.name] === offered.version,
         }
       }),
     })
@@ -331,6 +373,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
         ? undefined
         : maybeDeclaration(document.xin, `${name}@${document.version}`)
     const facts = await installedFacts()
+    const skipped = readSkipped()[name]
     return toJson({
       name,
       kind,
@@ -339,6 +382,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
         version: version.version,
         publishTimestamp: version.publishTimestamp,
         compatible: compatible(version, xinVersion),
+        skipped: version.version === skipped,
       })),
       readme: document?.readme ?? null,
       requires: declaration === undefined ? [] : [...declaration.requires],
@@ -373,6 +417,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     const target = marketInstallTarget(name, version)
     if (version.source.type === "git") {
       ports.packages.install(target.spec)
+      await record(name, version.version)
       return { application: "pending", package: name, version: version.version, kind: "code", rows: [] }
     }
     const document = await fetchVersion(
@@ -389,6 +434,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     if (kind === undefined) bad(`${target.spec} is not a Xin plugin`)
     if (kind === "code") {
       ports.packages.install(target.spec)
+      await record(name, version.version)
       return { application: "pending", package: name, version: version.version, kind, rows: [] }
     }
     const integrity = document.value.dist.integrity
@@ -408,6 +454,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       patch: declaration.patch,
       requires: declaration.requires,
     })
+    if (application.application === "applied") await record(name, version.version)
     return {
       application: application.application,
       package: name,
@@ -439,10 +486,88 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     if (mode === "update") {
       if (fact === undefined || fact.kind !== "installed" || fact.version === undefined) bad(`${name} is not installed`)
       if (!isSemver(fact.version)) bad(`${name} is installed at a version that cannot be updated`)
+      if (readSkipped()[name] === target.version)
+        return toJson({ application: "skipped", package: name, version: target.version })
       if (compareVersions(target.version, fact.version) <= 0)
         bad(`${name}@${target.version} is not newer than the installed ${fact.version}`)
     }
     return installVersion(budget, name, target)
+  }
+
+  const skip = async (name: string, requested: string | undefined): Promise<JsonValue> => {
+    const loaded = await load({ left: MAX_REQUESTS }, false)
+    const plugin = loaded.plugins.find((candidate) => candidate.name === name)
+    if (plugin === undefined) bad(`${name} is not in any market index`)
+    const target =
+      requested === undefined
+        ? offeredVersion(plugin.versions, xinVersion)
+        : plugin.versions.find((version) => version.version === requested)
+    if (target === undefined) bad(`${name} has no version ${requested ?? "to offer"}`)
+    kv.put(SKIPPED_KEY, { ...readSkipped(), [name]: target.version })
+    return toJson({ name, version: target.version })
+  }
+
+  const unskip = (name: string): JsonValue => {
+    const skipped: Record<string, string> = { ...readSkipped() }
+    delete skipped[name]
+    kv.put(SKIPPED_KEY, skipped)
+    return toJson({ name })
+  }
+
+  const rollback = async (name: string): Promise<JsonValue> => {
+    const budget = { left: MAX_REQUESTS }
+    const loaded = await load(budget, false)
+    const plugin = loaded.plugins.find((candidate) => candidate.name === name)
+    if (plugin === undefined) bad(`${name} is not in any market index`)
+    const fact = (await installedFacts()).get(name)
+    if (fact === undefined || fact.kind !== "installed" || fact.version === undefined)
+      return toJson({ application: "failed", package: name, reason: "not installed" })
+    const current = fact.version
+    const history = await db.all<HistoryRow>(
+      "SELECT version FROM market_history WHERE package = ? ORDER BY at DESC, rowid DESC",
+      name,
+    )
+    const earlier = history.find((row) => compareVersions(row.version, current) < 0)
+    if (earlier === undefined) return toJson({ application: "failed", package: name, reason: "no earlier version" })
+    const target = plugin.versions.find((version) => version.version === earlier.version)
+    if (target === undefined)
+      return toJson({
+        application: "failed",
+        package: name,
+        reason: `${name}@${earlier.version} is not in the market index`,
+      })
+    if (!compatible(target, xinVersion))
+      return toJson({
+        application: "failed",
+        package: name,
+        reason: `${name}@${target.version} requires xin ${target.engines.xin ?? "?"}`,
+      })
+    return installVersion(budget, name, target)
+  }
+
+  /** Patch updates only: a minor or major version changes what a row means, so it asks first. */
+  const autoApply = async (plugins: readonly MarketPlugin[], budget: Budget): Promise<JsonValue[]> => {
+    const facts = await installedFacts()
+    const skipped = readSkipped()
+    const applied: JsonValue[] = []
+    for (const plugin of plugins) {
+      const fact = facts.get(plugin.name)
+      if (fact === undefined || fact.kind !== "installed" || fact.version === undefined) continue
+      if (!isSemver(fact.version)) continue
+      const offered = offeredVersion(plugin.versions, xinVersion)
+      if (offered === undefined || skipped[plugin.name] === offered.version) continue
+      if (compareVersions(offered.version, fact.version) <= 0) continue
+      const [from, to] = [fact.version.split("."), offered.version.split(".")]
+      if (from[0] !== to[0] || from[1] !== to[1]) continue
+      const result = await installVersion(budget, plugin.name, offered).catch((failure: unknown): JsonValue => ({
+        application: "failed",
+        package: plugin.name,
+        version: offered.version,
+        reason: failure instanceof Error ? failure.message : String(failure),
+      }))
+      applied.push(result)
+    }
+    return applied
   }
 
   const ops: readonly Op[] = [
@@ -475,9 +600,52 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       args: obj({}),
       actors: OWNER,
       run: async () => {
-        const loaded = await load({ left: MAX_REQUESTS }, true)
-        return toJson({ indexes: loaded.summaries })
+        const budget = { left: MAX_REQUESTS }
+        const loaded = await load(budget, true)
+        if (!readPolicy().autoUpdate) return toJson({ indexes: loaded.summaries })
+        return toJson({ indexes: loaded.summaries, applied: await autoApply(loaded.plugins, budget) })
       },
+    }),
+    defineOp({
+      name: "market.policy",
+      args: obj({}),
+      actors: OWNER,
+      run: async () => toJson(readPolicy()),
+    }),
+    defineOp({
+      name: "market.policy.set",
+      args: PolicySchema,
+      actors: OWNER,
+      run: async (_api, args) => toJson(writePolicy({ autoUpdate: args.autoUpdate })),
+    }),
+    defineOp({
+      name: "market.skip",
+      args: SkipArgs,
+      actors: OWNER,
+      run: async (_api, args) => skip(args.name, args.version),
+    }),
+    defineOp({
+      name: "market.unskip",
+      args: EntryArgs,
+      actors: OWNER,
+      run: async (_api, args) => unskip(args.name),
+    }),
+    defineOp({
+      name: "market.skipped",
+      args: obj({}),
+      actors: OWNER,
+      run: async () =>
+        toJson(
+          Object.entries(readSkipped())
+            .map(([name, version]) => ({ name, version }))
+            .toSorted((left, right) => left.name.localeCompare(right.name)),
+        ),
+    }),
+    defineOp({
+      name: "market.rollback",
+      args: EntryArgs,
+      actors: OWNER,
+      run: async (_api, args) => rollback(args.name),
     }),
   ]
 

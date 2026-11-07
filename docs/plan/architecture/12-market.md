@@ -135,14 +135,17 @@ An invalid index is reported with dsh's error path (`$.plugins[3].versions`) and
 | `market.entry` | `{ name }` the entry's versions with compatibility, kind and readme of the offered version, the rows a bundle would add, `requires`, and status |
 | `market.install` | `{ name, version? }` newest compatible version by default. Refused when the package is already installed or `provided` |
 | `market.update` | `{ name, version }` an exact newer version of an installed package; an older version is refused (dsh `updateBundle`) |
-| `market.refresh` | refetches every index now, bypassing the cache |
+| `market.refresh` | refetches every index now, bypassing the cache; while auto-update is on it also installs each installed package's offered patch version (same major and minor) and answers them under `applied` |
+| `market.policy` / `market.policy.set` | `{ autoUpdate }`, off by default, in kv `market.policy` |
+| `market.skip` / `market.unskip` / `market.skipped` | kv `market.skipped`, one version per package: a skipped version is marked in `market.search` and `market.entry`, and `market.update` to it answers `{ application: "skipped" }` without touching the install |
+| `market.rollback` | reinstalls the newest `market_history` version other than the installed one; refuses when there is none, when it is no longer in an index, or when it is incompatible, and never moves forward |
 
 **Installing a version.** An `npm` source reads the version document from `source.registry`, else the configured `registry`, for the `xin` field and `dist`. A `git` source cannot be fetched by the Worker, so it is always recorded as a pending code install `git+<url>#<commit>` (with `&path:/<path>`), as dsh's `marketInstallTarget` builds it. For an npm package:
 
 - A code package is recorded pending as `name@version`. `market.install` and `market.update` do not deploy; the client calls `system.update` after them, so one build can carry several changes.
 - A bundle is fetched from `dist.tarball` over https with redirects refused, at most 8 MiB compressed. The bytes must match `dist.integrity` (`sha512-<base64>`, checked with `crypto.subtle`). The tarball is gunzipped with `DecompressionStream` and read as ustar, at most 4 MiB unpacked, and only `package/package.json` is read. The rows, patch and `requires` that get mounted come from that verified file, not from the version document; a tarball whose kind differs from the document is refused. The result is validated by the `packages` row like any bundle.
 
-Every op spends at most 40 requests, inside the free plan's 50 subrequests. Each fetch has a 10 s deadline that is cleared when the request settles.
+Every applied install writes a `market_history { package, version, at }` row, which is what `market.rollback` walks backwards. Every op spends at most 40 requests, inside the free plan's 50 subrequests. Each fetch has a 10 s deadline that is cleared when the request settles.
 
 ## Trust on the free plan
 

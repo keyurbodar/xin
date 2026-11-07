@@ -2,6 +2,7 @@ import type { Context } from "@deepseek-ai/cordis"
 import type { JsonObject } from "@earendil-works/pi-durable"
 import { bool, obj, opt } from "@earendil-works/pi-schema"
 import { defineOp } from "../ops.ts"
+import { ring } from "./logs.ts"
 import { buildId, type PendingPackages } from "./packages.ts"
 
 export type DeployRequest = { readonly packages: PendingPackages }
@@ -22,16 +23,14 @@ export type Metrics = {
 
 const PUSH_DEVICES_SQL = "SELECT count(*) AS count FROM push_subs"
 
-// Module top level runs inside the Worker's startup snapshot, where Date.now() is zero; the boot itself is the origin.
-let startedAt = 0
-
 const OWNER = ["owner"] as const
 
 export const name = "system"
 export const inject = ["db", "host", "http", "kernel", "ops", "packages"]
 
 export function apply(ctx: Context): void {
-  startedAt = Date.now()
+  const startedAt = Date.now()
+  const logs = ring()
   const metrics = async (): Promise<Metrics> => {
     const states = await Promise.all(ctx.kernel.rows().map((row) => ctx.kernel.state(row.id)))
     const push = await ctx.db.get<{ count: number }>(PUSH_DEVICES_SQL)
@@ -61,6 +60,14 @@ export function apply(ctx: Context): void {
   )
   ctx.ops.define(defineOp({ name: "system.version", args: obj({}), actors: OWNER, run: async () => version() }))
   ctx.ops.define(defineOp({ name: "system.metrics", args: obj({}), actors: OWNER, run: async () => metrics() }))
+  ctx.ops.define(
+    defineOp({
+      name: "system.logs",
+      args: obj({}),
+      actors: OWNER,
+      run: async () => ({ entries: [...logs.entries()] }),
+    }),
+  )
   ctx.ops.define(
     defineOp({
       name: "system.restart",

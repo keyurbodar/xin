@@ -99,6 +99,12 @@ export class Streams {
     this.#ws = undefined
   }
 
+  /** Drops the socket so the next handshake carries the current token; subscriptions survive the bounce. */
+  reconnectNow(): void {
+    this.#retry = 0
+    this.#ws?.close()
+  }
+
   #reconnect(): void {
     if (this.#closed) return
     const delay = Math.min(15_000, 500 * 2 ** this.#retry)

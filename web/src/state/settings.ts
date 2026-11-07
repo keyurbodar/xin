@@ -290,6 +290,22 @@ export const parseSystemMetrics = (value: unknown): SystemMetrics => {
 
 export const systemMetrics: RemoteHandle<SystemMetrics> = remote(() => cmd("system.metrics"), parseSystemMetrics)
 
+export type LogEntry = { readonly at: number; readonly level: "warn" | "error"; readonly text: string }
+
+/** The warnings and errors this home logged since it woke, newest last. */
+export async function systemLogs(): Promise<readonly LogEntry[]> {
+  const value = await cmd<unknown>("system.logs")
+  const entries = isRecord(value) && Array.isArray(value["entries"]) ? value["entries"] : []
+  return entries.flatMap((entry) => {
+    if (!isRecord(entry)) return []
+    const at = entry["at"]
+    const level = entry["level"]
+    const text = entry["text"]
+    if (typeof at !== "number" || typeof text !== "string") return []
+    return [{ at, level: level === "error" ? "error" : "warn", text }]
+  })
+}
+
 export type Session = { readonly id: string; readonly since: number; readonly origin: string }
 
 export const parseSessions = (value: unknown): readonly Session[] =>
@@ -311,6 +327,15 @@ export async function closeSessions(id?: string): Promise<number> {
   return isRecord(value) && typeof value["closed"] === "number" ? value["closed"] : 0
 }
 
+/** Mints a new owner token and closes every socket; the token is readable once, so the caller stores it. */
+export async function rotateSession(): Promise<string> {
+  const value = await cmd<unknown>("session.rotate")
+  const token = isRecord(value) && typeof value["token"] === "string" ? value["token"] : ""
+  if (token === "") throw new Error("session.rotate answered no token")
+  await sessions.reload()
+  return token
+}
+
 
 export async function setDefault(role: ModelRole, model: ModelRef): Promise<void> {
   await cmd("owner.defaults", { role, model })
@@ -330,7 +355,7 @@ export async function deleteCredential(provider: string): Promise<void> {
 }
 
 
-export type NotifyKind = "waiting" | "finished" | "failed" | "spend"
+export type NotifyKind = "waiting" | "finished" | "failed" | "spend" | "schedule"
 
 export type NotifyPrefs = Readonly<Record<NotifyKind, boolean>>
 
@@ -341,12 +366,13 @@ export const parseNotifyPrefs = (value: unknown): NotifyPrefs => {
     finished: root["finished"] !== false,
     failed: root["failed"] !== false,
     spend: root["spend"] !== false,
+    schedule: root["schedule"] === true,
   }
 }
 
 export const notifyPrefs: RemoteHandle<NotifyPrefs> = remote(() => cmd("notify.prefs"), parseNotifyPrefs)
 
-export const DEFAULT_NOTIFY: NotifyPrefs = { waiting: true, finished: true, failed: true, spend: true }
+export const DEFAULT_NOTIFY: NotifyPrefs = { waiting: true, finished: true, failed: true, spend: true, schedule: false }
 
 /** The prefs a switch shows: the server's once they arrive, all on until then. */
 export function notifyNow(): NotifyPrefs {

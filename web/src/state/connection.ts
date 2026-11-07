@@ -18,3 +18,8 @@ export function disconnect(): void {
   streams?.close()
   streams = undefined
 }
+
+/** Bounces the socket after the owner token changed, so the handshake carries the new one. */
+export function reauthorize(): void {
+  streams?.reconnectNow()
+}

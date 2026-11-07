@@ -2,6 +2,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { type ConversationId, defineTask } from "@earendil-works/pi-durable"
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
+import type { Notification } from "../../src/contracts/push.ts"
 import type { CommandId } from "../../src/ids.ts"
 import { eventually, field, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
@@ -28,7 +29,18 @@ const timers = async (home: Home) =>
 const ports = (home: Home): SchedulesPort => ({
   harness: home.harness,
   intake: home.loader.ctx.intake,
+  notify: home.loader.ctx.push,
   arm: async () => home.arm(home.harness.wake()),
+})
+
+const recordingPorts = (home: Home, sent: Notification[]): SchedulesPort => ({
+  ...ports(home),
+  notify: {
+    prefs: () => home.loader.ctx.push.prefs(),
+    notify: async (notification) => {
+      sent.push(notification)
+    },
+  },
 })
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)))
@@ -356,5 +368,54 @@ describe("schedules", () => {
     await eventually(stub, async (home: Home) => (await timers(home)).length === 1)
     const tasks = await runInDurableObject(stub, (home: Home) => timers(home))
     expect(tasks.map((task) => task.record.version)).toEqual([2])
+  })
+
+  it("sends one notification for a due schedule once schedule prefs are on", async () => {
+    const evidence = await runInDurableObject(fresh(), async (home: Home) => {
+      const defaults = await run(home, "n1-defaults", "notify.prefs")
+      const enabled = await run(home, "n1-enable", "notify.set", { schedule: true })
+      const read = await run(home, "n1-read", "notify.prefs")
+      const delivered = record(
+        { kind: "this_session", conversationId: (await home.root()).id },
+        { prompt: "p".repeat(130) },
+      )
+      const due = dueOf(delivered, ANCHOR + 1)
+      if (due === undefined) throw new Error("expected a due window")
+      const sent: Notification[] = []
+      await sendDue(recordingPorts(home, sent), delivered, due, ANCHOR)
+      return {
+        defaults: field(defaults, "result"),
+        enabled: field(enabled, "result"),
+        read: field(read, "result"),
+        sent,
+        stored: await rows(home),
+      }
+    })
+    expect(evidence.defaults).toMatchObject({ schedule: false })
+    expect(evidence.enabled).toMatchObject({ schedule: true, waiting: true })
+    expect(evidence.read).toMatchObject({ schedule: true })
+    expect(evidence.stored).toHaveLength(1)
+    expect(evidence.sent).toEqual([
+      {
+        threadTitle: "hydrate",
+        title: "A schedule ran",
+        body: "p".repeat(120),
+        tag: `schedule:hydrate:${ANCHOR}`,
+        kind: "schedule",
+      },
+    ])
+  })
+
+  it("sends no notification for a due schedule while schedule prefs are off", async () => {
+    const evidence = await runInDurableObject(fresh(), async (home: Home) => {
+      const delivered = record({ kind: "this_session", conversationId: (await home.root()).id })
+      const due = dueOf(delivered, ANCHOR + 1)
+      if (due === undefined) throw new Error("expected a due window")
+      const sent: Notification[] = []
+      await sendDue(recordingPorts(home, sent), delivered, due, ANCHOR)
+      return { sent, stored: await rows(home) }
+    })
+    expect(evidence.stored).toHaveLength(1)
+    expect(evidence.sent).toEqual([])
   })
 })

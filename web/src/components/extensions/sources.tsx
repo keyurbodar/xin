@@ -1,6 +1,15 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
-import { configureRow, errorMessage, packages, rows } from "../../state/extensions.ts"
-import { Button, Chip, Empty, Failure, MONO_INPUT, MissingOp, Note, Panel, Pending, Toggle } from "./chrome.tsx"
+import {
+  configureRow,
+  errorMessage,
+  market,
+  marketPolicy,
+  packages,
+  refreshMarket,
+  rows,
+  setMarketPolicy,
+} from "../../state/extensions.ts"
+import { Button, Empty, Failure, MONO_INPUT, Note, Panel, Pending, Toggle } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
 
 function indexesOf(config: Readonly<Record<string, unknown>>): readonly string[] {
@@ -12,11 +21,51 @@ export function Sources(): JSX.Element {
   const [draft, setDraft] = createSignal("")
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
+  const [note, setNote] = createSignal<string | undefined>(undefined)
 
   onMount(() => {
     void rows.reload()
     void packages.reload()
+    void marketPolicy.reload()
   })
+
+  const autoUpdate = (): boolean => {
+    const state = marketPolicy.state()
+    return state.kind === "ready" ? state.value.autoUpdate : false
+  }
+
+  const setAutoUpdate = async (on: boolean): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    setNote(undefined)
+    try {
+      await setMarketPolicy(on)
+      setNote(on ? "Auto-update is on." : "Auto-update is off.")
+    } catch (failure: unknown) {
+      setError(errorMessage(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const refresh = async (): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    setNote(undefined)
+    try {
+      const result = await refreshMarket()
+      await market.reload()
+      const applied = result.applied.filter((entry) => entry.application === "applied")
+      setNote(
+        `${result.indexes.length} ${result.indexes.length === 1 ? "index" : "indexes"} read` +
+          (applied.length === 0 ? "." : `, ${applied.length} updated: ${applied.map((entry) => `${entry.package}@${entry.version}`).join(", ")}.`),
+      )
+    } catch (failure: unknown) {
+      setError(errorMessage(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const marketRow = () => {
     const state = rows.state()
@@ -68,6 +117,15 @@ export function Sources(): JSX.Element {
 
         <Show when={error()}>
           {(message) => <Failure message={message()} onRetry={() => setError(undefined)} />}
+        </Show>
+
+        <Show when={note()}>
+          {(message) => (
+            <div class="flex items-center gap-2 rounded-[4px] border border-ok/30 bg-ok-bg px-3.5 py-2.5 text-[12.5px] text-fg-2">
+              <Glyph name="check" size={13} class="text-ok" />
+              {message()}
+            </div>
+          )}
         </Show>
 
         <Show when={rows.state().kind === "loading"}>
@@ -153,14 +211,31 @@ export function Sources(): JSX.Element {
         <section class="flex flex-col gap-2.5">
           <div class="flex items-center gap-2">
             <span class="label">Install policy</span>
-            <Chip tone="warn">Read-only</Chip>
+            <span class="ml-auto" />
+            <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void refresh()}>
+              <Glyph name="refresh" size={14} />
+              {busy() ? "Refreshing" : "Refresh indexes"}
+            </Button>
           </div>
           <Panel>
-            <PolicyRow icon="shield" title="Signed packages only" detail="Unsigned packages can be added from a URL or git, but stay off until enabled." value="On" />
-            <PolicyRow icon="refresh" title="Auto-update" detail="Patch versions only; anything that adds a row or a permission asks first." value="Patch only" />
+            <PolicyRow icon="shield" title="Signed packages only" detail="Every tarball is checked against the integrity the index declares." value="On" />
+            <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5">
+              <Glyph name="refresh" size={14} class="shrink-0 text-fg-2" />
+              <div class="min-w-0 flex-1">
+                <span class="block text-[12.5px] text-fg">Auto-update</span>
+                <span class="block text-[11.5px] leading-snug text-fg-3">
+                  Patch versions apply when indexes refresh; a minor or major version asks here first.
+                </span>
+              </div>
+              <Toggle
+                on={autoUpdate()}
+                label="Auto-update patch versions"
+                disabled={busy()}
+                onChange={(on) => void setAutoUpdate(on)}
+              />
+            </div>
             <PolicyRow icon="user" title="Who can install" detail="One owner signs in; members do not exist in this build." value="Owner" />
           </Panel>
-          <MissingOp op="market.policy" detail="These values are fixed in the build, not stored settings." />
         </section>
 
         <section class="flex flex-col gap-2.5">

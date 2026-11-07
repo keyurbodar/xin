@@ -13,6 +13,8 @@ import {
 import { cmd, uploadFile } from "../lib/api.ts"
 import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
 import { modelName, models, type ModelInfo, type ModelRef } from "../state/settings.ts"
+import { prompts } from "../state/extensions.ts"
+import { expandSlash } from "../lib/slash.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { navigate, param } from "../lib/router.ts"
 import { TopBar } from "../components/shell/topbar.tsx"
@@ -37,7 +39,10 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
   const [older, setOlder] = createSignal<readonly EntryView[]>([])
   const [olderBefore, setOlderBefore] = createSignal<number | undefined>(undefined)
   const [olderDone, setOlderDone] = createSignal(false)
-  onMount(loadRequests)
+  onMount(() => {
+    loadRequests()
+    void prompts.reload()
+  })
   createEffect(() => {
     void props.project.openRequests
     void refreshRequests()
@@ -196,18 +201,20 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
             }}
             onAttach={(file, onProgress) => uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress)}
             onSend={async (text, key, attachments) => {
+              const loaded = prompts.state()
+              const expanded = expandSlash(text, loaded.kind === "ready" ? loaded.value : [])
               const result = await cmd<{ readonly accepted: boolean }>(
                 "message.send",
                 {
                   conv: props.project.coordinatorId,
-                  text,
+                  text: expanded,
                   clientTs: key.at,
                   ...(attachments.length === 0 ? {} : { attachments }),
                 },
                 { id: key.id },
               )
               if (result.accepted) {
-                setOptimistic((current) => [...current, { key: key.id, text, at: key.at, attachments }])
+                setOptimistic((current) => [...current, { key: key.id, text: expanded, at: key.at, attachments }])
               }
             }}
             onStop={async () => {

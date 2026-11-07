@@ -1,4 +1,4 @@
-export type NotifyKind = "waiting" | "finished" | "failed" | "spend"
+export type NotifyKind = "waiting" | "finished" | "failed" | "spend" | "schedule"
 
 export type Notification = {
   readonly threadTitle: string
@@ -10,7 +10,7 @@ export type Notification = {
 
 export type NotifyPrefs = Readonly<Record<NotifyKind, boolean>>
 
-export const DEFAULT_PREFS: NotifyPrefs = { waiting: true, finished: true, failed: true, spend: true }
+export const DEFAULT_PREFS: NotifyPrefs = { waiting: true, finished: true, failed: true, spend: true, schedule: false }
 
 export type QuietHours = {
   readonly enabled: boolean

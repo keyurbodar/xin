@@ -1,6 +1,6 @@
-import { createSignal, For, Show, type JSX } from "solid-js"
-import { addServer, errorMessage, isRecord, removeServer, servers, type McpServer } from "../../state/extensions.ts"
-import { Button, Empty, Failure, MONO_INPUT, MissingOp, Note, Panel, Pending, failureOf } from "./chrome.tsx"
+import { createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { addServer, errorMessage, isRecord, readMcpTools, removeServer, servers, type McpServer } from "../../state/extensions.ts"
+import { Button, Empty, Failure, MONO_INPUT, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
 
 export function Connectors(): JSX.Element {
@@ -169,12 +169,45 @@ function ConnectorDetail(props: { server: McpServer; onRemoved: () => void }): J
           <Note>
             Headers are sealed and cannot be read back. To change them, remove the server and add it again with the new headers.
           </Note>
-          <Show when={props.server.source === undefined}>
-            <MissingOp op="mcp.tools" detail="The list op returns a tool count, not tool names." />
-          </Show>
+          <ToolsList name={props.server.name} />
         </div>
       </div>
     </>
+  )
+}
+
+/** The tool names the server last advertised; the count in the header is the same list. */
+function ToolsList(props: { name: string }): JSX.Element {
+  const [tools] = createResource(() => props.name, readMcpTools)
+  return (
+    <section class="flex flex-col gap-2">
+      <span class="label">Tools</span>
+      <Show when={tools.error}>
+        {(failure) => <Failure message={errorMessage(failure())} />}
+      </Show>
+      <Show when={tools.loading}>
+        <Pending label="Reading the tool list" />
+      </Show>
+      <Show when={tools()}>
+        {(list) => (
+          <Show
+            when={list().length > 0}
+            fallback={<Note>This server has not advertised any tool yet. Headers are sealed, so the token may be stale.</Note>}
+          >
+            <Panel>
+              <For each={list()}>
+                {(tool) => (
+                  <div class="flex items-baseline gap-2.5 border-b border-line px-3.5 py-2 last:border-0">
+                    <code class="shrink-0 font-mono text-[11.5px] text-fg">{tool.name}</code>
+                    <span class="min-w-0 truncate text-[11.5px] text-fg-3">{tool.description ?? ""}</span>
+                  </div>
+                )}
+              </For>
+            </Panel>
+          </Show>
+        )}
+      </Show>
+    </section>
   )
 }
 

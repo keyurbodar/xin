@@ -157,6 +157,25 @@ describe("memory", () => {
     expect(outcome.stored.map((note) => note.retired_by === null)).toEqual([false, true])
   })
 
+  it("writes the profile the pane reads, exactly, and clears it with whitespace", async () => {
+    const stub = fresh()
+    const evidence = await runInDurableObject(stub, async (home: Home) => {
+      const markdown = "# Me\n\n- Runs at dawn\n"
+      const written = await run(home, "p1-write", "memory.profile.write", { markdown })
+      const read = await run(home, "p1-read", "memory.profile", {})
+      const tooLong = await run(home, "p1-long", "memory.profile.write", { markdown: "x".repeat(20_001) })
+      const blank = await run(home, "p1-blank", "memory.profile.write", { markdown: "  \n\t " })
+      const cleared = await run(home, "p1-cleared", "memory.profile", {})
+      return { markdown, written, read, tooLong, blank, cleared, row: await readKv(home.db, "profile_md") }
+    })
+    expect(evidence.written).toMatchObject({ kind: "ok", result: { profile_md: evidence.markdown } })
+    expect(evidence.read).toMatchObject({ kind: "ok", result: { profile_md: evidence.markdown } })
+    expect(evidence.tooLong).toMatchObject({ kind: "rejected", code: "bad_args" })
+    expect(evidence.blank).toMatchObject({ kind: "ok", result: { profile_md: "" } })
+    expect(evidence.cleared).toMatchObject({ kind: "ok", result: { profile_md: "" } })
+    expect(evidence.row).toBeUndefined()
+  })
+
   it("inserts one row for a replayed remember with the same origin task", async () => {
     const stub = fresh()
     const count = await runInDurableObject(stub, async (home: Home) => {

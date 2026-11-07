@@ -131,4 +131,25 @@ describe("skills", () => {
     expect(result?.isError).toBe(true)
     expect(result?.text).toContain("research")
   })
+
+  it("reads one stored skill's markdown and rejects an unknown name", async () => {
+    const stub = fresh()
+    const stored = markdown(
+      "research",
+      "Research a topic from primary sources.",
+      "1. Read the primary source.\n2. Quote it.",
+    )
+    await cmd(stub, "skill-put-read-1", "skill.put", { name: "research", markdown: stored })
+
+    const read = await cmd(stub, "skill-read-1", "skill.read", { name: "research" })
+    expect(read.result).toEqual({
+      name: "research",
+      description: "Research a topic from primary sources.",
+      markdown: stored,
+    })
+    expect(await cmd(stub, "skill-read-2", "skill.read", { name: "nope" })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args", message: "no skill nope" },
+    })
+  })
 })

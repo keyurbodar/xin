@@ -16,6 +16,7 @@ const BROKEN = "@lahn/xin-broken"
 const FUTURE = "@lahn/xin-future"
 const FLAKY = "@lahn/xin-flaky"
 const PROVIDED = "xin-plugin-time"
+const PATCHY = "@lahn/xin-patchy"
 const COMMIT = "a".repeat(40)
 const GIT_PATH = "packages/tools"
 const GIT_SPEC = `git+https://github.com/lahn/xin-tools.git#${COMMIT}&path:/${GIT_PATH}`
@@ -89,6 +90,14 @@ const SEEDS: readonly Seed[] = [
       { version: "0.9.0", xin: NOTES_1_0 },
       { version: "1.0.0", xin: NOTES_1_0 },
       { version: "1.1.0", xin: NOTES_1_1 },
+    ],
+  },
+  {
+    name: PATCHY,
+    title: "Patchy",
+    versions: [
+      { version: "1.0.0", xin: FLAKY_1_0 },
+      { version: "1.0.1", xin: FLAKY_1_0 },
     ],
   },
   {
@@ -433,5 +442,129 @@ describe("market", () => {
 
     expect((await op(stub, "market.refresh")).ok).toBe(true)
     expect(indexHits(transport)).toBe(2)
+  })
+
+  it("keeps the update policy in kv, off by default", async () => {
+    const stub = fresh()
+    expect(await configure(stub, {})).toMatchObject({ ok: true })
+
+    expect((await op(stub, "market.policy")).result).toEqual({ autoUpdate: false })
+    expect(await op(stub, "market.policy.set", { autoUpdate: true })).toMatchObject({
+      ok: true,
+      result: { autoUpdate: true },
+    })
+    expect((await op(stub, "market.policy")).result).toEqual({ autoUpdate: true })
+    expect(await op(stub, "market.policy.set", { autoUpdate: "yes" })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+  })
+
+  it("applies patch updates on refresh while auto-update is on, and a minor bump still asks", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    expect(await op(stub, "market.install", { name: PATCHY, version: "1.0.0" })).toMatchObject({ ok: true })
+    expect(await op(stub, "market.install", { name: NOTES, version: "1.0.0" })).toMatchObject({ ok: true })
+
+    expect((await op(stub, "market.refresh")).result).not.toHaveProperty("applied")
+    expect(await op(stub, "market.policy.set", { autoUpdate: true })).toMatchObject({ ok: true })
+    expect((await op(stub, "market.refresh")).result).toMatchObject({
+      applied: [{ application: "applied", package: PATCHY, version: "1.0.1", kind: "bundle" }],
+    })
+    const listed = (await op(stub, "bundle.list")).result
+    const installed = new Map(
+      (Array.isArray(listed) ? listed : []).map(
+        (entry) => [field(entry, "package"), field(field(entry, "source"), "version")] as const,
+      ),
+    )
+    expect(installed.get(PATCHY)).toBe("1.0.1")
+    expect(installed.get(NOTES)).toBe("1.0.0")
+  })
+
+  it("skips an offered version, marks it, and frees it on unskip", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    expect(await op(stub, "market.install", { name: NOTES, version: "1.0.0" })).toMatchObject({ ok: true })
+
+    expect(await op(stub, "market.skip", { name: NOTES })).toMatchObject({
+      ok: true,
+      result: { name: NOTES, version: "1.1.0" },
+    })
+    expect((await op(stub, "market.skipped")).result).toEqual([{ name: NOTES, version: "1.1.0" }])
+    expect(await op(stub, "market.update", { name: NOTES, version: "1.1.0" })).toMatchObject({
+      ok: true,
+      result: { application: "skipped", package: NOTES, version: "1.1.0" },
+    })
+    expect((await op(stub, "market.entry", { name: NOTES })).result).toMatchObject({
+      versions: [
+        { version: "1.1.0", skipped: true },
+        { version: "1.0.0", skipped: false },
+        { version: "0.9.0", skipped: false },
+      ],
+    })
+    expect(entriesOf(await op(stub, "market.search", { query: "notes" }))).toMatchObject([
+      { name: NOTES, skipped: true },
+    ])
+    expect((await op(stub, "bundle.list")).result).toMatchObject([
+      { package: NOTES, source: { kind: "registry", version: "1.0.0" } },
+    ])
+
+    expect(await op(stub, "market.unskip", { name: NOTES })).toMatchObject({ ok: true, result: { name: NOTES } })
+    expect((await op(stub, "market.skipped")).result).toEqual([])
+    expect(await op(stub, "market.update", { name: NOTES, version: "1.1.0" })).toMatchObject({
+      ok: true,
+      result: { application: "applied", version: "1.1.0" },
+    })
+  })
+
+  it("rolls back to the version installed before the current one", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    expect(await op(stub, "market.install", { name: NOTES, version: "1.0.0" })).toMatchObject({ ok: true })
+    expect(await op(stub, "market.update", { name: NOTES, version: "1.1.0" })).toMatchObject({
+      ok: true,
+      result: { application: "applied" },
+    })
+    expect(await installedClock(stub, "market-clock")).toBe(true)
+
+    expect(await op(stub, "market.rollback", { name: NOTES })).toMatchObject({
+      ok: true,
+      result: { application: "applied", package: NOTES, version: "1.0.0", kind: "bundle", rows: [] },
+    })
+    expect((await op(stub, "bundle.list")).result).toMatchObject([
+      { package: NOTES, source: { kind: "registry", version: "1.0.0" } },
+    ])
+    expect(await installedClock(stub, "market-time")).toBe(true)
+    expect(await installedClock(stub, "market-clock")).toBe(false)
+
+    expect((await op(stub, "market.rollback", { name: NOTES })).result).toEqual({
+      application: "failed",
+      package: NOTES,
+      reason: "no earlier version",
+    })
+  })
+
+  it("answers failed when no earlier version is recorded and refuses an unknown package", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    expect(await op(stub, "market.install", { name: FLAKY, version: "1.0.0" })).toMatchObject({ ok: true })
+
+    expect((await op(stub, "market.rollback", { name: FLAKY })).result).toEqual({
+      application: "failed",
+      package: FLAKY,
+      reason: "no earlier version",
+    })
+    expect(await op(stub, "market.rollback", { name: "@lahn/xin-missing" })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args", message: expect.stringContaining("not in any market index") },
+    })
   })
 })

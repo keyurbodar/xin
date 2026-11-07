@@ -5,12 +5,14 @@ import {
   marketDetail,
   offeredVersion,
   rows,
+  skipMarketVersion,
+  unskipMarketVersion,
   updateFromMarket,
   type MarketDetail,
   type MarketSummary,
 } from "../../state/extensions.ts"
 import { ago } from "../../lib/format.ts"
-import { Button, Empty, Failure, MissingOp, Note, Panel, Pending, failureOf } from "./chrome.tsx"
+import { Button, Chip, Empty, Failure, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
 
 export function Updates(): JSX.Element {
@@ -53,7 +55,9 @@ export function Updates(): JSX.Element {
   }
 
   const updateAll = async (): Promise<void> => {
-    for (const entry of available()) await updateOne(entry)
+    for (const entry of available()) {
+      if (!entry.skipped) await updateOne(entry)
+    }
   }
 
   return (
@@ -99,10 +103,8 @@ export function Updates(): JSX.Element {
           fallback={
             <Empty
               title="Everything is current."
-              detail="Updates appear here when an index offers a newer version for this build. Auto-update is not part of this build yet."
-            >
-              <MissingOp op="market.auto-update" detail="Every update needs an explicit press." />
-            </Empty>
+              detail="Updates appear here when an index offers a newer version for this build. With auto-update on, Sources applies patch versions when it refreshes."
+            />
           }
         >
           <Panel>
@@ -147,6 +149,33 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
   const added = (): readonly string[] =>
     (value()?.rows ?? []).filter((row) => !currentRows().includes(row.id)).map((row) => row.id)
 
+  const [working, setWorking] = createSignal(false)
+  const [skipFailure, setSkipFailure] = createSignal<string | undefined>(undefined)
+
+  const skip = async (): Promise<void> => {
+    setWorking(true)
+    setSkipFailure(undefined)
+    try {
+      await skipMarketVersion(props.entry.name, offeredVersion(value())?.version)
+    } catch (failure: unknown) {
+      setSkipFailure(errorMessage(failure))
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const unskip = async (): Promise<void> => {
+    setWorking(true)
+    setSkipFailure(undefined)
+    try {
+      await unskipMarketVersion(props.entry.name)
+    } catch (failure: unknown) {
+      setSkipFailure(errorMessage(failure))
+    } finally {
+      setWorking(false)
+    }
+  }
+
   return (
     <div class="border-b border-line last:border-0">
       <div class="flex items-center gap-3 px-3.5 py-3">
@@ -162,6 +191,9 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
             </Show>
           </span>
         </button>
+        <Show when={props.entry.skipped}>
+          <Chip tone="warn">Skipped</Chip>
+        </Show>
         <span class="font-mono text-[12px] text-accent-text">{version()}</span>
         <Button
           size="sm"
@@ -221,8 +253,21 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
                 </div>
 
                 <div class="flex items-center gap-2">
-                  <Button size="sm" variant="quiet" disabled>Skip this version</Button>
-                  <MissingOp op="market.skip" />
+                  <Show
+                    when={offeredVersion(entry())?.skipped}
+                    fallback={
+                      <Button size="sm" variant="quiet" disabled={working()} onClick={() => void skip()}>
+                        Skip this version
+                      </Button>
+                    }
+                  >
+                    <Button size="sm" variant="quiet" disabled={working()} onClick={() => void unskip()}>
+                      Unskip
+                    </Button>
+                  </Show>
+                  <Show when={skipFailure()}>
+                    {(message) => <Failure message={message()} />}
+                  </Show>
                   <span class="ml-auto" />
                   <Show when={offeredVersion(entry())}>
                     {(version) => (

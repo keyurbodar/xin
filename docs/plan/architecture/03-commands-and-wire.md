@@ -32,16 +32,18 @@ ops: message.send · message.withdraw · conv.configure(model, thinking) · conv
      request.respond · file.put/delete · memory.forget · plugin.enable/configure · credential.set
 reads (owner): history.page(conversationId, before?, limit?) · request.list(limit?, projectId?) · job.list(limit?)
                usage.summary · usage.cap · usage.cap.set(usd?, clear?) · usage.alert · usage.alert.set(usd)
-               notify.prefs · notify.set(waiting?, finished?, failed?, spend?) · notify.quiet · notify.quiet.set(enabled?, start?, end?)
+               notify.prefs · notify.set(waiting?, finished?, failed?, spend?, schedule?) · notify.quiet · notify.quiet.set(enabled?, start?, end?)
                push.list · push.test · owner.read · owner.set(name?, instructions?)
-               session.list · session.close(id?)
+               session.list · session.close(id?) · session.rotate
+               system.logs · skill.read(name) · mcp.tools(name) · memory.profile.write(markdown) · prompt.list/put/delete
+               market.policy · market.policy.set(autoUpdate) · market.refresh · market.skip/unskip/skipped · market.rollback
 ```
 
 Reads take the same path, so the Inbox, the transcript and the Usage pane see exactly the state the agent's tools see. `request.list` returns every open `xin.requests` entry in active projects, newest first and bounded by `limit` (default 50, max 200). `history.page` pages the same entry projection the conversation snapshot carries, taking the snapshot's `before` entry id as an inclusive cursor (the first entry the client is missing) and returning entries oldest first plus `nextBefore` while older entries remain. `usage.summary` reports pi's `pi.usage` ledger as `spend` and `tokens` totals plus `today` and `month` `{spend, tokens}` buckets from `usage_daily`, a `days` array of `{day, spend, tokens}` for the current and previous month, `cap` (the owner's monthly cap in USD, or null) and `alert` (the daily alert in USD), plus `byModel`, `byTool` and `byProject` slices (per-model slices carry `provider`, `modelId`, `input`, `output`, `cacheRead`, `cacheWrite`, `totalTokens`, `cost`; per-project slices carry `id`, `name`, `spend`, `tokens`, summed from each project's coordinator and thread `pi.usage`). The cap is enforced, not just displayed: `message.send` answers `forbidden` while the month's spend is at or above it. Crossing the daily alert, 80% of the cap and the cap itself records one mark each (per day, per month level) and pushes a `spend` notification, which `notify.set` can switch off.
 
 `owner.read` returns the stored `{name, instructions}` (empty strings when unset); `owner.set` trims and stores either field, and the instructions render as the system-prompt section `<owner>` for every conversation.
 
-`session.list` returns one entry per live socket — `{id, since, origin}` — and `session.close` closes the socket with that `id`, or every live socket when the id is omitted, returning `{closed}`. A socket is the only session state; the owner token remains the identity, so rotation (a deployment concern) is the revocation path.
+`session.list` returns one entry per live socket — `{id, since, origin}` — and `session.close` closes the socket with that `id`, or every live socket when the id is omitted, returning `{closed}`. A socket is the only session state; the owner token is the identity, so `session.rotate` is the revocation path: it mints a new `own_`-prefixed token, stores only its SHA-256 in `kv` under `owner.token`, closes every socket, and returns `{token}` for the one moment it is readable. The Worker accepts the deploy token (`OWNER_TOKEN`) or any token whose digest the home matches, asking the home through `POST /v1/auth {token}` (204 or 401) only when the deploy token does not match, so a rotation takes effect on the next request. The deploy token always works; it is the recovery credential.
 
 Receipts store `ok` and deterministic rejections (`unknown_op`, `bad_args`, `forbidden`). A `failed` outcome (the op threw) stores none, so a retry runs it again. The op's effect and its receipt are separate writes, so every op must also be idempotent through its derived key. The same command layer is reachable over HTTP as `POST /v1/cmd {id, op, args?}`, and an omitted `args` means `{}`. Concurrent duplicates inside one object share one in-flight run.
 

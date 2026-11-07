@@ -6,11 +6,13 @@ import { defineOp, type Op } from "../../src/ops.ts"
 import {
   appendNote,
   CURSOR_KEY,
+  deleteKv,
   DUE_KEY,
   dreamerTask,
   ensurePass,
   IDLE_MS,
   type MemoryPorts,
+  PROFILE_KEY,
   readNumber,
   readProfile,
   requestPass,
@@ -20,6 +22,7 @@ import { SCOPE_PATTERN } from "./dreamprompt.ts"
 
 const RECALL_LIMIT = 20
 const LIST_LIMIT = 100
+const PROFILE_LIMIT = 20_000
 const OWNER_RETIREMENT = 0
 
 export type MemoryPlugin = {
@@ -45,7 +48,7 @@ export function create(ports: MemoryPorts): MemoryPlugin {
   return {
     service: memory,
     extension: defineExtension({ name: "memory", tasks: [dreamerTask(ports)] }),
-    ops: [forget(ports), list(ports), profile(ports)],
+    ops: [forget(ports), list(ports), profile(ports), writeProfile(ports)],
     start: async () => {
       const cursor = (await readNumber(ports.db, CURSOR_KEY)) ?? 0
       const newest = await ports.db.get<{ at: number }>(
@@ -123,6 +126,19 @@ function profile(ports: MemoryPorts): Op {
     args: obj({}),
     actors: ["owner"],
     run: async () => ({ profile_md: await readProfile(ports.db) }),
+  })
+}
+
+function writeProfile(ports: MemoryPorts): Op {
+  return defineOp({
+    name: "memory.profile.write",
+    args: obj({ markdown: str({ maxLength: PROFILE_LIMIT }) }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      if (args.markdown.trim() === "") await deleteKv(ports.db, PROFILE_KEY)
+      else await writeKv(ports.db, PROFILE_KEY, args.markdown)
+      return { profile_md: await readProfile(ports.db) }
+    },
   })
 }
 

@@ -1,6 +1,6 @@
-import { createSignal, For, Show, type JSX } from "solid-js"
-import { errorMessage, putSkill, removeSkill, skills } from "../../state/extensions.ts"
-import { Button, Empty, Failure, MissingOp, Note, Pending, failureOf } from "./chrome.tsx"
+import { createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { errorMessage, putSkill, readSkill, removeSkill, skills } from "../../state/extensions.ts"
+import { Button, Empty, Failure, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
 
 export function Skills(): JSX.Element {
@@ -105,9 +105,32 @@ export function Skills(): JSX.Element {
 }
 
 function SkillDetail(props: { name: string; description: string; onRemoved: () => void }): JSX.Element {
+  const [body, { refetch }] = createResource(() => props.name, readSkill)
   const [confirming, setConfirming] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
+  const [editing, setEditing] = createSignal(false)
+  const [draft, setDraft] = createSignal("")
+
+  const startEditing = (): void => {
+    setDraft(body()?.markdown ?? "")
+    setEditing(true)
+  }
+
+  /** A stored copy wins over a package's, so saving the same name is what the mockup calls a fork. */
+  const saveSkill = async (): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      await putSkill(draft())
+      await refetch()
+      setEditing(false)
+    } catch (failure: unknown) {
+      setError(errorMessage(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const remove = async (): Promise<void> => {
     setBusy(true)
@@ -130,13 +153,27 @@ function SkillDetail(props: { name: string; description: string; onRemoved: () =
           <span class="block truncate text-[16px] font-medium text-fg">{props.name}.md</span>
           <span class="block truncate text-[12px] text-fg-3">{props.description}</span>
         </div>
+        <Show when={editing()}>
+          <Button size="sm" variant="primary" disabled={busy() || draft().trim() === ""} onClick={() => void saveSkill()}>
+            {busy() ? "Saving" : "Save"}
+          </Button>
+          <Button size="sm" variant="quiet" onClick={() => setEditing(false)}>Cancel</Button>
+        </Show>
+        <Show when={!editing()}>
+          <Button size="sm" variant="quiet" onClick={startEditing}>
+            <Glyph name="pencil" size={14} />
+            Edit
+          </Button>
+        </Show>
         <Show
           when={confirming()}
           fallback={
-            <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>
-              <Glyph name="trash" size={14} />
-              Delete
-            </Button>
+            <Show when={!editing()}>
+              <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>
+                <Glyph name="trash" size={14} />
+                Delete
+              </Button>
+            </Show>
           }
         >
           <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
@@ -148,10 +185,40 @@ function SkillDetail(props: { name: string; description: string; onRemoved: () =
           <Show when={error()}>
             {(message) => <Failure message={message()} />}
           </Show>
-          <MissingOp op="skill.read" detail="skill.list returns the name and description, not the markdown body." />
+          <Show when={body.error}>
+            {(failure) => <Failure message={errorMessage(failure())} />}
+          </Show>
+          <Show
+            when={editing()}
+            fallback={
+              <Show when={body()}>
+                {(skill) => (
+                  <Panel>
+                    <pre class="max-h-[420px] overflow-auto px-3.5 py-3 font-mono text-[11.5px] leading-relaxed text-fg-2">
+                      {skill().markdown}
+                    </pre>
+                  </Panel>
+                )}
+              </Show>
+            }
+          >
+            <Panel>
+              <textarea
+                value={draft()}
+                onInput={(event) => setDraft(event.currentTarget.value)}
+                rows={16}
+                spellcheck={false}
+                aria-label="Skill markdown"
+                class="w-full resize-y bg-transparent px-3.5 py-3 font-mono text-[11.5px] leading-relaxed text-fg outline-none"
+              />
+            </Panel>
+          </Show>
+          <Show when={body.loading}>
+            <Pending label="Reading the skill" />
+          </Show>
           <Note>
-            Edit the markdown through skill.put from a thread, or delete it here. Package skills are read-only; a fork is an
-            owner copy with the same name.
+            The markdown above is what the model receives, header first: `name` and `description`, then the body. A skill a
+            package contributes stays read-only; saving an owner copy with the same name overrides it.
           </Note>
         </div>
       </div>

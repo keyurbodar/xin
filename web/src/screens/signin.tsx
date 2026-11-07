@@ -1,4 +1,4 @@
-import { createSignal, type JSX } from "solid-js"
+import { createSignal, onMount, type JSX } from "solid-js"
 import { setToken, verifyToken } from "../lib/auth.ts"
 import { OnboardingTopBar, type RailItem } from "../components/onboarding/chrome.tsx"
 
@@ -14,6 +14,15 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [busy, setBusy] = createSignal(false)
   const [revealed, setRevealed] = createSignal(false)
+
+  /** The QR code links here with the token attached; it fills the field once and leaves the address bar clean. */
+  onMount(() => {
+    const query = window.location.hash.split("?")[1]
+    const offered = new URLSearchParams(query ?? "").get("token")
+    if (offered === null || offered === "") return
+    setValue(offered)
+    history.replaceState(null, "", `${window.location.pathname}#/signin`)
+  })
 
   const submit = async (event: Event): Promise<void> => {
     event.preventDefault()
@@ -70,8 +79,7 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
               </button>
             </div>
             <span class="text-[12px] leading-[1.5] text-fg-3">
-              The token stays in this browser. Rotate it by changing <span class="font-mono text-[11px] text-fg-2">OWNER_TOKEN</span> in
-              the deployment.
+              The token stays in this browser. Rotate it any time under Settings, Profile + token.
             </span>
           </div>
 

@@ -9,8 +9,8 @@
 - `conv.stop {conv?}`: aborts the running turn.
 - Socket `{t:"typing", conv, on:true}`: holds the batch, never past first+8 s.
 - Crash safety: on open, due pending rows fire and claimed rows resubmit with the same requestId.
-- `notify.prefs` / `notify.set {waiting?, finished?, failed?, spend?}`: which push kinds are delivered; `announce` skips a disabled kind before it reaches `push.notify`. `spend` covers the daily and cap alerts from the models plugin.
-- `notify.quiet` / `notify.quiet.set {enabled?, start?, end?}`: minutes since UTC midnight; while the window is on, every kind but `waiting` waits.
+- `notify.prefs` / `notify.set {waiting?, finished?, failed?, spend?, schedule?}`: which push kinds are delivered (`schedule` is off by default); `announce` skips a disabled kind before it reaches `push.notify`. `spend` covers the daily and cap alerts from the models plugin.
+- `notify.quiet` / `notify.quiet.set {enabled?, start?, end?}`: minutes since UTC midnight. While the window is on, a report waits until it ends; a question waits until it has been paused two hours or the window ends, whichever comes first. Held notifications live in kv `notify.held` and the clock wakes for the earliest one.
 - `push.list` / `push.unsubscribe {endpoint}`: the subscribed browsers as `[{endpoint, origin}]`, and removal of one.
 - `owner.read` / `owner.set {name?, instructions?}`: the owner's name and the workspace instructions, rendered as the `<owner>` system section for every conversation.
 - `session.list` / `session.close {id?}`: live sockets as `[{id, since, origin}]`; close one or all, answering `{closed}`.
@@ -45,6 +45,8 @@ $S call POST /v1/cmd '{"id":"att-1","op":"message.send","args":{"text":"read the
 Proven live: the owner bubble shows the chip and the model answered with the file's first line.
 
 ## Gotchas
+
+- A real push subscription cannot be made on this machine: unbranded Chromium has no FCM keys, so `pushManager.subscribe` answers NotAllowedError even with notifications granted. Prove encryption and VAPID in the gate; prove the live path with `push.test` against a stored endpoint. Evidence: `.verify/evidence/P14-push-limit.txt`.
 
 - Without a configured model the batch is submitted and nothing answers. The "pick a model" error bubble is M3/M5 work.
 

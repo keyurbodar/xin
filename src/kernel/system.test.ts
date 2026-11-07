@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { runInDurableObject } from "cloudflare:test"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { cmd, connect, field, fresh, owner } from "../../test/support.ts"
 
 const num = (value: unknown, key: string): number => {
@@ -30,5 +31,50 @@ describe("system.metrics", () => {
     } finally {
       socket.close()
     }
+  })
+})
+
+const texts = (result: unknown): readonly unknown[] => {
+  const entries = field(result, "entries")
+  if (!Array.isArray(entries)) throw new Error(`entries is not an array: ${JSON.stringify(entries)}`)
+  return entries.map((entry) => field(entry, "text"))
+}
+
+describe("system.logs", () => {
+  const consoleTarget = console
+  let savedWarn = consoleTarget.warn
+  let savedError = consoleTarget.error
+
+  beforeEach(() => {
+    savedWarn = consoleTarget.warn
+    savedError = consoleTarget.error
+  })
+
+  afterEach(() => {
+    consoleTarget.warn = savedWarn
+    consoleTarget.error = savedError
+  })
+
+  it("answers a warning written inside the Home", async () => {
+    const stub = fresh()
+    await cmd(stub, "logs-boot", "system.version")
+    await runInDurableObject(stub, () => {
+      console.warn("probe from the test")
+    })
+    const ack = await cmd(stub, "logs-probe", "system.logs")
+    expect(ack).toMatchObject({ ok: true })
+    expect(texts(ack.result)).toContain("probe from the test")
+  })
+
+  it("lists the newest warning last", async () => {
+    const stub = fresh()
+    await cmd(stub, "logs-order-boot", "system.version")
+    await runInDurableObject(stub, () => {
+      console.warn("first probe")
+      console.warn("second probe")
+    })
+    const listed = texts((await cmd(stub, "logs-order", "system.logs")).result)
+    expect(listed.indexOf("first probe")).toBeGreaterThanOrEqual(0)
+    expect(listed.indexOf("first probe")).toBeLessThan(listed.indexOf("second probe"))
   })
 })

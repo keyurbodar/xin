@@ -4,7 +4,7 @@ import { createMarket, MIGRATIONS, type MarketConfig } from "./market.ts"
 export { Config, type MarketConfig } from "./market.ts"
 
 export const name = "market"
-export const inject = ["db", "packages", "ops"]
+export const inject = ["host", "db", "packages", "ops"]
 
 export async function apply(ctx: Context, config: MarketConfig): Promise<void> {
   await ctx.db.applySqliteMigrations("market", MIGRATIONS)
@@ -12,6 +12,7 @@ export async function apply(ctx: Context, config: MarketConfig): Promise<void> {
     config,
     fetch: (input, init) => globalThis.fetch(input, init),
     db: ctx.db,
+    kv: ctx.host.state.storage.kv,
     packages: {
       version: ctx.packages.version,
       list: () => ctx.packages.list(),

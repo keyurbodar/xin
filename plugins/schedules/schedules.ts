@@ -14,6 +14,7 @@ import {
 } from "@earendil-works/pi-durable"
 import { bool, compile, int, lit, map, obj, opt, type Static, str, union } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
+import type { Notification, PushService } from "../../src/contracts/push.ts"
 import {
   DEFAULT_LIST_LIMIT,
   editRequest,
@@ -116,6 +117,7 @@ export const SchedulesDoc = defineDoc<SchedulesState>({
 export type SchedulesPort = {
   readonly harness: Harness
   readonly intake: Pick<IntakeService, "enqueue">
+  readonly notify: Pick<PushService, "notify" | "prefs">
   readonly arm: () => Promise<void>
 }
 
@@ -258,6 +260,7 @@ export async function sendDue(
     clientTs: due.latest,
   })
   await port.arm()
+  await notifyDue(port, record, due.latest)
   return {
     ...delivered.record,
     cursor: { last: due.latest, index: due.index + 1 },
@@ -267,6 +270,29 @@ export async function sendDue(
       targetSessionId: delivered.target,
     },
   }
+}
+
+const NOTIFY_BODY = 120
+
+/** The run is already queued, so its push is best effort: a push failure must never fail the run. */
+async function notifyDue(port: SchedulesPort, record: StoredSchedule, slot: number): Promise<void> {
+  try {
+    if (!(await port.notify.prefs()).schedule) return
+    const notification: Notification = {
+      threadTitle: record.title,
+      title: "A schedule ran",
+      body: clipText(record.prompt, NOTIFY_BODY),
+      tag: `schedule:${record.id}:${slot}`,
+      kind: "schedule",
+    }
+    await port.notify.notify(notification)
+  } catch (failure) {
+    console.warn("schedules: notification failed", failure)
+  }
+}
+
+function clipText(text: string, max: number): string {
+  return text.length <= max ? text : text.slice(0, max).trimEnd()
 }
 
 type Delivery = { readonly target: ConversationId; readonly record: StoredSchedule }

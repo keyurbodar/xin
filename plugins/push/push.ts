@@ -1,5 +1,5 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
-import { bool, int, obj, opt, str } from "@earendil-works/pi-schema"
+import { bool, compile, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema"
 import {
   DEFAULT_PREFS,
   DEFAULT_QUIET,
@@ -9,6 +9,7 @@ import {
   type QuietHours,
 } from "../../src/contracts/push.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
+import { serial } from "../../src/serial.ts"
 import {
   encryptPayload,
   generateVapid,
@@ -29,6 +30,9 @@ import {
 const VAPID_KEY = "vapid"
 const PREFS_KEY = "notify.prefs"
 const QUIET_KEY = "notify.quiet"
+const HELD_KEY = "notify.held"
+const HELD_LIMIT = 20
+const WAITING_GRACE_MS = 2 * 60 * 60 * 1000
 const TTL_S = 24 * 60 * 60
 const URGENCY = "high"
 const PUSH_HEADERS = { "content-encoding": "aes128gcm", "content-type": "application/octet-stream" }
@@ -37,7 +41,24 @@ const encoder = new TextEncoder()
 export type Fetcher = (request: Request) => Promise<Response>
 
 export type { Notification }
-export type Notifier = PushService
+export type Notifier = PushService & {
+  /** The next moment a held notification is due, so the clock can wake for it. */
+  due(): Promise<number | undefined>
+  /** Delivers every held notification whose moment has come; answers how many were sent. */
+  flush(at: number): Promise<number>
+}
+
+type Held = { readonly releaseAt: number; readonly notification: Notification }
+
+const notificationCheck = compile(
+  obj({
+    threadTitle: str(),
+    title: str(),
+    body: opt(str()),
+    tag: str(),
+    kind: oneOf(["waiting", "finished", "failed", "spend", "schedule"] as const),
+  }),
+)
 
 export type PushPort = {
   readonly state: Pick<DurableObjectState, "getWebSockets">
@@ -54,6 +75,7 @@ const send: Fetcher = (request) => fetch(request)
 
 export function notifier(port: PushPort, fetcher: Fetcher = send, now: () => number = Date.now): Notifier {
   let signer: Promise<VapidSigner> | undefined
+  const serialized = serial()
   const signing = (): Promise<VapidSigner> => {
     signer ??= loadVapid(port.db)
       .then(vapidSigner)
@@ -63,18 +85,96 @@ export function notifier(port: PushPort, fetcher: Fetcher = send, now: () => num
       })
     return signer
   }
+  const sendNow = async (notification: Notification): Promise<number> =>
+    deliverAll(port.db, fetcher, signing, notification)
   return {
     prefs: () => readPrefs(port.db),
-    notify: async (notification) => {
-      if (port.state.getWebSockets().length > 0) return
-      try {
-        if (notification.kind !== "waiting" && inQuietHours(await readQuiet(port.db), now())) return
-        await deliverAll(port.db, fetcher, signing, notification)
-      } catch (failure) {
-        console.warn("push: delivery pass failed", failure)
-      }
+    notify: (notification) =>
+      serialized(async () => {
+        if (port.state.getWebSockets().length > 0) return
+        try {
+          const quiet = await readQuiet(port.db)
+          const at = now()
+          if (quiet.enabled && inQuietHours(quiet, at)) {
+            await hold(port.db, notification, releaseOf(quiet, at, notification.kind))
+            return
+          }
+          await sendNow(notification)
+        } catch (failure) {
+          console.warn("push: delivery pass failed", failure)
+        }
+      }),
+    due: async () => {
+      const held = await readHeld(port.db)
+      return held.length === 0 ? undefined : Math.min(...held.map((item) => item.releaseAt))
     },
+    flush: (at) =>
+      serialized(async () => {
+        const held = await readHeld(port.db)
+        const due = held.filter((item) => item.releaseAt <= at)
+        if (due.length === 0) return 0
+        await writeHeld(
+          port.db,
+          held.filter((item) => item.releaseAt > at),
+        )
+        if (port.state.getWebSockets().length > 0) return 0
+        let sent = 0
+        for (const item of due) {
+          try {
+            sent += await sendNow(item.notification)
+          } catch (failure) {
+            console.warn("push: held delivery failed", failure)
+          }
+        }
+        return sent
+      }),
   }
+}
+
+/** When a held notification is due: a question after two hours paused, everything else when quiet ends. */
+function releaseOf(quiet: QuietHours, at: number, kind: Notification["kind"]): number {
+  const end = quietEnd(quiet, at)
+  return kind === "waiting" ? Math.min(at + WAITING_GRACE_MS, end) : end
+}
+
+/** The next moment the window is over: today's end when it is still ahead, otherwise tomorrow's. */
+function quietEnd(quiet: QuietHours, at: number): number {
+  const midnight = Math.floor(at / 86_400_000) * 86_400_000
+  const endToday = midnight + quiet.end * 60_000
+  return endToday > at ? endToday : endToday + 86_400_000
+}
+
+function hold(db: SqliteDatabase, notification: Notification, releaseAt: number): Promise<void> {
+  return readHeld(db).then((held) => writeHeld(db, [...held, { releaseAt, notification }].slice(-HELD_LIMIT)))
+}
+
+function readHeld(db: SqliteDatabase): Promise<Held[]> {
+  return db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", HELD_KEY).then((row) => {
+    if (row === undefined) return []
+    const parsed: unknown = parseJson(row.value)
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((item): Held[] => {
+      if (typeof item !== "object" || item === null) return []
+      const record = item as Record<string, unknown>
+      const releaseAt = record.releaseAt
+      const notification = record.notification
+      if (typeof releaseAt !== "number") return []
+      if (!notificationCheck.check(notification)) return []
+      return [{ releaseAt, notification }]
+    })
+  })
+}
+
+async function writeHeld(db: SqliteDatabase, held: readonly Held[]): Promise<void> {
+  if (held.length === 0) {
+    await db.run("DELETE FROM kv WHERE key = ?", HELD_KEY)
+    return
+  }
+  await db.run(
+    "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    HELD_KEY,
+    JSON.stringify(held),
+  )
 }
 
 export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly Op[] {
@@ -93,7 +193,13 @@ export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly O
     }),
     defineOp({
       name: "notify.set",
-      args: obj({ waiting: opt(bool()), finished: opt(bool()), failed: opt(bool()), spend: opt(bool()) }),
+      args: obj({
+        waiting: opt(bool()),
+        finished: opt(bool()),
+        failed: opt(bool()),
+        spend: opt(bool()),
+        schedule: opt(bool()),
+      }),
       actors: ["owner"],
       run: async (_api, args) => {
         const current = await readPrefs(db)
@@ -102,6 +208,7 @@ export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly O
           finished: args.finished ?? current.finished,
           failed: args.failed ?? current.failed,
           spend: args.spend ?? current.spend,
+          schedule: args.schedule ?? current.schedule,
         }
         await db.run(
           "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
@@ -202,6 +309,7 @@ export async function readPrefs(db: SqliteDatabase): Promise<NotifyPrefs> {
     finished: record.finished === false ? false : DEFAULT_PREFS.finished,
     failed: record.failed === false ? false : DEFAULT_PREFS.failed,
     spend: record.spend === false ? false : DEFAULT_PREFS.spend,
+    schedule: record.schedule === true,
   }
 }
 

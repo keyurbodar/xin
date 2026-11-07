@@ -2,6 +2,7 @@ import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { bytes, count } from "../../lib/format.ts"
 import {
   errorMessage,
+  systemLogs,
   systemMetrics,
   systemRestart,
   systemUpdate,
@@ -9,7 +10,7 @@ import {
   type SystemMetrics,
   type SystemVersion,
 } from "../../state/settings.ts"
-import { Button, Chip, Failure, MissingOp, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
+import { Button, Chip, Failure, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { Group, Row } from "./parts.tsx"
 
@@ -34,6 +35,33 @@ export function System(): JSX.Element {
     void systemVersion.reload()
     void systemMetrics.reload()
   })
+
+  /** Writes a plain text file the browser saves; an empty ring still makes a file that says so. */
+  const downloadLogs = async (): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    setNote(undefined)
+    try {
+      const entries = await systemLogs()
+      const body = entries
+        .map((entry) => `${new Date(entry.at).toISOString()} ${entry.level.toUpperCase()} ${entry.text}`)
+        .join("\n")
+      const blob = new Blob([body === "" ? "No warnings or errors were logged since this home woke.\n" : `${body}\n`], {
+        type: "text/plain",
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `xin-logs-${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.txt`
+      link.click()
+      URL.revokeObjectURL(url)
+      setNote(entries.length === 0 ? "Nothing was logged." : `${count(entries.length, "line")} downloaded.`)
+    } catch (failure: unknown) {
+      setError(errorMessage(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const value = (): SystemVersion | undefined => {
     const state = systemVersion.state()
@@ -250,16 +278,17 @@ export function System(): JSX.Element {
                 </div>
               </Row>
               <div class="pt-1">
-                <div class="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="quiet"
-                    disabled
-                  >
+                <div class="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void downloadLogs()}>
                     <Glyph name="download" size={14} />
-                    Download logs
+                    {busy() ? "Reading logs" : "Download logs"}
                   </Button>
-                  <MissingOp op="system.logs" />
+                  <span class="text-[11.5px] text-fg-3">
+                    Every warning and error this home logged since it woke, newest last.
+                  </span>
+                  <Show when={note()}>
+                    {(message) => <span class="text-[11.5px] text-fg-3">{message()}</span>}
+                  </Show>
                 </div>
               </div>
             </Group>

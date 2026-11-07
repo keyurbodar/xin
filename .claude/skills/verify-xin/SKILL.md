@@ -57,4 +57,5 @@ Save each proof under `.verify/evidence/<milestone>-<feature>.txt`: the exact co
 ## Helpers
 
 - `xin.sh`: launch, doctor, call, ws, stop (shown above).
+- Phone-width client shots: the current agent-browser build has no `viewport` command. Close the daemon and relaunch at the window size you want, then sign in again because the browser profile is fresh: `agent-browser close --all && agent-browser --args "--window-size=390,844" open "http://localhost:5174/#/"`. A plain `screenshot` after a failed `viewport` call silently writes a desktop image under the mobile name, so check the image before citing it.
 - `ws.ts`: the socket client behind `xin.sh ws` (Bun's WebSocket). The env overrides are `XIN_PORT`, `XIN_RUN` and `XIN_TOKEN`.
