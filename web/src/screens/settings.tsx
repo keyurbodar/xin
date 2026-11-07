@@ -62,19 +62,19 @@ export function SettingsScreen(): JSX.Element {
   const tab = (): Tab => tabOf(route().parts[1])
 
   return (
-    <div class="flex min-h-0 flex-1 overflow-hidden">
-      <nav class="flex w-[232px] shrink-0 flex-col gap-px overflow-y-auto border-r border-line bg-surface px-2 py-3.5">
-        <span class="label px-2.5 pb-1.5 pt-1">Settings</span>
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
+      <nav class="flex w-full shrink-0 items-center gap-1 overflow-x-auto border-b border-line bg-surface px-2 py-2 sm:w-[232px] sm:flex-col sm:items-stretch sm:gap-px sm:overflow-y-auto sm:border-b-0 sm:border-r sm:px-2 sm:py-3.5">
+        <span class="label hidden px-2.5 pb-1.5 pt-1 sm:inline">Settings</span>
         <For each={GROUPS}>
           {(group) => (
             <>
-              <span class="label px-2.5 pb-1 pt-3">{group.title}</span>
+              <span class="label hidden px-2.5 pb-1 pt-3 sm:inline">{group.title}</span>
               <For each={group.entries}>
                 {(entry) => (
                   <button
                     type="button"
                     onClick={() => navigate(`/settings/${entry.id}`)}
-                    class="flex h-8 items-center gap-2.5 rounded-[2px] px-2.5 text-[13px] transition-none"
+                    class="flex h-8 shrink-0 items-center gap-2 rounded-[2px] px-2.5 text-[13px] whitespace-nowrap transition-none"
                     classList={{
                       "bg-selected text-fg": tab() === entry.id,
                       "text-fg-2 hover:bg-hover": tab() !== entry.id,
