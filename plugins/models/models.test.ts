@@ -45,11 +45,22 @@ type Slice = {
   readonly totalTokens: number
   readonly cost: number
 }
+type Dated = { readonly spend: number; readonly tokens: number }
 type Summary = {
   readonly spend: number
   readonly tokens: number
+  readonly today: Dated
+  readonly month: Dated
   readonly byModel: readonly Slice[]
   readonly byTool: readonly Slice[]
+}
+
+function datedOf(value: unknown): Dated {
+  if (typeof value !== "object" || value === null) throw new Error("no dated usage")
+  const spend = Reflect.get(value, "spend")
+  const tokens = Reflect.get(value, "tokens")
+  if (typeof spend !== "number" || typeof tokens !== "number") throw new Error("bad dated usage")
+  return { spend, tokens }
 }
 
 function sliceOf(value: unknown): Slice {
@@ -79,6 +90,8 @@ function summaryOf(value: unknown): Summary {
   return {
     spend,
     tokens,
+    today: datedOf(Reflect.get(value, "today")),
+    month: datedOf(Reflect.get(value, "month")),
     byModel: Array.isArray(byModel) ? byModel.map(sliceOf) : [],
     byTool: Array.isArray(byTool) ? byTool.map(sliceOf) : [],
   }
@@ -160,7 +173,70 @@ describe("models", () => {
     expect(summary.byTool).toEqual([])
     expect(summary.tokens).toBe(model?.totalTokens)
     expect(summary.spend).toBe(0)
+    expect(summary.today).toEqual({ spend: 0, tokens: summary.tokens })
+    expect(summary.month).toEqual({ spend: 0, tokens: summary.tokens })
+    const day = new Date().toISOString().slice(0, 10)
+    const rows = await runInDurableObject(stub, (home: Home) =>
+      home.db.all<{ day: string; spend: number; tokens: number }>("SELECT day, spend, tokens FROM usage_daily"),
+    )
+    expect(rows).toEqual([{ day, spend: summary.spend, tokens: summary.tokens }])
   })
+
+  it("counts each token once however often the counter runs", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["one answer"])
+      await home.chooseModel(FAUX_MODEL)
+      await home.submit("spend one", "dated-1")
+      await home.harness.waitForIdle(context)
+    })
+    const first = summaryOf((await call(stub, "dated-sum-1", "usage.summary", {})).result)
+    const again = summaryOf((await call(stub, "dated-sum-2", "usage.summary", {})).result)
+    expect(again.today).toEqual(first.today)
+
+    const day = new Date().toISOString().slice(0, 10)
+    const rows = await runInDurableObject(stub, (home: Home) =>
+      home.db.all<{ day: string; spend: number; tokens: number }>("SELECT day, spend, tokens FROM usage_daily"),
+    )
+    expect(rows).toEqual([{ day, spend: 0, tokens: first.tokens }])
+
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["another answer"])
+      await home.submit("spend two", "dated-2")
+      await home.harness.waitForIdle(context)
+    })
+    const later = summaryOf((await call(stub, "dated-sum-3", "usage.summary", {})).result)
+    expect(later.today.tokens).toBe(later.tokens)
+    expect(later.today.tokens).toBeGreaterThan(first.today.tokens)
+    expect(later.month.tokens).toBe(later.tokens)
+  }, 30_000)
+
+  it("seeds a home that predates the counter instead of booking its history", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["one answer"])
+      await home.chooseModel(FAUX_MODEL)
+      await home.submit("before the counter", "seed-1")
+      await home.harness.waitForIdle(context)
+      await home.db.run("DELETE FROM kv WHERE key = 'usage.total'")
+    })
+    const seeded = summaryOf((await call(stub, "seed-sum-1", "usage.summary", {})).result)
+    expect(seeded.tokens).toBeGreaterThan(0)
+    expect(seeded.today.tokens).toBe(0)
+    const rows = await runInDurableObject(stub, (home: Home) =>
+      home.db.all<{ day: string }>("SELECT day FROM usage_daily"),
+    )
+    expect(rows).toEqual([])
+
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["another answer"])
+      await home.submit("after the counter", "seed-2")
+      await home.harness.waitForIdle(context)
+    })
+    const later = summaryOf((await call(stub, "seed-sum-2", "usage.summary", {})).result)
+    expect(later.today.tokens).toBeGreaterThan(0)
+    expect(later.today.tokens).toBeLessThan(later.tokens)
+  }, 30_000)
 
   it("stores a credential sealed and lists its provider", async () => {
     const key = "sk-test-not-a-real-key"

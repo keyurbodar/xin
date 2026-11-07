@@ -1,7 +1,7 @@
 import { applyImmutable, assertValidOp, type Op } from "@earendil-works/chord/delta"
 import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js"
 import type { Streams } from "../lib/api.ts"
-import { numOf, recordOf, strOf, stringsOf } from "../lib/parse.ts"
+import { listOf, numOf, recordOf, strOf, stringsOf } from "../lib/parse.ts"
 
 /** The watch's ops are decoded already, but they still crossed a socket: validate before applying. */
 function parseOps(events: readonly unknown[]): readonly Op[] {
@@ -44,10 +44,18 @@ export type Snapshot = {
 
 export type BatchKind = "user" | "report" | "question" | "job"
 
+export type Attachment = {
+  readonly path: string
+  readonly name: string
+  readonly type: string
+  readonly size: number | undefined
+}
+
 export type BatchRow = {
   readonly id: number | undefined
   readonly kind: BatchKind
   readonly text: string
+  readonly attachments: readonly Attachment[]
   readonly threadId: string
   readonly title: string
   readonly status: string
@@ -200,6 +208,17 @@ export function delegatedThreads(entries: readonly EntryView[]): ReadonlyMap<str
   return links
 }
 
+export function parseAttachments(value: unknown): readonly Attachment[] {
+  return listOf(value).flatMap((entry) => {
+    const raw = recordOf(entry)
+    const path = strOf(raw?.path)
+    const name = strOf(raw?.name)
+    const type = strOf(raw?.type)
+    if (path === undefined || name === undefined || type === undefined) return []
+    return [{ path, name, type, size: numOf(raw?.size) }]
+  })
+}
+
 export function entryBatchRows(entry: EntryView): readonly BatchRow[] {
   if (entry.kind !== "xin.batch" || !Array.isArray(entry.data)) return []
   const rows: BatchRow[] = []
@@ -213,6 +232,7 @@ export function entryBatchRows(entry: EntryView): readonly BatchRow[] {
       id: numOf(raw.id),
       kind,
       text: strOf(body?.text) ?? "",
+      attachments: parseAttachments(body?.attachments),
       threadId: strOf(body?.threadId) ?? "",
       title: strOf(body?.title) ?? "",
       status: strOf(body?.status) ?? "",

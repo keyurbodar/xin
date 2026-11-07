@@ -1,10 +1,16 @@
-import { createSignal, Show, type JSX } from "solid-js"
+import { createResource, createSignal, Show, type JSX } from "solid-js"
+import { cmd } from "../../lib/api.ts"
 import { setToken, token } from "../../lib/auth.ts"
+import { Markdown } from "../chat/markdown.tsx"
+import { errorMessage } from "../../state/extensions.ts"
 import { Button, Chip, MissingOp, Note, Panel } from "../extensions/chrome.tsx"
+import { Failure } from "../ui/state.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { Group, Row } from "./parts.tsx"
 
 export function Profile(): JSX.Element {
+  const [profile, { refetch }] = createResource(() => cmd<{ readonly profile_md: string }>("memory.profile", {}))
+  const written = (): string => (profile.latest?.profile_md ?? "").trim()
   const [replacing, setReplacing] = createSignal(false)
   const signedIn = (): boolean => token() !== ""
 
@@ -22,9 +28,37 @@ export function Profile(): JSX.Element {
           <span class="block text-[12px] text-fg-3">The only account this home has</span>
         </div>
         <div class="ml-auto">
-          <MissingOp op="owner.profile" detail="No name, avatar or profile record is stored." />
+          <MissingOp op="owner.name" detail="No name or avatar is stored; the home shows Owner." />
         </div>
       </div>
+
+      <Group title="What Xin knows about you" detail="Written by the dreamer from your conversations">
+        <Show when={profile.error}>
+          {(error) => (
+            <Failure message={errorMessage(error())} onRetry={() => void refetch()} />
+          )}
+        </Show>
+        <Show
+          when={written() !== ""}
+          fallback={
+            <Panel>
+              <p class="px-3.5 py-3 text-[12.5px] text-fg-3">
+                Nothing yet. The dreamer writes durable facts about you here once a conversation has given it something to
+                keep.
+              </p>
+            </Panel>
+          }
+        >
+          <Panel>
+            <div class="px-3.5 py-3">
+              <Markdown small text={written()} />
+            </div>
+          </Panel>
+        </Show>
+        <div class="pt-2">
+          <MissingOp op="owner.profile.write" detail="The profile is derived, not typed: no field here edits it." />
+        </div>
+      </Group>
 
       <Group title="Owner token">
         <Row title="Owner token" detail="Signs you in on a new device; anyone with it has full access">

@@ -107,6 +107,12 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
       const object = await deps.env.FILES.get(row.r2_key)
       return object === null ? undefined : object.text()
     },
+    readBytes: async (path) => {
+      const row = await index.row(rootedPath(path))
+      if (row === undefined) return undefined
+      const object = await deps.env.FILES.get(row.r2_key)
+      return object === null ? undefined : new Uint8Array(await object.arrayBuffer())
+    },
     stat: async (path) => {
       const row = await index.row(rootedPath(path))
       return row === undefined ? undefined : entryOf(row)

@@ -1,6 +1,11 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
-import { obj, str } from "@earendil-works/pi-schema"
-import type { Notification, PushService } from "../../src/contracts/push.ts"
+import { bool, obj, opt, str } from "@earendil-works/pi-schema"
+import {
+  DEFAULT_PREFS,
+  type Notification,
+  type NotifyPrefs,
+  type PushService,
+} from "../../src/contracts/push.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
   encryptPayload,
@@ -20,6 +25,7 @@ import {
 } from "./webpush.ts"
 
 const VAPID_KEY = "vapid"
+const PREFS_KEY = "notify.prefs"
 const TTL_S = 24 * 60 * 60
 const URGENCY = "high"
 const PUSH_HEADERS = { "content-encoding": "aes128gcm", "content-type": "application/octet-stream" }
@@ -55,6 +61,7 @@ export function notifier(port: PushPort, fetcher: Fetcher = send): Notifier {
     return signer
   }
   return {
+    prefs: () => readPrefs(port.db),
     notify: async (notification) => {
       if (port.state.getWebSockets().length > 0) return
       try {
@@ -73,6 +80,31 @@ export function pushOps(db: SqliteDatabase): readonly Op[] {
       args: obj({}),
       actors: ["owner"],
       run: async () => ({ applicationServerKey: vapidPublicKey(await loadVapid(db)) }),
+    }),
+    defineOp({
+      name: "notify.prefs",
+      args: obj({}),
+      actors: ["owner"],
+      run: async () => readPrefs(db),
+    }),
+    defineOp({
+      name: "notify.set",
+      args: obj({ waiting: opt(bool()), finished: opt(bool()), failed: opt(bool()) }),
+      actors: ["owner"],
+      run: async (_api, args) => {
+        const current = await readPrefs(db)
+        const next: NotifyPrefs = {
+          waiting: args.waiting ?? current.waiting,
+          finished: args.finished ?? current.finished,
+          failed: args.failed ?? current.failed,
+        }
+        await db.run(
+          "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+          PREFS_KEY,
+          JSON.stringify(next),
+        )
+        return next
+      },
     }),
     defineOp({
       name: "push.subscribe",
@@ -103,6 +135,24 @@ export function pushOps(db: SqliteDatabase): readonly Op[] {
       },
     }),
   ]
+}
+
+export async function readPrefs(db: SqliteDatabase): Promise<NotifyPrefs> {
+  const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", PREFS_KEY)
+  if (row === undefined) return DEFAULT_PREFS
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(row.value)
+  } catch {
+    return DEFAULT_PREFS
+  }
+  if (typeof parsed !== "object" || parsed === null) return DEFAULT_PREFS
+  const record = parsed as Record<string, unknown>
+  return {
+    waiting: record.waiting === false ? false : DEFAULT_PREFS.waiting,
+    finished: record.finished === false ? false : DEFAULT_PREFS.finished,
+    failed: record.failed === false ? false : DEFAULT_PREFS.failed,
+  }
 }
 
 async function deliverAll(

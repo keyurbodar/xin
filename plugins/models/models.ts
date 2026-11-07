@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { JsonValue } from "@earendil-works/chord"
-import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
+import type { SqliteDatabase, SqliteExecutor } from "@earendil-works/chord/sqlite"
 import {
   createModels,
   createProvider,
@@ -64,6 +64,87 @@ const bucketOf = (usage: UsageState["models"][string]): UsageBucket => ({
   totalTokens: usage.totalTokens,
   cost: usage.cost.total,
 })
+
+const USAGE_TOTAL = "usage.total"
+
+type Total = { readonly spend: number; readonly tokens: number }
+
+const dayOf = (now: number): string => new Date(now).toISOString().slice(0, 10)
+
+function usageRecorder(db: SqliteDatabase, harness: Harness): () => Promise<UsageState> {
+  let queue: Promise<UsageState> = Promise.resolve({ models: {}, tools: {} })
+  return () => {
+    const run = queue.then(async () => {
+      const ledger = await harness.usage(BACKGROUND_CONTEXT)
+      const now = ledgerTotal(ledger)
+      await db.transaction(async (tx) => {
+        const stored = await storedTotal(tx)
+        if (stored !== undefined) {
+          const spend = now.spend - stored.spend
+          const tokens = now.tokens - stored.tokens
+          if (spend > 0 || tokens > 0)
+            await tx.run(
+              "INSERT INTO usage_daily (day, spend, tokens) VALUES (?, ?, ?) ON CONFLICT (day) DO UPDATE SET spend = spend + excluded.spend, tokens = tokens + excluded.tokens",
+              dayOf(Date.now()),
+              spend,
+              tokens,
+            )
+        }
+        await watermark(tx, now)
+      })
+      return ledger
+    })
+    queue = run.catch(() => ({ models: {}, tools: {} }))
+    return run
+  }
+}
+
+function watermark(db: SqliteExecutor, total: Total): Promise<void> {
+  return db.run(
+    "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    USAGE_TOTAL,
+    JSON.stringify(total),
+  )
+}
+
+/** A home that has never written the watermark gets one at boot, so the next flush has a baseline to measure against. */
+async function seedUsage(db: SqliteDatabase, harness: Harness): Promise<void> {
+  if ((await storedTotal(db)) !== undefined) return
+  await watermark(db, ledgerTotal(await harness.usage(BACKGROUND_CONTEXT)))
+}
+
+function ledgerTotal(ledger: UsageState): Total {
+  const buckets = [...Object.values(ledger.models), ...Object.values(ledger.tools)].map(bucketOf)
+  const total = buckets.reduce(addUsage, EMPTY_USAGE)
+  return { spend: total.cost, tokens: total.totalTokens }
+}
+async function storedTotal(db: SqliteExecutor): Promise<Total | undefined> {
+  const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", USAGE_TOTAL)
+  if (row === undefined) return undefined
+  try {
+    const parsed: unknown = JSON.parse(row.value)
+    if (typeof parsed !== "object" || parsed === null) return undefined
+    const record = parsed as Record<string, unknown>
+    if (typeof record.spend !== "number" || typeof record.tokens !== "number") return undefined
+    return { spend: record.spend, tokens: record.tokens }
+  } catch {
+    return undefined
+  }
+}
+
+async function datedUsage(db: SqliteExecutor): Promise<{ today: Total; month: Total }> {
+  const today = dayOf(Date.now())
+  const rows = await db.all<{ day: string; spend: number; tokens: number }>(
+    "SELECT day, spend, tokens FROM usage_daily WHERE day >= ?",
+    `${today.slice(0, 7)}-01`,
+  )
+  const empty: Total = { spend: 0, tokens: 0 }
+  const month = rows.reduce(
+    (sum, row) => ({ spend: sum.spend + row.spend, tokens: sum.tokens + row.tokens }),
+    empty,
+  )
+  return { today: rows.find((row) => row.day === today) ?? empty, month }
+}
 
 const addUsage = (sum: UsageBucket, usage: UsageBucket): UsageBucket => ({
   input: sum.input + usage.input,
@@ -217,6 +298,7 @@ type Registry = {
 
 export type ModelsPort = {
   readonly db: SqliteDatabase
+  readonly harness: Harness
   readonly kek: string
   readonly providers: readonly Provider[]
   run(command: Command, actor: Actor): Promise<Outcome>
@@ -226,6 +308,7 @@ export type ModelsParts = {
   readonly service: ModelsService
   readonly ops: readonly Op[]
   models(): Models
+  flush(): Promise<UsageState>
   start(): Promise<void>
 }
 
@@ -453,7 +536,8 @@ function ranked(
 const commandId = (value: string): CommandId => value as CommandId
 
 export function create(deps: ModelsPort): ModelsParts {
-  const { db, run } = deps
+  const { db, harness, run } = deps
+  const recordUsage = usageRecorder(db, harness)
   const registry = createRegistry(deps)
   const store = registry.store
 
@@ -564,8 +648,8 @@ export function create(deps: ModelsPort): ModelsParts {
     name: "usage.summary",
     args: obj({}),
     actors: ["owner"],
-    run: async (api) => {
-      const ledger = await api.harness.usage(BACKGROUND_CONTEXT)
+    run: async () => {
+      const ledger = await recordUsage()
       const byModel = Object.entries(ledger.models)
         .map(([key, usage]) => {
           const slash = key.indexOf("/")
@@ -586,12 +670,17 @@ export function create(deps: ModelsPort): ModelsParts {
         .map(([name, usage]) => ({ name, ...bucketOf(usage) }))
         .toSorted((left, right) => right.cost - left.cost || left.name.localeCompare(right.name))
       const total = [...byModel, ...byTool].reduce(addUsage, EMPTY_USAGE)
-      return { spend: total.cost, tokens: total.totalTokens, byModel, byTool }
+      const dated = await datedUsage(db)
+      return { spend: total.cost, tokens: total.totalTokens, today: dated.today, month: dated.month, byModel, byTool }
     },
   })
 
   const service: ModelsService = {
     ownerDefaults: () => ownerDefaults(db),
+    vision: async (ref) => {
+      const found = registry.models.getModel(ref.provider, ref.modelId)
+      return found === undefined ? false : found.input.includes("image")
+    },
     credentialSecrets: () => credentialSecrets(db, store),
     search: async (query) => {
       const catalog = await available(registry)
@@ -614,6 +703,10 @@ export function create(deps: ModelsPort): ModelsParts {
     service,
     ops,
     models: () => registry.models,
-    start: () => registry.sync(),
+    flush: recordUsage,
+    start: async () => {
+      await registry.sync()
+      await seedUsage(db, harness)
+    },
   }
 }

@@ -136,3 +136,23 @@ function parseFrame(raw: string): ServerFrame | undefined {
   if (t === "snap" || t === "ev" || t === "ack" || t === "error") return value as ServerFrame
   return undefined
 }
+
+export type UploadedFile = {
+  readonly path: string
+  readonly name: string
+  readonly type: string
+  readonly size: number
+}
+
+export async function uploadFile(file: File, folder: string): Promise<UploadedFile> {
+  const safe = file.name.replace(/[^\w.\-]+/gu, "-").slice(-80)
+  const type = file.type === "" ? "application/octet-stream" : file.type
+  const path = `${folder.replace(/\/+$/gu, "")}/${Date.now().toString(36)}-${safe}`
+  const response = await fetch(`/files${path}`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token()}`, "content-type": type },
+    body: file,
+  })
+  if (!response.ok) throw new OpError("upload", `${file.name}: HTTP ${response.status}`)
+  return { path, name: file.name, type, size: file.size }
+}

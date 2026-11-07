@@ -1,5 +1,6 @@
 import { For, Show, type JSX } from "solid-js"
 import {
+  type Attachment,
   entryBatchRows,
   entryFailure,
   entryText,
@@ -11,6 +12,7 @@ import {
   type ToolCallView,
 } from "../../state/conversation.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
+import { FileChip } from "../ui/file-chip.tsx"
 import { Markdown } from "./markdown.tsx"
 import {
   FailureCard,
@@ -24,7 +26,7 @@ import {
 import { ProjectGlyph } from "./project-glyph.tsx"
 
 export type EntryItem =
-  | { readonly kind: "owner"; readonly text: string }
+  | { readonly kind: "owner"; readonly text: string; readonly attachments: readonly Attachment[] }
   | { readonly kind: "assistant"; readonly text: string; readonly calls: readonly ToolCallView[] }
   | { readonly kind: "report"; readonly row: BatchRow }
   | { readonly kind: "question"; readonly row: BatchRow }
@@ -43,7 +45,8 @@ export function entryItems(entry: EntryView): readonly EntryItem[] {
     for (const row of entryBatchRows(entry)) {
       switch (row.kind) {
         case "user":
-          if (row.text.trim() !== "") items.push({ kind: "owner", text: row.text })
+          if (row.text.trim() !== "" || row.attachments.length > 0)
+            items.push({ kind: "owner", text: row.text, attachments: row.attachments })
           break
         case "report":
           items.push({ kind: "report", row })
@@ -65,7 +68,7 @@ export function entryItems(entry: EntryView): readonly EntryItem[] {
     if (failure !== undefined) items.push({ kind: "failure", entryId: entry.id, failure })
   } else if (entry.kind === "pi.user") {
     const text = entryText(entry)
-    if (text !== "") items.push({ kind: "owner", text })
+    if (text !== "") items.push({ kind: "owner", text, attachments: [] })
   } else if (entry.kind === "pi.assistant") {
     const text = entryText(entry)
     const calls = entryToolCalls(entry).filter((call) => call.name === "delegate_task")
@@ -94,14 +97,27 @@ export type ItemContext = {
 
 const NO_LINKS: ReadonlyMap<string, number> = new Map()
 
-export function OwnerBubble(props: { text: string; density: "chat" | "panel" }): JSX.Element {
+export function OwnerBubble(props: {
+  text: string
+  attachments?: readonly Attachment[] | undefined
+  density: "chat" | "panel"
+}): JSX.Element {
   return (
     <div class="flex justify-end">
       <div
-        class="whitespace-pre-wrap rounded-[4px] border border-line-inner bg-hover py-2.5 text-[13.5px] leading-[1.6] text-fg [overflow-wrap:anywhere]"
+        class="flex flex-col gap-2 rounded-[4px] border border-line-inner bg-hover py-2.5 text-[13.5px] leading-[1.6] text-fg"
         classList={{ "max-w-[520px] px-3.5": props.density === "chat", "max-w-[280px] px-3": props.density === "panel" }}
       >
-        {props.text}
+        <Show when={props.text !== ""}>
+          <span class="whitespace-pre-wrap [overflow-wrap:anywhere]">{props.text}</span>
+        </Show>
+        <Show when={(props.attachments ?? []).length > 0}>
+          <div class="flex flex-wrap gap-1.5">
+            <For each={props.attachments ?? []}>
+              {(file) => <FileChip name={file.name} type={file.type} />}
+            </For>
+          </div>
+        </Show>
       </div>
     </div>
   )
@@ -151,7 +167,7 @@ export function EntryItemView(props: { item: EntryItem; context: ItemContext }):
   const item = props.item
   switch (item.kind) {
     case "owner":
-      return <OwnerBubble text={item.text} density={props.context.density} />
+      return <OwnerBubble text={item.text} attachments={item.attachments} density={props.context.density} />
     case "assistant":
       return (
         <div class="flex gap-3">

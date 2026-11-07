@@ -10,7 +10,7 @@ import {
   type EntryView,
   type RequestRow,
 } from "../state/conversation.ts"
-import { cmd } from "../lib/api.ts"
+import { cmd, uploadFile } from "../lib/api.ts"
 import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
 import { modelName, models, type ModelInfo, type ModelRef } from "../state/settings.ts"
 import { mediaQuery } from "../lib/media.ts"
@@ -95,7 +95,13 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
     if (sent.length === 0) return
     setOptimistic((current) => {
       const next = current.filter(
-        (message) => !sent.some((row) => row.text === message.text && (row.clientTs ?? 0) >= message.at - 2_000),
+        (message) =>
+          !sent.some(
+            (row) =>
+              row.text === message.text &&
+              (row.clientTs ?? 0) >= message.at - 2_000 &&
+              row.attachments.length === message.attachments.length,
+          ),
       )
       return next.length === current.length ? current : next
     })
@@ -188,14 +194,20 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
             onPickModel={async (model) => {
               await cmd("conv.configure", { conv: props.project.coordinatorId, model })
             }}
-            onSend={async (text, key) => {
+            onAttach={(file) => uploadFile(file, `/projects/${props.project.slug}/attachments`)}
+            onSend={async (text, key, attachments) => {
               const result = await cmd<{ readonly accepted: boolean }>(
                 "message.send",
-                { conv: props.project.coordinatorId, text, clientTs: key.at },
+                {
+                  conv: props.project.coordinatorId,
+                  text,
+                  clientTs: key.at,
+                  ...(attachments.length === 0 ? {} : { attachments }),
+                },
                 { id: key.id },
               )
               if (result.accepted) {
-                setOptimistic((current) => [...current, { key: key.id, text, at: key.at }])
+                setOptimistic((current) => [...current, { key: key.id, text, at: key.at, attachments }])
               }
             }}
             onStop={async () => {

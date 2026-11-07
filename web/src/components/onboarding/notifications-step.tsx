@@ -1,10 +1,11 @@
-import { For, type JSX } from "solid-js"
+import { For, onMount, type JSX } from "solid-js"
 import { Icon, type IconName } from "../ui/icon.tsx"
 import { navigate } from "../../lib/router.ts"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
 import type { VisualState } from "../../lib/status.ts"
 import { GhostButton, PrimaryButton, StatusLine } from "./controls.tsx"
 import { enablePush, onboardingProject, onboardingPush, previousStep, projectPath } from "../../state/onboarding.ts"
+import { notifyNow, notifyPrefs, setNotifyPrefs, type NotifyKind } from "../../state/settings.ts"
 
 type Preview = {
   readonly icon: IconName
@@ -34,10 +35,15 @@ const PREVIEWS: readonly Preview[] = [
   },
 ]
 
-const KINDS: readonly { readonly state: VisualState; readonly title: string; readonly detail: string }[] = [
-  { state: "waiting", title: "Waiting on you", detail: "A question, with the choices as buttons" },
-  { state: "done", title: "Finished", detail: "When a report lands" },
-  { state: "failed", title: "Failed", detail: "With what broke and a Retry link" },
+const KINDS: readonly {
+  readonly key: NotifyKind
+  readonly state: VisualState
+  readonly title: string
+  readonly detail: string
+}[] = [
+  { key: "waiting", state: "waiting", title: "Waiting on you", detail: "A question, with the choices as buttons" },
+  { key: "finished", state: "done", title: "Finished", detail: "When a report lands" },
+  { key: "failed", state: "failed", title: "Failed", detail: "With what broke and a Retry link" },
 ]
 
 export function NotificationsStep(): JSX.Element {
@@ -73,6 +79,10 @@ export function NotificationsStep(): JSX.Element {
   }
 
   const finish = (): void => navigate(projectPath(project()))
+
+  onMount(() => {
+    void notifyPrefs.reload()
+  })
 
   return (
     <div class="enter px-6 pb-16 pt-12 md:pt-16">
@@ -123,9 +133,20 @@ export function NotificationsStep(): JSX.Element {
                     <div class="text-[13px] font-medium">{kind.title}</div>
                     <p class="text-[12px] text-fg-3">{kind.detail}</p>
                   </div>
-                  <span class="relative ml-auto h-4 w-7 shrink-0 rounded-[2px] bg-fg" aria-hidden="true">
-                    <span class="absolute left-3.5 top-0.5 h-3 w-3 rounded-[1px] bg-page" />
-                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={notifyNow()[kind.key]}
+                    aria-label={kind.title}
+                    onClick={() => void setNotifyPrefs({ [kind.key]: !notifyNow()[kind.key] })}
+                    class="relative ml-auto h-4 w-7 shrink-0 rounded-[2px] transition-none"
+                    classList={{ "bg-fg": notifyNow()[kind.key], "bg-line-inner": !notifyNow()[kind.key] }}
+                  >
+                    <span
+                      class="absolute top-0.5 h-3 w-3 rounded-[1px] bg-page"
+                      classList={{ "left-3.5": notifyNow()[kind.key], "left-0.5": !notifyNow()[kind.key] }}
+                    />
+                  </button>
                 </div>
               )}
             </For>

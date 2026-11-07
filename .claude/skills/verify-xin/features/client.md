@@ -6,10 +6,10 @@ The first-party client is a SolidJS app in `web/` that talks to the same contrac
 
 - `#/signin` — owner token, verified with `GET /v1/status`, kept in `localStorage`.
 - `#/` — Home: greeting, the five counts, Needs You, the project grid, all from the `home` stream.
-- `#/p/:slug` — project chat: transcript over `conv:<coordinatorId>`, composer, right panel (Threads, Files, Memory, Schedules, Jobs; Jobs reads `job.list`). A transcript past the snapshot window shows a "Load older messages" button that pages `history.page` from the snapshot's own `before` and keeps the scroll position.
+- `#/p/:slug` — project chat: transcript over `conv:<coordinatorId>`, composer with a paperclip that uploads to `PUT /files/projects/<slug>/attachments/...` and sends `message.send.attachments`, right panel (Threads, Files, Memory, Schedules, Jobs; Jobs reads `job.list`). A transcript past the snapshot window shows a "Load older messages" button that pages `history.page` from the snapshot's own `before` and keeps the scroll position.
 - `#/inbox` — pending questions (`request.list`) plus waiting and failed threads.
 - `#/extensions` — Discover, Installed, Updates, Customize, Sources over `plugin.*`, `market.*`.
-- `#/settings/:tab` — general, usage, models, notifications, profile, system.
+- `#/settings/:tab` — general, usage (today, this month, all time, tokens, then by model and by tool), models, notifications (three real switches over `notify.prefs`/`notify.set`), profile, system.
 - `#/schedules` — `schedule.list`, pause and resume through `schedule.edit`.
 - `#/welcome` — first provider key, first project, first message, notifications.
 - `#/landing` — public landing page, outside the shell.
@@ -22,7 +22,7 @@ Open the client, paste the owner token, land on Home. Projects in the sidebar op
 
 ## Driving it
 
-The client is a Vite dev server that proxies `/v1` and `/health` to the Worker.
+The client is a Vite dev server that proxies `/v1`, `/files` and `/health` to the Worker. `/files` matters: without it an attachment upload gets a 404 from Vite itself.
 
 ```bash
 S=.claude/skills/verify-xin/xin.sh
@@ -54,3 +54,5 @@ cd web && bun run typecheck && bun run build
 - One composer draft keeps one command id and `clientTs`; sending the same text again after a failure replays the same command instead of adding a second message.
 - Skeleton states come from skullet: the sample render must not throw, because an error inside a Solid effect aborts the queue and leaves the surface stuck.
 - Screenshots need the viewport set first: `agent-browser viewport 1440 900`.
+- An attachment proof needs a real file: `agent-browser` sets the composer's hidden input with a paths list, then Send. The owner bubble shows a chip and the model's next reply names the file.
+- The faux transport bills every run at cost 0, so a live `usage.summary` shows `today.spend` 0 with non-zero tokens unless a real provider answered.

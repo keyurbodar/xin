@@ -72,7 +72,7 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
         <Cell label="Working now" value={numbers().working} tone="working" />
         <Cell label="Finished overnight" value={numbers().finished} />
         <Cell label="Failed" value={numbers().failed} />
-        <Cell label="Spend" text={money(spend())} mono />
+        <Cell label="Spend today" text={money(spend())} mono />
       </div>
 
       <Show when={rows().length > 0}>
@@ -132,7 +132,7 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
 function spend(): number {
   const state = usage.state()
   if (state.kind !== "ready" || !state.value.recorded) return 0
-  return state.value.spend
+  return state.value.today
 }
 
 function Cell(props: { label: string; value?: number; text?: string; tone?: "accent" | "working"; mono?: boolean }): JSX.Element {

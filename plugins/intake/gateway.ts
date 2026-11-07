@@ -14,8 +14,10 @@ import {
   type IntakeService,
   parseInboundBody,
 } from "../../src/contracts/intake.ts"
-import type { Notification, PushService } from "../../src/contracts/push.ts"
+import type { Notification, NotifyKind, NotifyPrefs, PushService } from "../../src/contracts/push.ts"
+import type { MessageAttachment } from "../../src/contracts/message.ts"
 import type { BatchId, ConversationId } from "../../src/ids.ts"
+import { renderTurn } from "./attachments.ts"
 import { type Batch, decide, probe } from "./dispatch.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -59,6 +61,9 @@ export type IntakeHost = {
   readonly db: SqliteDatabase
   readonly harness: Harness
   readonly ledger: BatchLedger
+  readBytes(path: string): Promise<Uint8Array | undefined>
+  stat(path: string): Promise<{ readonly size: number } | undefined>
+  vision(conversation: ConversationId): Promise<boolean>
   arm(wake?: Wake): Promise<void>
   push(): PushService | undefined
   batchEvent(batch: IntakeBatch, next: () => Promise<IntakeBatchResult>): Promise<IntakeBatchResult>
@@ -323,14 +328,32 @@ async function dispatchBatch(host: IntakeHost, conversation: Conversation, batch
 async function announce(host: IntakeHost, batch: IntakeBatch): Promise<void> {
   const push = host.push()
   if (push === undefined) return
+  const prefs = await push.prefs()
   for (const row of batch.rows) {
-    const notification = notificationOf(row)
-    if (notification !== undefined) await push.notify(notification)
+    const found = notificationOf(prefs, row)
+    if (found !== undefined) await push.notify(found)
   }
 }
 
-function notificationOf(row: IntakeBatchRow): Notification | undefined {
-  if (row.kind === "user" || row.kind === "job") return undefined
+export function notificationOf(prefs: NotifyPrefs, row: IntakeBatchRow): Notification | undefined {
+  switch (row.kind) {
+    case "user":
+    case "job":
+      return undefined
+    case "question":
+      return prefs.waiting ? notification(row) : undefined
+    case "report": {
+      const kind: NotifyKind = row.status === "failed" ? "failed" : "finished"
+      return prefs[kind] ? notification(row) : undefined
+    }
+    default: {
+      const _exhaustive: never = row
+      return _exhaustive
+    }
+  }
+}
+
+function notification(row: { readonly title: string; readonly text: string; readonly commandId: string }): Notification {
   return { threadTitle: row.title, title: row.title, body: row.text, tag: row.commandId }
 }
 
@@ -344,7 +367,7 @@ async function submit(
   const submission = await conversation.submit(
     {
       type: "input",
-      content: render(posts),
+      content: await renderTurn(host, conversation.id, render(posts), attachmentsOf(posts)),
       entry: { kind: "xin.batch", data: posts.map(entryRow) },
       requestId: `batch:${batchId}`,
       ...(whenBusy === undefined ? {} : { whenBusy }),
@@ -384,7 +407,14 @@ function orderedRows(rows: readonly InboundRow[]): InboundRow[] {
 function batchRowOf(row: InboundRow): IntakeBatchRow {
   const body = bodyOf(row)
   return row.kind === "user"
-    ? { id: row.id, kind: "user", clientTs: row.client_ts, commandId: row.command_id, text: body.text }
+    ? {
+        id: row.id,
+        kind: "user",
+        clientTs: row.client_ts,
+        commandId: row.command_id,
+        text: body.text,
+        attachments: body.attachments,
+      }
     : {
         id: row.id,
         kind: row.kind,
@@ -403,13 +433,13 @@ function postOf(row: IntakeBatchRow, batchId: string | null): Post {
 
 function contentOf(draft: InboundDraft): InboundContent {
   return draft.kind === "user"
-    ? { kind: "user", text: draft.text }
+    ? { kind: "user", text: draft.text, attachments: draft.attachments }
     : { kind: draft.kind, threadId: draft.threadId, title: draft.title, status: draft.status, text: draft.text }
 }
 
 function contentOfRow(row: IntakeBatchRow): InboundContent {
   return row.kind === "user"
-    ? { kind: "user", text: row.text }
+    ? { kind: "user", text: row.text, attachments: row.attachments }
     : { kind: row.kind, threadId: row.threadId, title: row.title, status: row.status, text: row.text }
 }
 
@@ -423,7 +453,7 @@ function recordOf(row: InboundRow): InboundRecord {
     clientTs: row.client_ts,
     content:
       row.kind === "user"
-        ? { kind: "user", text: body.text }
+        ? { kind: "user", text: body.text, attachments: body.attachments }
         : { kind: row.kind, threadId: body.threadId, title: body.title, status: body.status, text: body.text },
   }
 }
@@ -438,6 +468,10 @@ function batchOf(rows: readonly IntakeBatchRow[]): Batch {
 
 function render(posts: readonly Post[]): string {
   return posts.map(renderPost).join("\n")
+}
+
+function attachmentsOf(posts: readonly Post[]): readonly MessageAttachment[] {
+  return posts.flatMap((post) => (post.kind === "user" ? post.attachments : []))
 }
 
 function renderPost(post: Post): string {

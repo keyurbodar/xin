@@ -1,10 +1,11 @@
 import type { ConversationId } from "@earendil-works/pi-durable"
 import type { BatchId } from "../ids.ts"
+import type { MessageAttachment } from "./message.ts"
 
 export type InboundKind = "user" | "report" | "question" | "job"
 
 export type InboundContent =
-  | { readonly kind: "user"; readonly text: string }
+  | { readonly kind: "user"; readonly text: string; readonly attachments: readonly MessageAttachment[] }
   | {
       readonly kind: "report" | "question" | "job"
       readonly threadId: string
@@ -21,6 +22,7 @@ export type InboundDraft = {
 
 export type InboundBody = {
   readonly text: string
+  readonly attachments: readonly MessageAttachment[]
   readonly threadId: string
   readonly title: string
   readonly status: string
@@ -32,10 +34,29 @@ function stringField(value: unknown, key: string): string | undefined {
   return typeof found === "string" ? found : undefined
 }
 
+function objectField(value: unknown, key: string): readonly unknown[] {
+  if (typeof value !== "object" || value === null) return []
+  const found: unknown = Reflect.get(value, key)
+  return Array.isArray(found) ? found : []
+}
+
+function attachmentOf(value: unknown): MessageAttachment | undefined {
+  const path = stringField(value, "path")
+  const name = stringField(value, "name")
+  const type = stringField(value, "type")
+  if (path === undefined || name === undefined || type === undefined) return undefined
+  const size: unknown = typeof value === "object" && value !== null ? Reflect.get(value, "size") : undefined
+  return { path, name, type, ...(typeof size === "number" ? { size } : {}) }
+}
+
 export function parseInboundBody(body: string): InboundBody {
   const value: unknown = JSON.parse(body)
   return {
     text: stringField(value, "text") ?? body,
+    attachments: objectField(value, "attachments").flatMap((entry) => {
+      const attachment = attachmentOf(entry)
+      return attachment === undefined ? [] : [attachment]
+    }),
     threadId: stringField(value, "threadId") ?? "",
     title: stringField(value, "title") ?? "",
     status: stringField(value, "status") ?? "",
@@ -64,6 +85,7 @@ export type IntakeBatchRow =
       readonly clientTs: number
       readonly commandId: string
       text: string
+      readonly attachments: readonly MessageAttachment[]
     }
   | {
       readonly id: number

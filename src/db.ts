@@ -26,6 +26,12 @@ export const HOST_MIGRATIONS: readonly SqliteMigration[] = [
       "CREATE TABLE push_subs (endpoint TEXT PRIMARY KEY, keys TEXT NOT NULL)",
     ],
   },
+  {
+    version: 4,
+    statements: [
+      "CREATE TABLE usage_daily (day TEXT PRIMARY KEY, spend REAL NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0)",
+    ],
+  },
 ]
 
 export function migrate(db: SqliteDatabase): Promise<void> {

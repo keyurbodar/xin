@@ -28,6 +28,17 @@ Reports use the same pipe: 8 threads finishing within 2 s cost ONE coordinator t
 <thread id="th_7" title="Book ryokan" status="completed">Booked Kinosaki, ¥38k, free cancel to 20 Nov</thread>
 ```
 
+**Attachments.** A user item may carry up to 12 files already stored through `PUT /files/<path>`. `plugins/intake/attachments.ts` stats each path, drops the ones storage does not have, and appends one block after the messages:
+
+```text
+<attachments>
+- diagram.png (image/png, 1 204 912 bytes) at /projects/launch/attachments/diagram.png
+- brief.txt (text/plain, 5 120 bytes) at /projects/launch/attachments/brief.txt
+</attachments>
+```
+
+The sizes come from the file index, not from the client. A model that takes images also receives each image as an `image` part, read from R2 in parallel and encoded as base64, within one `INLINE_BUDGET_BYTES` (1 MiB) budget for the whole turn: an image that does not fit stays listed but is not sent, so the stored entry stays far under a Durable Object row and no single message can push the transcript past it. A text-only model gets the block alone and reads the file with its own tools.
+
 This is the same text whether the coordinator is idle (it starts a turn) or busy (it steers).
 
 **Crash safety**: on boot, any `pending` row with `fire_at < now` fires at once, and any `claimed` row whose batch has no pi submission is resubmitted with the same `requestId`, which pi dedupes. Rows become `done` after the submission settles, and are pruned after 7 days.

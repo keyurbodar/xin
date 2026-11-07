@@ -135,7 +135,7 @@ export function General(): JSX.Element {
         <div class="pt-2">
           <MissingOp
             op="owner.profile"
-            detail="The client reads the browser's time zone and locale; the server stores no profile."
+            detail="The client reads the browser's time zone and locale; name, avatar and density have no server field."
           />
         </div>
       </Group>
@@ -144,7 +144,8 @@ export function General(): JSX.Element {
         <div class="rounded-[4px] border border-dashed border-line-inner px-3.5 py-4">
           <p class="text-[12.5px] text-fg-2">No workspace instructions are stored.</p>
           <p class="mt-1 text-[11.5px] text-fg-3">
-            Project instructions live with each project. A workspace-level block needs an owner profile op.
+            Project instructions live with each project. The dreamer keeps a profile of durable facts, shown under Profile;
+            a workspace-level instruction block is a separate, owner-written field the server does not have.
           </p>
           <div class="mt-2">
             <MissingOp op="owner.instructions" />

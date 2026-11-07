@@ -26,7 +26,7 @@ export function Usage(): JSX.Element {
     <div class="flex max-w-[900px] flex-col gap-6">
       <div class="flex items-center gap-2">
         <span class="label">Usage + cost</span>
-        <span class="text-[12px] text-fg-3">Life of this home</span>
+        <span class="text-[12px] text-fg-3">Billed by day, in UTC</span>
       </div>
 
       <Show when={usage.state().kind === "loading"}>
@@ -48,8 +48,10 @@ export function Usage(): JSX.Element {
       <Show when={value()}>
         {(summary) => (
           <>
-            <div class="grid grid-cols-2 overflow-hidden rounded-[4px] border border-line md:grid-cols-4">
-              <Kpi label="Spend" value={money(summary().spend)} detail="Across every model and tool" />
+            <div class="grid grid-cols-2 overflow-hidden rounded-[4px] border border-line md:grid-cols-3">
+              <Kpi label="Today" value={money(summary().today)} detail="Since midnight UTC" />
+              <Kpi label="This month" value={money(summary().month)} detail="Since the first of the month" />
+              <Kpi label="All time" value={money(summary().spend)} detail="Across every model and tool" />
               <Kpi label="Tokens" value={formatTokens(summary().tokens)} detail="Input, output and cache" />
               <Kpi label="Models used" value={String(summary().byModel.length)} detail="From the catalog" />
               <Kpi label="Tools used" value={String(summary().byTool.length)} detail="Every tool call counted once" />
@@ -89,8 +91,8 @@ export function Usage(): JSX.Element {
             </Group>
 
             <Note>
-              The ledger has no time bucket and no project dimension yet, so these totals cover the life of the home rather
-              than a month, and nothing here splits spend by project. Absent figures stay absent instead of being estimated.
+              Days are cut at midnight UTC and a run that crosses it counts once, in the day it finishes. The ledger has no
+              project dimension, so nothing here splits spend by project. Absent figures stay absent instead of being estimated.
             </Note>
           </>
         )}

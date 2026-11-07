@@ -1,5 +1,7 @@
 import { For, Show, createSignal, type JSX } from "solid-js"
+import type { UploadedFile } from "../../lib/api.ts"
 import type { ModelInfo, ModelRef } from "../../state/settings.ts"
+import { FileChip } from "../ui/file-chip.tsx"
 import { Icon } from "../ui/icon.tsx"
 import { Spinner } from "./ui.tsx"
 
@@ -29,19 +31,19 @@ function useGrow(): {
 }
 
 export type SendKey = { readonly id: string; readonly at: number }
-export type Send = (text: string, key: SendKey) => Promise<void>
+export type Send = (text: string, key: SendKey, attachments: readonly UploadedFile[]) => Promise<void>
 
 /** One key per draft text, so a retry after a lost ack replays the same command instead of adding a second message. */
 function useSender(onSend: Send, blocked: () => boolean) {
   const [sending, setSending] = createSignal(false)
   let pending: { readonly text: string; readonly key: SendKey } | undefined
-  const send = async (text: string): Promise<boolean> => {
+  const send = async (text: string, attachments: readonly UploadedFile[]): Promise<boolean> => {
     if (text === "" || sending() || blocked()) return false
     const key = pending?.text === text ? pending.key : { id: crypto.randomUUID(), at: Date.now() }
     pending = { text, key }
     setSending(true)
     try {
-      await onSend(text, key)
+      await onSend(text, key, attachments)
       pending = undefined
       return true
     } finally {
@@ -49,6 +51,23 @@ function useSender(onSend: Send, blocked: () => boolean) {
     }
   }
   return { sending, send }
+}
+
+function AttachmentChips(props: {
+  files: readonly UploadedFile[]
+  onRemove: (path: string) => void
+}): JSX.Element {
+  return (
+    <Show when={props.files.length > 0}>
+      <div class="flex flex-wrap gap-1.5 px-3 pt-2.5">
+        <For each={props.files}>
+          {(file) => (
+            <FileChip name={file.name} type={file.type} onRemove={() => props.onRemove(file.path)} />
+          )}
+        </For>
+      </div>
+    </Show>
+  )
 }
 
 export function Composer(props: {
@@ -60,20 +79,43 @@ export function Composer(props: {
   onPickModel: (model: ModelRef) => Promise<void>
   onSend: Send
   onStop: () => Promise<void>
+  onAttach?: ((file: File) => Promise<UploadedFile>) | undefined
 }): JSX.Element {
   const [draft, setDraft] = createSignal("")
   const { sending, send } = useSender(props.onSend, () => false)
+  const [files, setFiles] = createSignal<readonly UploadedFile[]>([])
+  const [uploading, setUploading] = createSignal(false)
+  let fileInput!: HTMLInputElement
+
+  const attach = async (picked: FileList | null): Promise<void> => {
+    const upload = props.onAttach
+    if (picked === null || upload === undefined) return
+    setUploading(true)
+    setError(undefined)
+    try {
+      const uploaded = await Promise.all(Array.from(picked).map((file) => upload(file)))
+      setFiles((current) => [...current, ...uploaded])
+    } catch (failure) {
+      setError(errorText(failure))
+    } finally {
+      setUploading(false)
+      fileInput.value = ""
+    }
+  }
   const [stopping, setStopping] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>()
   const [failedStop, setFailedStop] = createSignal(false)
   const [picker, setPicker] = createSignal(false)
   const grow = useGrow()
 
+  const empty = (): boolean => draft().trim() === "" && files().length === 0
   const submit = async (): Promise<void> => {
     setError(undefined)
     try {
-      if (await send(draft().trim())) {
+      const text = draft().trim()
+      if (await send(text, files())) {
         setDraft("")
+        setFiles([])
         grow.resize()
       }
     } catch (failure) {
@@ -118,15 +160,41 @@ export function Composer(props: {
             placeholder={`Message ${props.projectName}…`}
             class="block max-h-[240px] min-h-[24px] w-full resize-none bg-transparent px-3.5 pb-1.5 pt-3 text-[14px] leading-[1.6] text-fg outline-none placeholder:text-fg-4 disabled:opacity-60"
           />
+          <AttachmentChips files={files()} onRemove={(path) => setFiles((current) => current.filter((file) => file.path !== path))} />
           <div class="flex items-center gap-1 px-2 pb-2 pt-1.5">
-            <button
-              type="button"
-              title="Attachments are not wired yet"
-              aria-disabled="true"
-              class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-2 hover:bg-hover hover:text-fg"
+            <Show
+              when={props.onAttach}
+              fallback={
+                <button
+                  type="button"
+                  title="Attachments need a project"
+                  aria-disabled="true"
+                  class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-4"
+                >
+                  <Icon name="paperclip" size={14} />
+                </button>
+              }
             >
-              <Icon name="paperclip" size={14} />
-            </button>
+              <button
+                type="button"
+                onClick={() => fileInput.click()}
+                disabled={uploading()}
+                title="Attach a file"
+                aria-label="Attach a file"
+                class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-2 hover:bg-hover hover:text-fg disabled:opacity-50"
+              >
+                <Show when={uploading()} fallback={<Icon name="paperclip" size={14} />}>
+                  <Spinner class="border-fg-4/40 border-t-fg-2" />
+                </Show>
+              </button>
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                class="hidden"
+                onChange={(event) => void attach(event.currentTarget.files)}
+              />
+            </Show>
             <div class="relative">
               <button
                 type="button"
@@ -183,13 +251,13 @@ export function Composer(props: {
             <button
               type="button"
               onClick={() => void submit()}
-              disabled={sending() || draft().trim() === ""}
+              disabled={sending() || empty()}
               aria-label="Send message"
               class="grid h-8 w-8 place-items-center rounded-[2px]"
               classList={{
                 "ml-auto": !props.busy,
-                "bg-accent text-ink hover:opacity-90": draft().trim() !== "" && !sending(),
-                "bg-hover text-fg-4": draft().trim() === "" || sending(),
+                "bg-accent text-ink hover:opacity-90": !empty() && !sending(),
+                "bg-hover text-fg-4": empty() || sending(),
               }}
             >
               <Show when={sending()} fallback={<Icon name="arrow-up" size={16} />}>
@@ -244,7 +312,7 @@ export function SteerComposer(props: {
   const submit = async (): Promise<void> => {
     setError(undefined)
     try {
-      if (await send(draft().trim())) {
+      if (await send(draft().trim(), [])) {
         setDraft("")
         grow.resize()
       }

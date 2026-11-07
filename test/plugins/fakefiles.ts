@@ -333,6 +333,10 @@ function createFiles(store: MemoryStore): FilesService {
       const file = store.files.get(normalize(path))
       return file === undefined ? undefined : decoder.decode(file.bytes)
     },
+    readBytes: async (path) => {
+      const file = store.files.get(normalize(path))
+      return file === undefined ? undefined : file.bytes.slice()
+    },
     stat: async (path) => {
       const key = normalize(path)
       const file = store.files.get(key)

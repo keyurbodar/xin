@@ -14,6 +14,7 @@ export interface FilesService {
   env(target: EnvTarget): ExecutionEnv | undefined
   list(prefix?: string): Promise<FileEntry[]>
   read(path: string): Promise<string | undefined>
+  readBytes(path: string): Promise<Uint8Array | undefined>
   stat(path: string): Promise<FileEntry | undefined>
   write(path: string, text: string): Promise<FileEntry>
   remove(path: string): Promise<boolean>

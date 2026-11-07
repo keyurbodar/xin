@@ -67,7 +67,7 @@ function retryDraft(row: InboundRecord, commandId: string): InboundDraft | undef
   const content = row.content
   switch (content.kind) {
     case "user":
-      return { ...base, kind: "user", text: content.text }
+      return { ...base, kind: "user", text: content.text, attachments: content.attachments }
     case "report":
     case "question":
     case "job": {

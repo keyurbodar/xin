@@ -1,13 +1,15 @@
 import { int, obj, opt, str } from "@earendil-works/pi-schema"
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
+import type { ConversationId } from "@earendil-works/pi-durable"
 import type { Context } from "../../src/kernel/index.ts"
 import type { IntakeBatch, IntakeBatchResult } from "../../src/contracts/intake.ts"
 import { MessageSendArgsSchema } from "../../src/contracts/message.ts"
-import { defineOp } from "../../src/ops.ts"
+import { defineOp, OpRejected } from "../../src/ops.ts"
 import { type BatchLedger, createGateway, enqueue, type IntakeHost, resolve, stop } from "./gateway.ts"
 import { historyOp } from "./history.ts"
 
 export const name = "intake"
-export const inject = ["db", "harness", "ops", "clock", "host"]
+export const inject = ["db", "harness", "ops", "clock", "host", "files", "models"]
 
 const BATCH_MARK = "intake.dispatched."
 
@@ -20,6 +22,13 @@ export async function apply(ctx: Context): Promise<void> {
     ledger: ledgerOf(ctx),
     arm: (wake) => ctx.clock.arm(wake),
     push: () => ctx.get("push"),
+    readBytes: (path) => ctx.files.readBytes(path),
+    stat: (path) => ctx.files.stat(path),
+    vision: async (conversation: ConversationId) => {
+      const target = await ctx.harness.conversation(conversation, BACKGROUND_CONTEXT)
+      const model = target === undefined ? undefined : (await target.agent(BACKGROUND_CONTEXT)).model
+      return model === undefined ? false : ctx.models.vision(model)
+    },
     batchEvent: (batch, next) => batchEvent(ctx, batch, next),
   }
   const gateway = createGateway(host)
@@ -30,6 +39,8 @@ export async function apply(ctx: Context): Promise<void> {
       args: MessageSendArgsSchema,
       actors: ["owner"],
       run: async (api, args) => {
+        if (args.text.trim() === "" && (args.attachments ?? []).length === 0)
+          throw new OpRejected("bad_args", "a message needs text or a file")
         const target = await resolve(host, args.conv)
         const accepted = await enqueue(
           ctx.db,
@@ -38,6 +49,7 @@ export async function apply(ctx: Context): Promise<void> {
             commandId: api.commandId,
             kind: "user",
             text: args.text,
+            attachments: args.attachments ?? [],
             ...(args.clientTs === undefined ? {} : { clientTs: args.clientTs }),
           },
           Date.now(),

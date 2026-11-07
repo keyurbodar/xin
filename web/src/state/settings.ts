@@ -108,6 +108,8 @@ export type UsageSummary =
       readonly recorded: true
       readonly spend: number
       readonly tokens: number
+      readonly today: number
+      readonly month: number
       readonly byModel: readonly ModelUsage[]
       readonly byTool: readonly ToolUsage[]
     }
@@ -142,6 +144,8 @@ export const parseUsage = (value: unknown): UsageSummary => {
     recorded: true,
     spend,
     tokens: numberFrom(value, ["tokens", "totalTokens"]) ?? 0,
+    today: bucketOf(value["today"]).cost,
+    month: bucketOf(value["month"]).cost,
     byModel: models.flatMap((entry) => {
       if (!isRecord(entry)) return []
       const name = entry["name"]
@@ -237,6 +241,30 @@ export async function deleteCredential(provider: string): Promise<void> {
   await models.reload()
 }
 
+
+export type NotifyKind = "waiting" | "finished" | "failed"
+
+export type NotifyPrefs = Readonly<Record<NotifyKind, boolean>>
+
+export const parseNotifyPrefs = (value: unknown): NotifyPrefs => {
+  const root = isRecord(value) ? value : {}
+  return { waiting: root["waiting"] !== false, finished: root["finished"] !== false, failed: root["failed"] !== false }
+}
+
+export const notifyPrefs: RemoteHandle<NotifyPrefs> = remote(() => cmd("notify.prefs"), parseNotifyPrefs)
+
+export const DEFAULT_NOTIFY: NotifyPrefs = { waiting: true, finished: true, failed: true }
+
+/** The prefs a switch shows: the server's once they arrive, all on until then. */
+export function notifyNow(): NotifyPrefs {
+  const state = notifyPrefs.state()
+  return state.kind === "ready" ? state.value : DEFAULT_NOTIFY
+}
+
+export async function setNotifyPrefs(patch: Partial<NotifyPrefs>): Promise<void> {
+  await cmd("notify.set", patch)
+  await notifyPrefs.reload()
+}
 
 export type PushSubscriptionKeys = { readonly p256dh: string; readonly auth: string }
 

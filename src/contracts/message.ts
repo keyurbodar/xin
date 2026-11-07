@@ -1,11 +1,21 @@
 import type { Message } from "@earendil-works/pi-ai"
 import type { ConversationId } from "@earendil-works/pi-durable"
-import { compile, int, obj, opt, type Static, str } from "@earendil-works/pi-schema"
+import { arr, compile, int, obj, opt, type Static, str } from "@earendil-works/pi-schema"
+
+export const AttachmentSchema = obj({
+  path: str({ minLength: 1 }),
+  name: str({ minLength: 1 }),
+  type: str({ minLength: 1 }),
+  size: opt(int({ minimum: 0 })),
+})
+
+export type MessageAttachment = Static<typeof AttachmentSchema>
 
 export const MessageSendArgsSchema = obj({
   conv: opt(int({ minimum: 0 })),
-  text: str({ minLength: 1 }),
+  text: str(),
   clientTs: opt(int({ minimum: 0 })),
+  attachments: opt(arr(AttachmentSchema, { maxItems: 12 })),
 })
 
 export type MessageSendArgs = Static<typeof MessageSendArgsSchema>

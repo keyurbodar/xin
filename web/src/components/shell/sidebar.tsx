@@ -155,5 +155,5 @@ function NavRow(props: {
 function spend(): number {
   const state = usage.state()
   if (state.kind !== "ready" || !state.value.recorded) return 0
-  return state.value.spend
+  return state.value.today
 }

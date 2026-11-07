@@ -49,16 +49,18 @@ Deviations from the backend spec that the UI needs are logged in `docs/log/decis
 
 ## Ops the client adds
 
-The client needed three reads the agent never asked for. Each is owner-only, reads state that already exists, and adds no storage.
+The client needed six ops the agent never asks for: four reads, and the two writes behind the notification switches. Each is owner-only and every one works over state that already exists.
 
 | Op | Args | Result |
 | --- | --- | --- |
 | `request.list` | `{ limit?, projectId? }` | pending questions across live projects, or one project's: `{ requests: [{ id, conversationId, projectId, projectName, threadTitle?, question, options?, askedAt }] }`. Reads run in parallel and never read a coordinator, which cannot hold an open request |
-| `usage.summary` | `{}` | pi's usage ledger, summed: `{ spend, tokens, byModel[], byTool[] }` |
+| `usage.summary` | `{}` | pi's usage ledger, summed: `{ spend, tokens, today, month, byModel[], byTool[] }`. `spend`/`tokens` are all time; `today` and `month` are `{ spend, tokens }` from `usage_daily`, flushed before the read |
 | `job.list` | `{ limit? }` | background jobs the jobs plugin holds: `{ jobs: [{ id, tool, title, parentId, startedAt, deadlineAt, detached, state: running\|completed\|failed, result? }] }` |
+| `notify.prefs` | `{}` | `{ waiting, finished, failed }`, all true by default |
+| `notify.set` | `{ waiting?, finished?, failed? }` | the stored prefs after the patch; `announce` skips a kind that is off |
 | `history.page` | `{ conversationId, before?, limit? }` | older entries than the socket snapshot: `{ entries, nextBefore? }`. `before` is inclusive, the same value the view reports as its first missing entry, so the first page starts at the snapshot's own boundary; `nextBefore` is the oldest returned id minus one |
 
-`usage.summary` reads the lifetime ledger; the ledger carries no day bucket, so the Home cell is labelled "Spend", not "Spend today".
+The Home cell and the sidebar footer show `today.spend` and are labelled "Spend today"; the Usage pane shows today, this month, all time and tokens as four figures side by side. A day is cut at UTC midnight (11), and the pane says so.
 
 ## Screens
 

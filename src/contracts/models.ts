@@ -47,6 +47,7 @@ export type ModelSwitch = {
 
 export interface ModelsService {
   ownerDefaults(): Promise<ModelDefaults>
+  vision(ref: ModelRef): Promise<boolean>
   credentialSecrets(): Promise<readonly string[]>
   search(query: string): Promise<ModelSearch>
   switchModel(input: ModelSwitch): Promise<Outcome>

@@ -16,7 +16,8 @@ Read with: [01 Host](./01-host.md) for the storage adapter and operation queue, 
 | `inbound` | host | `id, target, kind(user\|report\|question\|job), command_id UNIQUE, body JSON, client_ts, first_at, fire_at, status, batch_id` | must be claimed *before* pi sees it |
 | `receipts` | host | `command_id PK, result JSON, at` (pruned at 24 h) | duplicate commands return the first result (t3 receipts) |
 | `notes` + `notes_fts` | host, FTS5 | `id, scope, text, source, origin_task, at, retired_by` · UNIQUE(origin_task, text) | FTS needs SQL, and the unique key makes `remember` replay-safe |
-| `kv` | host | `profile_md`, `dreamer_cursor`, `owner_settings`, `plugins.patch` (owner patch, 09), `plugins.packages` (pending installs, 09) | small singletons |
+| `kv` | host | `profile_md`, `dreamer_cursor`, `plugins.patch` (owner patch, 09), `plugins.packages` (pending installs, 09), `usage.total` (the spend already counted into `usage_daily`) | small singletons |
+| `usage_daily` | host | `day PK (UTC YYYY-MM-DD), spend REAL, tokens INTEGER` | the dated half of pi's ledger, which has no time dimension (11) |
 | `files` | host | `path PK, r2_key, size, type, sha256, project, updated_at` | bytes are in R2 |
 | `credentials` | host, sealed | `provider PK, sealed JSON` | backs pi-ai's `CredentialStore` |
 | `plugins` | host | `id PK, sealed JSON` (other columns unused since P1) | sealed per-plugin secrets; activation and config live in `kv` `plugins.patch` (09) |

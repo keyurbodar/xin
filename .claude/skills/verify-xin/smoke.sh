@@ -26,6 +26,8 @@ check /extensions
 check /settings/general
 check /settings/usage
 check /settings/models
+check /settings/notifications
+check /settings/profile
 check /schedules
 check /welcome
 check /landing

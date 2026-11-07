@@ -1,5 +1,13 @@
 import { For, Show, createEffect, createMemo, createSignal, onMount, type JSX } from "solid-js"
-import { delegatedThreads, liveOf, type AnsweredView, type EntryView, type RequestRow, type Snapshot } from "../../state/conversation.ts"
+import {
+  delegatedThreads,
+  liveOf,
+  type AnsweredView,
+  type Attachment,
+  type EntryView,
+  type RequestRow,
+  type Snapshot,
+} from "../../state/conversation.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { Icon } from "../ui/icon.tsx"
 import { Markdown } from "./markdown.tsx"
@@ -12,6 +20,7 @@ export type PendingMessage = {
   readonly key: string
   readonly text: string
   readonly at: number
+  readonly attachments: readonly Attachment[]
 }
 
 function threadsOf(project: ProjectSummary): readonly ThreadSummary[] {
@@ -180,7 +189,7 @@ export function Transcript(props: {
         </Show>
 
         <For each={props.optimistic}>
-          {(message) => <OwnerBubble text={message.text} density="chat" />}
+          {(message) => <OwnerBubble text={message.text} attachments={message.attachments} density="chat" />}
         </For>
       </div>
     </div>

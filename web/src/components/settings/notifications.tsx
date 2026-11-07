@@ -1,15 +1,14 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { currentEndpoint, disablePush, enablePush, type PushChange } from "../../lib/push.ts"
+import { notifyNow, notifyPrefs, setNotifyPrefs, type NotifyKind } from "../../state/settings.ts"
 import { Button, Chip, Failure, MissingOp, Note, Panel, Toggle } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { Group, Row } from "./parts.tsx"
 
-const EVENTS: readonly { readonly title: string; readonly detail: string; readonly on: boolean }[] = [
-  { title: "A thread is waiting on you", detail: "The choices show as buttons", on: true },
-  { title: "A report lands", detail: "Only for threads you started", on: true },
-  { title: "Something fails", detail: "With what broke and Retry", on: true },
-  { title: "A schedule runs", detail: "Off: results still land in chat", on: false },
-  { title: "Spend passes the alert", detail: "Needs a spend alert setting", on: true },
+const EVENTS: readonly { readonly key: NotifyKind; readonly title: string; readonly detail: string }[] = [
+  { key: "waiting", title: "A thread is waiting on you", detail: "The choices show as buttons" },
+  { key: "finished", title: "A report lands", detail: "Only for threads you started" },
+  { key: "failed", title: "Something fails", detail: "With what broke and Retry" },
 ]
 
 function permissionNow(): NotificationPermission | "unsupported" {
@@ -23,9 +22,24 @@ export function Notifications(): JSX.Element {
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [sent, setSent] = createSignal(false)
 
+  const [saving, setSaving] = createSignal<NotifyKind | undefined>(undefined)
+
   onMount(() => {
     void currentEndpoint().then((found) => setEndpoint(found))
+    void notifyPrefs.reload()
   })
+
+  const change = async (kind: NotifyKind, next: boolean): Promise<void> => {
+    setSaving(kind)
+    setError(undefined)
+    try {
+      await setNotifyPrefs({ [kind]: next })
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "The preference was not saved.")
+    } finally {
+      setSaving(undefined)
+    }
+  }
 
   const apply = (change: PushChange): void => {
     switch (change.kind) {
@@ -111,15 +125,23 @@ export function Notifications(): JSX.Element {
         <For each={EVENTS}>
           {(event) => (
             <Row title={event.title} detail={event.detail}>
-              <Toggle on={event.on} disabled label={event.title} onChange={() => undefined} />
+              <Toggle
+                on={notifyNow()[event.key]}
+                disabled={saving() !== undefined}
+                label={event.title}
+                onChange={(next) => void change(event.key, next)}
+              />
             </Row>
           )}
         </For>
+        <Row title="A schedule runs" detail="Results still land in chat">
+          <MissingOp op="schedule.notify" detail="A schedule's run notifies only when it opens a thread." />
+        </Row>
+        <Row title="Spend passes the alert" detail="Needs a spend alert setting">
+          <span class="text-[12.5px] text-fg-3">Not in this build</span>
+        </Row>
         <div class="pt-2">
-          <Note>Which events push is decided by the backend's notifier. This build exposes no preference rows to change it.</Note>
-          <div class="mt-1.5">
-            <MissingOp op="push.prefs" detail="Only push.subscribe and push.unsubscribe exist today." />
-          </div>
+          <Note>Push is skipped while this tab is open: the socket already shows the change.</Note>
         </div>
       </Group>
 
