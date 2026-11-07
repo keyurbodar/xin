@@ -17,6 +17,7 @@ import { Skullet } from "../ui/skeleton.tsx"
 import { EmptyState, PanelGhost } from "./ui.tsx"
 import { AnsweredQuestionCard, OpenQuestionCard, ThreadRow } from "./cards.tsx"
 import { EntryList, itemsOf, type ItemContext } from "./entries.tsx"
+import { Markdown } from "./markdown.tsx"
 import { SteerComposer } from "./composer.tsx"
 
 type Tab = "threads" | "files" | "memory" | "schedules" | "jobs"
@@ -37,6 +38,8 @@ type FileEntry = {
   readonly project: string | null
   readonly updated_at: number
 }
+
+type FileContent = FileEntry & { readonly text: string | null }
 
 type Note = {
   readonly id: number
@@ -152,6 +155,7 @@ function FilesTab(props: { slug: string }): JSX.Element {
     const path = selected()
     return path === undefined ? undefined : files()?.find((entry) => entry.path === path)
   }
+  const [content] = createResource(selected, (path) => cmd<FileContent>("file.read", { path }))
 
   return (
     <Skullet loading={files.loading} sample={() => <PanelGhost rows={7} />} label="Loading files">
@@ -202,9 +206,24 @@ function FilesTab(props: { slug: string }): JSX.Element {
                       updated {ago(entry().updated_at)} · {entry().sha256.slice(0, 12)}
                     </span>
                   </div>
-                  <p class="mt-2.5 text-[12px] leading-[1.5] text-fg-3">
-                    Opening a file’s contents isn’t available in this client yet.
-                  </p>
+                  <Show
+                    when={content()?.text ?? null}
+                    fallback={
+                      <p class="mt-2.5 text-[12px] leading-[1.5] text-fg-3">
+                        {content.loading
+                          ? "Opening…"
+                          : "No text preview for this type. Open it from the thread that wrote it."}
+                      </p>
+                    }
+                  >
+                    {(text) => (
+                      <div class="mt-2.5 max-h-[420px] overflow-y-auto">
+                        <Show when={entry().type === "text/markdown"} fallback={<pre class="whitespace-pre-wrap font-mono text-[12px] leading-[1.55] text-fg-2">{text()}</pre>}>
+                          <Markdown small text={text()} />
+                        </Show>
+                      </div>
+                    )}
+                  </Show>
                 </div>
               )}
             </Show>

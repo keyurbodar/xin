@@ -184,6 +184,17 @@ describe("files", () => {
     expect(listed.parent).toContainEqual({ name: "deep", kind: "directory" })
   })
 
+  it("hands a stored text file back through file.read and refuses a missing path", async () => {
+    const path = `/projects/m4/read-${crypto.randomUUID()}.md`
+    expect((await put(path, "# Vendor comparison\n", { "content-type": "text/markdown" })).status).toBe(200)
+
+    const read = await run("read-1", "file.read", { path }, { kind: "owner" })
+    expect(read).toMatchObject({ kind: "ok", result: { path, type: "text/markdown", text: "# Vendor comparison\n" } })
+
+    const missing = await run("read-2", "file.read", { path: "/projects/m4/nowhere.md" }, { kind: "owner" })
+    expect(missing).toMatchObject({ kind: "rejected", code: "bad_args" })
+  })
+
   it("sweeps unreferenced blobs and staging objects past the grace window and keeps referenced ones", async () => {
     const kept = "/projects/m4/kept.txt"
     expect((await put(kept, "kept bytes")).status).toBe(200)

@@ -20,6 +20,8 @@ const MAX_COMMIT_BYTES = 4096
 const SWEEP_EVERY_MS = 7 * 24 * 60 * 60_000
 const ORPHAN_GRACE_MS = 24 * 60 * 60_000
 const SWEEP_KEY = "files:sweep_at"
+/** Types the client can show as text; anything else comes back with `text: null`. */
+const PREVIEWABLE = /^(text\/|application\/(json|xml|.*\+json|.*\+xml)|image\/svg\+xml)/
 
 const Commit = obj({
   path: str({ minLength: 1 }),
@@ -133,6 +135,22 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
     },
   })
 
+  const read = defineOp({
+    name: "file.read",
+    args: obj({ path: str({ minLength: 1 }) }),
+    actors: ["owner", "agent", "plugin"],
+    run: async ({ actor }, { path }) => {
+      const target = normalizePath("/", path)
+      if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
+      const blocked = scope({ actor, path: target })
+      if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
+      const entry = await files.stat(target)
+      if (entry === undefined) throw new OpRejected("bad_args", `no file ${target}`)
+      const text = PREVIEWABLE.test(entry.type) ? await files.read(target) : undefined
+      return { ...entry, text: text ?? null }
+    },
+  })
+
   const remove = defineOp({
     name: "file.delete",
     args: obj({ path: str({ minLength: 1 }) }),
@@ -189,7 +207,7 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
   return {
     service: files,
     scope: scoped(scope),
-    ops: [list, remove, put],
+    ops: [list, remove, put, read],
     commit,
     start: () =>
       deps.db.run(

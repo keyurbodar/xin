@@ -136,6 +136,51 @@ function inline(text: string): JSX.Element[] {
   return parts
 }
 
+function splitRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim())
+}
+
+function isTableDelimiter(line: string): boolean {
+  const cells = splitRow(line)
+  return cells.length > 0 && cells.every((cell) => /^:?-{2,}:?$/.test(cell))
+}
+
+function TableBlock(props: { header: readonly string[]; rows: readonly (readonly string[])[] }): JSX.Element {
+  return (
+    <div class="overflow-x-auto">
+      <table class="w-max min-w-full border-collapse text-[13px] leading-[1.5]">
+        <thead>
+          <tr>
+            <For each={props.header}>
+              {(cell) => (
+                <th class="border-b border-line px-2 py-1.5 text-left text-[11px] font-normal tracking-wide whitespace-nowrap text-fg-3 uppercase">
+                  {inline(cell)}
+                </th>
+              )}
+            </For>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={props.rows}>
+            {(row) => (
+              <tr>
+                <For each={row}>
+                  {(cell) => <td class="border-b border-line-inner px-2 py-1.5 align-top text-fg-2">{inline(cell)}</td>}
+                </For>
+              </tr>
+            )}
+          </For>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function isBlockStart(line: string): boolean {
   const trimmed = line.trimStart()
   return (
@@ -177,6 +222,18 @@ export function Markdown(props: { text: string; small?: boolean; muted?: boolean
           <div class="mt-1 text-[15px] font-medium leading-[1.4] text-fg">{inline(heading[2] ?? "")}</div>,
         )
         index += 1
+        continue
+      }
+      if ((line ?? "").includes("|") && isTableDelimiter(lines[index + 1] ?? "")) {
+        const header = splitRow(line)
+        index += 2
+        const rows: string[][] = []
+        while (index < lines.length && (lines[index] ?? "").includes("|") && (lines[index] ?? "").trim() !== "") {
+          const cells = splitRow(lines[index] ?? "")
+          rows.push(Array.from({ length: header.length }, (_, column) => cells[column] ?? ""))
+          index += 1
+        }
+        output.push(<TableBlock header={header} rows={rows} />)
         continue
       }
       if (/^[-*]\s+/.test(trimmed)) {

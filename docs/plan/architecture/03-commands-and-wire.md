@@ -29,7 +29,7 @@ The op set:
 ```text
 ops: message.send · message.withdraw · conv.configure(model, thinking) · conv.stop
      project.create/update/archive · thread.send(mode) · thread.stop · thread.rename
-     request.respond · file.put/delete · memory.forget · plugin.enable/configure · credential.set
+     request.respond · file.put/read/delete · memory.forget · plugin.enable/configure · credential.set
 reads (owner): history.page(conversationId, before?, limit?) · request.list(limit?, projectId?) · job.list(limit?)
                usage.summary · usage.cap · usage.cap.set(usd?, clear?) · usage.alert · usage.alert.set(usd)
                notify.prefs · notify.set(waiting?, finished?, failed?, spend?, schedule?) · notify.quiet · notify.quiet.set(enabled?, start?, end?)
