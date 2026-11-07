@@ -1,5 +1,5 @@
 import { For, Show, createSignal, type JSX } from "solid-js"
-import type { UploadedFile } from "../../lib/api.ts"
+import { MAX_UPLOAD_BYTES, type UploadedFile } from "../../lib/api.ts"
 import type { ModelInfo, ModelRef } from "../../state/settings.ts"
 import { FileChip } from "../ui/file-chip.tsx"
 import { Icon } from "../ui/icon.tsx"
@@ -33,14 +33,16 @@ function useGrow(): {
 export type SendKey = { readonly id: string; readonly at: number }
 export type Send = (text: string, key: SendKey, attachments: readonly UploadedFile[]) => Promise<void>
 
-/** One key per draft text, so a retry after a lost ack replays the same command instead of adding a second message. */
+/** One key per draft and its files, so a retry after a lost ack replays the same command instead of adding a second message. */
 function useSender(onSend: Send, blocked: () => boolean) {
   const [sending, setSending] = createSignal(false)
-  let pending: { readonly text: string; readonly key: SendKey } | undefined
+  let pending: { readonly fingerprint: string; readonly key: SendKey } | undefined
   const send = async (text: string, attachments: readonly UploadedFile[]): Promise<boolean> => {
-    if (text === "" || sending() || blocked()) return false
-    const key = pending?.text === text ? pending.key : { id: crypto.randomUUID(), at: Date.now() }
-    pending = { text, key }
+    if (text === "" && attachments.length === 0) return false
+    if (sending() || blocked()) return false
+    const fingerprint = `${text}\u0000${attachments.map((file) => file.path).join(",")}`
+    const key = pending?.fingerprint === fingerprint ? pending.key : { id: crypto.randomUUID(), at: Date.now() }
+    pending = { fingerprint, key }
     setSending(true)
     try {
       await onSend(text, key, attachments)
@@ -53,16 +55,44 @@ function useSender(onSend: Send, blocked: () => boolean) {
   return { sending, send }
 }
 
+type PendingUpload = {
+  readonly id: string
+  readonly name: string
+  readonly type: string
+  readonly size: number
+  readonly progress: number
+  readonly error?: string
+}
+
 function AttachmentChips(props: {
   files: readonly UploadedFile[]
-  onRemove: (path: string) => void
+  pending: readonly PendingUpload[]
+  onRemoveFile: (path: string) => void
+  onRemovePending: (id: string) => void
 }): JSX.Element {
   return (
-    <Show when={props.files.length > 0}>
+    <Show when={props.files.length > 0 || props.pending.length > 0}>
       <div class="flex flex-wrap gap-1.5 px-3 pt-2.5">
         <For each={props.files}>
           {(file) => (
-            <FileChip name={file.name} type={file.type} onRemove={() => props.onRemove(file.path)} />
+            <FileChip
+              name={file.name}
+              type={file.type}
+              size={file.size}
+              onRemove={() => props.onRemoveFile(file.path)}
+            />
+          )}
+        </For>
+        <For each={props.pending}>
+          {(item) => (
+            <FileChip
+              name={item.name}
+              type={item.type}
+              size={item.size}
+              progress={item.progress}
+              error={item.error}
+              onRemove={() => props.onRemovePending(item.id)}
+            />
           )}
         </For>
       </div>
@@ -79,28 +109,50 @@ export function Composer(props: {
   onPickModel: (model: ModelRef) => Promise<void>
   onSend: Send
   onStop: () => Promise<void>
-  onAttach?: ((file: File) => Promise<UploadedFile>) | undefined
+  onAttach?: ((file: File, onProgress?: (fraction: number) => void) => Promise<UploadedFile>) | undefined
 }): JSX.Element {
   const [draft, setDraft] = createSignal("")
   const { sending, send } = useSender(props.onSend, () => false)
   const [files, setFiles] = createSignal<readonly UploadedFile[]>([])
-  const [uploading, setUploading] = createSignal(false)
+  const [pending, setPending] = createSignal<readonly PendingUpload[]>([])
+  const uploading = (): boolean => pending().some((item) => item.error === undefined)
   let fileInput!: HTMLInputElement
+
+  const amend = (id: string, patch: Partial<PendingUpload>): void => {
+    setPending((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)))
+  }
 
   const attach = async (picked: FileList | null): Promise<void> => {
     const upload = props.onAttach
     if (picked === null || upload === undefined) return
-    setUploading(true)
     setError(undefined)
-    try {
-      const uploaded = await Promise.all(Array.from(picked).map((file) => upload(file)))
-      setFiles((current) => [...current, ...uploaded])
-    } catch (failure) {
-      setError(errorText(failure))
-    } finally {
-      setUploading(false)
-      fileInput.value = ""
-    }
+    const chosen = Array.from(picked)
+    const added = chosen.map((file) => ({
+      id: crypto.randomUUID(),
+      name: file.name,
+      type: file.type === "" ? "application/octet-stream" : file.type,
+      size: file.size,
+      progress: 0,
+    }))
+    setPending((current) => [...current, ...added])
+    fileInput.value = ""
+    await Promise.all(
+      chosen.map(async (file, index) => {
+        const item = added[index]
+        if (item === undefined) return
+        if (file.size > MAX_UPLOAD_BYTES) {
+          amend(item.id, { error: "Too big · 50 MB max" })
+          return
+        }
+        try {
+          const uploaded = await upload(file, (fraction) => amend(item.id, { progress: fraction }))
+          setPending((current) => current.filter((entry) => entry.id !== item.id))
+          setFiles((current) => [...current, uploaded])
+        } catch (failure) {
+          amend(item.id, { error: errorText(failure) })
+        }
+      }),
+    )
   }
   const [stopping, setStopping] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>()
@@ -110,6 +162,7 @@ export function Composer(props: {
 
   const empty = (): boolean => draft().trim() === "" && files().length === 0
   const submit = async (): Promise<void> => {
+    if (uploading()) return
     setError(undefined)
     try {
       const text = draft().trim()
@@ -160,7 +213,12 @@ export function Composer(props: {
             placeholder={`Message ${props.projectName}…`}
             class="block max-h-[240px] min-h-[24px] w-full resize-none bg-transparent px-3.5 pb-1.5 pt-3 text-[14px] leading-[1.6] text-fg outline-none placeholder:text-fg-4 disabled:opacity-60"
           />
-          <AttachmentChips files={files()} onRemove={(path) => setFiles((current) => current.filter((file) => file.path !== path))} />
+          <AttachmentChips
+            files={files()}
+            pending={pending()}
+            onRemoveFile={(path) => setFiles((current) => current.filter((file) => file.path !== path))}
+            onRemovePending={(id) => setPending((current) => current.filter((item) => item.id !== id))}
+          />
           <div class="flex items-center gap-1 px-2 pb-2 pt-1.5">
             <Show
               when={props.onAttach}

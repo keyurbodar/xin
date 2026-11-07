@@ -102,23 +102,22 @@ export function OwnerBubble(props: {
   attachments?: readonly Attachment[] | undefined
   density: "chat" | "panel"
 }): JSX.Element {
+  const files = (): readonly Attachment[] => props.attachments ?? []
   return (
-    <div class="flex justify-end">
-      <div
-        class="flex flex-col gap-2 rounded-[4px] border border-line-inner bg-hover py-2.5 text-[13.5px] leading-[1.6] text-fg"
-        classList={{ "max-w-[520px] px-3.5": props.density === "chat", "max-w-[280px] px-3": props.density === "panel" }}
-      >
-        <Show when={props.text !== ""}>
+    <div class="flex flex-col items-end gap-1.5">
+      <Show when={files().length > 0}>
+        <div class="flex flex-wrap justify-end gap-1.5">
+          <For each={files()}>{(file) => <FileChip name={file.name} type={file.type} size={file.size} />}</For>
+        </div>
+      </Show>
+      <Show when={props.text !== ""}>
+        <div
+          class="rounded-[4px] border border-line-inner bg-hover py-2.5 text-[13.5px] leading-[1.6] text-fg"
+          classList={{ "max-w-[520px] px-3.5": props.density === "chat", "max-w-[280px] px-3": props.density === "panel" }}
+        >
           <span class="whitespace-pre-wrap [overflow-wrap:anywhere]">{props.text}</span>
-        </Show>
-        <Show when={(props.attachments ?? []).length > 0}>
-          <div class="flex flex-wrap gap-1.5">
-            <For each={props.attachments ?? []}>
-              {(file) => <FileChip name={file.name} type={file.type} />}
-            </For>
-          </div>
-        </Show>
-      </div>
+        </div>
+      </Show>
     </div>
   )
 }

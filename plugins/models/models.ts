@@ -132,18 +132,24 @@ async function storedTotal(db: SqliteExecutor): Promise<Total | undefined> {
   }
 }
 
-async function datedUsage(db: SqliteExecutor): Promise<{ today: Total; month: Total }> {
+type Day = Total & { readonly day: string }
+
+async function datedUsage(db: SqliteExecutor): Promise<{ today: Total; month: Total; days: Day[] }> {
   const today = dayOf(Date.now())
   const rows = await db.all<{ day: string; spend: number; tokens: number }>(
-    "SELECT day, spend, tokens FROM usage_daily WHERE day >= ?",
-    `${today.slice(0, 7)}-01`,
+    "SELECT day, spend, tokens FROM usage_daily WHERE day >= ? ORDER BY day",
+    monthBefore(today),
   )
   const empty: Total = { spend: 0, tokens: 0 }
-  const month = rows.reduce(
-    (sum, row) => ({ spend: sum.spend + row.spend, tokens: sum.tokens + row.tokens }),
-    empty,
-  )
-  return { today: rows.find((row) => row.day === today) ?? empty, month }
+  const current = rows.filter((row) => row.day >= `${today.slice(0, 7)}-01`)
+  const month = current.reduce((sum, row) => ({ spend: sum.spend + row.spend, tokens: sum.tokens + row.tokens }), empty)
+  return { today: rows.find((row) => row.day === today) ?? empty, month, days: rows }
+}
+
+/** The first day of the month before the one `day` falls in, so the pane can chart this month and the last. */
+function monthBefore(day: string): string {
+  const [year, month] = day.split("-").map(Number)
+  return new Date(Date.UTC(year ?? 1970, (month ?? 1) - 2, 1)).toISOString().slice(0, 10)
 }
 
 const addUsage = (sum: UsageBucket, usage: UsageBucket): UsageBucket => ({
@@ -294,6 +300,8 @@ type Registry = {
   readonly store: SealedCredentialStore
   readonly custom: ReadonlyMap<string, Endpoint>
   sync(): Promise<void>
+  /** Re-register after a credential change; pi-ai caches a provider's auth state until it is set again. */
+  restore(provider: string): void
 }
 
 export type ModelsPort = {
@@ -347,7 +355,7 @@ function createRegistry(port: Pick<ModelsPort, "db" | "kek" | "providers">): Reg
     }
   }
 
-  return { models, store, custom, sync }
+  return { models, store, custom, sync, restore }
 }
 
 function endpointProvider(id: string, endpoint: Endpoint): PiProvider {
@@ -615,6 +623,8 @@ export function create(deps: ModelsPort): ModelsParts {
         throw new OpRejected("bad_args", "give either a key or a custom endpoint")
       }
       await store.set(args.provider, entry)
+      await registry.sync()
+      registry.restore(args.provider)
       return { provider: args.provider, type: "api_key", custom: args.custom !== undefined }
     },
   })
@@ -625,6 +635,8 @@ export function create(deps: ModelsPort): ModelsParts {
     actors: ["owner"],
     run: async (_api, { provider }) => {
       await store.delete(provider)
+      await registry.sync()
+      registry.restore(provider)
       return { provider, deleted: true }
     },
   })
@@ -671,7 +683,15 @@ export function create(deps: ModelsPort): ModelsParts {
         .toSorted((left, right) => right.cost - left.cost || left.name.localeCompare(right.name))
       const total = [...byModel, ...byTool].reduce(addUsage, EMPTY_USAGE)
       const dated = await datedUsage(db)
-      return { spend: total.cost, tokens: total.totalTokens, today: dated.today, month: dated.month, byModel, byTool }
+      return {
+        spend: total.cost,
+        tokens: total.totalTokens,
+        today: dated.today,
+        month: dated.month,
+        days: dated.days,
+        byModel,
+        byTool,
+      }
     },
   })
 

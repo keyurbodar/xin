@@ -144,15 +144,30 @@ export type UploadedFile = {
   readonly size: number
 }
 
-export async function uploadFile(file: File, folder: string): Promise<UploadedFile> {
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+export function uploadFile(
+  file: File,
+  folder: string,
+  onProgress?: (fraction: number) => void,
+): Promise<UploadedFile> {
   const safe = file.name.replace(/[^\w.\-]+/gu, "-").slice(-80)
   const type = file.type === "" ? "application/octet-stream" : file.type
   const path = `${folder.replace(/\/+$/gu, "")}/${Date.now().toString(36)}-${safe}`
-  const response = await fetch(`/files${path}`, {
-    method: "PUT",
-    headers: { authorization: `Bearer ${token()}`, "content-type": type },
-    body: file,
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open("PUT", `/files${path}`)
+    request.setRequestHeader("authorization", `Bearer ${token()}`)
+    request.setRequestHeader("content-type", type)
+    if (onProgress !== undefined)
+      request.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total)
+      }
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) resolve({ path, name: file.name, type, size: file.size })
+      else reject(new OpError("upload", `${file.name}: HTTP ${request.status}`))
+    }
+    request.onerror = () => reject(new OpError("upload", `${file.name}: the upload did not reach the Worker`))
+    request.send(file)
   })
-  if (!response.ok) throw new OpError("upload", `${file.name}: HTTP ${response.status}`)
-  return { path, name: file.name, type, size: file.size }
 }

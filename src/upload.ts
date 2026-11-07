@@ -2,6 +2,9 @@ import type { Env } from "./env.ts"
 import { blobKey, normalizePath, sha256, toHex, typeOf } from "./r2env.ts"
 
 const HASH = "SHA-256"
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+const tooBig = (): Response => Response.json({ error: "file too large", maxBytes: MAX_UPLOAD_BYTES }, { status: 413 })
 
 type Stored = { readonly digest: string; readonly size: number }
 
@@ -68,15 +71,18 @@ export async function upload(request: Request, env: Env): Promise<Response | und
   if (body === null) return Response.json({ error: "body required" }, { status: 400 })
   const type = request.headers.get("content-type") ?? typeOf(path)
   const length = contentLength(request)
+  if (length !== undefined && length > MAX_UPLOAD_BYTES) return tooBig()
   const target =
     length === undefined
       ? { kind: "buffered" as const }
       : { kind: "streamed" as const, staged: `tmp/${crypto.randomUUID()}`, length }
   try {
-    const stored =
-      target.kind === "buffered"
-        ? await buffered(env, new Uint8Array(await request.arrayBuffer()))
-        : await streamed(env, body, target.staged, target.length)
+    let stored: Stored
+    if (target.kind === "buffered") {
+      const bytes = new Uint8Array(await request.arrayBuffer())
+      if (bytes.byteLength > MAX_UPLOAD_BYTES) return tooBig()
+      stored = await buffered(env, bytes)
+    } else stored = await streamed(env, body, target.staged, target.length)
     const committed = await env.HOME.get(env.HOME.idFromName("owner")).fetch(
       new Request("https://xin.internal/v1/files/commit", {
         method: "POST",

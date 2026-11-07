@@ -94,6 +94,12 @@ export type UsageBucket = {
   readonly cost: number
 }
 
+export type UsageDay = {
+  readonly day: string
+  readonly spend: number
+  readonly tokens: number
+}
+
 export type ModelUsage = UsageBucket & {
   readonly name: string
   readonly provider: string
@@ -110,6 +116,7 @@ export type UsageSummary =
       readonly tokens: number
       readonly today: number
       readonly month: number
+      readonly days: readonly UsageDay[]
       readonly byModel: readonly ModelUsage[]
       readonly byTool: readonly ToolUsage[]
     }
@@ -146,6 +153,12 @@ export const parseUsage = (value: unknown): UsageSummary => {
     tokens: numberFrom(value, ["tokens", "totalTokens"]) ?? 0,
     today: bucketOf(value["today"]).cost,
     month: bucketOf(value["month"]).cost,
+    days: (Array.isArray(value["days"]) ? value["days"] : []).flatMap((row) => {
+      if (!isRecord(row)) return []
+      const day = row["day"]
+      if (typeof day !== "string") return []
+      return [{ day, spend: bucketOf(row).cost, tokens: bucketOf(row).totalTokens }]
+    }),
     byModel: models.flatMap((entry) => {
       if (!isRecord(entry)) return []
       const name = entry["name"]
@@ -267,6 +280,12 @@ export async function setNotifyPrefs(patch: Partial<NotifyPrefs>): Promise<void>
 }
 
 export type PushSubscriptionKeys = { readonly p256dh: string; readonly auth: string }
+
+/** Deliver one notification to every subscribed browser; the count comes back from the Worker. */
+export async function pushTest(): Promise<number> {
+  const value = await cmd<unknown>("push.test")
+  return isRecord(value) && typeof value["sent"] === "number" ? value["sent"] : 0
+}
 
 export async function pushKey(): Promise<string> {
   const value = await cmd<unknown>("push.key")

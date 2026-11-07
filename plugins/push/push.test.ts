@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { api, connect, owner } from "../../test/support.ts"
 import { decodeVapid, decrypt, encoder, fromBase64Url, subscriber, tokenParts } from "../../test/webpush.ts"
 import type { Home } from "../../test/worker.ts"
-import { notifier, type Notification } from "./push.ts"
+import { notifier, testPush, type Notification } from "./push.ts"
 import { RECORD_SIZE, toBase64Url } from "./webpush.ts"
 
 const decoder = new TextDecoder()
@@ -91,6 +91,25 @@ describe("web push delivery", () => {
         expect(await decrypt(target, new Uint8Array(await request.arrayBuffer()))).toEqual(notification)
       }
     })
+  })
+
+  it("answers a test with one POST per subscription even while a socket is open", async () => {
+    const target = await subscriber("https://push.example.test/test-op")
+    await subscribe("push-sub-test", target)
+    const socket = await connect()
+    try {
+      const calls: string[] = []
+      const sent = await runInDurableObject(owner(), (home: Home) =>
+        testPush(home.db, async (request) => {
+          calls.push(request.url)
+          return new Response(null, { status: 201 })
+        }),
+      )
+      expect(calls).toEqual([target.endpoint])
+      expect(sent).toBe(1)
+    } finally {
+      socket.close()
+    }
   })
 
   it("sends nothing while a socket is connected", async () => {

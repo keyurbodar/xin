@@ -73,7 +73,7 @@ export function notifier(port: PushPort, fetcher: Fetcher = send): Notifier {
   }
 }
 
-export function pushOps(db: SqliteDatabase): readonly Op[] {
+export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly Op[] {
   return [
     defineOp({
       name: "push.key",
@@ -105,6 +105,12 @@ export function pushOps(db: SqliteDatabase): readonly Op[] {
         )
         return next
       },
+    }),
+    defineOp({
+      name: "push.test",
+      args: obj({}),
+      actors: ["owner"],
+      run: async () => ({ sent: await testPush(db, fetcher) }),
     }),
     defineOp({
       name: "push.subscribe",
@@ -155,25 +161,37 @@ export async function readPrefs(db: SqliteDatabase): Promise<NotifyPrefs> {
   }
 }
 
+/** One notification to every subscribed browser, sockets or not: the owner asked to see it arrive. */
+export function testPush(db: SqliteDatabase, fetcher: Fetcher = send): Promise<number> {
+  return deliverAll(db, fetcher, () => loadVapid(db).then(vapidSigner), {
+    threadTitle: "Xin",
+    title: "Push works",
+    body: "This is a test notification from Xin.",
+    tag: "test",
+  })
+}
+
 async function deliverAll(
   db: SqliteDatabase,
   fetcher: Fetcher,
   signing: () => Promise<VapidSigner>,
   notification: Notification,
-): Promise<void> {
+): Promise<number> {
   const subscriptions = await readSubscriptions(db)
-  if (subscriptions.length === 0) return
+  if (subscriptions.length === 0) return 0
   const topic = await pushTopic(notification.tag)
   const payload = fitNotification(notification)
   const results = await Promise.allSettled(
     subscriptions.map((subscription) => deliver(fetcher, signing, topic, payload, subscription)),
   )
+  let sent = 0
   for (const [index, result] of results.entries()) {
     const subscription = subscriptions[index]
     if (subscription === undefined) continue
     const delivery: Delivery = result.status === "fulfilled" ? result.value : { kind: "unreachable" }
     switch (delivery.kind) {
       case "sent":
+        sent += 1
         break
       case "gone":
         await db.run("DELETE FROM push_subs WHERE endpoint = ?", subscription.endpoint)
@@ -186,6 +204,7 @@ async function deliverAll(
         break
     }
   }
+  return sent
 }
 
 async function deliver(

@@ -51,6 +51,7 @@ type Summary = {
   readonly tokens: number
   readonly today: Dated
   readonly month: Dated
+  readonly days: readonly (Dated & { readonly day: string })[]
   readonly byModel: readonly Slice[]
   readonly byTool: readonly Slice[]
 }
@@ -92,6 +93,11 @@ function summaryOf(value: unknown): Summary {
     tokens,
     today: datedOf(Reflect.get(value, "today")),
     month: datedOf(Reflect.get(value, "month")),
+    days: (Array.isArray(Reflect.get(value, "days")) ? Reflect.get(value, "days") : []).flatMap((row: unknown) => {
+      if (typeof row !== "object" || row === null) return []
+      const day = Reflect.get(row, "day")
+      return typeof day === "string" ? [{ ...datedOf(row), day }] : []
+    }),
     byModel: Array.isArray(byModel) ? byModel.map(sliceOf) : [],
     byTool: Array.isArray(byTool) ? byTool.map(sliceOf) : [],
   }
@@ -199,6 +205,7 @@ describe("models", () => {
       home.db.all<{ day: string; spend: number; tokens: number }>("SELECT day, spend, tokens FROM usage_daily"),
     )
     expect(rows).toEqual([{ day, spend: 0, tokens: first.tokens }])
+    expect(again.days).toEqual([{ day, spend: 0, tokens: first.tokens }])
 
     await runInDurableObject(stub, async (home: Home) => {
       home.script(["another answer"])

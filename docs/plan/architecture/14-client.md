@@ -49,18 +49,19 @@ Deviations from the backend spec that the UI needs are logged in `docs/log/decis
 
 ## Ops the client adds
 
-The client needed six ops the agent never asks for: four reads, and the two writes behind the notification switches. Each is owner-only and every one works over state that already exists.
+The client needed seven ops the agent never asks for: four reads, the two writes behind the notification switches, and the push test. Each is owner-only and every one works over state that already exists.
 
 | Op | Args | Result |
 | --- | --- | --- |
 | `request.list` | `{ limit?, projectId? }` | pending questions across live projects, or one project's: `{ requests: [{ id, conversationId, projectId, projectName, threadTitle?, question, options?, askedAt }] }`. Reads run in parallel and never read a coordinator, which cannot hold an open request |
-| `usage.summary` | `{}` | pi's usage ledger, summed: `{ spend, tokens, today, month, byModel[], byTool[] }`. `spend`/`tokens` are all time; `today` and `month` are `{ spend, tokens }` from `usage_daily`, flushed before the read |
+| `usage.summary` | `{}` | pi's usage ledger, summed: `{ spend, tokens, today, month, days[], byModel[], byTool[] }`. `spend`/`tokens` are all time; `today` and `month` are `{ spend, tokens }` from `usage_daily`, flushed before the read |
 | `job.list` | `{ limit? }` | background jobs the jobs plugin holds: `{ jobs: [{ id, tool, title, parentId, startedAt, deadlineAt, detached, state: running\|completed\|failed, result? }] }` |
+| `push.test` | `{}` | delivers one notification to every subscribed browser and answers `{ sent }`; it ignores open sockets, because the owner asked to see it arrive |
 | `notify.prefs` | `{}` | `{ waiting, finished, failed }`, all true by default |
 | `notify.set` | `{ waiting?, finished?, failed? }` | the stored prefs after the patch; `announce` skips a kind that is off |
 | `history.page` | `{ conversationId, before?, limit? }` | older entries than the socket snapshot: `{ entries, nextBefore? }`. `before` is inclusive, the same value the view reports as its first missing entry, so the first page starts at the snapshot's own boundary; `nextBefore` is the oldest returned id minus one |
 
-The Home cell and the sidebar footer show `today.spend` and are labelled "Spend today"; the Usage pane shows today, this month, all time and tokens as four figures side by side. A day is cut at UTC midnight (11), and the pane says so.
+The Home cell and the sidebar footer show `today.spend` and are labelled "Spend today". The Usage pane is the S2 frame: range tabs (7 days, this month, last month), a four-up row (spend and tokens for the range, models and tools in this home), a daily bar chart with a hover tooltip and a Table toggle that lists the same days, then by model and by tool. A day is cut at UTC midnight (11), and the pane says so. With a model that reports no cost the chart says so instead of drawing a flat row of bars.
 
 ## Screens
 

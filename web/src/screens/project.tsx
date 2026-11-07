@@ -194,7 +194,7 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
             onPickModel={async (model) => {
               await cmd("conv.configure", { conv: props.project.coordinatorId, model })
             }}
-            onAttach={(file) => uploadFile(file, `/projects/${props.project.slug}/attachments`)}
+            onAttach={(file, onProgress) => uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress)}
             onSend={async (text, key, attachments) => {
               const result = await cmd<{ readonly accepted: boolean }>(
                 "message.send",

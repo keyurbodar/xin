@@ -1,6 +1,6 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { currentEndpoint, disablePush, enablePush, type PushChange } from "../../lib/push.ts"
-import { notifyNow, notifyPrefs, setNotifyPrefs, type NotifyKind } from "../../state/settings.ts"
+import { notifyNow, notifyPrefs, pushTest, setNotifyPrefs, type NotifyKind } from "../../state/settings.ts"
 import { Button, Chip, Failure, MissingOp, Note, Panel, Toggle } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { Group, Row } from "./parts.tsx"
@@ -23,6 +23,18 @@ export function Notifications(): JSX.Element {
   const [sent, setSent] = createSignal(false)
 
   const [saving, setSaving] = createSignal<NotifyKind | undefined>(undefined)
+  const [tested, setTested] = createSignal<string | undefined>(undefined)
+
+  const sendTest = async (): Promise<void> => {
+    setTested(undefined)
+    setError(undefined)
+    try {
+      const sent = await pushTest()
+      setTested(sent === 0 ? "No subscribed browser answered. Turn push on here first." : `Sent to ${sent} browser${sent === 1 ? "" : "s"}.`)
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "The test notification was not sent.")
+    }
+  }
 
   onMount(() => {
     void currentEndpoint().then((found) => setEndpoint(found))
@@ -115,8 +127,12 @@ export function Notifications(): JSX.Element {
         </Row>
         <Row title="Send test" detail="Delivers one notification to every subscribed browser">
           <div class="flex items-center gap-2">
-            <Button size="sm" variant="quiet" disabled>Send test</Button>
-            <MissingOp op="push.test" />
+            <Show when={tested()}>
+              {(result) => <span class="text-[12px] text-fg-3">{result()}</span>}
+            </Show>
+            <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void sendTest()}>
+              Send test
+            </Button>
           </div>
         </Row>
       </Group>
