@@ -8,9 +8,9 @@ import {
   messageOf,
   nextStep,
   onboardingProvider,
-  type ListedModel,
   type ProviderInput,
 } from "../../state/onboarding.ts"
+import type { ModelInfo } from "../../state/settings.ts"
 
 type ChoiceId = "anthropic" | "openai" | "other"
 type CustomApi = "openai-completions" | "openai-responses" | "anthropic-messages" | "google-generative-ai"
@@ -45,8 +45,8 @@ export function ProviderStep(): JSX.Element {
   const [failure, setFailure] = createSignal<string | undefined>(undefined)
 
   const saved = onboardingProvider
-  const models = (): readonly ListedModel[] => saved()?.models ?? []
-  const visible = (): readonly ListedModel[] => models().slice(0, VISIBLE_MODELS)
+  const models = (): readonly ModelInfo[] => saved()?.models ?? []
+  const visible = (): readonly ModelInfo[] => models().slice(0, VISIBLE_MODELS)
   const hidden = (): number => Math.max(0, models().length - VISIBLE_MODELS)
 
   const provider = (): string => {

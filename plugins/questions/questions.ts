@@ -135,41 +135,50 @@ export function respondOp(port: QuestionsPort): Op {
 export function listOp(): Op {
   return defineOp({
     name: "request.list",
-    args: obj({ limit: opt(int({ minimum: 1, maximum: MAX_LISTED })) }),
+    args: obj({
+      limit: opt(int({ minimum: 1, maximum: MAX_LISTED })),
+      projectId: opt(str({ minLength: 1 })),
+    }),
     actors: ["owner"],
     run: async (api, args) => {
       const limit = args.limit ?? DEFAULT_LISTED
       const workspace = await api.harness.snapshot(WorkspaceDoc, context)
-      const found: PendingRequest[] = []
-      for (const [projectId, project] of Object.entries(workspace?.projects ?? {})) {
-        if (project.archived) continue
-        for (const conversationId of [project.coordinatorId, ...project.threadIds]) {
-          const requests = await api.harness.snapshot(RequestsDoc, conversationId as ConversationId, context)
-          if (requests === undefined) continue
-          const threadTitle =
-            conversationId === project.coordinatorId
-              ? undefined
-              : (await api.harness.snapshot(ThreadDoc, conversationId as ConversationId, context))?.title
-          for (const [requestId, request] of Object.entries(requests.open)) {
-            found.push({
-              id: requestId,
-              conversationId,
-              projectId,
-              projectName: project.name,
-              ...(threadTitle === undefined ? {} : { threadTitle }),
-              question: request.question,
-              ...(request.options === undefined ? {} : { options: [...request.options] }),
-              askedAt: request.at,
-            })
-          }
-        }
-      }
-      const listed = found.toSorted(
-        (left, right) =>
-          right.askedAt - left.askedAt ||
-          left.conversationId - right.conversationId ||
-          left.id.localeCompare(right.id),
+      const projects = Object.entries(workspace?.projects ?? {}).filter(
+        ([projectId, project]) => !project.archived && (args.projectId === undefined || args.projectId === projectId),
       )
+      const perProject = await Promise.all(
+        projects.map(async ([projectId, project]) =>
+          (
+            await Promise.all(
+              project.threadIds.map(async (conversationId): Promise<PendingRequest[]> => {
+                const [requests, thread] = await Promise.all([
+                  api.harness.snapshot(RequestsDoc, conversationId as ConversationId, context),
+                  api.harness.snapshot(ThreadDoc, conversationId as ConversationId, context),
+                ])
+                if (requests === undefined) return []
+                return Object.entries(requests.open).map(([requestId, request]) => ({
+                  id: requestId,
+                  conversationId,
+                  projectId,
+                  projectName: project.name,
+                  ...(thread === undefined ? {} : { threadTitle: thread.title }),
+                  question: request.question,
+                  ...(request.options === undefined ? {} : { options: [...request.options] }),
+                  askedAt: request.at,
+                }))
+              }),
+            )
+          ).flat(),
+        ),
+      )
+      const listed = perProject
+        .flat()
+        .toSorted(
+          (left, right) =>
+            right.askedAt - left.askedAt ||
+            left.conversationId - right.conversationId ||
+            left.id.localeCompare(right.id),
+        )
       return { requests: listed.slice(0, limit) }
     },
   })
@@ -225,24 +234,24 @@ async function answer(
 }
 
 async function openRequests(read: DocumentReader, threadIds: readonly number[]): Promise<OpenQuestion[]> {
-  const found: OpenQuestion[] = []
-  for (const threadId of threadIds) {
-    const conversationId = threadId as ConversationId
-    const thread = await read.snapshot(ThreadDoc, conversationId, context)
-    if (thread === undefined) continue
-    const requests = await read.snapshot(RequestsDoc, conversationId, context)
-    if (requests === undefined) continue
-    for (const [requestId, request] of Object.entries(requests.open)) {
-      found.push({
+  const perThread = await Promise.all(
+    threadIds.map(async (threadId): Promise<OpenQuestion[]> => {
+      const conversationId = threadId as ConversationId
+      const [thread, requests] = await Promise.all([
+        read.snapshot(ThreadDoc, conversationId, context),
+        read.snapshot(RequestsDoc, conversationId, context),
+      ])
+      if (thread === undefined || requests === undefined) return []
+      return Object.entries(requests.open).map(([requestId, request]) => ({
         threadId,
         requestId,
         title: thread.title,
         question: request.question,
         ...(request.options === undefined ? {} : { options: request.options }),
-      })
-    }
-  }
-  return found
+      }))
+    }),
+  )
+  return perThread.flat()
 }
 
 function answerOutcome(value: JsonValue): AnswerOutcome | undefined {

@@ -22,7 +22,7 @@ export function InboxScreen(): JSX.Element {
         return "Could not load"
       case "threads":
       case "requests":
-        return total() === 0 ? "Nothing waits on you" : `${total()} ${total() === 1 ? "needs" : "need"} you`
+        return total() === 0 ? "" : `${total()} ${total() === 1 ? "needs" : "need"} you`
       default: {
         const _exhaustive: never = state
         return _exhaustive

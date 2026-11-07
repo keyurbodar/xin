@@ -1,10 +1,5 @@
 import { createSignal, onCleanup, onMount, Show, type JSX } from "solid-js"
 
-/**
- * M3: a panel or menu arriving from the bottom on a narrow screen. Drag the handle up for full
- * height, down to dismiss; Escape and the scrim close it. The sheet itself never scrolls its own
- * header away, so the handle stays grabbable.
- */
 export function BottomSheet(props: {
   open: boolean
   onClose: () => void

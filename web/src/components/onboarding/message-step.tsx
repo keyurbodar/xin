@@ -95,7 +95,7 @@ export function MessageStep(): JSX.Element {
                     <span class="h-3 w-[3px] rounded-[1px] bg-line-strong" />
                   </span>
                   <span class="text-fg-3">Medium</span>
-                  <span class="ml-auto grid h-8 w-8 place-items-center rounded-[2px] bg-accent text-[#160700]">
+                  <span class="ml-auto grid h-8 w-8 place-items-center rounded-[2px] bg-accent text-ink">
                     <Icon name="arrow-up" size={15} />
                   </span>
                 </div>

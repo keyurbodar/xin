@@ -450,11 +450,13 @@ export function ConfigForm(props: {
         </Show>
         <span class="ml-auto" />
         <Button
-          label={busy() ? "Saving" : "Save"}
+          size="sm"
           variant="primary"
           disabled={busy() || problems().size > 0}
           onClick={() => void save()}
-        />
+        >
+          {busy() ? "Saving" : "Save"}
+        </Button>
       </div>
       <Note>Changes restart the row. Values left blank fall back to the package default.</Note>
     </div>

@@ -1,17 +1,9 @@
 import { createSignal } from "solid-js"
 import { cmd, OpError } from "../lib/api.ts"
+import { parseRequestList, type RequestRow } from "./conversation.ts"
 import { activeProjects, type ProjectSummary, type ThreadSummary } from "./home.ts"
 
-export type InboxQuestion = {
-  readonly id: string
-  readonly conversationId: number
-  readonly projectId?: string
-  readonly projectName?: string
-  readonly threadTitle?: string
-  readonly question: string
-  readonly options?: readonly string[]
-  readonly askedAt: number
-}
+export type InboxQuestion = RequestRow
 
 export type InboxSource = "loading" | "requests" | "threads" | "error"
 
@@ -42,57 +34,14 @@ const [failure, setFailure] = createSignal<string | undefined>(undefined)
 
 export const inboxSource = source
 export const inboxFailure = failure
-
-function text(value: unknown): string | undefined {
-  return typeof value === "string" && value !== "" ? value : undefined
-}
-
-function options(value: unknown): readonly string[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  return value.every((entry): entry is string => typeof entry === "string") ? value : undefined
-}
-
-function parseQuestion(value: unknown): InboxQuestion | undefined {
-  if (typeof value !== "object" || value === null) return undefined
-  const id = text(Reflect.get(value, "id"))
-  const conversationId = Reflect.get(value, "conversationId")
-  const question = text(Reflect.get(value, "question"))
-  if (id === undefined || typeof conversationId !== "number" || question === undefined) return undefined
-  const projectId = text(Reflect.get(value, "projectId"))
-  const projectName = text(Reflect.get(value, "projectName"))
-  const threadTitle = text(Reflect.get(value, "threadTitle"))
-  const choices = options(Reflect.get(value, "options"))
-  const askedAt = Reflect.get(value, "askedAt")
-  return {
-    id,
-    conversationId,
-    question,
-    askedAt: typeof askedAt === "number" ? askedAt : Date.now(),
-    ...(projectId === undefined ? {} : { projectId }),
-    ...(projectName === undefined ? {} : { projectName }),
-    ...(threadTitle === undefined ? {} : { threadTitle }),
-    ...(choices === undefined ? {} : { options: choices }),
-  }
-}
-
-function parseList(value: unknown): readonly InboxQuestion[] {
-  if (typeof value !== "object" || value === null) return []
-  const requests = Reflect.get(value, "requests")
-  if (!Array.isArray(requests)) return []
-  const parsed: InboxQuestion[] = []
-  for (const entry of requests) {
-    const question = parseQuestion(entry)
-    if (question !== undefined) parsed.push(question)
-  }
-  return parsed.sort((left, right) => right.askedAt - left.askedAt)
-}
+export const openRequests = questions
 
 let pending: Promise<void> | undefined
 
 async function fetchQuestions(): Promise<void> {
   try {
     const result = await cmd<unknown>("request.list", {})
-    setQuestions(parseList(result))
+    setQuestions(parseRequestList(result))
     setSource("requests")
     setFailure(undefined)
   } catch (problem) {

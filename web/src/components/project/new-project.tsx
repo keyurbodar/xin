@@ -1,6 +1,7 @@
 import { createSignal, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { cmd } from "../../lib/api.ts"
 import { navigate } from "../../lib/router.ts"
+import { slugify } from "../../lib/slug.ts"
 import { Icon } from "../ui/icon.tsx"
 
 type CreatedProject = {
@@ -14,17 +15,6 @@ export function NewProjectDialog(props: { open: boolean; onClose: () => void }):
       <Dialog onClose={props.onClose} />
     </Show>
   )
-}
-
-function slugOf(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64)
-    .replace(/-+$/g, "")
 }
 
 function projectOf(value: unknown): CreatedProject | undefined {
@@ -85,7 +75,7 @@ function Dialog(props: { onClose: () => void }): JSX.Element {
   })
   onCleanup(() => document.removeEventListener("keydown", onKey))
 
-  const ready = (): boolean => !busy() && name().trim() !== "" && slugOf(name()) !== ""
+  const ready = (): boolean => !busy() && slugify(name()) !== ""
 
   const create = async (): Promise<void> => {
     if (!ready()) return
@@ -95,7 +85,7 @@ function Dialog(props: { onClose: () => void }): JSX.Element {
       let project = created()
       if (project === undefined) {
         const result = await cmd<unknown>("project.create", {
-          slug: slugOf(name()),
+          slug: slugify(name()),
           name: name().trim(),
           ...(goal().trim() === "" ? {} : { goal: goal().trim() }),
         })
@@ -210,10 +200,10 @@ function Dialog(props: { onClose: () => void }): JSX.Element {
           <button
             type="submit"
             disabled={!ready()}
-            class="flex h-8 items-center gap-1.5 rounded-[2px] bg-accent px-3 text-[12.5px] font-medium text-[#160700] disabled:opacity-40"
+            class="flex h-8 items-center gap-1.5 rounded-[2px] bg-accent px-3 text-[12.5px] font-medium text-ink disabled:opacity-40"
           >
             {busy() ? "Creating…" : "Create project"}
-            <span class="kbd border-[#160700]/30 text-[#160700]">⌘↵</span>
+            <span class="kbd border-ink/30 text-ink">⌘↵</span>
           </button>
         </div>
       </form>

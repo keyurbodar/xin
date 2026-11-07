@@ -1,4 +1,5 @@
 import { For, Show, type JSX } from "solid-js"
+import { Button } from "../components/ui/button.tsx"
 import { Icon, type IconName } from "../components/ui/icon.tsx"
 import { StatusGlyph } from "../components/ui/status-glyph.tsx"
 import { Wordmark } from "../components/onboarding/chrome.tsx"
@@ -112,8 +113,12 @@ export function LandingScreen(): JSX.Element {
             <span class="text-fg-4">Changelog</span>
           </div>
           <div class="ml-auto flex items-center gap-2">
-            <Action label="Sign in" kind="ghost" onClick={() => navigate("/")} />
-            <Action label="Start a project" kind="primary" onClick={() => navigate("/welcome")} />
+            <Button size="md" variant="quiet" onClick={() => navigate("/")}>
+              Sign in
+            </Button>
+            <Button size="md" variant="primary" onClick={() => navigate("/welcome")}>
+              Start a project
+            </Button>
           </div>
         </div>
       </nav>
@@ -133,14 +138,13 @@ export function LandingScreen(): JSX.Element {
               cloud, asks when it needs you, and lands a report in the chat when it’s done.
             </p>
             <div class="mt-8 flex flex-col items-center justify-center gap-2.5 sm:flex-row">
-              <Action label="Start a project" kind="primary" large onClick={() => navigate("/welcome")} />
-              <Action
-                label="Watch it work · 2 min"
-                kind="secondary"
-                large
-                icon={<Icon name="play" size={14} />}
-                onClick={() => scrollTo("product")}
-              />
+              <Button size="lg" variant="primary" onClick={() => navigate("/welcome")}>
+                Start a project
+              </Button>
+              <Button size="lg" variant="ghost" onClick={() => scrollTo("product")}>
+                <Icon name="play" size={14} />
+                Watch it work · 2 min
+              </Button>
             </div>
             <DemoShot />
           </div>
@@ -243,7 +247,9 @@ export function LandingScreen(): JSX.Element {
                   Packages that need a build apply on the next deploy, and you can roll any of them back.
                 </p>
                 <div class="mt-7 flex gap-2.5">
-                  <Action label="Browse extensions" kind="secondary" onClick={() => navigate("/extensions")} />
+                  <Button size="md" variant="ghost" onClick={() => navigate("/extensions")}>
+                    Browse extensions
+                  </Button>
                 </div>
               </div>
               <div class="flex flex-col gap-2.5">
@@ -328,8 +334,12 @@ export function LandingScreen(): JSX.Element {
               <h2 class={`text-[36px] md:text-[48px] ${DISPLAY}`}>Give your next project a coordinator.</h2>
               <p class="mt-3.5 text-[16px] text-fg-2">Bring a model key. Your first project takes about a minute.</p>
               <div class="mt-7 flex flex-col items-center justify-center gap-2.5 sm:flex-row">
-                <Action label="Start a project" kind="primary" large onClick={() => navigate("/welcome")} />
-                <Action label="Read the docs" kind="ghost" large onClick={() => scrollTo("questions")} />
+                <Button size="lg" variant="primary" onClick={() => navigate("/welcome")}>
+                  Start a project
+                </Button>
+                <Button size="lg" variant="quiet" onClick={() => scrollTo("questions")}>
+                  Read the docs
+                </Button>
               </div>
             </div>
           </section>
@@ -449,32 +459,6 @@ function DemoShot(): JSX.Element {
 
       <span class="absolute right-4 top-4 font-mono text-[10.5px] text-fg-4">live</span>
     </div>
-  )
-}
-
-function Action(props: {
-  label: string
-  kind: "primary" | "secondary" | "ghost"
-  large?: boolean
-  icon?: JSX.Element
-  onClick?: () => void
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      class="inline-flex items-center justify-center gap-2 rounded-[2px] font-medium whitespace-nowrap transition-none"
-      classList={{
-        "h-11 px-4 text-[14.5px]": props.large === true,
-        "h-9 px-3.5 text-[13.5px]": props.large !== true,
-        "bg-accent text-[#160700] hover:bg-accent": props.kind === "primary",
-        "border border-line-inner bg-hover text-fg hover:border-line-strong": props.kind === "secondary",
-        "text-fg-2 hover:text-fg": props.kind === "ghost",
-      }}
-    >
-      {props.icon}
-      {props.label}
-    </button>
   )
 }
 

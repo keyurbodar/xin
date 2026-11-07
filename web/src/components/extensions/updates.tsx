@@ -65,11 +65,13 @@ export function Updates(): JSX.Element {
         </span>
         <span class="ml-auto" />
         <Button
-          label={busy() === undefined ? `Update all (${available().length})` : "Updating"}
-          icon="refresh"
+          size="sm"
           disabled={busy() !== undefined || available().length === 0}
           onClick={() => void updateAll()}
-        />
+        >
+          <Glyph name="refresh" size={14} />
+          {busy() === undefined ? `Update all (${available().length})` : "Updating"}
+        </Button>
       </div>
 
       <Show when={error()}>
@@ -162,14 +164,16 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
         </button>
         <span class="font-mono text-[12px] text-accent-text">{version()}</span>
         <Button
-          label={props.busy ? "Updating" : "Review + update"}
+          size="sm"
           variant="primary"
           disabled={props.disabled}
           onClick={() => {
             setOpen(true)
             props.onUpdate()
           }}
-        />
+        >
+          {props.busy ? "Updating" : "Review + update"}
+        </Button>
       </div>
 
       <Show when={open()}>
@@ -217,7 +221,7 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
                 </div>
 
                 <div class="flex items-center gap-2">
-                  <Button label="Skip this version" variant="ghost" disabled />
+                  <Button size="sm" variant="quiet" disabled>Skip this version</Button>
                   <MissingOp op="market.skip" />
                   <span class="ml-auto" />
                   <Show when={offeredVersion(entry())}>

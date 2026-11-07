@@ -6,8 +6,6 @@ import { STATE_COLOR, STATE_WORD, visualState, type VisualState } from "../../li
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import {
   createConversationView,
-  entryFailure,
-  entryText,
   liveOf,
   type AnsweredView,
   type RequestRow,
@@ -17,8 +15,8 @@ import { Icon } from "../ui/icon.tsx"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
 import { Skullet } from "../ui/skeleton.tsx"
 import { EmptyState, PanelGhost } from "./ui.tsx"
-import { ThreadRow, FailureCard, AnsweredQuestionCard, OpenQuestionCard } from "./cards.tsx"
-import { Markdown } from "./markdown.tsx"
+import { AnsweredQuestionCard, OpenQuestionCard, ThreadRow } from "./cards.tsx"
+import { EntryList, itemsOf, type ItemContext } from "./entries.tsx"
 import { SteerComposer } from "./composer.tsx"
 
 type Tab = "threads" | "files" | "memory" | "schedules" | "jobs"
@@ -313,13 +311,60 @@ function SchedulesTab(): JSX.Element {
   )
 }
 
+type JobEntry = {
+  readonly id: number
+  readonly tool: string
+  readonly title: string
+  readonly startedAt: number
+  readonly deadlineAt: number
+  readonly state: "running" | "completed" | "failed"
+  readonly result?: string
+}
+
 function JobsTab(): JSX.Element {
+  const [jobs, { refetch }] = createResource(() => cmd<{ readonly jobs: readonly JobEntry[] }>("job.list", {}))
   return (
-    <EmptyState
-      icon="clock"
-      title="No jobs listed"
-      detail="Jobs run on the server. This client can’t list them yet."
-    />
+    <Skullet loading={jobs.loading} sample={() => <PanelGhost rows={4} />} label="Loading jobs">
+      <Show when={jobs.error} fallback={null}>
+        <ResourceError what="jobs" error={jobs.error} onRetry={() => void refetch()} />
+      </Show>
+      <Show when={jobs()}>
+        {(data) => (
+          <Show
+            when={data().jobs.length > 0}
+            fallback={
+              <EmptyState
+                icon="clock"
+                title="No jobs"
+                detail="A job runs one long tool call in the background and reports back here."
+              />
+            }
+          >
+            <div class="flex flex-col">
+              <For each={data().jobs}>
+                {(job) => (
+                  <div class="flex flex-col gap-1.5 border-b border-line px-3 py-3">
+                    <div class="flex items-center gap-2">
+                      <StatusGlyph state={job.state === "running" ? "working" : job.state === "failed" ? "failed" : "done"} size={16} />
+                      <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{job.title}</span>
+                      <span class="mono-meta shrink-0">{job.state}</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 text-[12px] text-fg-3">
+                      <Icon name="clock" size={12} />
+                      <span class="truncate">{job.tool}</span>
+                      <span class="ml-auto shrink-0 font-mono text-[10.5px] text-fg-4">{ago(job.startedAt)}</span>
+                    </div>
+                    <Show when={job.result}>
+                      {(text) => <p class="line-clamp-3 text-[12px] leading-[1.55] text-fg-2">{text()}</p>}
+                    </Show>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+        )}
+      </Show>
+    </Skullet>
   )
 }
 
@@ -331,6 +376,18 @@ function ThreadBody(props: {
   onAnswer: (request: RequestRow, answer: string) => Promise<void>
 }): JSX.Element {
   const live = () => liveOf(props.snapshot)
+  const context: ItemContext = {
+    project: undefined,
+    threads: [],
+    links: new Map(),
+    requests: props.requests,
+    density: "panel",
+    onOpenThread: () => undefined,
+    onAnswer: props.onAnswer,
+    onRetry: async (entryId) => {
+      await cmd("message.retry", { entryId })
+    },
+  }
   return (
     <div class="flex flex-col gap-3 px-3 py-3">
       <For each={props.requests}>
@@ -345,49 +402,12 @@ function ThreadBody(props: {
         )}
       </For>
       <For each={props.answered}>
-        {(item) => (
-          <AnsweredQuestionCard question={item.question} answer={item.answer} answeredAt={item.answeredAt} />
-        )}
+        {(item) => <AnsweredQuestionCard question={item.question} answer={item.answer} answeredAt={item.answeredAt} />}
       </For>
-      <For each={props.snapshot.entries}>
-        {(entry) => {
-          if (entry.kind === "pi.user") {
-            const text = entryText(entry)
-            if (text === "") return null
-            return (
-              <div class="flex justify-end">
-                <div class="max-w-[280px] whitespace-pre-wrap rounded-[4px] border border-line-inner bg-hover px-3 py-2 text-[13px] leading-[1.6] text-fg [overflow-wrap:anywhere]">
-                  {text}
-                </div>
-              </div>
-            )
-          }
-          if (entry.kind === "pi.assistant") {
-            const text = entryText(entry)
-            if (text === "") return null
-            return <Markdown small text={text} />
-          }
-          if (entry.kind === "xin.error") {
-            const failure = entryFailure(entry)
-            if (failure === undefined) return null
-            return (
-              <FailureCard
-                failure={failure}
-                onRetry={async () => {
-                  await cmd("message.retry", { entryId: entry.id })
-                }}
-              />
-            )
-          }
-          return null
-        }}
-      </For>
+      <EntryList items={itemsOf(props.snapshot.entries)} context={context} />
       <Show when={live().busy}>
-        <div class="flex flex-col gap-1 text-[12.5px] text-fg-3">
-          <span class="shimmer">{live().partial === "" ? "Working…" : "Drafting…"}</span>
-          <Show when={live().partial !== ""}>
-            <Markdown small text={live().partial} />
-          </Show>
+        <div class="text-[12.5px] text-fg-3">
+          <span class="shimmer">Working…</span>
         </div>
       </Show>
     </div>

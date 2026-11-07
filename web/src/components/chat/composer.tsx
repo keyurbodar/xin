@@ -28,6 +28,29 @@ function useGrow(): {
   }
 }
 
+export type SendKey = { readonly id: string; readonly at: number }
+export type Send = (text: string, key: SendKey) => Promise<void>
+
+/** One key per draft text, so a retry after a lost ack replays the same command instead of adding a second message. */
+function useSender(onSend: Send, blocked: () => boolean) {
+  const [sending, setSending] = createSignal(false)
+  let pending: { readonly text: string; readonly key: SendKey } | undefined
+  const send = async (text: string): Promise<boolean> => {
+    if (text === "" || sending() || blocked()) return false
+    const key = pending?.text === text ? pending.key : { id: crypto.randomUUID(), at: Date.now() }
+    pending = { text, key }
+    setSending(true)
+    try {
+      await onSend(text, key)
+      pending = undefined
+      return true
+    } finally {
+      setSending(false)
+    }
+  }
+  return { sending, send }
+}
+
 export function Composer(props: {
   projectName: string
   modelLabel: string
@@ -35,11 +58,11 @@ export function Composer(props: {
   models: readonly ModelInfo[]
   busy: boolean
   onPickModel: (model: ModelRef) => Promise<void>
-  onSend: (text: string) => Promise<void>
+  onSend: Send
   onStop: () => Promise<void>
 }): JSX.Element {
   const [draft, setDraft] = createSignal("")
-  const [sending, setSending] = createSignal(false)
+  const { sending, send } = useSender(props.onSend, () => false)
   const [stopping, setStopping] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>()
   const [failedStop, setFailedStop] = createSignal(false)
@@ -47,19 +70,15 @@ export function Composer(props: {
   const grow = useGrow()
 
   const submit = async (): Promise<void> => {
-    const text = draft().trim()
-    if (text === "" || sending()) return
-    setSending(true)
     setError(undefined)
     try {
-      await props.onSend(text)
-      setDraft("")
-      grow.resize()
+      if (await send(draft().trim())) {
+        setDraft("")
+        grow.resize()
+      }
     } catch (failure) {
       setFailedStop(false)
       setError(errorText(failure))
-    } finally {
-      setSending(false)
     }
   }
 
@@ -169,12 +188,12 @@ export function Composer(props: {
               class="grid h-8 w-8 place-items-center rounded-[2px]"
               classList={{
                 "ml-auto": !props.busy,
-                "bg-accent text-[#160700] hover:opacity-90": draft().trim() !== "" && !sending(),
+                "bg-accent text-ink hover:opacity-90": draft().trim() !== "" && !sending(),
                 "bg-hover text-fg-4": draft().trim() === "" || sending(),
               }}
             >
               <Show when={sending()} fallback={<Icon name="arrow-up" size={16} />}>
-                <Spinner class="border-[#160700]/30 border-t-[#160700]" />
+                <Spinner class="border-ink/30 border-t-ink" />
               </Show>
             </button>
           </div>
@@ -213,28 +232,24 @@ export function SteerComposer(props: {
   threadTitle: string
   busy: boolean
   waiting: boolean
-  onSend: (text: string) => Promise<void>
+  onSend: Send
   onStop: () => Promise<void>
 }): JSX.Element {
   const [draft, setDraft] = createSignal("")
-  const [sending, setSending] = createSignal(false)
+  const { sending, send } = useSender(props.onSend, () => props.waiting)
   const [stopping, setStopping] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>()
   const grow = useGrow()
 
   const submit = async (): Promise<void> => {
-    const text = draft().trim()
-    if (text === "" || sending() || props.waiting) return
-    setSending(true)
     setError(undefined)
     try {
-      await props.onSend(text)
-      setDraft("")
-      grow.resize()
+      if (await send(draft().trim())) {
+        setDraft("")
+        grow.resize()
+      }
     } catch (failure) {
       setError(errorText(failure))
-    } finally {
-      setSending(false)
     }
   }
 
@@ -319,12 +334,12 @@ export function SteerComposer(props: {
             class="grid h-7 w-7 place-items-center rounded-[2px]"
             classList={{
               "ml-auto": !props.busy,
-              "bg-accent text-[#160700]": draft().trim() !== "" && !props.waiting,
+              "bg-accent text-ink": draft().trim() !== "" && !props.waiting,
               "bg-hover text-fg-4": draft().trim() === "" || props.waiting,
             }}
           >
             <Show when={sending()} fallback={<Icon name="arrow-up" size={14} />}>
-              <Spinner class="border-[#160700]/30 border-t-[#160700]" />
+              <Spinner class="border-ink/30 border-t-ink" />
             </Show>
           </button>
         </div>

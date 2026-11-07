@@ -30,7 +30,6 @@ export function Prompts(): JSX.Element {
   )
 }
 
-/* ----------------------------------------------------------------- presets */
 
 function toolsOf(preset: { readonly tools: "all" | readonly string[] }): readonly string[] {
   return preset.tools === "all" ? [] : preset.tools

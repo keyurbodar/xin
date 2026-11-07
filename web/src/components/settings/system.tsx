@@ -103,7 +103,10 @@ export function System(): JSX.Element {
                   <span class="text-[13px] font-medium text-fg">Build packages</span>
                   <span class="font-mono text-[12px] text-fg-3">{version().build}</span>
                   <span class="ml-auto" />
-                  <Button label={busy() ? "Working" : "Update now"} icon="refresh" onClick={() => void update()} />
+                  <Button size="sm" onClick={() => void update()}>
+                    <Glyph name="refresh" size={14} />
+                    {busy() ? "Working" : "Update now"}
+                  </Button>
                 </div>
                 <p class="mt-2 text-[11.5px] leading-relaxed text-fg-3">
                   Hands the pending packages to the deployer. Threads keep running; a restart takes about 20 s.
@@ -168,22 +171,36 @@ export function System(): JSX.Element {
                 <div class="flex flex-wrap items-center gap-2">
                   <Show
                     when={confirming()}
-                    fallback={<Button label="Restart now" icon="refresh" onClick={() => setConfirming(true)} />}
+                    fallback={
+                      <Button size="sm" onClick={() => setConfirming(true)}>
+                        <Glyph name="refresh" size={14} />
+                        Restart now
+                      </Button>
+                    }
                   >
                     <span class="text-[12px] text-fg-2">Restart takes about 20 s. Running threads resume from their last step.</span>
-                    <Button label="Keep" variant="ghost" onClick={() => setConfirming(false)} />
+                    <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
                     <Button
-                      label={busy() ? "Restarting" : "Restart"}
+                      size="sm"
                       variant="primary"
                       disabled={busy()}
                       onClick={() => void restart()}
-                    />
+                    >
+                      {busy() ? "Restarting" : "Restart"}
+                    </Button>
                   </Show>
                 </div>
               </Row>
               <div class="pt-1">
                 <div class="flex items-center gap-2">
-                  <Button label="Download logs" icon="download" variant="ghost" disabled />
+                  <Button
+                    size="sm"
+                    variant="quiet"
+                    disabled
+                  >
+                    <Glyph name="download" size={14} />
+                    Download logs
+                  </Button>
                   <MissingOp op="system.logs" />
                 </div>
               </div>

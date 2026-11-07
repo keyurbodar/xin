@@ -1,4 +1,4 @@
-import { createSignal, Match, onCleanup, onMount, Switch, type JSX } from "solid-js"
+import { createSignal, ErrorBoundary, Match, onCleanup, onMount, Switch, type JSX } from "solid-js"
 import { route } from "../../lib/router.ts"
 import { Sidebar } from "./sidebar.tsx"
 import { ConnectionBanner } from "./connection-banner.tsx"
@@ -35,27 +35,45 @@ export function Shell(): JSX.Element {
       </div>
       <main class="flex min-h-0 min-w-0 flex-1 flex-col">
         <ConnectionBanner />
-        <Switch fallback={<HomeScreen />}>
-          <Match when={first() === "p"}>
-            <ProjectScreen />
-          </Match>
-          <Match when={first() === "inbox"}>
-            <InboxScreen />
-          </Match>
-          <Match when={first() === "extensions"}>
-            <ExtensionsScreen />
-          </Match>
-          <Match when={first() === "settings"}>
-            <SettingsScreen />
-          </Match>
-          <Match when={first() === "schedules"}>
-            <SchedulesScreen />
-          </Match>
-          <Match when={first() === "new"}>
-            <HomeScreen />
-            <NewProjectDialog open onClose={() => navigate("/")} />
-          </Match>
-        </Switch>
+        <ErrorBoundary
+          fallback={(error: unknown, reset) => (
+            <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+              <span class="text-[13px] text-fg-2">This screen stopped</span>
+              <span class="max-w-[420px] font-mono text-[11.5px] text-fg-3">
+                {error instanceof Error ? error.message : String(error)}
+              </span>
+              <button
+                type="button"
+                onClick={() => reset()}
+                class="rounded-[2px] border border-line-inner px-2.5 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:bg-hover"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+        >
+          <Switch fallback={<HomeScreen />}>
+            <Match when={first() === "p"}>
+              <ProjectScreen />
+            </Match>
+            <Match when={first() === "inbox"}>
+              <InboxScreen />
+            </Match>
+            <Match when={first() === "extensions"}>
+              <ExtensionsScreen />
+            </Match>
+            <Match when={first() === "settings"}>
+              <SettingsScreen />
+            </Match>
+            <Match when={first() === "schedules"}>
+              <SchedulesScreen />
+            </Match>
+            <Match when={first() === "new"}>
+              <HomeScreen />
+              <NewProjectDialog open onClose={() => navigate("/")} />
+            </Match>
+          </Switch>
+        </ErrorBoundary>
       </main>
       <TabBar />
       <CommandPalette open={palette()} onClose={() => setPalette(false)} />

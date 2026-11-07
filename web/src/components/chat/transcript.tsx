@@ -1,31 +1,10 @@
-import { For, Show, createEffect, onMount, type JSX } from "solid-js"
-import {
-  entryBatchRows,
-  entryFailure,
-  entryText,
-  entryToolCalls,
-  liveOf,
-  type AnsweredView,
-  type BatchRow,
-  type EntryView,
-  type FailureData,
-  type RequestRow,
-  type Snapshot,
-  type ToolCallView,
-} from "../../state/conversation.ts"
+import { For, Show, createEffect, createMemo, createSignal, onMount, type JSX } from "solid-js"
+import { delegatedThreads, liveOf, type AnsweredView, type EntryView, type RequestRow, type Snapshot } from "../../state/conversation.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { Icon } from "../ui/icon.tsx"
 import { Markdown } from "./markdown.tsx"
-import {
-  AnsweredQuestionCard,
-  FailureCard,
-  JobCard,
-  OpenQuestionCard,
-  QuestionInboundCard,
-  ReportCard,
-  SystemNotice,
-  ThreadFan,
-} from "./cards.tsx"
+import { AnsweredQuestionCard } from "./cards.tsx"
+import { EntryList, OwnerBubble, itemsOf, type EntryItem, type ItemContext } from "./entries.tsx"
 import { projectIcon } from "../../lib/project-icon.ts"
 import { ProjectGlyph } from "./project-glyph.tsx"
 
@@ -35,82 +14,11 @@ export type PendingMessage = {
   readonly at: number
 }
 
-type Item =
-  | { readonly kind: "owner"; readonly text: string }
-  | {
-      readonly kind: "assistant"
-      readonly text: string
-      readonly calls: readonly ToolCallView[]
-    }
-  | { readonly kind: "report"; readonly row: BatchRow }
-  | { readonly kind: "question"; readonly row: BatchRow }
-  | { readonly kind: "job"; readonly row: BatchRow }
-  | { readonly kind: "failure"; readonly entryId: number; readonly failure: FailureData }
-  | { readonly kind: "notice"; readonly text: string }
-
-/** One entry becomes one stable group of items, cached by the entry view `For` keys on. */
-const ITEM_CACHE = new WeakMap<EntryView, readonly Item[]>()
-
-function entryItems(entry: EntryView): readonly Item[] {
-  const cached = ITEM_CACHE.get(entry)
-  if (cached !== undefined) return cached
-  const items: Item[] = []
-  if (entry.kind === "xin.batch") {
-    for (const row of entryBatchRows(entry)) {
-      switch (row.kind) {
-        case "user":
-          if (row.text.trim() !== "") items.push({ kind: "owner", text: row.text })
-          break
-        case "report":
-          items.push({ kind: "report", row })
-          break
-        case "question":
-          items.push({ kind: "question", row })
-          break
-        case "job":
-          items.push({ kind: "job", row })
-          break
-        default: {
-          const _exhaustive: never = row.kind
-          return _exhaustive
-        }
-      }
-    }
-  } else if (entry.kind === "xin.error") {
-    const failure = entryFailure(entry)
-    if (failure !== undefined) items.push({ kind: "failure", entryId: entry.id, failure })
-  } else if (entry.kind === "pi.user") {
-    const text = entryText(entry)
-    if (text !== "") items.push({ kind: "owner", text })
-  } else if (entry.kind === "pi.assistant") {
-    const text = entryText(entry)
-    const calls = entryToolCalls(entry).filter((call) => call.name === "delegate_task")
-    if (text !== "" || calls.length > 0) items.push({ kind: "assistant", text, calls })
-  } else if (entry.kind === "pi.reset") {
-    items.push({ kind: "notice", text: "Context reset" })
-  }
-  ITEM_CACHE.set(entry, items)
-  return items
-}
-
-function itemsOf(entries: readonly EntryView[]): readonly Item[] {
-  return entries.flatMap(entryItems)
-}
-
 function threadsOf(project: ProjectSummary): readonly ThreadSummary[] {
   const groups = project.threads
   return [...groups.working, ...groups.waiting, ...groups.completed, ...groups.failed, ...groups.cancelled]
 }
 
-function OwnerBubble(props: { text: string }): JSX.Element {
-  return (
-    <div class="flex justify-end">
-      <div class="max-w-[520px] rounded-[4px] border border-line-inner bg-hover px-3.5 py-2.5 text-[14px] leading-[1.6] whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">
-        {props.text}
-      </div>
-    </div>
-  )
-}
 
 function CoordinatorMeta(props: { busy?: boolean | undefined }): JSX.Element {
   return (
@@ -136,47 +44,50 @@ function Welcome(props: { project: ProjectSummary }): JSX.Element {
   )
 }
 
-function QuestionItem(props: {
-  row: BatchRow
-  requests: readonly RequestRow[]
-  onOpenThread: (id: number) => void
-  onAnswer: (request: RequestRow, answer: string) => Promise<void>
-}): JSX.Element {
-  const request = (): RequestRow | undefined => {
-    const threadId = Number(props.row.threadId)
-    return props.requests.find((candidate) => candidate.conversationId === threadId && candidate.question === props.row.text)
-  }
-  return (
-    <Show
-      when={request()}
-      fallback={<QuestionInboundCard row={props.row} onOpenThread={props.onOpenThread} />}
-    >
-      {(found) => (
-        <OpenQuestionCard
-          title={props.row.title}
-          request={found()}
-          onAnswer={(_requestId, answer) => props.onAnswer(found(), answer)}
-        />
-      )}
-    </Show>
-  )
-}
-
 export function Transcript(props: {
   snapshot: Snapshot
   project: ProjectSummary
   optimistic: readonly PendingMessage[]
+  older: readonly EntryView[]
+  hasOlder: boolean
   requests: readonly RequestRow[]
   answered: readonly AnsweredView[]
   onOpenThread: (id: number) => void
   onAnswer: (request: RequestRow, answer: string) => Promise<void>
   onRetry: (entryId: number) => Promise<void>
+  onLoadOlder: () => Promise<void>
 }): JSX.Element {
   let scroller!: HTMLDivElement
   let pinned = true
+  const [loadingOlder, setLoadingOlder] = createSignal(false)
 
-  const items = (): readonly Item[] => itemsOf(props.snapshot.entries)
+  const items = (): readonly EntryItem[] => itemsOf([...props.older, ...props.snapshot.entries])
+  const links = createMemo(() => delegatedThreads([...props.older, ...props.snapshot.entries]))
+  const context = createMemo<ItemContext>(() => ({
+    project: props.project,
+    threads: threadsOf(props.project),
+    links: links(),
+    requests: props.requests,
+    density: "chat",
+    onOpenThread: props.onOpenThread,
+    onAnswer: props.onAnswer,
+    onRetry: props.onRetry,
+  }))
   const live = () => liveOf(props.snapshot)
+
+  const loadOlder = async (): Promise<void> => {
+    if (loadingOlder()) return
+    setLoadingOlder(true)
+    const height = scroller.scrollHeight
+    try {
+      await props.onLoadOlder()
+      requestAnimationFrame(() => {
+        scroller.scrollTop += scroller.scrollHeight - height
+      })
+    } finally {
+      setLoadingOlder(false)
+    }
+  }
 
   const stick = (): void => {
     if (!pinned || scroller === undefined) return
@@ -207,9 +118,17 @@ export function Transcript(props: {
       class="min-h-0 flex-1 overflow-y-auto"
     >
       <div class="mx-auto flex w-full max-w-[760px] flex-col gap-[18px] px-6 pb-6 pt-7">
-        <Show when={props.snapshot.before !== undefined}>
-          <div class="text-center font-mono text-[10.5px] text-fg-4">
-            Earlier messages aren’t loaded · showing recent history
+        <Show when={props.hasOlder}>
+          <div class="flex flex-col items-center gap-2 pb-1">
+            <button
+              type="button"
+              disabled={loadingOlder()}
+              onClick={() => void loadOlder()}
+              class="rounded-[2px] border border-line-inner px-2.5 py-1 text-[12px] text-fg-2 transition-colors hover:border-line-strong hover:bg-hover disabled:text-fg-4"
+            >
+              {loadingOlder() ? "Loading" : "Load older messages"}
+            </button>
+            <span class="font-mono text-[10.5px] text-fg-4">showing recent history</span>
           </div>
         </Show>
 
@@ -217,74 +136,7 @@ export function Transcript(props: {
           <Welcome project={props.project} />
         </Show>
 
-        <For each={items()}>
-          {(value) => {
-            switch (value.kind) {
-              case "owner":
-                return <OwnerBubble text={value.text} />
-              case "assistant":
-                return (
-                  <div class="flex gap-3">
-                    <ProjectGlyph slug={props.project.slug} class="mt-0.5" />
-                    <div class="flex min-w-0 flex-1 flex-col gap-3">
-                      <CoordinatorMeta />
-                      <Show when={value.text !== ""}>
-                        <Markdown text={value.text} />
-                      </Show>
-                      <Show when={value.calls.length > 0}>
-                        <ThreadFan calls={value.calls} threads={threadsOf(props.project)} onOpenThread={props.onOpenThread} />
-                      </Show>
-                    </div>
-                  </div>
-                )
-              case "report":
-                return (
-                  <div class="flex gap-3">
-                    <ProjectGlyph slug={props.project.slug} class="mt-0.5" />
-                    <div class="min-w-0 flex-1">
-                      <ReportCard row={value.row} onOpenThread={props.onOpenThread} />
-                    </div>
-                  </div>
-                )
-              case "question":
-                return (
-                  <div class="flex gap-3">
-                    <ProjectGlyph slug={props.project.slug} class="mt-0.5" />
-                    <div class="min-w-0 flex-1">
-                      <QuestionItem
-                        row={value.row}
-                        requests={props.requests}
-                        onOpenThread={props.onOpenThread}
-                        onAnswer={props.onAnswer}
-                      />
-                    </div>
-                  </div>
-                )
-              case "job":
-                return (
-                  <div class="flex gap-3">
-                    <ProjectGlyph slug={props.project.slug} class="mt-0.5" />
-                    <div class="min-w-0 flex-1">
-                      <JobCard row={value.row} onOpenThread={props.onOpenThread} />
-                    </div>
-                  </div>
-                )
-              case "failure":
-                return (
-                  <FailureCard
-                    failure={value.failure}
-                    onRetry={() => props.onRetry(value.entryId)}
-                  />
-                )
-              case "notice":
-                return <SystemNotice text={value.text} />
-              default: {
-                const _exhaustive: never = value
-                return _exhaustive
-              }
-            }
-          }}
-        </For>
+        <EntryList items={items()} context={context()} />
 
         <For each={props.answered}>
           {(item) => (
@@ -328,14 +180,13 @@ export function Transcript(props: {
         </Show>
 
         <For each={props.optimistic}>
-          {(message) => <OwnerBubble text={message.text} />}
+          {(message) => <OwnerBubble text={message.text} density="chat" />}
         </For>
       </div>
     </div>
   )
 }
 
-/** The transcript's loading shape, drawn over by Skullet until the first snapshot lands. */
 export function TranscriptSkeleton(): JSX.Element {
   return (
     <div class="mx-auto flex w-full max-w-[760px] flex-col gap-[18px] px-6 pb-6 pt-7">

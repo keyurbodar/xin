@@ -33,8 +33,8 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
   return (
     <div class="flex h-full flex-col bg-page text-fg">
       <OnboardingTopBar items={STEPS} />
-      <div class="atmos grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-12">
-        <form onSubmit={submit} class="crosshair enter w-full max-w-[440px] border border-line bg-surface p-8">
+      <div class="atmos flex min-h-0 flex-1 justify-center overflow-y-auto px-6 pb-16 pt-[22vh]">
+        <form onSubmit={submit} class="enter w-full max-w-[440px]">
           <div class="label">Owner access</div>
           <h1 class="mt-3 text-[28px] font-light leading-[1.15] tracking-[-0.03em]">Sign in to your workspace</h1>
           <p class="mt-3 text-[13px] leading-[1.6] text-fg-3">
@@ -83,11 +83,11 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
             type="submit"
             disabled={busy() || value().trim() === ""}
             aria-busy={busy()}
-            class="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[2px] bg-accent text-[14px] font-medium text-[#160700] transition-none enabled:hover:bg-accent disabled:opacity-40"
+            class="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[2px] bg-accent text-[14px] font-medium text-ink transition-none enabled:hover:bg-accent disabled:opacity-40"
           >
             {busy() ? (
               <>
-                <span class="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-[1.5px] border-[rgba(22,7,0,0.25)] border-t-[#160700]" />
+                <span class="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-[1.5px] border-ink/25 border-t-ink" />
                 Checking…
               </>
             ) : (

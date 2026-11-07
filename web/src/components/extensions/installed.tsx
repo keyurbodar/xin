@@ -274,7 +274,7 @@ function RowPanel(props: {
           <section>
             <span class="label mb-2 block">Rollback</span>
             <div class="flex items-center gap-2">
-              <Button label="Roll back to the previous version" variant="ghost" disabled />
+              <Button size="sm" variant="quiet" disabled>Roll back to the previous version</Button>
             </div>
             <div class="mt-1.5">
               <MissingOp op="market.rollback" detail="Only forward updates are recorded today." />
@@ -288,7 +288,10 @@ function RowPanel(props: {
       </div>
 
       <footer class="flex items-center gap-2 border-t border-line px-4 py-3">
-        <Button label="Configure" icon="sliders" onClick={props.onCustomize} />
+        <Button size="sm" onClick={props.onCustomize}>
+          <Glyph name="sliders" size={14} />
+          Configure
+        </Button>
         <span class="ml-auto" />
         <Show
           when={props.bundle !== undefined}
@@ -296,15 +299,22 @@ function RowPanel(props: {
         >
           <Show
             when={confirming()}
-            fallback={<Button label="Uninstall" icon="trash" variant="danger" onClick={() => setConfirming(true)} />}
+            fallback={
+              <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>
+                <Glyph name="trash" size={14} />
+                Uninstall
+              </Button>
+            }
           >
-            <Button label="Keep" variant="ghost" onClick={() => setConfirming(false)} />
+            <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
             <Button
-              label={busy() ? "Removing" : "Remove package"}
+              size="sm"
               variant="danger"
               disabled={busy()}
               onClick={() => void uninstall()}
-            />
+            >
+              {busy() ? "Removing" : "Remove package"}
+            </Button>
           </Show>
         </Show>
       </footer>

@@ -1,10 +1,6 @@
 import type { JSX } from "solid-js"
 import { Icon, type IconName } from "../ui/icon.tsx"
 
-/**
- * Icons the frames use that the shared set does not carry. They live here so the shared
- * icon module stays owned by the shell lane. Lucide geometry, 24×24, stroke 1.5.
- */
 const EXTRA = {
   globe: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z", "M3.5 9h17", "M3.5 15h17", "M12 3c2.5 2.4 3.8 5.4 3.8 9S14.5 18.6 12 21c-2.5-2.4-3.8-5.4-3.8-9S9.5 5.4 12 3Z"],
   pencil: ["M4 20h4L20 8l-4-4L4 16v4Z", "m13.5 6.5 4 4"],
@@ -33,7 +29,6 @@ const EXTRA = {
   "file-code": ["M6 3h8l4 4v14H6z", "M14 3v4h4", "m10 12-2 2 2 2", "m14 12 2 2-2 2"],
   webhook: ["M9 8a3 3 0 1 1 6 0", "M6 16a3 3 0 1 0 6 0", "M18 16a3 3 0 1 0-6 0"],
   "external-link": ["M14 4h6v6", "M20 4 11 13", "M18 14v6H4V6h6"],
-  "circle-x": ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z", "m9 9 6 6", "m15 9-6 6"],
   shield: ["M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6l-8-3Z", "m9 12 2 2 4-4"],
 } as const satisfies Readonly<Record<string, readonly string[]>>
 

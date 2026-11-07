@@ -112,6 +112,7 @@ export function Discover(props: { onOpen: (name: string) => void; onSources: () 
         {(message) => <Failure message={message()} onRetry={() => void market.reload()} />}
       </Show>
 
+      <Show when={entries().length > 0}>
       <div class="flex flex-wrap gap-1.5">
         <For each={categories()}>
           {([name, count]) => (
@@ -132,6 +133,7 @@ export function Discover(props: { onOpen: (name: string) => void; onSources: () 
           )}
         </For>
       </div>
+      </Show>
 
       <Show when={market.state().kind === "loading"}>
         <Pending label="Reading the market" />
@@ -142,7 +144,10 @@ export function Discover(props: { onOpen: (name: string) => void; onSources: () 
           title="No market index is configured."
           detail="Discover searches the index URLs in Sources. Add one to see connectors, skills, tools and presets here."
         >
-          <Button label="Open Sources" icon="link" onClick={props.onSources} />
+          <Button size="sm" onClick={props.onSources}>
+            <Glyph name="link" size={14} />
+            Open Sources
+          </Button>
         </Empty>
       </Show>
 
@@ -164,13 +169,15 @@ export function Discover(props: { onOpen: (name: string) => void; onSources: () 
       <Show when={entries().length > 0 && filtered().length === 0}>
         <Empty title="Nothing matches that search." detail="Try a package name, an author, or a category chip above.">
           <Button
-            label="Clear search"
-            variant="ghost"
+            size="sm"
+            variant="quiet"
             onClick={() => {
               setQuery("")
               setCategory("All")
             }}
-          />
+          >
+            Clear search
+          </Button>
         </Empty>
       </Show>
 
@@ -254,11 +261,13 @@ function MarketCard(props: { entry: MarketSummary; onOpen: (name: string) => voi
         </div>
       </div>
       <Button
-        label={actionLabel(props.entry.status)}
-        variant={props.entry.status === "not-installed" || props.entry.status === "update-available" ? "default" : "ghost"}
+        size="sm"
+        variant={props.entry.status === "not-installed" || props.entry.status === "update-available" ? "ghost" : "quiet"}
         disabled={props.entry.status === "provided"}
         onClick={() => props.onOpen(props.entry.name)}
-      />
+      >
+        {actionLabel(props.entry.status)}
+      </Button>
     </div>
   )
 }

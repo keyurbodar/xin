@@ -14,14 +14,17 @@ type Ack<T> =
   | { readonly t: "ack"; readonly id: string; readonly ok: true; readonly result: T }
   | { readonly t: "ack"; readonly id: string; readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
 
-export async function cmd<T>(op: string, args: Record<string, unknown> = {}): Promise<T> {
+/** A caller that may retry passes its own command id: the host dedupes on it, so a replay lands once. */
+export type CmdOptions = { readonly id?: string }
+
+export async function cmd<T>(op: string, args: Record<string, unknown> = {}, options: CmdOptions = {}): Promise<T> {
   const response = await fetch("/v1/cmd", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${token()}`,
     },
-    body: JSON.stringify({ id: crypto.randomUUID(), op, args }),
+    body: JSON.stringify({ id: options.id ?? crypto.randomUUID(), op, args }),
   })
   if (!response.ok) throw new OpError("http", `${op}: HTTP ${response.status}`)
   const body = (await response.json()) as Ack<T>

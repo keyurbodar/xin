@@ -1,11 +1,14 @@
+import { applyImmutable, assertValidOp, type Op } from "@earendil-works/chord/delta"
 import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js"
 import type { Streams } from "../lib/api.ts"
+import { numOf, recordOf, strOf, stringsOf } from "../lib/parse.ts"
 
-/**
- * A conversation snapshot as the `conv:<id>` stream sends it: the pi-durable view's bounded window over the
- * transcript, its built-in documents, and the Chord ops that advance it. The snapshot is bounded by design; older
- * history is available through `history.page`, which this client does not call yet.
- */
+/** The watch's ops are decoded already, but they still crossed a socket: validate before applying. */
+function parseOps(events: readonly unknown[]): readonly Op[] {
+  for (const op of events) assertValidOp(op)
+  return events as readonly Op[]
+}
+
 
 type Record_ = Record<string, unknown>
 
@@ -13,9 +16,12 @@ export type ChatMessage = {
   readonly role: string
   readonly content: unknown
   readonly model?: string
+  readonly toolCallId?: string
+  readonly threadId?: number
 }
 
 export type ToolCallView = {
+  readonly id: string | undefined
   readonly name: string
   readonly arguments: Record_
 }
@@ -91,31 +97,22 @@ export type LiveView = {
   readonly tools: readonly LiveToolView[]
 }
 
-function recordOf(value: unknown): Record_ | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined
-  return value as Record_
-}
-
-function stringsOf(value: unknown): readonly string[] {
-  if (!Array.isArray(value)) return []
-  return value.filter((entry): entry is string => typeof entry === "string")
-}
-
-function numOf(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined
-}
-
-function strOf(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined
-}
-
 function parseMessage(value: unknown): ChatMessage | undefined {
   const record = recordOf(value)
   if (record === undefined) return undefined
   const role = strOf(record.role)
   if (role === undefined) return undefined
   const model = strOf(record.model)
-  return model === undefined ? { role, content: record.content } : { role, content: record.content, model }
+  const toolCallId = role === "toolResult" ? strOf(record.toolCallId) : undefined
+  const details = recordOf(record.details)
+  const threadId = details === undefined ? undefined : numOf(details.threadId)
+  return {
+    role,
+    content: record.content,
+    ...(model === undefined ? {} : { model }),
+    ...(toolCallId === undefined ? {} : { toolCallId }),
+    ...(threadId === undefined ? {} : { threadId }),
+  }
 }
 
 /** Committed entries never change, so a raw entry keeps its parsed view across snapshots and `For` keeps its DOM. */
@@ -165,7 +162,6 @@ function contentText(content: unknown): string {
   return text
 }
 
-/** One text part of a model message, in order, with no markup applied. */
 export function messageText(message: ChatMessage): string {
   return contentText(message.content)
 }
@@ -187,10 +183,21 @@ export function entryToolCalls(entry: EntryView): readonly ToolCallView[] {
       const name = strOf(record.name)
       const args = recordOf(record.arguments)
       if (name === undefined) continue
-      calls.push({ name, arguments: args ?? {} })
+      calls.push({ id: strOf(record.id), name, arguments: args ?? {} })
     }
   }
   return calls
+}
+
+/** Which thread each `delegate_task` call created, keyed by its call id, so a title is never the link. */
+export function delegatedThreads(entries: readonly EntryView[]): ReadonlyMap<string, number> {
+  const links = new Map<string, number>()
+  for (const entry of entries) {
+    for (const message of entry.model) {
+      if (message.toolCallId !== undefined && message.threadId !== undefined) links.set(message.toolCallId, message.threadId)
+    }
+  }
+  return links
 }
 
 export function entryBatchRows(entry: EntryView): readonly BatchRow[] {
@@ -253,6 +260,17 @@ export function agentModelOf(snapshot: Snapshot | undefined): ModelRefView | und
   return provider === undefined || modelId === undefined ? undefined : { provider, modelId }
 }
 
+export type HistoryPage = { readonly entries: readonly EntryView[]; readonly nextBefore: number | undefined }
+
+export function parseHistoryPage(value: unknown): HistoryPage {
+  const record = recordOf(value)
+  const list = record?.entries
+  const entries = Array.isArray(list)
+    ? list.map(parseEntry).filter((entry): entry is EntryView => entry !== undefined)
+    : []
+  return { entries, nextBefore: record === undefined ? undefined : numOf(record.nextBefore) }
+}
+
 export function parseRequestList(value: unknown): readonly RequestRow[] {
   const record = recordOf(value)
   const list = record?.requests
@@ -278,107 +296,6 @@ export function parseRequestList(value: unknown): readonly RequestRow[] {
     })
   }
   return rows
-}
-
-/* Chord deltas. The server sends the watch's decoded ops; this applies the seven verbs without trusting paths. */
-
-type Path = readonly (string | number)[]
-type Mutable = Record<string, unknown>
-
-const RESERVED: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"])
-
-function pathOf(value: unknown): Path | undefined {
-  if (!Array.isArray(value) || value.length === 0) return undefined
-  for (const segment of value) {
-    if (typeof segment === "string") {
-      if (RESERVED.has(segment)) return undefined
-    } else if (typeof segment !== "number" || !Number.isInteger(segment) || segment < 0) {
-      return undefined
-    }
-  }
-  return value as Path
-}
-
-function descend(root: unknown, path: Path): unknown {
-  let node: unknown = root
-  for (const segment of path) {
-    if (Array.isArray(node)) {
-      if (typeof segment !== "number") return undefined
-      node = node[segment]
-      continue
-    }
-    const record = recordOf(node)
-    if (record === undefined) return undefined
-    node = record[String(segment)]
-  }
-  return node
-}
-
-function write(parent: unknown, key: string | number, value: unknown): boolean {
-  if (Array.isArray(parent)) {
-    if (typeof key !== "number" || key >= parent.length) return false
-    parent[key] = value
-    return true
-  }
-  if (typeof parent !== "object" || parent === null) return false
-  Object.defineProperty(parent, key, { value, writable: true, enumerable: true, configurable: true })
-  return true
-}
-
-function applyOps(root: unknown, ops: readonly unknown[]): unknown {
-  let current = root
-  for (const value of ops) {
-    if (!Array.isArray(value) || value.length === 0) continue
-    const verb = value[0]
-    if (verb === "r") {
-      current = value[1]
-      continue
-    }
-    const path = pathOf(value[1])
-    if (path === undefined) continue
-    if (verb === "p") {
-      const target = descend(current, path)
-      const index = value[2]
-      const remove = value[3]
-      const items = value[4]
-      if (!Array.isArray(target) || typeof index !== "number" || typeof remove !== "number" || !Array.isArray(items))
-        continue
-      target.splice(index, remove, ...items)
-      continue
-    }
-    if (verb === "m") {
-      const target = descend(current, path)
-      const permutation = value[2]
-      if (!Array.isArray(target) || !Array.isArray(permutation) || target.length !== permutation.length) continue
-      const previous = target.slice()
-      permutation.forEach((from: unknown, index: number) => {
-        if (typeof from === "number") target[index] = previous[from]
-      })
-      continue
-    }
-    const parent = path.length === 1 ? current : descend(current, path.slice(0, -1))
-    const key = path[path.length - 1]
-    if (key === undefined) continue
-    if (verb === "s") {
-      write(parent, key, value[2])
-      continue
-    }
-    if (verb === "d") {
-      if (Array.isArray(parent) && typeof key === "number") parent.splice(key, 1)
-      else if (typeof parent === "object" && parent !== null) delete (parent as Mutable)[String(key)]
-      continue
-    }
-    const read =
-      Array.isArray(parent) && typeof key === "number"
-        ? parent[key]
-        : typeof parent === "object" && parent !== null
-          ? (parent as Mutable)[String(key)]
-          : undefined
-    if (typeof read !== "string") continue
-    if (verb === "a") write(parent, key, `${read}${String(value[2])}`)
-    if (verb === "t") write(parent, key, read.slice(typeof value[2] === "number" ? value[2] : 0))
-  }
-  return current
 }
 
 /**
@@ -409,7 +326,7 @@ export function createConversationView(
         setSnapshot(parseSnapshot(current))
       },
       delta: (events) => {
-        current = applyOps(current, events)
+        current = applyImmutable(current, parseOps(events))
         setSnapshot(parseSnapshot(current))
       },
     })

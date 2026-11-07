@@ -175,15 +175,17 @@ export function InstallSheet(props: {
             You can close this while it runs
           </span>
           <span class="ml-auto" />
-          <Button label={result() === undefined ? "Cancel" : "Close"} variant="ghost" onClick={props.onClose} />
+          <Button size="sm" variant="quiet" onClick={props.onClose}>{result() === undefined ? "Cancel" : "Close"}</Button>
           <Show when={result() === undefined}>
             <Button
-              label={busy() ? "Installing" : "Install"}
-              icon="arrow-right"
+              size="sm"
               variant="primary"
               disabled={busy()}
               onClick={() => void install()}
-            />
+            >
+              <Glyph name="arrow-right" size={14} />
+              {busy() ? "Installing" : "Install"}
+            </Button>
           </Show>
         </footer>
       </section>

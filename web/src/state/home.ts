@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js"
 import type { Streams } from "../lib/api.ts"
+import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
 
 export type ThreadSummary = {
   readonly id: number
@@ -39,13 +40,69 @@ const [loaded, setLoaded] = createSignal(false)
 export const homeProjects = projects
 export const homeLoaded = loaded
 
+function threadsOf(value: unknown): readonly ThreadSummary[] {
+  return listOf(value).flatMap((entry) => {
+    const record = recordOf(entry)
+    const id = numOf(record?.id)
+    const title = strOf(record?.title)
+    const status = strOf(record?.status)
+    if (record === undefined || id === undefined || title === undefined || status === undefined) return []
+    const role = strOf(record.role)
+    const statusLine = strOf(record.statusLine)
+    const result = strOf(record.result)
+    const beatAt = numOf(record.beatAt)
+    const deadlineAt = numOf(record.deadlineAt)
+    return [
+      {
+        id,
+        title,
+        status,
+        ...(role === undefined ? {} : { role }),
+        ...(statusLine === undefined ? {} : { statusLine }),
+        ...(result === undefined ? {} : { result }),
+        ...(beatAt === undefined ? {} : { beatAt }),
+        ...(deadlineAt === undefined ? {} : { deadlineAt }),
+      },
+    ]
+  })
+}
+
+function groupsOf(value: unknown): ThreadGroups {
+  const record = recordOf(value) ?? {}
+  return {
+    working: threadsOf(record.working),
+    waiting: threadsOf(record.waiting),
+    completed: threadsOf(record.completed),
+    failed: threadsOf(record.failed),
+    cancelled: threadsOf(record.cancelled),
+  }
+}
+
+function projectOf(value: unknown): ProjectSummary | undefined {
+  const record = recordOf(value)
+  if (record === undefined) return undefined
+  const id = strOf(record.id)
+  const name = strOf(record.name)
+  const coordinatorId = numOf(record.coordinatorId)
+  if (id === undefined || name === undefined || coordinatorId === undefined) return undefined
+  const slug = strOf(record.slug)
+  const goal = strOf(record.goal)
+  return {
+    id,
+    name,
+    coordinatorId,
+    slug: slug ?? id,
+    archived: record.archived === true,
+    threads: groupsOf(record.threads),
+    openRequests: numOf(record.openRequests) ?? 0,
+    ...(goal === undefined ? {} : { goal }),
+  }
+}
+
 function parse(value: unknown): readonly ProjectSummary[] {
-  if (typeof value !== "object" || value === null) return []
-  const list = Reflect.get(value, "projects")
-  if (!Array.isArray(list)) return []
-  return list.filter((entry): entry is ProjectSummary => {
-    if (typeof entry !== "object" || entry === null) return false
-    return typeof Reflect.get(entry, "id") === "string" && typeof Reflect.get(entry, "name") === "string"
+  return listOf(isRecord(value) ? value.projects : undefined).flatMap((entry) => {
+    const project = projectOf(entry)
+    return project === undefined ? [] : [project]
   })
 }
 

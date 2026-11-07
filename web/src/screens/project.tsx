@@ -5,12 +5,15 @@ import {
   agentModelOf,
   createConversationView,
   entryBatchRows,
-  parseRequestList,
+  parseHistoryPage,
   type AnsweredView,
+  type EntryView,
   type RequestRow,
 } from "../state/conversation.ts"
 import { cmd } from "../lib/api.ts"
+import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
 import { modelName, models, type ModelInfo, type ModelRef } from "../state/settings.ts"
+import { mediaQuery } from "../lib/media.ts"
 import { navigate, param } from "../lib/router.ts"
 import { TopBar } from "../components/shell/topbar.tsx"
 import { Icon } from "../components/ui/icon.tsx"
@@ -27,19 +30,24 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
   const snapshot = createConversationView(streams, () => props.project.coordinatorId)
   const [threadId, setThreadId] = createSignal<number | undefined>()
   const [sheetOpen, setSheetOpen] = createSignal(false)
+  const wide = mediaQuery("(min-width: 1280px)")
   const [panelOpen, setPanelOpen] = createSignal(true)
   const [optimistic, setOptimistic] = createSignal<readonly PendingMessage[]>([])
   const [answered, setAnswered] = createSignal<readonly AnsweredView[]>([])
-  const [requests, { refetch: refetchRequests }] = createResource(
-    () => `${props.project.id}:${props.project.openRequests}`,
-    () => cmd<unknown>("request.list", { limit: 200 }).then(parseRequestList),
-  )
+  const [older, setOlder] = createSignal<readonly EntryView[]>([])
+  const [olderBefore, setOlderBefore] = createSignal<number | undefined>(undefined)
+  const [olderDone, setOlderDone] = createSignal(false)
+  onMount(loadRequests)
+  createEffect(() => {
+    void props.project.openRequests
+    void refreshRequests()
+  })
 
   const projectRequests = (): readonly RequestRow[] =>
-    (requests() ?? []).filter((request) => request.projectId === props.project.id)
+    openRequests().filter((request) => request.projectId === props.project.id)
 
   const answer = async (request: RequestRow, text: string): Promise<void> => {
-    await cmd("request.respond", { threadId: request.conversationId, requestId: request.id, answer: text })
+    await respondToQuestion(request, text)
     setAnswered((current) => [
       ...current,
       {
@@ -49,7 +57,6 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
         answeredAt: Date.now(),
       },
     ])
-    void refetchRequests()
   }
 
   createEffect(() => {
@@ -57,7 +64,28 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
     setThreadId(undefined)
     setOptimistic([])
     setAnswered([])
+    setOlder([])
+    setOlderBefore(undefined)
+    setOlderDone(false)
   })
+
+  const loadOlder = async (): Promise<void> => {
+    const value = snapshot()
+    if (value === undefined) return
+    const before = olderBefore() ?? value.before
+    if (before === undefined) return
+    const page = parseHistoryPage(
+      await cmd<unknown>("history.page", { conversationId: props.project.coordinatorId, before, limit: 60 }),
+    )
+    setOlder((current) => [...page.entries, ...current])
+    if (page.entries.length === 0 || page.nextBefore === undefined) setOlderDone(true)
+    else setOlderBefore(page.nextBefore)
+  }
+
+  const hasOlder = (): boolean => {
+    const value = snapshot()
+    return value !== undefined && !olderDone() && (olderBefore() !== undefined || value.before !== undefined)
+  }
 
   // The owner bubble is optimistic; once the intake batch appears in the transcript, the real row takes over.
   createEffect(() => {
@@ -137,6 +165,8 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
                   snapshot={value()}
                   project={props.project}
                   optimistic={optimistic()}
+                  older={older()}
+                  hasOlder={hasOlder()}
                   requests={projectRequests()}
                   answered={answered()}
                   onOpenThread={openThread}
@@ -144,6 +174,7 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
                   onRetry={async (entryId) => {
                     await cmd("message.retry", { entryId })
                   }}
+                  onLoadOlder={loadOlder}
                 />
               )}
             </Show>
@@ -157,15 +188,14 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
             onPickModel={async (model) => {
               await cmd("conv.configure", { conv: props.project.coordinatorId, model })
             }}
-            onSend={async (text) => {
-              const at = Date.now()
-              const result = await cmd<{ readonly accepted: boolean }>("message.send", {
-                conv: props.project.coordinatorId,
-                text,
-                clientTs: at,
-              })
+            onSend={async (text, key) => {
+              const result = await cmd<{ readonly accepted: boolean }>(
+                "message.send",
+                { conv: props.project.coordinatorId, text, clientTs: key.at },
+                { id: key.id },
+              )
               if (result.accepted) {
-                setOptimistic((current) => [...current, { key: crypto.randomUUID(), text, at }])
+                setOptimistic((current) => [...current, { key: key.id, text, at: key.at }])
               }
             }}
             onStop={async () => {
@@ -173,19 +203,21 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
             }}
           />
         </div>
-        <ProjectPanel
-          project={props.project}
-          streams={streams}
-          open={panelOpen()}
-          thread={thread()}
-          requests={projectRequests()}
-          answered={answered()}
-          onAnswer={answer}
-          onOpenThread={openThread}
-          onCloseThread={() => setThreadId(undefined)}
-        />
+        <Show when={wide()}>
+          <ProjectPanel
+            project={props.project}
+            streams={streams}
+            open={panelOpen()}
+            thread={thread()}
+            requests={projectRequests()}
+            answered={answered()}
+            onAnswer={answer}
+            onOpenThread={openThread}
+            onCloseThread={() => setThreadId(undefined)}
+          />
+        </Show>
       </div>
-      <Show when={sheetOpen()}>
+      <Show when={!wide() && sheetOpen()}>
         <BottomSheet open onClose={() => setSheetOpen(false)} label="Project panel">
           <ProjectPanel
             variant="sheet"

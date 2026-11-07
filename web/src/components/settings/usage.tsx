@@ -40,7 +40,7 @@ export function Usage(): JSX.Element {
           title="Not recorded yet."
           detail="The usage ledger has no figures to show. Spend, token counts and per-model totals appear here once usage.summary answers."
         >
-          <Button label="Check again" variant="ghost" onClick={() => void usage.reload()} />
+          <Button size="sm" variant="quiet" onClick={() => void usage.reload()}>Check again</Button>
         </Empty>
       </Show>
 

@@ -119,16 +119,18 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
         <footer class="flex items-center gap-2 border-t border-line px-4 py-3">
           <span class="text-[11.5px] text-fg-3">Builds keep going if you close this</span>
           <span class="ml-auto" />
-          <Button label="Close" variant="ghost" onClick={props.onClose} />
+          <Button size="sm" variant="quiet" onClick={props.onClose}>Close</Button>
           <Button
-            label={busy() ? "Recording" : added() === undefined ? "Add package" : "Add another"}
+            size="sm"
             variant="primary"
             disabled={busy() || !valid()}
             onClick={() => {
               setAdded(undefined)
               void submit()
             }}
-          />
+          >
+            {busy() ? "Recording" : added() === undefined ? "Add package" : "Add another"}
+          </Button>
         </footer>
       </section>
     </div>

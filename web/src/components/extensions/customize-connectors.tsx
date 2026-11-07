@@ -20,14 +20,16 @@ export function Connectors(): JSX.Element {
         <div class="flex items-center gap-2 border-b border-line px-3.5 py-3">
           <span class="label">MCP connectors</span>
           <Button
-            label="Add server"
-            icon="plus"
+            size="sm"
             class="ml-auto"
             onClick={() => {
               setAdding(true)
               setSelected(undefined)
             }}
-          />
+          >
+            <Glyph name="plus" size={14} />
+            Add server
+          </Button>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto">
           <Show when={servers.state().kind === "loading"}>
@@ -136,9 +138,9 @@ function ConnectorDetail(props: { server: McpServer; onRemoved: () => void }): J
           </span>
         </div>
         <Show when={props.server.source === undefined}>
-          <Show when={confirming()} fallback={<Button label="Remove" variant="ghost" onClick={() => setConfirming(true)} />}>
-            <Button label="Keep" variant="ghost" onClick={() => setConfirming(false)} />
-            <Button label={busy() ? "Removing" : "Remove server"} variant="danger" disabled={busy()} onClick={() => void remove()} />
+          <Show when={confirming()} fallback={<Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>Remove</Button>}>
+            <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
+            <Button size="sm" variant="danger" disabled={busy()} onClick={() => void remove()}>{busy() ? "Removing" : "Remove server"}</Button>
           </Show>
         </Show>
       </header>
@@ -271,13 +273,15 @@ function AddServer(props: { onAdded: (name: string) => void; onCancel: () => voi
       </div>
       <footer class="flex items-center gap-2 border-t border-line px-6 py-3">
         <span class="ml-auto" />
-        <Button label="Cancel" variant="ghost" onClick={props.onCancel} />
+        <Button size="sm" variant="quiet" onClick={props.onCancel}>Cancel</Button>
         <Button
-          label={busy() ? "Adding" : "Add server"}
+          size="sm"
           variant="primary"
           disabled={busy() || !validName() || !validUrl()}
           onClick={() => void submit()}
-        />
+        >
+          {busy() ? "Adding" : "Add server"}
+        </Button>
       </footer>
     </>
   )

@@ -1,5 +1,7 @@
-import { Show, type JSX } from "solid-js"
-import { Icon, type IconName } from "../ui/icon.tsx"
+import type { JSX } from "solid-js"
+import { Button as SharedButton } from "../ui/button.tsx"
+
+export { EmptyState } from "../ui/state.tsx"
 
 export function Button(props: {
   variant?: "solid" | "ghost" | "primary"
@@ -8,43 +10,16 @@ export function Button(props: {
   children: JSX.Element
   class?: string
 }): JSX.Element {
-  const variant = (): "solid" | "ghost" | "primary" => props.variant ?? "solid"
   return (
-    <button
-      type="button"
-      disabled={props.disabled === true}
-      onClick={() => props.onClick?.()}
-      class={`inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-[2px] px-2.5 text-[12.5px] font-medium transition-none disabled:opacity-50 ${props.class ?? ""}`}
-      classList={{
-        "border border-accent bg-accent text-[#160700] hover:opacity-90": variant() === "primary",
-        "border border-line-inner bg-hover text-fg hover:border-line-strong": variant() === "solid",
-        "text-fg-2 hover:text-fg": variant() === "ghost",
-      }}
+    <SharedButton
+      size="sm"
+      variant={props.variant === "primary" ? "primary" : props.variant === "ghost" ? "quiet" : "ghost"}
+      disabled={props.disabled}
+      onClick={props.onClick}
+      class={props.class}
     >
       {props.children}
-    </button>
-  )
-}
-
-export function EmptyState(props: {
-  icon: IconName
-  title: string
-  detail?: string
-  action?: JSX.Element
-}): JSX.Element {
-  return (
-    <div class="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-      <span class="grid h-9 w-9 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-3">
-        <Icon name={props.icon} size={16} />
-      </span>
-      <div class="flex flex-col gap-1">
-        <span class="text-[13px] text-fg-2">{props.title}</span>
-        <Show when={props.detail}>
-          <span class="max-w-[280px] text-[12px] leading-[1.5] text-fg-3">{props.detail}</span>
-        </Show>
-      </div>
-      <Show when={props.action}>{props.action}</Show>
-    </div>
+    </SharedButton>
   )
 }
 

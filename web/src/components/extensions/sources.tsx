@@ -132,10 +132,12 @@ export function Sources(): JSX.Element {
                         class={`${MONO_INPUT} h-7 border-transparent bg-transparent px-0 focus:border-transparent`}
                       />
                       <Button
-                        label="Add index"
+                        size="sm"
                         disabled={busy() || !draft().trim().startsWith("https://")}
                         onClick={() => void add()}
-                      />
+                      >
+                        Add index
+                      </Button>
                     </div>
                   </Panel>
                   <Note>

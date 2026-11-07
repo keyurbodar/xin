@@ -144,7 +144,7 @@ function NavRow(props: {
         {props.label}
       </span>
       <Show when={(props.count ?? 0) > 0}>
-        <span class="ml-auto grid h-4 min-w-4 place-items-center rounded-[2px] bg-accent px-1 font-mono text-[10px] font-medium text-[#160700]">
+        <span class="ml-auto grid h-4 min-w-4 place-items-center rounded-[2px] bg-accent px-1 font-mono text-[10px] font-medium text-ink">
           {props.count}
         </span>
       </Show>

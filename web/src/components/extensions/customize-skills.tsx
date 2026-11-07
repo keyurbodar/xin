@@ -20,14 +20,16 @@ export function Skills(): JSX.Element {
         <div class="flex items-center gap-2 border-b border-line px-3.5 py-3">
           <span class="label">Skills</span>
           <Button
-            label="New"
-            icon="plus"
+            size="sm"
             class="ml-auto"
             onClick={() => {
               setCreating(true)
               setSelected(undefined)
             }}
-          />
+          >
+            <Glyph name="plus" size={14} />
+            New
+          </Button>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto">
           <Show when={skills.state().kind === "loading"}>
@@ -128,9 +130,17 @@ function SkillDetail(props: { name: string; description: string; onRemoved: () =
           <span class="block truncate text-[16px] font-medium text-fg">{props.name}.md</span>
           <span class="block truncate text-[12px] text-fg-3">{props.description}</span>
         </div>
-        <Show when={confirming()} fallback={<Button label="Delete" icon="trash" variant="ghost" onClick={() => setConfirming(true)} />}>
-          <Button label="Keep" variant="ghost" onClick={() => setConfirming(false)} />
-          <Button label={busy() ? "Deleting" : "Delete skill"} variant="danger" disabled={busy()} onClick={() => void remove()} />
+        <Show
+          when={confirming()}
+          fallback={
+            <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>
+              <Glyph name="trash" size={14} />
+              Delete
+            </Button>
+          }
+        >
+          <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
+          <Button size="sm" variant="danger" disabled={busy()} onClick={() => void remove()}>{busy() ? "Deleting" : "Delete skill"}</Button>
         </Show>
       </header>
       <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
@@ -199,8 +209,8 @@ function NewSkill(props: { onCreated: (name: string) => void; onCancel: () => vo
       <footer class="flex items-center gap-2 border-t border-line px-6 py-3">
         <span class="text-[11.5px] text-fg-3">The frontmatter name must match what you type after name:</span>
         <span class="ml-auto" />
-        <Button label="Cancel" variant="ghost" onClick={props.onCancel} />
-        <Button label={busy() ? "Saving" : "Create skill"} variant="primary" disabled={busy() || !named()} onClick={() => void submit()} />
+        <Button size="sm" variant="quiet" onClick={props.onCancel}>Cancel</Button>
+        <Button size="sm" variant="primary" disabled={busy() || !named()} onClick={() => void submit()}>{busy() ? "Saving" : "Create skill"}</Button>
       </footer>
     </>
   )

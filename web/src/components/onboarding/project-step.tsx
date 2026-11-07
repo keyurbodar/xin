@@ -1,6 +1,7 @@
 import { createSignal, For, Show, type JSX } from "solid-js"
 import { Icon, type IconName } from "../ui/icon.tsx"
 import { projectIcon } from "../../lib/project-icon.ts"
+import { slugify } from "../../lib/slug.ts"
 import { Field, GhostButton, PrimaryButton, StatusLine, StepHeading, TextArea, TextInput } from "./controls.tsx"
 import {
   createFirstProject,
@@ -8,7 +9,6 @@ import {
   nextStep,
   onboardingProject,
   previousStep,
-  slugify,
 } from "../../state/onboarding.ts"
 
 type Template = { readonly icon: IconName; readonly name: string; readonly goal: string }
@@ -44,6 +44,7 @@ export function ProjectStep(): JSX.Element {
   const [failure, setFailure] = createSignal<string | undefined>(undefined)
 
   const project = onboardingProject
+  const slug = (): string => slugify(name())
   const previewName = (): string => (name().trim() === "" ? "Untitled project" : name().trim())
   const previewGoal = (): string => (goal().trim() === "" ? "Goal shows here." : goal().trim())
 
@@ -61,6 +62,10 @@ export function ProjectStep(): JSX.Element {
     }
     if (name().trim() === "") {
       setFailure("Give the project a name.")
+      return
+    }
+    if (slug() === "") {
+      setFailure("Use at least one letter or number in the name.")
       return
     }
     setBusy(true)
@@ -107,7 +112,10 @@ export function ProjectStep(): JSX.Element {
             </For>
           </div>
 
-          <Field label="Name" hint={`The project opens at /p/${slugify(name().trim() === "" ? "untitled" : name())}.`}>
+          <Field
+            label="Name"
+            hint={slug() === "" ? "Letters and numbers in the name become the link." : `The project opens at /p/${slug()}.`}
+          >
             <TextInput
               value={name()}
               onInput={(value) => {
@@ -150,7 +158,7 @@ export function ProjectStep(): JSX.Element {
             <PrimaryButton
               label={project() === undefined ? "Create project" : "Continue"}
               busy={busy()}
-              disabled={project() === undefined && name().trim() === ""}
+              disabled={project() === undefined && slug() === ""}
               onClick={() => void submit()}
             />
           </div>

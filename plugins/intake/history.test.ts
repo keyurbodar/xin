@@ -59,6 +59,37 @@ describe("history.page", () => {
     )
   })
 
+  it("starts a page at the first entry the view is missing", async () => {
+    const stub = fresh()
+    const { rootId, all, before, windowIds } = await runInDurableObject(stub, async (home: Home) => {
+      home.script(["first answer", "second answer", "third answer"])
+      await home.chooseModel(FAUX_MODEL)
+      for (const [index, text] of ["first", "second", "third"].entries()) {
+        await home.submit(text, `window-${index}`)
+        await home.harness.waitForIdle(context)
+      }
+      const root = await home.root()
+      const page = await root.entries({ order: "ascending" }, 500, undefined, context)
+      const watch = await root.watch(context, { min: 2, max: 3 })
+      return {
+        rootId: root.id,
+        all: page.items.map((entry: EntryRecord) => entry.id),
+        before: watch.value.before,
+        windowIds: watch.value.entries.map((entry) => entry.id),
+      }
+    })
+    expect(before).toBeDefined()
+    expect(windowIds.length).toBeLessThan(all.length)
+
+    const ack = await cmd(stub, "history-window", "history.page", {
+      conversationId: rootId,
+      before,
+      limit: 200,
+    })
+    expect(ack.ok, JSON.stringify(ack)).toBe(true)
+    expect(pageOf(ack.result).ids).toEqual(all.filter((id) => !windowIds.includes(id)))
+  })
+
   it("rejects an unknown conversation and an empty window before the first entry", async () => {
     const stub = fresh()
     const rootId = await runInDurableObject(stub, async (home: Home) => (await home.root()).id)

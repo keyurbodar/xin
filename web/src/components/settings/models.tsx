@@ -10,6 +10,7 @@ import {
   type ProviderSummary,
 } from "../../state/settings.ts"
 import { Button, Chip, Failure, INPUT, MONO_INPUT, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
+import { Glyph } from "../extensions/glyph.tsx"
 import { Group } from "./parts.tsx"
 
 const APIS: readonly { readonly value: string; readonly label: string }[] = [
@@ -58,7 +59,10 @@ export function Models(): JSX.Element {
               </Show>
             </Panel>
             <div class="flex items-center gap-2">
-              <Button label="Add provider" icon="plus" onClick={() => setAdding((open) => !open)} />
+              <Button size="sm" onClick={() => setAdding((open) => !open)}>
+                <Glyph name="plus" size={14} />
+                Add provider
+              </Button>
               <Show when={list().omitted > 0}>
                 <span class="text-[11.5px] text-fg-3">{list().omitted} more models are not listed</span>
               </Show>
@@ -143,8 +147,8 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
         </div>
         <span class="font-mono text-[11px] text-fg-4">stored sealed</span>
         <Show when={!confirming()}>
-          <Button label="Edit" variant="ghost" onClick={() => setEditing((open) => !open)} />
-          <Button label="Remove" variant="ghost" onClick={() => setConfirming(true)} />
+          <Button size="sm" variant="quiet" onClick={() => setEditing((open) => !open)}>Edit</Button>
+          <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>Remove</Button>
         </Show>
       </div>
 
@@ -168,7 +172,7 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
             class={MONO_INPUT}
             aria-label={`${props.provider.id} API key`}
           />
-          <Button label={busy() ? "Saving" : "Save key"} variant="primary" disabled={busy() || key().trim() === ""} onClick={() => void save()} />
+          <Button size="sm" variant="primary" disabled={busy() || key().trim() === ""} onClick={() => void save()}>{busy() ? "Saving" : "Save key"}</Button>
         </div>
       </Show>
 
@@ -177,8 +181,8 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
           <span class="min-w-0 flex-1 text-[12px] text-fg-2">
             Removing the key hides {props.provider.id}'s models from every picker.
           </span>
-          <Button label="Keep" variant="ghost" onClick={() => setConfirming(false)} />
-          <Button label={busy() ? "Removing" : "Remove key"} variant="danger" disabled={busy()} onClick={() => void remove()} />
+          <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
+          <Button size="sm" variant="danger" disabled={busy()} onClick={() => void remove()}>{busy() ? "Removing" : "Remove key"}</Button>
         </div>
       </Show>
     </div>
@@ -282,8 +286,8 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
       <div class="flex items-center gap-2">
         <Note>A provider id that is not built in needs a custom endpoint, or its key has nothing to attach to.</Note>
         <span class="ml-auto" />
-        <Button label="Cancel" variant="ghost" onClick={props.onDone} />
-        <Button label={busy() ? "Saving" : "Add provider"} variant="primary" disabled={busy() || !valid()} onClick={() => void submit()} />
+        <Button size="sm" variant="quiet" onClick={props.onDone}>Cancel</Button>
+        <Button size="sm" variant="primary" disabled={busy() || !valid()} onClick={() => void submit()}>{busy() ? "Saving" : "Add provider"}</Button>
       </div>
     </div>
   )

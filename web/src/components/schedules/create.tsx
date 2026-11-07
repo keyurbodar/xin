@@ -1,5 +1,6 @@
 import { createSignal, Show, type JSX } from "solid-js"
 import { cmd, OpError } from "../../lib/api.ts"
+import { Button } from "../ui/button.tsx"
 
 type Target = "this_session" | "new_once" | "new"
 
@@ -102,16 +103,12 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
           </div>
 
           <div class="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
-            <button type="button" class="h-7 rounded-[2px] px-3 text-[12.5px] text-fg-2 hover:text-fg" onClick={close}>
+            <Button size="sm" variant="quiet" onClick={close}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!ready() || busy()}
-              class="h-7 rounded-[2px] bg-accent px-3 text-[12.5px] font-medium text-[#160700] disabled:opacity-40"
-            >
+            </Button>
+            <Button type="submit" size="sm" variant="primary" disabled={!ready() || busy()}>
               Create
-            </button>
+            </Button>
           </div>
         </form>
       </div>

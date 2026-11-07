@@ -1,11 +1,12 @@
 import { Show, type JSX } from "solid-js"
+import { Button } from "../ui/button.tsx"
 
 export function Spinner(props: { tone?: "dark" | "light" }): JSX.Element {
   return (
     <span
       class="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-[1.5px]"
       classList={{
-        "border-[rgba(22,7,0,0.25)] border-t-[#160700]": props.tone !== "light",
+        "border-ink/25 border-t-ink": props.tone !== "light",
         "border-line-inner border-t-fg-2": props.tone === "light",
       }}
       aria-hidden="true"
@@ -21,32 +22,26 @@ export function PrimaryButton(props: {
   onClick?: () => void
 }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant="primary"
+      size="md"
       disabled={props.disabled === true || props.busy === true}
-      aria-busy={props.busy === true}
       onClick={props.onClick}
-      class="inline-flex h-10 items-center justify-center gap-2 rounded-[2px] bg-accent px-4 text-[14px] font-medium text-[#160700] transition-none enabled:hover:bg-accent disabled:opacity-50"
     >
       <Show when={props.busy === true}>
         <Spinner />
       </Show>
       <Show when={props.busy !== true}>{props.icon}</Show>
       {props.label}
-    </button>
+    </Button>
   )
 }
 
 export function GhostButton(props: { label: string; onClick?: () => void; disabled?: boolean }): JSX.Element {
   return (
-    <button
-      type="button"
-      disabled={props.disabled === true}
-      onClick={props.onClick}
-      class="inline-flex h-10 items-center justify-center rounded-[2px] px-2 text-[13.5px] text-fg-2 transition-none enabled:hover:text-fg disabled:opacity-40"
-    >
+    <Button variant="quiet" size="md" disabled={props.disabled === true} onClick={props.onClick}>
       {props.label}
-    </button>
+    </Button>
   )
 }
 

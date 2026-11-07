@@ -1,4 +1,5 @@
 import { Show, type JSX } from "solid-js"
+import { Button } from "../ui/button.tsx"
 
 export function TopBar(props: { title: string; subtitle?: string; leading?: JSX.Element; actions?: JSX.Element }): JSX.Element {
   return (
@@ -21,25 +22,17 @@ export function TopButton(props: {
   onClick?: () => void
 }): JSX.Element {
   return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      class="flex h-7 items-center gap-1.5 rounded-[2px] border px-2.5 text-[12.5px] font-medium transition-none"
-      classList={{
-        "border-accent bg-accent text-[#160700]": props.primary === true,
-        "border-line-inner bg-raised text-fg hover:border-line-strong": props.primary !== true,
-      }}
-    >
+    <Button size="sm" variant={props.primary === true ? "primary" : "ghost"} onClick={props.onClick}>
       <Show when={props.icon}>{props.icon}</Show>
       {props.label}
       <Show when={props.shortcut}>
         <span
           class="kbd ml-0.5 px-1 leading-4"
-          classList={{ "border-[#160700]/30 text-[#160700]": props.primary === true, "text-fg-3": props.primary !== true }}
+          classList={{ "border-ink/30 text-ink": props.primary === true, "text-fg-3": props.primary !== true }}
         >
           {props.shortcut}
         </span>
       </Show>
-    </button>
+    </Button>
   )
 }

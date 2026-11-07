@@ -31,6 +31,8 @@ Rows, chips and the sidebar use the **D Grid** family from `I2`: a 3×3 grid of 
 | styles | Tailwind 4 with `@theme` tokens | one token block generates every utility, so a hex exists once |
 | router | a 40-line hash router in `src/lib/router.ts` | six routes, no dependency, works on any static host |
 | icons | inline Lucide paths in `src/components/ui/icon.tsx` | the design names Lucide; inlining keeps the tree to the icons we use |
+| deltas | `@earendil-works/chord/delta` `applyImmutable` | the server sends the watch's decoded ops, so the client applies them with the library that defines them instead of a copy |
+| loading | `skullet` (measured skeletons), `torph` (text morph) | the owner's picks; a skeleton the size of the real content stops the layout shifting |
 | primitives | Kobalte only if a surface needs real focus management | dialogs, the command palette and menus |
 
 ## Data
@@ -38,7 +40,9 @@ Rows, chips and the sidebar use the **D Grid** family from `I2`: a 3×3 grid of 
 The client talks to the Worker over the same contract the agent uses.
 
 - **Commands** go to `POST /v1/cmd` as `{ id, op, args }`; every mutation in the UI is one op.
-- **Streams** come from `GET /v1/socket` with subprotocol `xin, bearer.<token>`: `{t:"sub", stream:"home"}` for the workspace projection and `{t:"sub", stream:"conv:<id>"}` for a conversation. A subscription answers one `{t:"snap"}` and then `{t:"ev"}` deltas.
+- **Streams** come from `GET /v1/socket` with subprotocol `xin, bearer.<token>`: `{t:"sub", stream:"home"}` for the workspace projection and `{t:"sub", stream:"conv:<id>"}` for a conversation. A subscription answers one `{t:"snap"}` and then `{t:"ev"}` deltas, applied with chord's own `applyImmutable`.
+- **One entry renders once.** `components/chat/entries.tsx` maps a transcript's entries to items and renders them; the project chat and a thread's body both call it, so a new entry kind reaches both.
+- **A send is keyed once per draft.** The composer mints one command id and `clientTs` per draft text and reuses them on retry, so a lost ack cannot add a second message: the host dedupes on the command id.
 - **Auth** is the owner token, kept in `localStorage`, checked with `GET /v1/status`. Same-origin in production; Vite proxies `/v1` and `/health` to `wrangler dev` in development.
 
 Deviations from the backend spec that the UI needs are logged in `docs/log/decisions.tsv` as they land.
@@ -49,9 +53,10 @@ The client needed three reads the agent never asked for. Each is owner-only, rea
 
 | Op | Args | Result |
 | --- | --- | --- |
-| `request.list` | `{ limit? }` | pending questions across live projects: `{ requests: [{ id, conversationId, projectId, projectName, threadTitle?, question, options?, askedAt }] }` |
+| `request.list` | `{ limit?, projectId? }` | pending questions across live projects, or one project's: `{ requests: [{ id, conversationId, projectId, projectName, threadTitle?, question, options?, askedAt }] }`. Reads run in parallel and never read a coordinator, which cannot hold an open request |
 | `usage.summary` | `{}` | pi's usage ledger, summed: `{ spend, tokens, byModel[], byTool[] }` |
-| `history.page` | `{ conversationId, before?, limit? }` | older entries than the socket snapshot: `{ entries, nextBefore? }` |
+| `job.list` | `{ limit? }` | background jobs the jobs plugin holds: `{ jobs: [{ id, tool, title, parentId, startedAt, deadlineAt, detached, state: running\|completed\|failed, result? }] }` |
+| `history.page` | `{ conversationId, before?, limit? }` | older entries than the socket snapshot: `{ entries, nextBefore? }`. `before` is inclusive, the same value the view reports as its first missing entry, so the first page starts at the snapshot's own boundary; `nextBefore` is the oldest returned id minus one |
 
 `usage.summary` reads the lifetime ledger; the ledger carries no day bucket, so the Home cell is labelled "Spend", not "Spend today".
 

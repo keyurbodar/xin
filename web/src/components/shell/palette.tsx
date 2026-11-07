@@ -103,7 +103,6 @@ function matches(item: Item, query: string): boolean {
   return item.title.toLowerCase().includes(query) || item.meta.toLowerCase().includes(query)
 }
 
-/** Matched letters stay fg with a 1px orange underline, per the D6 frame. */
 function Marked(props: { text: string; query: string }): JSX.Element {
   const parts = createMemo(() => {
     const query = props.query.trim().toLowerCase()

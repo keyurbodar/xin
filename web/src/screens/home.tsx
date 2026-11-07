@@ -19,7 +19,9 @@ export function HomeScreen(): JSX.Element {
         title="Home"
         actions={
           <>
-            <TopButton icon={<Icon name="calendar" size={14} />} label="Schedules" onClick={() => navigate("/schedules")} />
+            <span class="hidden sm:flex">
+              <TopButton icon={<Icon name="calendar" size={14} />} label="Schedules" onClick={() => navigate("/schedules")} />
+            </span>
             <TopButton icon={<Icon name="plus" size={14} />} label="New project" primary shortcut="N" onClick={() => navigate("/new")} />
           </>
         }

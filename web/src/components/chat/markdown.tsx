@@ -1,6 +1,5 @@
 import { For, type JSX } from "solid-js"
 
-/** A deliberately small Markdown subset: headings, paragraphs, lists, quotes, fenced code, inline code, bold and italic. */
 
 function inline(text: string): JSX.Element[] {
   const parts: JSX.Element[] = []

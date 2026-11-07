@@ -5,7 +5,6 @@ export type RailState = "done" | "current" | "todo"
 
 export type RailItem = { readonly label: string; readonly state: RailState }
 
-/** The wordmark slot stays a placeholder until the owner names the product. */
 export function Wordmark(): JSX.Element {
   return (
     <span class="rounded-[2px] border border-dashed border-line-strong px-2 py-1 font-mono text-[11px] uppercase tracking-[0.08em] text-fg-3">

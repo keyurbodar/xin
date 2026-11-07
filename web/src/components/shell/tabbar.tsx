@@ -3,7 +3,6 @@ import { activeProjects } from "../../state/home.ts"
 import { navigate, route } from "../../lib/router.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
 
-/** M1: below the sidebar breakpoint the same four destinations live in a bottom tab bar. */
 export function TabBar(): JSX.Element {
   const first = () => route().parts[0]
   const needsYou = (): boolean =>

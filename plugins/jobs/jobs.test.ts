@@ -171,6 +171,12 @@ describe("jobs", () => {
     expect(id).toBeDefined()
     if (id === undefined) return
 
+    const listed = await cmd(stub, "slow-list", "job.list", {})
+    expect(listed.ok, JSON.stringify(listed)).toBe(true)
+    expect(listed.result).toMatchObject({
+      jobs: [{ id: Number(id), tool: "slow_tool", title: expect.any(String), state: expect.stringMatching(/running|completed/) }],
+    })
+
     await waitFor(
       stub,
       async (home: Home) => {

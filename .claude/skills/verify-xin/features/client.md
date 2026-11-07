@@ -6,7 +6,7 @@ The first-party client is a SolidJS app in `web/` that talks to the same contrac
 
 - `#/signin` — owner token, verified with `GET /v1/status`, kept in `localStorage`.
 - `#/` — Home: greeting, the five counts, Needs You, the project grid, all from the `home` stream.
-- `#/p/:slug` — project chat: transcript over `conv:<coordinatorId>`, composer, right panel (Threads, Files, Memory, Schedules, Jobs).
+- `#/p/:slug` — project chat: transcript over `conv:<coordinatorId>`, composer, right panel (Threads, Files, Memory, Schedules, Jobs). A transcript past the snapshot window shows a "Load older messages" button that pages `history.page` from the snapshot's own `before` and keeps the scroll position.
 - `#/inbox` — pending questions (`request.list`) plus waiting and failed threads.
 - `#/extensions` — Discover, Installed, Updates, Customize, Sources over `plugin.*`, `market.*`.
 - `#/settings/:tab` — general, usage, models, notifications, profile, system.
@@ -49,6 +49,8 @@ cd web && bun run typecheck && bun run build
 
 - The client keeps its token in `localStorage`; a fresh browser profile needs the sign-in step again.
 - A hash route change does not reload state; a full reload reconnects the socket and re-subscribes.
-- The home stream pushes a full snapshot on every thread change; the conversation stream sends a bounded snapshot plus `ev` deltas.
+- The home stream pushes a full snapshot on every thread change; the conversation stream sends a bounded snapshot plus `ev` deltas, applied with `@earendil-works/chord/delta`, which validates each op.
+- The snapshot window is 60 entries: a conversation needs more than that before "Load older messages" appears, so seed one with many messages to drive that control.
+- One composer draft keeps one command id and `clientTs`; sending the same text again after a failure replays the same command instead of adding a second message.
 - Skeleton states come from skullet: the sample render must not throw, because an error inside a Solid effect aborts the queue and leaves the surface stuck.
 - Screenshots need the viewport set first: `agent-browser viewport 1440 900`.

@@ -45,12 +45,18 @@ export function Profile(): JSX.Element {
               <Show
                 when={replacing()}
                 fallback={
-                  <Button label="Replace token" icon="rotate-ccw" onClick={() => setReplacing(true)} />
+                  <Button
+                    size="sm"
+                    onClick={() => setReplacing(true)}
+                  >
+                    <Glyph name="rotate-ccw" size={14} />
+                    Replace token
+                  </Button>
                 }
               >
                 <span class="text-[12px] text-fg-2">This signs you out and reloads the sign-in screen.</span>
-                <Button label="Keep" variant="ghost" onClick={() => setReplacing(false)} />
-                <Button label="Sign out and replace" variant="primary" onClick={replace} />
+                <Button size="sm" variant="quiet" onClick={() => setReplacing(false)}>Keep</Button>
+                <Button size="sm" variant="primary" onClick={replace}>Sign out and replace</Button>
               </Show>
             </div>
             <Note>
@@ -80,7 +86,7 @@ export function Profile(): JSX.Element {
       <Group title="Danger">
         <Row title="Sign out everywhere" detail="Rotating the owner token is the only recovery path">
           <div class="flex items-center gap-2">
-            <Button label="Sign out everywhere" variant="danger" disabled />
+            <Button size="sm" variant="danger" disabled>Sign out everywhere</Button>
             <MissingOp op="session.revoke" />
           </div>
         </Row>

@@ -25,7 +25,6 @@ function threadTone(state: VisualState): string {
   }
 }
 
-/** A row's sub line is one line of prose: a report's Markdown is flattened, not rendered. */
 export function plain(text: string): string {
   return text
     .replace(/```[\s\S]*?```/gu, " ")
@@ -96,12 +95,17 @@ export function ThreadRow(props: {
 export function ThreadFan(props: {
   calls: readonly ToolCallView[]
   threads: readonly ThreadSummary[]
+  links: ReadonlyMap<string, number>
   onOpenThread: (id: number) => void
 }): JSX.Element {
   const rows = (): readonly { call: ToolCallView; thread: ThreadSummary | undefined; title: string; role: string }[] =>
     props.calls.map((call) => {
-      const title = argString(call.arguments, "title") ?? "Untitled thread"
-      const thread = props.threads.find((candidate) => candidate.title === title)
+      const created = call.id === undefined ? undefined : props.links.get(call.id)
+      const thread =
+        created === undefined
+          ? props.threads.find((candidate) => candidate.title === argString(call.arguments, "title"))
+          : props.threads.find((candidate) => candidate.id === created)
+      const title = thread?.title ?? argString(call.arguments, "title") ?? "Untitled thread"
       const role = argString(call.arguments, "role") ?? thread?.role ?? "thread"
       return { call, thread, title, role }
     })

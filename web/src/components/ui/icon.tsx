@@ -12,6 +12,7 @@ const PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   calendar: ["M4 5h16v16H4z", "M4 10h16", "M8 3v4", "M16 3v4"],
   "chevron-right": ["m9 5 7 7-7 7"],
+  "circle-x": ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z", "m9 9 6 6", "m15 9-6 6"],
   "chevron-down": ["m5 9 7 7 7-7"],
   "chevron-left": ["m15 5-7 7 7 7"],
   "arrow-up": ["M12 20V4", "m5 11 7-7 7 7"],

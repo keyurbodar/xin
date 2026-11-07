@@ -1,7 +1,6 @@
 import { cmd } from "../lib/api.ts"
 import { errorMessage, isKnownOpError, isRecord, remote, type RemoteHandle } from "./extensions.ts"
 
-/* ------------------------------------------------------------------ models */
 
 export type ModelRole = "chat" | "thread" | "utility"
 
@@ -85,7 +84,6 @@ export function providers(value: ModelsList): readonly ProviderSummary[] {
     .sort((left, right) => left.id.localeCompare(right.id))
 }
 
-/* -------------------------------------------------------------------- usage */
 
 export type UsageBucket = {
   readonly input: number
@@ -177,7 +175,6 @@ export const usage: RemoteHandle<UsageSummary> = remote(async () => {
   }
 }, parseUsage)
 
-/* ------------------------------------------------------------------- system */
 
 export type SystemVersion = {
   readonly build: string
@@ -222,7 +219,6 @@ export async function systemRestart(hard: boolean): Promise<void> {
   await systemVersion.reload()
 }
 
-/* --------------------------------------------------------------- mutations */
 
 export async function setDefault(role: ModelRole, model: ModelRef): Promise<void> {
   await cmd("owner.defaults", { role, model })
@@ -241,7 +237,6 @@ export async function deleteCredential(provider: string): Promise<void> {
   await models.reload()
 }
 
-/* --------------------------------------------------------------------- push */
 
 export type PushSubscriptionKeys = { readonly p256dh: string; readonly auth: string }
 

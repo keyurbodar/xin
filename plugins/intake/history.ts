@@ -26,7 +26,7 @@ export function historyOp(): Op {
       const page = await conversation.entries(
         {
           order: "descending",
-          ...(args.before === undefined ? {} : { maxEntryId: (args.before - 1) as EntryId }),
+          ...(args.before === undefined ? {} : { maxEntryId: args.before as EntryId }),
         },
         args.limit ?? SNAPSHOT_ENTRIES,
         undefined,
@@ -36,7 +36,7 @@ export function historyOp(): Op {
       const oldest = entries[0]
       return {
         entries: toJson(entries),
-        ...(page.next === undefined || oldest === undefined ? {} : { nextBefore: oldest.id }),
+        ...(page.next === undefined || oldest === undefined ? {} : { nextBefore: oldest.id - 1 }),
       }
     },
   })

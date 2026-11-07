@@ -17,6 +17,7 @@
   --color-fg-4: #564e4a;
 
   --color-accent: #ff5a00;
+  --color-ink: #160700;
   --color-accent-text: #ffa675;
   --color-accent-dim: #210b00;
   --color-accent-line: #5a3a26;
@@ -244,7 +245,6 @@
 }
 
 /* Entrances: opacity, a small rise, a slight blur, over 160-220ms. */
-/* F4: entries fade and rise 4px; only arrivals pop, and only on the one spring curve. */
 @utility enter {
   animation: enter var(--dur-fast) var(--ease-enter) both;
 }

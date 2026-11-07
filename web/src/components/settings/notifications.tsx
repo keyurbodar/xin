@@ -1,12 +1,5 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
-import {
-  base64ToBytes,
-  errorMessage,
-  pushKey,
-  pushSubscribe,
-  pushUnsubscribe,
-  subscriptionOf,
-} from "../../state/settings.ts"
+import { currentEndpoint, disablePush, enablePush, type PushChange } from "../../lib/push.ts"
 import { Button, Chip, Failure, MissingOp, Note, Panel, Toggle } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { Group, Row } from "./parts.tsx"
@@ -19,68 +12,56 @@ const EVENTS: readonly { readonly title: string; readonly detail: string; readon
   { title: "Spend passes the alert", detail: "Needs a spend alert setting", on: true },
 ]
 
-function initialPermission(): NotificationPermission | "unsupported" {
+function permissionNow(): NotificationPermission | "unsupported" {
   return typeof Notification === "undefined" ? "unsupported" : Notification.permission
 }
 
 export function Notifications(): JSX.Element {
-  const [permission, setPermission] = createSignal<NotificationPermission | "unsupported">(initialPermission())
+  const [permission, setPermission] = createSignal(permissionNow())
   const [endpoint, setEndpoint] = createSignal<string | undefined>(undefined)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [sent, setSent] = createSignal(false)
 
   onMount(() => {
-    void probe()
+    void currentEndpoint().then((found) => setEndpoint(found))
   })
 
-  const probe = async (): Promise<void> => {
-    if (!("serviceWorker" in navigator)) return
-    const registration = await navigator.serviceWorker.getRegistration("/sw.js").catch(() => undefined)
-    const existing = await registration?.pushManager.getSubscription().catch(() => undefined)
-    if (existing !== undefined && existing !== null) setEndpoint(existing.endpoint)
+  const apply = (change: PushChange): void => {
+    switch (change.kind) {
+      case "subscribed":
+        setEndpoint(change.endpoint)
+        setSent(true)
+        return
+      case "unsubscribed":
+        setEndpoint(undefined)
+        setSent(false)
+        return
+      case "failed":
+        setError(change.message)
+        return
+    }
   }
 
-  const enable = async (): Promise<void> => {
+  const turnOn = async (): Promise<void> => {
     setBusy(true)
     setError(undefined)
     try {
-      if (permission() === "unsupported") throw new Error("This browser has no notification support")
-      const answer = await Notification.requestPermission()
-      setPermission(answer)
-      if (answer !== "granted") throw new Error("Notifications are blocked for this site")
-      const registration = await navigator.serviceWorker.register("/sw.js")
-      const key = await pushKey()
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: base64ToBytes(key),
-      })
-      const found = subscriptionOf(subscription)
-      if (found === undefined) throw new Error("The browser returned a subscription without keys")
-      await pushSubscribe(found.endpoint, found.keys)
-      setEndpoint(found.endpoint)
-      setSent(true)
-    } catch (failure: unknown) {
-      setError(errorMessage(failure))
+      apply(await enablePush())
+      setPermission(permissionNow())
     } finally {
       setBusy(false)
     }
   }
 
-  const disable = async (): Promise<void> => {
+  const turnOff = async (): Promise<void> => {
     const current = endpoint()
     if (current === undefined) return
     setBusy(true)
     setError(undefined)
     try {
-      await pushUnsubscribe(current)
-      const registration = await navigator.serviceWorker.getRegistration("/sw.js").catch(() => undefined)
-      const subscription = await registration?.pushManager.getSubscription().catch(() => undefined)
-      await subscription?.unsubscribe().catch(() => false)
-      setEndpoint(undefined)
-      setSent(false)
-    } catch (failure: unknown) {
-      setError(errorMessage(failure))
+      apply(await disablePush(current))
+      setPermission(permissionNow())
     } finally {
       setBusy(false)
     }
@@ -89,12 +70,7 @@ export function Notifications(): JSX.Element {
   return (
     <div class="flex max-w-[820px] flex-col gap-6">
       <Show when={error()}>
-        {(message) => (
-          <Failure
-            message={`${message()} Push needs a service worker at /sw.js; this build does not ship one.`}
-            onRetry={() => void enable()}
-          />
-        )}
+        {(message) => <Failure message={message()} onRetry={() => void turnOn()} />}
       </Show>
 
       <Group title="Push to this browser">
@@ -104,17 +80,19 @@ export function Notifications(): JSX.Element {
               when={endpoint() !== undefined}
               fallback={
                 <Button
-                  label={busy() ? "Enabling" : "Enable push"}
-                  icon="bell"
+                  size="sm"
                   variant="primary"
                   disabled={busy() || permission() === "unsupported"}
-                  onClick={() => void enable()}
-                />
+                  onClick={() => void turnOn()}
+                >
+                  <Glyph name="bell" size={14} />
+                  {busy() ? "Enabling" : "Enable push"}
+                </Button>
               }
             >
               <Chip tone="ok">Subscribed</Chip>
               <span class="font-mono text-[10.5px] text-fg-4">{endpoint()?.replace(/^https:\/\//u, "").slice(0, 42)}…</span>
-              <Button label="Turn off" variant="ghost" disabled={busy()} onClick={() => void disable()} />
+              <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void turnOff()}>Turn off</Button>
             </Show>
             <Show when={sent()}>
               <span class="text-[11.5px] text-fg-3">Delivery is confirmed when a push watcher runs.</span>
@@ -123,7 +101,7 @@ export function Notifications(): JSX.Element {
         </Row>
         <Row title="Send test" detail="Delivers one notification to every subscribed browser">
           <div class="flex items-center gap-2">
-            <Button label="Send test" variant="ghost" disabled />
+            <Button size="sm" variant="quiet" disabled>Send test</Button>
             <MissingOp op="push.test" />
           </div>
         </Row>

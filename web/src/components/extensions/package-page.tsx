@@ -106,15 +106,22 @@ export function PackagePage(props: {
             <div class="flex shrink-0 flex-col items-end gap-2">
               <Show
                 when={!installed()}
-                fallback={<Button label="Configure" icon="sliders" onClick={props.onCustomize} />}
+                fallback={
+                  <Button size="sm" onClick={props.onCustomize}>
+                    <Glyph name="sliders" size={14} />
+                    Configure
+                  </Button>
+                }
               >
                 <Button
-                  label="Install"
-                  icon="download"
+                  size="sm"
                   variant="primary"
                   disabled={value() === undefined}
                   onClick={() => setSheet(true)}
-                />
+                >
+                  <Glyph name="download" size={14} />
+                  Install
+                </Button>
                 <span class="text-[11.5px] text-fg-3">You review what mounts first</span>
               </Show>
             </div>
@@ -292,7 +299,13 @@ export function PackagePage(props: {
                     bundles mount immediately.
                   </Note>
                   <Show when={entry().status === "installed"}>
-                    <Button label="Configure this row" icon="sliders" onClick={props.onCustomize} />
+                    <Button
+                      size="sm"
+                      onClick={props.onCustomize}
+                    >
+                      <Glyph name="sliders" size={14} />
+                      Configure this row
+                    </Button>
                   </Show>
                 </aside>
               </div>
