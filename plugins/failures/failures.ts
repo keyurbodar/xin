@@ -10,10 +10,9 @@ import {
   ROOT_CONVERSATION_ID,
 } from "@earendil-works/pi-durable"
 import { arr, compile, int, num, obj, opt, str } from "@earendil-works/pi-schema"
-import { type InboundDraft, type InboundRecord } from "../../src/contracts/intake.ts"
+import { type InboundDraft, type InboundRecord, type IntakeService } from "../../src/contracts/intake.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
-import { defineOp, OpRejected } from "../../src/ops.ts"
+import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
 
 const context = BACKGROUND_CONTEXT
 const ERROR_KIND = "xin.error"
@@ -105,7 +104,18 @@ const batchIdOf = (entries: readonly EntryRecord[]): string | undefined => {
   return undefined
 }
 
-export function create(deps: ModuleDeps<"intake">): HostModule {
+export type FailurePorts = {
+  readonly harness: Harness
+  readonly intake: IntakeService
+  arm(): Promise<void>
+}
+
+export type Failures = {
+  readonly retry: Op
+  start(): Promise<(() => void) | undefined>
+}
+
+export function create(ports: FailurePorts): Failures {
   const pending = new Map<ConversationId, Failure>()
   let scheduled = false
 
@@ -136,7 +146,7 @@ export function create(deps: ModuleDeps<"intake">): HostModule {
     if (pending.size === 0) return
     const work = [...pending]
     pending.clear()
-    const harness = deps.harness()
+    const harness = ports.harness
     const coordinators = await coordinatorIds(harness)
     for (const [conversationId, failure] of work) {
       if (!coordinators.has(conversationId) || !REPORTABLE.has(failure.reason)) continue
@@ -179,21 +189,21 @@ export function create(deps: ModuleDeps<"intake">): HostModule {
       }
       const batchId = stringData(entry.data, "batchId")
       if (batchId === undefined) return { resubmitted: 0 }
-      const rows = await deps.services.intake.batch(batchId)
+      const rows = await ports.intake.batch(batchId)
       let resubmitted = 0
       for (const row of rows) {
         const draft = retryDraft(row, `retry:${args.entryId}:${row.id}`)
-        if (draft !== undefined && (await deps.services.intake.enqueue(draft))) resubmitted += 1
+        if (draft !== undefined && (await ports.intake.enqueue(draft))) resubmitted += 1
       }
-      if (resubmitted > 0) await deps.arm()
+      if (resubmitted > 0) await ports.arm()
       return { resubmitted }
     },
   })
 
   return {
-    ops: [retryMessage],
+    retry: retryMessage,
     async start() {
-      const harness = deps.harness()
+      const harness = ports.harness
       const observation = harness.observeCommits(observe)
       for (const conversationId of await coordinatorIds(harness)) {
         const live = await harness.snapshot(LiveDoc, conversationId, context)

@@ -9,6 +9,7 @@ import {
   type CredentialInfo,
   type CredentialStore,
   type Model,
+  type Models,
   type ModelThinkingLevel,
   type MutableModels,
   type Provider as PiProvider,
@@ -36,8 +37,8 @@ import {
   type ModelsService,
 } from "../../src/contracts/models.ts"
 import type { CommandId } from "../../src/ids.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
-import { defineOp, type Actor, type Op, OpRejected } from "../../src/ops.ts"
+import type { Provider } from "../../src/module.ts"
+import { defineOp, type Actor, type Command, type Op, OpRejected, type Outcome } from "../../src/ops.ts"
 import { Sealer, SealedSchema } from "../../src/seal.ts"
 
 const MAX_LISTED = 40
@@ -184,11 +185,25 @@ type Registry = {
   sync(): Promise<void>
 }
 
-function createRegistry(deps: ModuleDeps<never>): Registry {
+export type ModelsPort = {
+  readonly db: SqliteDatabase
+  readonly kek: string
+  readonly providers: readonly Provider[]
+  run(command: Command, actor: Actor): Promise<Outcome>
+}
+
+export type ModelsParts = {
+  readonly service: ModelsService
+  readonly ops: readonly Op[]
+  models(): Models
+  start(): Promise<void>
+}
+
+function createRegistry(port: Pick<ModelsPort, "db" | "kek" | "providers">): Registry {
   const builtins = new Map(builtinProviders().map((provider) => [provider.id, provider] as const))
-  const extra = new Map(deps.providers.map((provider) => [provider.id, provider] as const))
+  const extra = new Map(port.providers.map((provider) => [provider.id, provider] as const))
   const custom = new Map<string, Endpoint>()
-  const store = new SealedCredentialStore(deps.db, new Sealer(deps.env.KEK), sync)
+  const store = new SealedCredentialStore(port.db, new Sealer(port.kek), sync)
   const models: MutableModels = createModels({ credentials: store })
   for (const provider of [...builtins.values(), ...extra.values()]) models.setProvider(provider)
 
@@ -199,7 +214,7 @@ function createRegistry(deps: ModuleDeps<never>): Registry {
   }
 
   async function sync(): Promise<void> {
-    const rows = await deps.db.all<{ provider: string }>("SELECT provider FROM credentials ORDER BY provider")
+    const rows = await port.db.all<{ provider: string }>("SELECT provider FROM credentials ORDER BY provider")
     const endpoints = new Map<string, Endpoint>()
     for (const row of rows) {
       const entry = await store.entry(row.provider)
@@ -407,7 +422,8 @@ function ranked(
 // A tool call mints its own command id, so a rerun after a restart reuses the receipt.
 const commandId = (value: string): CommandId => value as CommandId
 
-export function create(deps: ModuleDeps<never>): HostModule {
+export function create(deps: ModelsPort): ModelsParts {
+  const { db, run } = deps
   const registry = createRegistry(deps)
   const store = registry.store
 
@@ -437,7 +453,7 @@ export function create(deps: ModuleDeps<never>): HostModule {
         if (found?.reasoning === true) change.thinkingLevel = args.thinking
       }
       await conversation.configure(change satisfies AgentChange, BACKGROUND_CONTEXT)
-      if (change.model !== undefined && change.model !== null) await remember(deps.db, change.model)
+      if (change.model !== undefined && change.model !== null) await remember(db, change.model)
       const agent = await conversation.agent(BACKGROUND_CONTEXT)
       return {
         conversation: conversation.id,
@@ -454,7 +470,7 @@ export function create(deps: ModuleDeps<never>): HostModule {
     actors: ["owner", "agent"],
     run: async (api, { query }) => {
       const catalog = await available(registry)
-      const settings = await readSettings(deps.db)
+      const settings = await readSettings(db)
       const current = await currentModel(api.harness, api.actor)
       const ordered = ranked(catalog, settings, current, query)
       const listed = ordered.slice(0, MAX_LISTED)
@@ -506,23 +522,23 @@ export function create(deps: ModuleDeps<never>): HostModule {
     run: async (_api, { role, model }) => {
       if (registry.models.getModel(model.provider, model.modelId) === undefined)
         throw new OpRejected("bad_args", `unknown model ${model.provider}/${model.modelId}`)
-      const settings = await readSettings(deps.db)
+      const settings = await readSettings(db)
       const defaults: MutableDefaults = { ...settings.defaults }
       defaults[role] = model
-      await writeKv(deps.db, "owner.defaults", defaults)
+      await writeKv(db, "owner.defaults", defaults)
       return { role, model }
     },
   })
 
   const service: ModelsService = {
-    ownerDefaults: () => ownerDefaults(deps.db),
-    credentialSecrets: () => credentialSecrets(deps.db, store),
+    ownerDefaults: () => ownerDefaults(db),
+    credentialSecrets: () => credentialSecrets(db, store),
     search: async (query) => {
       const catalog = await available(registry)
       return { catalog, matches: search(catalog, query) }
     },
     switchModel: ({ conversation, caller, model, thinking, callId }) =>
-      deps.run(
+      run(
         {
           id: commandId(`set_model:${callId}`),
           op: "conv.configure",
@@ -535,9 +551,9 @@ export function create(deps: ModuleDeps<never>): HostModule {
   const ops: readonly Op[] = [configure, list, setCredential, deleteCredential, setDefaults]
 
   return {
-    models: () => registry.models,
-    provides: { models: service },
+    service,
     ops,
+    models: () => registry.models,
     start: () => registry.sync(),
   }
 }

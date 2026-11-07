@@ -11,6 +11,7 @@ export const TABLE_OWNERS: Readonly<Record<string, string>> = {
   notes: "memory",
   notes_fts: "memory",
   push_subs: "push",
+  presets: "presets",
 }
 
 export function migrationsTable(owner: string): string {

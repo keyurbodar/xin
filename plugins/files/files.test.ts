@@ -195,16 +195,14 @@ describe("files", () => {
     await env.FILES.put(staged, "staging bytes")
 
     const fresh = await runInDurableObject(owner(), (home: Home, state) =>
-      sweep({ ctx: state, env, db: home.db }, Date.now()),
+      sweep({ state, env, db: home.db }, Date.now()),
     )
     expect(fresh).toBe(0)
     expect(await env.FILES.head(orphan)).not.toBeNull()
     expect(await env.FILES.head(staged)).not.toBeNull()
 
     const later = Date.now() + 2 * 24 * 60 * 60_000
-    const deleted = await runInDurableObject(owner(), (home: Home, state) =>
-      sweep({ ctx: state, env, db: home.db }, later),
-    )
+    const deleted = await runInDurableObject(owner(), (home: Home, state) => sweep({ state, env, db: home.db }, later))
     expect(deleted).toBeGreaterThanOrEqual(2)
     expect(await env.FILES.head(orphan)).toBeNull()
     expect(await env.FILES.head(staged)).toBeNull()

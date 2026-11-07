@@ -2,21 +2,20 @@ import type { Context } from "@deepseek-ai/cordis"
 import type { JsonObject } from "@earendil-works/pi-durable"
 import { bool, obj, opt } from "@earendil-works/pi-schema"
 import { defineOp } from "../ops.ts"
+import { buildId, type PendingPackages } from "./packages.ts"
 
-declare const XIN_BUILD: string | undefined
+export type DeployRequest = { readonly packages: PendingPackages }
 
 export type Deployed = { readonly application: "deploying" | "failed"; readonly detail: string }
 
-export type Deployer = { deploy(): Promise<Deployed> }
+export type Deployer = { deploy(request: DeployRequest): Promise<Deployed> }
 
 export type System = { version(): Promise<JsonObject> }
-
-const build = (): string => (typeof XIN_BUILD === "string" ? XIN_BUILD : "dev")
 
 const OWNER = ["owner"] as const
 
 export const name = "system"
-export const inject = ["host", "kernel", "ops", "http"]
+export const inject = ["host", "http", "kernel", "ops", "packages"]
 
 export function apply(ctx: Context): void {
   const version = async (): Promise<JsonObject> => {
@@ -24,7 +23,7 @@ export function apply(ctx: Context): void {
       ctx.kernel.rows().map(async (row) => ({ id: row.id, state: (await ctx.kernel.state(row.id)).kind })),
     )
     return {
-      build: build(),
+      build: buildId(),
       bundles: [...ctx.kernel.composition.profile.bundles],
       degraded: rows.some((row) => row.state === "failed" || row.state === "missing"),
       rows,
@@ -58,7 +57,7 @@ export function apply(ctx: Context): void {
       run: async () => {
         const deployer = ctx.get("deployer")
         if (deployer === undefined) return { application: "failed", detail: "no deployer row is active" }
-        return { ...(await deployer.deploy()) }
+        return { ...(await deployer.deploy({ packages: ctx.packages.pending() })) }
       },
     }),
   )

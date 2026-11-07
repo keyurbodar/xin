@@ -1,9 +1,8 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { CommitPublication, ConversationId, JsonObject } from "@earendil-works/pi-durable"
+import type { CommitPublication, ConversationId, Harness, JsonObject } from "@earendil-works/pi-durable"
 import { int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { CommandId, ProjectId } from "../../src/ids.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
-import { defineOp, OpRejected } from "../../src/ops.ts"
+import { defineOp, OpRejected, type Op } from "../../src/ops.ts"
 import {
   ThreadDoc,
   threadState,
@@ -58,6 +57,17 @@ type Projection = {
   workspace: WorkspaceState
   threads: Map<ConversationId, ThreadState>
   requests: Map<ConversationId, number>
+}
+
+export type WorkspacePort = {
+  readonly harness: Harness
+  publishHome(): Promise<void>
+}
+
+export type WorkspaceFeature = {
+  readonly ops: readonly Op[]
+  start(): Promise<() => void>
+  home(): Promise<JsonObject>
 }
 
 const defaultSettings = (): ProjectSettings => ({
@@ -147,7 +157,7 @@ function projectSummaries(projection: Projection): ProjectSummary[] {
   })
 }
 
-export function create(deps: ModuleDeps<never>): HostModule {
+export function create(port: WorkspacePort): WorkspaceFeature {
   const projection: Projection = {
     workspace: { projects: {} },
     threads: new Map(),
@@ -163,7 +173,7 @@ export function create(deps: ModuleDeps<never>): HostModule {
       scheduled = false
       if (!dirty) return
       dirty = false
-      void deps.publishHome().catch((failure: unknown) => console.warn("workspace: home publish failed", failure))
+      void port.publishHome().catch((failure: unknown) => console.warn("workspace: home publish failed", failure))
     })
   }
 
@@ -299,7 +309,7 @@ export function create(deps: ModuleDeps<never>): HostModule {
   return {
     ops: [createProject, updateProject, archiveProject, renameThread, readWorkspace],
     async start() {
-      const harness = deps.harness()
+      const harness = port.harness
       const observation = harness.observeCommits({ advance: apply, end: () => undefined })
       const stored = await harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
       if (stored !== undefined && parseWorkspace.check(stored)) projection.workspace = stored

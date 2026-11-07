@@ -1,4 +1,5 @@
 import type { ConversationId } from "@earendil-works/pi-durable"
+import type { BatchId } from "../ids.ts"
 
 export type InboundKind = "user" | "report" | "question" | "job"
 
@@ -56,8 +57,48 @@ export interface IntakeService {
   batch(batchId: string): Promise<readonly InboundRecord[]>
 }
 
+export type IntakeBatchRow =
+  | {
+      readonly id: number
+      readonly kind: "user"
+      readonly clientTs: number
+      readonly commandId: string
+      text: string
+    }
+  | {
+      readonly id: number
+      readonly kind: "report" | "question" | "job"
+      readonly clientTs: number
+      readonly commandId: string
+      readonly threadId: string
+      readonly title: string
+      readonly status: string
+      text: string
+    }
+
+export type IntakeBatch = {
+  readonly batchId: BatchId
+  readonly target: ConversationId
+  rows: readonly IntakeBatchRow[]
+}
+
+export type IntakeBatchResult = { readonly kind: "dispatched" } | { readonly kind: "dropped"; readonly reason: string }
+
 declare module "@deepseek-ai/cordis" {
   interface Context {
     intake: IntakeService
+  }
+
+  interface Events {
+    /**
+     * @mode waterfall. A claimed batch is about to be dispatched. Listeners run at the first
+     * fire after every row has mounted, so a batch claimed before a crash reaches the listeners
+     * enabled for the new boot. A listener edits `rows` (or a row's `text`) in place and calls
+     * `next()`; `next()` stores the rewritten rows before it submits them. Return
+     * `{ kind: "dropped", reason }` without calling `next()` to mark the batch done unsent.
+     * A listener that throws is logged and skipped, and the batch dispatches as given. A replay
+     * after a crash submits the stored rows without running this event again.
+     */
+    "intake/batch"(batch: IntakeBatch, next: () => Promise<IntakeBatchResult>): Promise<IntakeBatchResult>
   }
 }

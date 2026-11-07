@@ -7,6 +7,16 @@ export type { ThreadRole, ThreadStatus } from "./threaddoc.ts"
 
 export type SendMode = "steer" | "queue"
 export type DelegateMode = "async" | "wait"
+export type ThreadSettledStatus = Extract<ThreadStatus, "completed" | "failed" | "cancelled">
+
+export type ThreadSettled = {
+  readonly threadId: number
+  readonly parentId: number
+  readonly projectId: string
+  readonly title: string
+  readonly status: ThreadSettledStatus
+  readonly result?: string
+}
 
 export const SendModeSchema = oneOf(["steer", "queue"] as const)
 
@@ -122,5 +132,14 @@ export interface ThreadsService {
 declare module "@deepseek-ai/cordis" {
   interface Context {
     threads: ThreadsService
+  }
+
+  interface Events {
+    /**
+     * @mode emit. At least once: emitted from the reporter task's idempotent report phase, after the
+     * commit that records the terminal status, so a replay can emit it again and nothing fires in a
+     * transaction.
+     */
+    "thread/settled"(event: ThreadSettled): void
   }
 }

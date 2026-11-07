@@ -24,5 +24,5 @@ const hold = defineTool({
 })
 
 export const catalog: Catalog = {
-  m2: testPlugin("m2", { extensions: [defineExtension({ name: "m2.hold", tools: [hold] })] }),
+  m2: testPlugin("m2", { extensions: [defineExtension({ name: "tool-m2-hold", tools: [hold] })] }),
 }

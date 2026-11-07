@@ -1,5 +1,4 @@
 import { runInDurableObject } from "cloudflare:test"
-import { env } from "cloudflare:workers"
 import { beforeEach, describe, expect, it } from "vitest"
 import { api, connect, owner } from "../../test/support.ts"
 import { decodeVapid, decrypt, encoder, fromBase64Url, subscriber, tokenParts } from "../../test/webpush.ts"
@@ -77,7 +76,7 @@ describe("web push delivery", () => {
 
     await runInDurableObject(owner(), async (home: Home, state) => {
       const sent: Request[] = []
-      await notifier({ ctx: state, db: home.db, env }, async (request) => {
+      await notifier({ state, db: home.db }, async (request) => {
         sent.push(request)
         return new Response(null, { status: 201 })
       }).notify(notification)
@@ -102,7 +101,7 @@ describe("web push delivery", () => {
       await runInDurableObject(owner(), async (home: Home, state) => {
         expect(state.getWebSockets()).toHaveLength(1)
         const sent: Request[] = []
-        await notifier({ ctx: state, db: home.db, env }, async (request) => {
+        await notifier({ state, db: home.db }, async (request) => {
           sent.push(request)
           return new Response(null, { status: 201 })
         }).notify(message("thread-connected"))
@@ -145,7 +144,7 @@ describe("web push delivery", () => {
 
     await runInDurableObject(owner(), async (home: Home, state) => {
       const sent: Request[] = []
-      await notifier({ ctx: state, db: home.db, env }, async (request) => {
+      await notifier({ state, db: home.db }, async (request) => {
         sent.push(request)
         return new Response(null, { status: 201 })
       }).notify(notification)
@@ -171,7 +170,7 @@ describe("web push delivery", () => {
 
     await runInDurableObject(owner(), async (home: Home, state) => {
       const seen: string[] = []
-      await notifier({ ctx: state, db: home.db, env }, async (request) => {
+      await notifier({ state, db: home.db }, async (request) => {
         seen.push(request.url)
         if (request.url.endsWith("/failing")) return new Response(null, { status: 500 })
         if (request.url.endsWith("/doomed")) return new Response(null, { status: 410 })
@@ -192,7 +191,7 @@ describe("web push delivery", () => {
 
     await runInDurableObject(owner(), async (home: Home, state) => {
       const topics: (string | null)[] = []
-      const push = notifier({ ctx: state, db: home.db, env }, async (request) => {
+      const push = notifier({ state, db: home.db }, async (request) => {
         topics.push(request.headers.get("topic"))
         return new Response(null, { status: 201 })
       })

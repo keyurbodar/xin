@@ -152,7 +152,7 @@ export const catalog: Catalog = {
       inject: ["pi", "jobs"],
       apply(ctx: Context) {
         const tools = [...jobTools.map((spec) => ctx.jobs.tool(spec.tool, spec.work)), stuck]
-        ctx.pi.install(defineExtension({ name: "m6.tools", tools }))
+        ctx.pi.install(defineExtension({ name: "tool-m6", tools }))
       },
     },
     title: "m6",

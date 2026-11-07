@@ -1,10 +1,13 @@
 # Plugins (everything is a row)
 
-Xin's plugin layer is dsh's Cordis stack. Every part of Home is a loader row, kernel services included (`db`, `pi`, `ops`, `http`, `wire`, `clock`, `secrets`, `plugins`, `system`), and so is every feature (`models`, `files`, `intake`, ...) and every package under `plugins/*`. The rows come from the bundles in `xin.profile.json`, then that file's patch, then the owner patch stored in `kv` `plugins.patch`. Changes apply live. New code needs a rebuild and deploy.
+Xin's plugin layer is dsh's Cordis stack. Every part of Home is a loader row, kernel services included (`db`, `pi`, `ops`, `http`, `wire`, `clock`, `secrets`, `plugins`, `packages`, `system`), and so is every feature (`models`, `files`, `intake`, ...) and every package under `plugins/*`. The rows come from the bundles in `xin.profile.json`, then that file's patch, then the owner patch stored in `kv` `plugins.patch`. Changes apply live. New code needs a rebuild and deploy.
 
 ## Sub-features
 
 - Ops: `plugin.list`, `plugin.catalog`, `plugin.tree`, `plugin.enable`, `plugin.configure`, `plugin.insert`, `plugin.remove`, `plugin.reset`, `plugin.secret.set`.
+- Install from the client (P5): `plugin.install {spec}`, `plugin.uninstall {package}`, `plugin.packages {}` record a pending list in kv `plugins.packages`; `system.update` sends it to the deployer; `GET /v1/build/packages` serves it to a pipeline; a new build clears what it now contains. Specs are parsed: registry names and ranges, `@scope/x@~1`, `github:o/r#ref` and git URLs are accepted; `file:`, `link:`, `npm:`, tarballs and shell characters are `bad_args`. Uninstalling an in-repo package is `bad_args` (disable its bundle). Pending entries survive restarts on the same build and settle on a new one. The owning kernel row is `packages`. Nothing installs until a build and deploy (`docs/deploy/install-pipeline.md`).
+- Presets (P5): the `presets` row's config holds named tool-row allowlists (`full`: all, `minimal`: tool-memory and tool-skills) and a `default`. `preset.list {}` and `preset.assign {projectId, preset}`; the project's coordinator and threads are offered only that preset's tool rows. Assignments survive restart.
+- Events (P5): `intake/batch` rewrites or drops a claimed batch; `thread/settled` fires once a thread's terminal status is committed.
 - Row states: `active`, `pending` (a service it injects is missing), `disabled`, `failed` (with the error), `missing` (no code in this build). A failed start returns `application: "failed"` with the row and leaves the other rows running.
 - Required rows (the kernel) cannot be disabled. A failed required row makes `/v1/cmd` answer 503 `boot_failed`.
 - `system.version`, `system.restart {hard?}`, `system.update` through the `deployer` seam (default row `deploy-hook`, which needs its `url` secret).
@@ -34,9 +37,15 @@ $S call POST /v1/cmd '{"id":"q","op":"plugin.enable","args":{"id":"pi","enabled"
 $S call POST /v1/cmd '{"id":"x","op":"system.restart","args":{}}'                         # soft restart; push stays disabled
 $S call POST /v1/cmd '{"id":"u","op":"system.update","args":{}}'                          # failed until the deploy-hook url secret is set
 $S call POST /v1/cmd '{"id":"m","op":"plugin.remove","args":{"id":"time-tokyo"}}'         # owner row gone
+$S call POST /v1/cmd '{"id":"k1","op":"plugin.install","args":{"spec":"xin-plugin-weather@1.2.0"}}'   # pending add (twice is still one)
+$S call POST /v1/cmd '{"id":"k2","op":"plugin.install","args":{"spec":"evil; rm -rf /"}}'           # bad_args
+$S call GET /v1/build/packages                                                              # {"add":[...],"remove":[...]}, 401 without the token
+$S call POST /v1/cmd '{"id":"pr","op":"project.create","args":{"slug":"trip","name":"Trip"}}'
+$S call POST /v1/cmd '{"id":"pa","op":"preset.assign","args":{"projectId":"prj_pr","preset":"minimal"}}'
+$S call POST /v1/cmd '{"id":"pl","op":"preset.list","args":{}}'                             # prj_pr on minimal, also after system.restart
 ```
 
-Proof: the end states above. Evidence from the last wrangler dev drive: `.verify/evidence/P4-plugins.txt` (P1: `P1-plugins.txt`).
+Proof: the end states above. Evidence from the last wrangler dev drive: `.verify/evidence/P5-plugins.txt` (earlier: `P4-plugins.txt`, `P1-plugins.txt`).
 
 ## Gotchas
 

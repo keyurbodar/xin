@@ -22,12 +22,14 @@ export function format(now: Date, timezone: string): string {
 export const toolName = (row: string): string =>
   row === name ? "current_time" : `current_time_${row.replaceAll("-", "_")}`
 
+export const extensionName = (row: string): string => `tool-${row}`
+
 export function apply(ctx: Context, config: Config): void {
   format(new Date(0), config.timezone)
   const row = ctx.get("loader")?.locate(ctx.fiber) ?? name
   ctx.pi.install(
     defineExtension({
-      name: row,
+      name: extensionName(row),
       tools: [
         defineTool({
           name: toolName(row),

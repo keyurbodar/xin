@@ -6,6 +6,7 @@ import type { Catalog, CatalogEntry } from "./kernel/loader.ts"
 import * as manager from "./kernel/manager.ts"
 import * as managerTool from "./kernel/managertool.ts"
 import { Ops } from "./kernel/ops.ts"
+import * as packages from "./kernel/packages.ts"
 import { Pi } from "./kernel/pi.ts"
 import { Secrets } from "./kernel/secrets.ts"
 import * as system from "./kernel/system.ts"
@@ -29,6 +30,7 @@ export const CORE_CATALOG: Catalog = {
   wire: core(Wire, "Wire", "The web socket protocol, home stream and /v1/cmd."),
   secrets: core(Secrets, "Secrets", "Sealed per-plugin secrets and tool-output redaction."),
   plugins: core(manager, "Plugin manager", "List, enable, configure, insert and remove plugin rows."),
+  packages: core(packages, "Packages", "The build's packages, pending installs and the boot reconcile."),
   system: core(system, "System", "Version, restart and update."),
   "tool-plugins": {
     plugin: managerTool,

@@ -1,7 +1,8 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Context as ChordContext, JsonValue } from "@earendil-works/chord"
-import type { ConversationId, DocumentReader, Tx } from "@earendil-works/pi-durable"
+import type { ConversationId, DocumentReader, Harness, Tx } from "@earendil-works/pi-durable"
 import { int, obj, str } from "@earendil-works/pi-schema"
+import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
   type AskInput,
   type AskOutcome,
@@ -11,11 +12,12 @@ import {
   RequestsDoc,
   type RespondOutcome,
 } from "../../src/contracts/questions.ts"
-import type { CommandId } from "../../src/ids.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
-import { defineOp, OpRejected } from "../../src/ops.ts"
 import { projectInScope, ThreadDoc, threadInScope, transition } from "../../src/contracts/threaddoc.ts"
+import type { ThreadsService } from "../../src/contracts/threads.ts"
+import type { WatchdogService } from "../../src/contracts/watchdog.ts"
 import { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import type { CommandId } from "../../src/ids.ts"
+import { type Actor, type Command, defineOp, type Op, OpRejected, type Outcome } from "../../src/ops.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -25,13 +27,21 @@ type AnswerOutcome =
 
 const commandId = (value: string): CommandId => value as CommandId
 
-export function create(deps: ModuleDeps<"intake" | "threads" | "watchdog">): HostModule {
-  const questions: QuestionsService = {
+export type QuestionsPort = {
+  readonly harness: Harness
+  readonly intake: Pick<IntakeService, "enqueue" | "withdraw">
+  readonly threads: Pick<ThreadsService, "report">
+  readonly watchdog: Pick<WatchdogService, "ensure">
+  arm(): Promise<void>
+  run(command: Command, actor: Actor): Promise<Outcome>
+}
+
+export function createQuestions(port: QuestionsPort): QuestionsService {
+  return {
     async ask(input: AskInput, callContext: ChordContext): Promise<AskOutcome> {
-      const harness = deps.harness()
-      const thread = await harness.snapshot(ThreadDoc, input.threadId, callContext)
+      const thread = await port.harness.snapshot(ThreadDoc, input.threadId, callContext)
       if (thread === undefined) return { kind: "not_a_thread" }
-      await harness.commit(async (tx) => {
+      await port.harness.commit(async (tx) => {
         const requests = await tx.doc(RequestsDoc, input.threadId)
         if (requests.open[input.requestId] !== undefined) return
         requests.open[input.requestId] = {
@@ -45,7 +55,7 @@ export function create(deps: ModuleDeps<"intake" | "threads" | "watchdog">): Hos
         doc.statusLine = "waiting for your answer"
       }, callContext)
       if (thread.parentId !== undefined) {
-        const accepted = await deps.services.intake.enqueue({
+        const accepted = await port.intake.enqueue({
           target: thread.parentId as ConversationId,
           commandId: `question:${input.requestId}`,
           kind: "question",
@@ -54,19 +64,19 @@ export function create(deps: ModuleDeps<"intake" | "threads" | "watchdog">): Hos
           status: "waiting",
           text: input.question,
         })
-        if (accepted) await deps.arm()
+        if (accepted) await port.arm()
       }
       return { kind: "asked", requestId: input.requestId, question: input.question }
     },
 
     async open(conversationId: ConversationId): Promise<OpenOutcome> {
-      const scope = await projectInScope(deps.harness(), conversationId)
+      const scope = await projectInScope(port.harness, conversationId)
       if (scope === undefined) return { kind: "not_in_project" }
-      return { kind: "open", questions: await openRequests(deps.harness(), scope.project.threadIds) }
+      return { kind: "open", questions: await openRequests(port.harness, scope.project.threadIds) }
     },
 
     async respond(api, threadId, requestId, reply): Promise<RespondOutcome> {
-      const outcome = await deps.run(
+      const outcome = await port.run(
         {
           id: commandId(`request.respond:${api.taskId}`),
           op: "request.respond",
@@ -78,8 +88,10 @@ export function create(deps: ModuleDeps<"intake" | "threads" | "watchdog">): Hos
       return answerOutcome(outcome.result) ?? { kind: "refused", message: "The answer had no recognizable outcome." }
     },
   }
+}
 
-  const respondOp = defineOp({
+export function respondOp(port: QuestionsPort): Op {
+  return defineOp({
     name: "request.respond",
     args: obj({
       threadId: int({ minimum: 0 }),
@@ -98,63 +110,62 @@ export function create(deps: ModuleDeps<"intake" | "threads" | "watchdog">): Hos
       if (stored === undefined) throw new OpRejected("bad_args", `no thread ${args.threadId}`)
       const now = Date.now()
       const outcome = await api.harness.commit(
-        (tx) => answer(tx, threadId, stored.title, args.requestId, args.answer, now),
+        (tx) => answer(port, tx, threadId, stored.title, args.requestId, args.answer, now),
         context,
       )
-      if (outcome.kind === "answered") await deps.services.intake.withdraw(`question:${args.requestId}`)
+      if (outcome.kind === "answered") await port.intake.withdraw(`question:${args.requestId}`)
       return { threadId: args.threadId, requestId: args.requestId, ...outcome }
     },
   })
+}
 
-  async function answer(
-    tx: Tx,
-    threadId: ConversationId,
-    title: string,
-    requestId: string,
-    reply: string,
-    now: number,
-  ): Promise<AnswerOutcome> {
-    const requests = await tx.doc(RequestsDoc, threadId)
-    const answered = requests.answered[requestId]
-    if (answered !== undefined) return { kind: "already_answered", answer: answered.answer }
-    const open = requests.open[requestId]
-    if (open === undefined) throw new OpRejected("bad_args", `no request ${requestId}`)
-    const thread = await tx.doc(ThreadDoc, threadId)
-    const next = transition(thread.status, "answer")
-    if (next.kind !== "ok") throw new OpRejected("bad_args", next.reason)
-    if (thread.parentId === undefined) throw new OpRejected("bad_args", `thread ${threadId} has no parent`)
-    const parentId = thread.parentId as ConversationId
-    const workspace = await tx.doc(WorkspaceDoc)
-    const project = workspace.projects[thread.projectId]
-    const run = (thread.run ?? 1) + 1
-    delete requests.open[requestId]
-    requests.answered[requestId] = {
-      kind: open.kind,
-      question: open.question,
-      ...(open.options === undefined ? {} : { options: open.options }),
-      at: open.at,
-      answer: reply,
-      answeredAt: now,
-    }
-    thread.status = "working"
-    thread.run = run
-    thread.statusLine = "running"
-    thread.beatAt = now
-    thread.deadlineAt = now + (project?.settings.deadlineMs ?? DEFAULT_DEADLINE_MS)
-    delete thread.result
-    await deps.services.watchdog.ensure(tx, parentId)
-    await deps.services.threads.report(tx, {
-      threadId,
-      parentId,
-      title,
-      run,
-      brief: reply,
-      requestId: `answer:${threadId}:${requestId}`,
-    })
-    return { kind: "answered", run }
+async function answer(
+  port: QuestionsPort,
+  tx: Tx,
+  threadId: ConversationId,
+  title: string,
+  requestId: string,
+  reply: string,
+  now: number,
+): Promise<AnswerOutcome> {
+  const requests = await tx.doc(RequestsDoc, threadId)
+  const answered = requests.answered[requestId]
+  if (answered !== undefined) return { kind: "already_answered", answer: answered.answer }
+  const open = requests.open[requestId]
+  if (open === undefined) throw new OpRejected("bad_args", `no request ${requestId}`)
+  const thread = await tx.doc(ThreadDoc, threadId)
+  const next = transition(thread.status, "answer")
+  if (next.kind !== "ok") throw new OpRejected("bad_args", next.reason)
+  if (thread.parentId === undefined) throw new OpRejected("bad_args", `thread ${threadId} has no parent`)
+  const parentId = thread.parentId as ConversationId
+  const workspace = await tx.doc(WorkspaceDoc)
+  const project = workspace.projects[thread.projectId]
+  const run = (thread.run ?? 1) + 1
+  delete requests.open[requestId]
+  requests.answered[requestId] = {
+    kind: open.kind,
+    question: open.question,
+    ...(open.options === undefined ? {} : { options: open.options }),
+    at: open.at,
+    answer: reply,
+    answeredAt: now,
   }
-
-  return { provides: { questions }, ops: [respondOp] }
+  thread.status = "working"
+  thread.run = run
+  thread.statusLine = "running"
+  thread.beatAt = now
+  thread.deadlineAt = now + (project?.settings.deadlineMs ?? DEFAULT_DEADLINE_MS)
+  delete thread.result
+  await port.watchdog.ensure(tx, parentId)
+  await port.threads.report(tx, {
+    threadId,
+    parentId,
+    title,
+    run,
+    brief: reply,
+    requestId: `answer:${threadId}:${requestId}`,
+  })
+  return { kind: "answered", run }
 }
 
 async function openRequests(read: DocumentReader, threadIds: readonly number[]): Promise<OpenQuestion[]> {
@@ -186,8 +197,8 @@ function answerOutcome(value: JsonValue): AnswerOutcome | undefined {
     return typeof run === "number" ? { kind: "answered", run } : undefined
   }
   if (kind === "already_answered") {
-    const answer = Reflect.get(value, "answer")
-    return typeof answer === "string" ? { kind: "already_answered", answer } : undefined
+    const previous = Reflect.get(value, "answer")
+    return typeof previous === "string" ? { kind: "already_answered", answer: previous } : undefined
   }
   return undefined
 }

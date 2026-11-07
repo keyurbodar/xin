@@ -1,7 +1,6 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import { obj, str } from "@earendil-works/pi-schema"
 import { SKILL_NAME_PATTERN, type Skill, type SkillsService } from "../../src/contracts/skills.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
 
 export const BUNDLED_SKILLS: readonly string[] = []
@@ -60,12 +59,17 @@ async function ownerSkills(db: SqliteDatabase): Promise<readonly Skill[]> {
   return rows.map((row) => parseSkill(row.value))
 }
 
-export function create(deps: ModuleDeps<never>): HostModule {
+export type SkillsModule = {
+  readonly service: SkillsService
+  readonly ops: readonly Op[]
+}
+
+export function createSkills(db: SqliteDatabase): SkillsModule {
   const bundled = skillsFrom(BUNDLED_SKILLS)
 
   const loadSkills = async (): Promise<ReadonlyMap<string, Skill>> => {
     const merged = new Map(bundled.map((skill) => [skill.name, skill]))
-    for (const skill of await ownerSkills(deps.db)) merged.set(skill.name, skill)
+    for (const skill of await ownerSkills(db)) merged.set(skill.name, skill)
     return merged
   }
 
@@ -79,7 +83,7 @@ export function create(deps: ModuleDeps<never>): HostModule {
       const skill = parsePut(markdown)
       if (skill.name !== name)
         throw new OpRejected("bad_args", `skill frontmatter name "${skill.name}" does not match the put name "${name}"`)
-      await deps.db.run(
+      await db.run(
         "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
         `${SKILL_KEY}${name}`,
         markdown,
@@ -93,7 +97,7 @@ export function create(deps: ModuleDeps<never>): HostModule {
     args: obj({ name: str({ pattern: SKILL_NAME_PATTERN }) }),
     actors: ["owner"],
     run: async (_api, { name }) => {
-      await deps.db.run("DELETE FROM kv WHERE key = ?", `${SKILL_KEY}${name}`)
+      await db.run("DELETE FROM kv WHERE key = ?", `${SKILL_KEY}${name}`)
       return { name }
     },
   })
@@ -107,8 +111,5 @@ export function create(deps: ModuleDeps<never>): HostModule {
 
   const service: SkillsService = { list: listSkills }
 
-  return {
-    provides: { skills: service },
-    ops: [put, remove, list],
-  }
+  return { service, ops: [put, remove, list] }
 }

@@ -21,7 +21,7 @@ flowchart TB
   DO["Home DO constructor<br/>blockConcurrencyWhile"] --> ROOT["root Context<br/>host facts: state, env"]
   ROOT --> L["XinLoader<br/>builtins = CATALOG"]
   L --> ROWS["composed rows<br/>bundles, profile patch, owner patch"]
-  ROWS --> K["kernel rows<br/>db, pi, ops, http, wire, clock, secrets, plugins, system"]
+  ROWS --> K["kernel rows<br/>db, pi, ops, http, wire, clock, secrets, plugins, packages, system"]
   ROWS --> F["feature rows<br/>models, files, intake, memory, push, skills, mcp,<br/>workspace, schedules, orchestrator, jobs, questions, watchdog, failures"]
   K -->|"pi row init"| OPEN["Harness.open<br/>provides ctx.harness"]
   OPEN --> F
@@ -49,16 +49,17 @@ Each service is a row in `xin-base`. A different row can provide the same key in
 | `clock` | `clock` | `timer({ due, fire })` (effect), `arm(wake)`, `fire(now)`. It owns the single DO alarm (§1) |
 | `secrets` | `secrets` | `get(key)` and `set(key, value)` over values sealed with `KEK`, scoped to the calling row's loader entry id (found with `loader.locate`). `values()` is kernel-only and feeds the redaction hook. Defines the owner op `plugin.secret.set` |
 | `plugins` | `plugins` | the plugin manager below |
+| `packages` | `packages` | the build's `installed` packages, the parsed `pending` list, `plugin.install` and `plugin.uninstall`, `GET /v1/build/packages`, and the boot reconcile |
 | `system` | `system` | version, restart, update. Deploys go through the `deployer` seam |
 
 Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `skills`, `mcp`, `workspace`, `threads`, `jobs`, `questions`). A feature that other features call provides a key. A feature that only adds tools, ops or timers provides none.
 
 **Service rows and tool rows.** A feature package splits what it serves from what the model sees.
 
-- The service row (`<name>`) owns state, ops, routes, timers and the home part, and provides `ctx.<key>` (`files`, `models`, `threads`, `jobs`, `intake`, `memory`, `questions`, `skills`, `schedules`, `mcp`, `watchdog`, `push`, `workspace`). A `hostModule` feature returns it as `provides: { <key>: value }`.
+- The service row (`<name>`) owns state, ops, routes, timers and the home part, and provides `ctx.<key>` (`files`, `models`, `threads`, `jobs`, `intake`, `memory`, `questions`, `skills`, `schedules`, `mcp`, `watchdog`, `push`, `workspace`). Its `apply` calls `ctx.provide("<key>", value)`.
 - The tool row (`tool-<name>`) is a plain plugin with `inject: ["pi", "<key>"]` that installs one extension, named `tool-<name>`, holding the model-facing tools (and their prompt sections). Disabling it removes those tools and leaves the service running.
 - Both rows are declared in the package's `xin.plugins` and listed in its `xin.bundle`.
-- Each service's interface lives in `src/contracts/<key>.ts`, which augments Cordis `Context` with `<key>: <Interface>`. That folder holds only types, doc definitions, schemas and pure helpers. A plugin may import `src/contracts/*`, `src/kernel/index.ts` and shared libs in `src/`, never another plugin's files. Calls into another feature go through `inject` (required) or `ctx.get(key)` (optional). A `hostModule` feature names the services it calls in `hostModule(name, create, uses)` and reads them as `deps.services.<key>` at call time (`deps.services.get(key)` when optional, as intake does for `push`). Each plugin reads and writes only its own SQL tables; `src/kernel/dbtables.ts` maps every table to its owning plugin or `kernel`, and `bun scripts/boundaries.ts`, run by `lint`, fails on any import from one plugin (or test plugin) into another, and on any SQL that names another feature's table. The kernel's `kv`, `receipts`, `plugins` and migration tables are shared infrastructure.
+- Each service's interface lives in `src/contracts/<key>.ts`, which augments Cordis `Context` with `<key>: <Interface>`. That folder holds only types, doc definitions, schemas and pure helpers. A plugin may import `src/contracts/*`, `src/kernel/index.ts` and shared libs in `src/`, never another plugin's files. Calls into another feature go through `inject` (required) or `ctx.get(key)` (optional). A row module lists every service it reads in `inject` and reads it as `ctx.<key>` only inside that file; helper files take narrow ports as parameters (intake reads the optional `push` with `ctx.get("push")` at call time). `bun scripts/boundaries.ts` checks both rules. Each plugin reads and writes only its own SQL tables; `src/kernel/dbtables.ts` maps every table to its owning plugin or `kernel`, and `bun scripts/boundaries.ts`, run by `lint`, fails on any import from one plugin (or test plugin) into another, and on any SQL that names another feature's table. The kernel's `kv`, `receipts`, `plugins` and migration tables are shared infrastructure.
 
 | Key | Provider row | Called by |
 | --- | --- | --- |
@@ -79,8 +80,8 @@ Events are declared on Cordis `Events` with an `@mode` tag. The dispatch mode is
 | Event | Mode | Use |
 | --- | --- | --- |
 | `ops/before(call, next)` | waterfall | policy over every op: deny, rewrite args, or observe. `call = { command, actor }` returns an `Outcome` |
-| `intake/batch(batch, next)` | waterfall | annotate or rewrite a claimed batch before dispatch |
-| `thread/settled(event)` | emit | a thread reached a terminal status |
+| `intake/batch(batch, next)` | waterfall | rewrite a claimed batch before dispatch. `batch = { batchId, target, rows }`; a listener edits `rows` or a row's `text` in place, then calls `next()` (Cordis passes no value through `next`). Returning `{ kind: "dropped", reason }` without `next()` marks the batch done unsent. `next()` stores the rewritten rows (and a completed marker in DO kv `intake.dispatched.<batchId>`) before submitting, so a crash replay resubmits the stored rows without running the event again. Listeners run at the first fire after every row mounts; one that throws or rejects is logged and skipped, and the batch dispatches as given |
+| `thread/settled(event)` | emit | a thread reached a terminal status. `event = { threadId, parentId, projectId, title, status, result? }`. Emitted from the reporter's replay-safe report phase after the status commit: at least once, never inside a transaction. Each listener is contained: a throw or rejection is logged and the others still run |
 | `wire/typing(conversation, on)` | parallel | typing indicators |
 | `plugins/changed()` | emit | the composed tree or a row's state changed |
 | `mcp/changed()` | emit | the MCP server tool set changed; `tool-mcp` republishes its extension |
@@ -91,8 +92,8 @@ Turn, tool and request interception stay pi-native: install an extension with ho
 
 A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disabled?, group?, isolate? }`.
 
-- **Catalog.** `src/catalog.ts` lists only the required kernel rows (`db`, `clock`, `pi`, `ops`, `http`, `wire`, `secrets`, `plugins`, `system`) in the `xin-base` bundle. Every feature is a package under `plugins/<name>/` (models, files, intake, memory, push, skills, mcp, workspace, schedules, orchestrator, jobs, questions, watchdog, failures, deploy-hook, time), and the generated `src/catalog.gen.ts` lists them and installed dependencies, one bundle per package. Entries are `{ plugin, title, description, required?, multiple?, source }`. A package can never declare a core plugin, bundle or row id.
-- **Feature modules** (models, files, intake and the rest) keep their `create(deps): HostModule` shape and mount through `hostModule(name, create)` (`src/kernel/hostmodule.ts`). It injects `harness` and turns each part into an effect: extensions through `pi.install`, ops through `ops.define`, routes, the home part, timers and typing. `start()` runs inside `apply` and may return a disposer. Their helpers take narrow ports (`{ db, arm }`) that tests build directly. New plugins write `apply(ctx)` against the services, as the time plugin does.
+- **Catalog.** `src/catalog.ts` lists only the required kernel rows (`db`, `clock`, `pi`, `ops`, `http`, `wire`, `secrets`, `plugins`, `packages`, `system`) in the `xin-base` bundle. Every feature is a package under `plugins/<name>/` (models, files, intake, memory, push, skills, mcp, workspace, schedules, orchestrator, jobs, questions, watchdog, failures, deploy-hook, time), and the generated `src/catalog.gen.ts` lists them and installed dependencies, one bundle per package. Entries are `{ plugin, title, description, required?, multiple?, local?, source }`; `local: true` marks a package that lives in this repository. A package can never declare a core plugin, bundle or row id.
+- **Feature modules** are native Cordis plugins, as in dsh: `export const name`, `inject` and `apply(ctx, config)`. `apply` registers each part as an effect through the kernel services: `ctx.provide`, `ctx.pi.install`, `ctx.ops.define`, `ctx.http.route`, `ctx.wire.home`, `ctx.clock.timer`, `ctx.on("wire/typing")`, and `ctx.effect` for start-up work with a disposer. Helpers take narrow ports (`{ db, arm }`) that `apply` builds and tests build directly. (P1 to P4 mounted features through a `hostModule` adapter; P5 removed it.)
 - **Bundles.** A bundle is an ordered list of rows. `xin-base` holds the kernel rows. `xin.profile.json` names `xin-base` and every feature package's bundle. A package can ship its own bundle.
 - **Layers**, applied in order to an empty list (as in dsh):
   1. The bundles named in `xin.profile.json`, in order.
@@ -119,16 +120,50 @@ A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disab
 | `plugin.tree` | the composed rows with the layer that set each field (dsh `--dump-config`) |
 | `plugin.enable` | `{ id, enabled }`. Rejected for a `required` row |
 | `plugin.configure` | `{ id, config }`, validated against the plugin's `Config` before it is committed. Rejected for a plugin with no `Config` (every kernel service but `plugins`) and for a `missing` row |
-| `plugin.insert` | `{ id, plugin, config }` adds a catalog plugin as a new row. Rejected for a `required` plugin, and for a second row of a plugin unless its catalog entry sets `multiple: true` (most plugins register fixed tool and op names, so a second copy could only fail). `time` sets it: an extra row names its extension after the row id and its tool `current_time_<row>`. A package declares it as `xin.plugins.<name>.multiple: true` |
+| `plugin.insert` | `{ id, plugin, config }` adds a catalog plugin as a new row. Rejected for a `required` plugin, and for a second row of a plugin unless its catalog entry sets `multiple: true` (most plugins register fixed tool and op names, so a second copy could only fail). `time` sets it: an extra row installs the extension `tool-<row id>` and the tool `current_time_<row>`. A package declares it as `xin.plugins.<name>.multiple: true` |
 | `plugin.remove` | removes a row that the owner patch inserted, including a `missing` one |
 | `plugin.reset` | drops the owner's override for a row, back to the lower layers |
+| `plugin.install` | `{ spec }` records a parsed package spec for the next build: `{ kind: "registry", name, range? }` or `{ kind: "git", url, ref? }`. Idempotent per spec, and it cancels a pending removal of the same package |
+| `plugin.uninstall` | `{ package }` records a package for the next build to remove. Rejected when the package provides a core row, is local to this repository, or is not in the build |
+| `plugin.packages` | the build's `installed` packages as `{package, version}`, and the `pending` `{add, remove}` list the next build will apply |
 | `plugin.secret.set` | `{ id, key, value }` for row `id`, sealed by `secrets` (the op lives in the `secrets` row) |
+
+`plugin.install`, `plugin.uninstall`, `plugin.packages`, the `GET /v1/build/packages` route and the boot reconcile live in the `packages` row; the other ops in this table live in `plugins`.
 
 Every mutating result carries `application: "applied" | "failed"` and the row's new state. A change applies live in place through Cordis disposal. New code always means a rebuild and `system.update`.
 
 The agent tool `plugin_manager` is its own row, `tool-plugins` (`src/kernel/managertool.ts`, not required). It takes `action: list | catalog | tree | enable | configure`. It mutates only when the `tool-plugins` row config has `allowAgent: true`, and otherwise tells the model which owner op to suggest. An owner op is always allowed.
 
 A row whose new config or code fails to start is an outcome, not an error: the op returns `application: "failed"` with the row and its recorded error, and the other rows keep running.
+
+## Presets
+
+A project can run its conversations with a named agent preset, as dsh does. The presets are the `presets` row's schemastery `Config`, so the owner edits them with `plugin.configure`:
+
+```json
+{
+  "default": "full",
+  "presets": {
+    "full": { "title": "Full", "description": "Every tool row.", "tools": "all" },
+    "minimal": { "title": "Minimal", "description": "Memory and skills only.", "tools": ["tool-memory", "tool-skills"] }
+  }
+}
+```
+
+`tools` is `"all"` or an allowlist of tool-row ids. A config whose `default` is not declared fails the row (`failed`), and a project assigned a preset that a later config removes falls back to `default`.
+
+A preset selects rows by the extension name a tool row installs. Every extension that carries tools is named `tool-*`: `ctx.pi.install` throws for any other name, so the prefix is enforced rather than assumed. A row's own id need not match (`time` installs `tool-time`, and its extra rows install `tool-time-tokyo`).
+
+- **Assignment** lives in the plugin's own table (`presets`, created through `ctx.db.applySqliteMigrations("presets", …)`); a project with no row uses `default`. The service is `ctx.presets`: `list()` and `presetOf(projectId)`, both synchronous over the row's config and that table.
+- **Removals.** For a project, the removed extensions are every installed extension named `tool-*` that the preset's allowlist does not name; `"all"` removes none. Each apply computes the removals from the project's current effective assignment and the end state from `ctx.pi.installed`, and calls `configure({ extensions: { remove } })` (or `null` for `"all"`) only when the resolved extension set differs, so replay is harmless.
+- **Serialization.** Every apply runs through one queue: the row's start, `plugins/changed`, a workspace change and `preset.assign` all append to it, and `assign` awaits its own apply after its SQL write. A stale apply therefore cannot land after a later assignment.
+- **Conversations.** The project's coordinator conversation and every thread conversation of the project are configured. pi starts a task-owned conversation as a copy of its owner's agent, so a new thread inherits the coordinator's selection; existing threads are configured directly.
+- **When.** The row applies on its own start (config change, restart, new build), on `plugins/changed` (a tool row was enabled, disabled or added), when the workspace document changes (a new project), and after `preset.assign`. When the row unloads, it configures every project conversation back to `extensions: null`, so disabling or removing the row restores every tool; a restart applies the presets again.
+
+| Op | Effect |
+| --- | --- |
+| `preset.list` | the presets and each project's effective preset id |
+| `preset.assign` | `{ projectId, preset }` stores the assignment and applies it live; an unknown project or preset is `bad_args` |
 
 ## Install, update, restart
 
@@ -141,6 +176,17 @@ A row whose new config or code fails to start is an outcome, not an error: the o
   - `{ hard: false }` disposes the root context and boots it again in place, with the same code and fresh fibers.
   - `{ hard: true }` calls `state.abort()`, so the DO restarts on the next request.
 - **`system.update`** asks the `deployer` seam to deploy. The default row, `deploy-hook`, POSTs to a URL stored as its secret, such as a GitHub `workflow_dispatch` or a Cloudflare Workers Builds deploy hook. The new version comes up when Cloudflare restarts the DO on the new code. The result is `{ application: "deploying" }`, and the client polls `system.version`.
+
+## Installing from the client
+
+A Worker cannot run `bun add` or load code it did not ship with. An install is therefore two steps: the owner records the wish, and a build applies it.
+
+1. The owner calls `plugin.install` or `plugin.uninstall`. The `packages` row parses an install spec at the boundary into `{ kind: "registry", name, range? }` or `{ kind: "git", url, ref? }`, and stores the list in the `kv` key `plugins.packages` together with the build id each entry was recorded under. It accepts a registry name, `name@range`, `github:owner/repo[#ref]`, `git+https://host/x.git[#ref]` and `https://host/x.git[#ref]`, and rejects every other scheme (`file:`, `link:`, `npm:`), tarball URLs, whitespace and shell characters. Both ops are idempotent, and an install cancels a pending removal of the same package. A package in this repository (`local: true`) cannot be uninstalled; disable its bundle instead.
+2. `system.update` reads that list and calls `deployer.deploy({ packages })`. `deploy-hook` puts `{ ref, inputs: { packages: JSON.stringify(packages) } }` in its POST body, which is what a GitHub `workflow_dispatch` accepts. A pipeline that cannot take a body fetches the same JSON from `GET /v1/build/packages`, behind the Worker's owner token.
+3. The pipeline runs `bun scripts/xin.ts plugin sync <file|->`, which applies `bun add` and `bun remove`, then edits `xin.profile.json` and regenerates `src/catalog.gen.ts`. Every `bun` command runs before the profile changes, so a failed removal leaves both files untouched. An empty list does nothing.
+4. When a later build boots, the `packages` row reconciles the list. An entry recorded under this build is kept. On a newer build, a registry add settles when the build has the package name (and, when the spec gives a range, the built version satisfies it), a git add settles when its resolved name is present or, without one, when the build changed, and a removal settles when the package is gone. Reconcile is idempotent, so a boot after a crash repeats it harmlessly.
+
+`plugin.packages` returns the build's `installed` packages (from the catalog's `source` values) and the `pending` list, so the client can show both what is running and what the next build will change. The full workflow is in `docs/deploy/install-pipeline.md`.
 
 ## Authoring a plugin
 
@@ -175,9 +221,8 @@ export function apply(ctx: Context, config: { greeting: string }) {
 
 ## Trust
 
-In-process plugins run in the Home isolate with full access to what they `inject`, as in dsh. Installing a package is the trust decision. There is no network allowlist. Secrets are scoped by the calling row's id, so one row cannot read another's values by accident, but in-process scoping is not a security boundary. Running untrusted third-party code needs a separate isolate (Worker Loader) behind the same services over RPC. That is later.
+In-process plugins run in the Home isolate with full access to what they `inject`, as in dsh. Installing a package is the trust decision. There is no network allowlist. Secrets are scoped by the calling row's id, so one row cannot read another's values by accident, but in-process scoping is not a security boundary. Running untrusted third-party code without a redeploy needs a separate isolate behind the same services over RPC. Cloudflare's Dynamic Workers (the Worker Loader binding) provide one with no container, but only on the Workers Paid plan (checked 2026-11-07), so it is later. On the free plan, code arrives through the install pipeline: build, then deploy.
 
 ## Later
 
-- **Per-project capability sets (dsh presets).** A project names the extension set its conversations select, through pi `configure({ extensions })`.
 - **A market index.** A read-only list of plugin packages, with an install hint, for the CLI.

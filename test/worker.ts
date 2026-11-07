@@ -3,6 +3,8 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { defineDoc, defineExtension, defineTool, type ModelRef } from "@earendil-works/pi-durable"
 import type { Provider } from "../src/module.ts"
 import * as fakefiles from "./plugins/fakefiles.ts"
+import * as fakedeploy from "./plugins/fakedeploy.ts"
+import * as intakebatch from "./plugins/intakebatch.ts"
 import * as m2 from "./plugins/m2.ts"
 import * as m3 from "./plugins/m3.ts"
 import * as m4 from "./plugins/m4.ts"
@@ -14,6 +16,7 @@ import * as m9 from "./plugins/m9.ts"
 import * as mcp from "./plugins/mcp.ts"
 import * as piext from "./plugins/piext.ts"
 import * as secretsTest from "./plugins/secrets.ts"
+import * as settled from "./plugins/settled.ts"
 import * as skills from "./plugins/skills.ts"
 import type { Composition, Catalog } from "../src/kernel/loader.ts"
 import type { Extension } from "@earendil-works/pi-durable"
@@ -59,7 +62,7 @@ const bump = defineOp({
 })
 
 const TEST_CATALOG: Catalog = {
-  test: testPlugin("test", { extensions: [defineExtension({ name: "test.ping", tools: [ping] })], ops: [bump] }),
+  test: testPlugin("test", { extensions: [defineExtension({ name: "tool-test-ping", tools: [ping] })], ops: [bump] }),
   broken: {
     ...testPlugin("broken", {}),
     plugin: {
@@ -73,6 +76,8 @@ const TEST_CATALOG: Catalog = {
   orphan: testPlugin("orphan", {}, ["nothing-provides-this"]),
   ...m2.catalog,
   ...fakefiles.catalog,
+  ...intakebatch.catalog,
+  ...fakedeploy.catalog,
   ...m3.catalog,
   ...m4.catalog,
   ...m5.catalog,
@@ -84,13 +89,16 @@ const TEST_CATALOG: Catalog = {
   ...mcp.catalog,
   ...piext.catalog,
   ...secretsTest.catalog,
+  ...settled.catalog,
 }
 
 const TEST_ROWS = [
   ...["test", "broken", "orphan", "m2", "m6"].map((id) => ({ id, name: `cordis:${id}` })),
   ...m8.rows,
   ...piext.rows,
+  ...intakebatch.rows,
   ...secretsTest.rows,
+  ...settled.rows,
 ]
 
 export const FAUX_MODEL = { provider: "faux", modelId: "faux-1" } as const

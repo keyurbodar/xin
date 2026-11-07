@@ -10,6 +10,7 @@ export type CatalogEntry = {
   readonly description: string
   readonly required?: boolean
   readonly multiple?: boolean
+  readonly local?: boolean
   readonly source: string
 }
 

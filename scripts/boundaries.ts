@@ -23,7 +23,41 @@ const pluginOf = (path: string): string | undefined => {
 
 const owner = (path: string): string => pluginOf(path) ?? "test"
 
+const CONTEXT_BLOCK = /interface Context \{([^}]*)\}/g
+const CONTEXT_MEMBER = /^\s*([a-z][A-Za-z0-9]*)\??\s*:/gm
+const SERVICE_READ = /\bctx\.([a-z][A-Za-z0-9]*)\b/g
+const INJECT = /\binject\s*[:=]\s*\[([^\]]*)\]/g
+
+const services: ReadonlySet<string> = new Set(
+  files(join(ROOT, "src")).flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(CONTEXT_BLOCK)].flatMap((block) =>
+      [...(block[1] ?? "").matchAll(CONTEXT_MEMBER)].flatMap((member) => (member[1] === undefined ? [] : [member[1]])),
+    ),
+  ),
+)
+
+const injected = (text: string): ReadonlySet<string> | undefined => {
+  const lists = [...text.matchAll(INJECT)].map((match) => match[1] ?? "")
+  return lists.length === 0
+    ? undefined
+    : new Set(lists.flatMap((list) => [...list.matchAll(/["']([^"']+)["']/g)].map((item) => item[1] ?? "")))
+}
+
 const violations: string[] = []
+const checkInject = (file: string, requireDeclaration: boolean, text: string): void => {
+  if (file.endsWith(".test.ts")) return
+  const inject = injected(text)
+  if (inject === undefined && !requireDeclaration) return
+  for (const read of new Set([...text.matchAll(SERVICE_READ)].map((match) => match[1] ?? ""))) {
+    if (!services.has(read)) continue
+    if (inject === undefined)
+      violations.push(
+        `${relative(ROOT, file)} reads ctx.${read}: only a row module (one that declares inject) reads services; pass a port`,
+      )
+    else if (!inject.has(read))
+      violations.push(`${relative(ROOT, file)} reads ctx.${read} without listing "${read}" in inject`)
+  }
+}
 for (const file of [...files(PLUGINS), ...files(join(ROOT, "test", "plugins"))]) {
   const from = owner(file)
   const text = readFileSync(file, "utf8")
@@ -36,6 +70,7 @@ for (const file of [...files(PLUGINS), ...files(join(ROOT, "test", "plugins"))])
         `${relative(ROOT, file)} imports ${specifier}: reach plugin ${target} through inject and src/contracts`,
       )
   }
+  checkInject(file, true, text)
   const plugin = pluginOf(file)
   if (plugin === undefined || file.endsWith(".test.ts")) continue
   for (const match of text.matchAll(SQL_TABLE)) {
@@ -46,6 +81,7 @@ for (const file of [...files(PLUGINS), ...files(join(ROOT, "test", "plugins"))])
     violations.push(`${relative(ROOT, file)} uses table ${table}, which belongs to plugin ${tableOwnerPlugin}`)
   }
 }
+for (const file of files(join(ROOT, "src"))) checkInject(file, false, readFileSync(file, "utf8"))
 
 if (violations.length > 0) {
   for (const line of violations) console.error(line)

@@ -47,6 +47,8 @@ export class Pi extends Service {
   }
 
   install(extension: Extension): () => void {
+    if (extension.tools !== undefined && extension.tools.length > 0 && !extension.name.startsWith("tool-"))
+      throw new Error(`extension ${extension.name} carries tools but is not named tool-*`)
     const owner = this.ctx.fiber.uid
     const previous = this.installed.get(extension.name)
     if (previous !== undefined && previous.owner !== owner)

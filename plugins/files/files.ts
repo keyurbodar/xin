@@ -1,3 +1,4 @@
+import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import {
   AgentDoc,
   type ConversationId,
@@ -10,8 +11,9 @@ import {
 } from "@earendil-works/pi-durable"
 import { compile, int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { FileEntry, FilesService } from "../../src/contracts/files.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
-import { type Actor, defineOp, OpRejected } from "../../src/ops.ts"
+import type { Env } from "../../src/env.ts"
+import type { Route } from "../../src/module.ts"
+import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import { blobKey, FileIndex, type FileRow, normalizePath, putFile, R2Env, resolvePath } from "../../src/r2env.ts"
 
 const MAX_COMMIT_BYTES = 4096
@@ -29,6 +31,24 @@ const Commit = obj({
 const parseCommit = compile(Commit)
 
 export type WriteScope = (write: { readonly actor: Actor; readonly path: string }) => string | undefined
+
+export type FilesPort = {
+  readonly state: DurableObjectState
+  readonly env: Env
+  readonly db: SqliteDatabase
+}
+
+export type SweepPort = Pick<FilesPort, "state" | "env" | "db">
+
+export type FilesPlugin = {
+  readonly service: FilesService
+  readonly scope: Extension
+  readonly ops: readonly Op[]
+  readonly commit: Route
+  start(): Promise<void>
+  due(): Promise<number | undefined>
+  fire(now: number): Promise<void>
+}
 
 const coordinatorOnly: WriteScope = ({ actor, path }) => {
   if (path !== "/me" && !path.startsWith("/me/")) return undefined
@@ -73,7 +93,7 @@ function rootedPath(path: string): string {
   return normalized
 }
 
-export function create(deps: ModuleDeps<never>, scope: WriteScope = coordinatorOnly): HostModule {
+export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): FilesPlugin {
   const dirs = new Set<string>(["/"])
   const index = new FileIndex(deps.db)
   const envFor = (cwd: string | undefined): R2Env => new R2Env(deps.env.FILES, deps.db, { cwd: cwd ?? "/", dirs })
@@ -161,10 +181,10 @@ export function create(deps: ModuleDeps<never>, scope: WriteScope = coordinatorO
   }
 
   return {
-    provides: { files },
-    extensions: [scoped(scope)],
+    service: files,
+    scope: scoped(scope),
     ops: [list, remove, put],
-    routes: { "POST /v1/files/commit": commit },
+    commit,
     start: () =>
       deps.db.run(
         "INSERT OR IGNORE INTO kv (key, value) VALUES (?, ?)",
@@ -185,17 +205,17 @@ export function create(deps: ModuleDeps<never>, scope: WriteScope = coordinatorO
   }
 }
 
-async function nextSweep(deps: ModuleDeps<never>): Promise<number | undefined> {
+async function nextSweep(deps: Pick<FilesPort, "db">): Promise<number | undefined> {
   const row = await deps.db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", SWEEP_KEY)
   return row === undefined ? undefined : Number(row.value)
 }
 
-export async function sweep(deps: Pick<ModuleDeps, "ctx" | "env" | "db">, now: number): Promise<number> {
+export async function sweep(deps: SweepPort, now: number): Promise<number> {
   const index = new FileIndex(deps.db)
   let deleted = 0
   for await (const object of objects(deps.env.FILES, "b/")) {
     if (now - object.uploaded.getTime() < ORPHAN_GRACE_MS) continue
-    const removed = await deps.ctx.blockConcurrencyWhile(async () => {
+    const removed = await deps.state.blockConcurrencyWhile(async () => {
       const head = await deps.env.FILES.head(object.key)
       if (head === null) return false
       if (now - head.uploaded.getTime() < ORPHAN_GRACE_MS) return false

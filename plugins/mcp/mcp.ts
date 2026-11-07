@@ -6,9 +6,11 @@ import {
   type Tool as McpTool,
 } from "@earendil-works/pi-mcp"
 import { type ToolRegistration } from "@earendil-works/pi-durable"
+import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import { arr, compile, map, obj, opt, str, unknown, type Static } from "@earendil-works/pi-schema"
+import type { JobsService } from "../../src/contracts/jobs.ts"
 import type { McpService } from "../../src/contracts/mcp.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
+import type { Env } from "../../src/env.ts"
 import { defineOp, OpRejected, type Op } from "../../src/ops.ts"
 import { Sealer, SealedSchema, type Sealed } from "../../src/seal.ts"
 
@@ -85,8 +87,21 @@ const summarize = (name: string, server: StoredServer) => ({
 
 type Row = { readonly name: string; readonly raw: string }
 
-export function create(deps: ModuleDeps<"jobs">): HostModule {
-  const sealer = new Sealer(deps.env.KEK)
+export type McpPorts = {
+  readonly env: Env
+  readonly db: SqliteDatabase
+  readonly jobs: JobsService
+  changed(): void
+}
+
+export type McpModule = {
+  readonly service: McpService
+  readonly ops: readonly Op[]
+  start(): Promise<void>
+}
+
+export function create(ports: McpPorts): McpModule {
+  const sealer = new Sealer(ports.env.KEK)
   const definitions = new Map<string, readonly ToolRegistration[]>()
 
   const tools = (): readonly ToolRegistration[] => {
@@ -98,11 +113,11 @@ export function create(deps: ModuleDeps<"jobs">): HostModule {
   }
 
   const changed = (): void => {
-    deps.services.emit("mcp/changed")
+    ports.changed()
   }
 
   const rows = async (): Promise<readonly Row[]> => {
-    const found = await deps.db.all<{ key: string; value: string }>(
+    const found = await ports.db.all<{ key: string; value: string }>(
       "SELECT key, value FROM kv WHERE key LIKE ?",
       `${SERVER_KEY}%`,
     )
@@ -112,7 +127,7 @@ export function create(deps: ModuleDeps<"jobs">): HostModule {
   }
 
   const readRaw = async (name: string): Promise<string | undefined> => {
-    const row = await deps.db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", label(name))
+    const row = await ports.db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", label(name))
     return row?.value
   }
 
@@ -122,7 +137,7 @@ export function create(deps: ModuleDeps<"jobs">): HostModule {
   }
 
   const writeServer = async (name: string, server: StoredServer): Promise<void> => {
-    await deps.db.run(
+    await ports.db.run(
       "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
       label(name),
       JSON.stringify(server),
@@ -130,7 +145,7 @@ export function create(deps: ModuleDeps<"jobs">): HostModule {
   }
 
   const replaceServer = async (name: string, expected: string, next: StoredServer): Promise<boolean> => {
-    const updated = await deps.db.runCounted(
+    const updated = await ports.db.runCounted(
       "UPDATE kv SET value = ? WHERE key = ? AND value = ?",
       JSON.stringify(next),
       label(name),
@@ -180,7 +195,7 @@ export function create(deps: ModuleDeps<"jobs">): HostModule {
   }
 
   const register = (name: string, cached: readonly StoredTool[]): void => {
-    const jobs = deps.services.jobs
+    const jobs = ports.jobs
     definitions.set(
       name,
       cached.map((tool) =>
@@ -268,7 +283,7 @@ export function create(deps: ModuleDeps<"jobs">): HostModule {
     args: obj({ name: str({ pattern: NAME_SOURCE }) }),
     actors: ["owner"],
     run: async (_api, { name }) => {
-      await deps.db.run("DELETE FROM kv WHERE key = ?", label(name))
+      await ports.db.run("DELETE FROM kv WHERE key = ?", label(name))
       unregister(name)
       return { name }
     },
@@ -288,7 +303,7 @@ export function create(deps: ModuleDeps<"jobs">): HostModule {
   const service: McpService = { tools }
 
   return {
-    provides: { mcp: service },
+    service,
     ops: [add, remove, list],
     start: async () => {
       const names: string[] = []

@@ -135,3 +135,11 @@ Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](.
 **Proof (test that must pass)**: `src/kernel/swap.test.ts`: with the `files` row disabled `tool-files` goes pending, an inserted in-memory `fake-files` row provides `files`, and pi's write/read tools work against it; restoring the real row brings R2 back. The whole suite passes with zero boundary violations.
 
 **Depends on**: P3.
+
+## P5 · native plugins, presets and install from the client
+
+**Builds**: every feature is a native Cordis plugin (`name`, `inject`, `apply(ctx)`); the `hostModule` adapter, `HostModule` and `ModuleDeps` are deleted; `boundaries.ts` checks that only a file declaring `inject` reads `ctx.<service>` and that it lists each one. Events `intake/batch` (waterfall: rewrite or drop a claimed batch) and `thread/settled` (emit, at least once). Ops `plugin.install`, `plugin.uninstall`, `plugin.packages`, the `GET /v1/build/packages` route, boot reconcile, `bun scripts/xin.ts plugin sync`, and `docs/deploy/install-pipeline.md`. The `presets` plugin: named tool-row allowlists in its config, assigned per project.
+
+**Proof (test that must pass)**: `plugins/intake/batch.test.ts` (a listener rewrites the text the model sees; another drops the batch), `plugins/orchestrator/settled.test.ts` (one event with the result), `src/kernel/install.test.ts` (recording, idempotency, rejection, deployer payload, reconcile across eviction, owner-only route), `plugins/presets/presets.test.ts` (a preset hides tool rows from the coordinator and its threads, survives eviction, falls back to the default). The whole suite passes with zero boundary violations.
+
+**Depends on**: P4.

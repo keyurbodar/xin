@@ -6,6 +6,7 @@ import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai"
 import {
   defineTask,
   type Cursor,
+  type Harness,
   type Task,
   type TaskId,
   type TaskRecord,
@@ -13,8 +14,7 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable"
 import type { NoteDraft } from "../../src/contracts/memory.ts"
-import { resolveModel } from "../../src/contracts/models.ts"
-import type { ModuleDeps } from "../../src/module.ts"
+import { type ModelsService, resolveModel } from "../../src/contracts/models.ts"
 import { liveSecrets } from "./dreamersecrets.ts"
 import { SYSTEM_PROMPT, validateDreamerOutput, type DreamerOutput } from "./dreamprompt.ts"
 import { readTranscript } from "./dreamtranscript.ts"
@@ -39,6 +39,14 @@ const ATTEMPTS = 2
 const MAX_TOKENS = 2048
 
 type AnyTask = TaskRecord<JsonValue, JsonValue, JsonValue>
+
+export type MemoryPorts = {
+  readonly db: SqliteDatabase
+  readonly harness: Harness
+  readonly models: ModelsService
+  readonly kek: string
+  arm(): Promise<void>
+}
 
 export type NoteRow = {
   readonly id: number
@@ -87,22 +95,22 @@ export async function readProfile(db: SqliteExecutor): Promise<string> {
   return (await readKv(db, PROFILE_KEY)) ?? ""
 }
 
-export async function requestPass(deps: ModuleDeps<"models">, at: number): Promise<void> {
-  const existing = await readNumber(deps.db, DUE_KEY)
+export async function requestPass(ports: MemoryPorts, at: number): Promise<void> {
+  const existing = await readNumber(ports.db, DUE_KEY)
   const due = existing === undefined ? at : Math.min(existing, at)
-  await writeKv(deps.db, DUE_KEY, String(due))
-  await ensurePass(deps, due)
-  await deps.arm()
+  await writeKv(ports.db, DUE_KEY, String(due))
+  await ensurePass(ports, due)
+  await ports.arm()
 }
 
-export async function ensurePass(deps: ModuleDeps<"models">, at: number): Promise<void> {
-  const harness = deps.harness()
+export async function ensurePass(ports: MemoryPorts, at: number): Promise<void> {
+  const harness = ports.harness
   const root = await harness.root(context)
   const stale = await harness.commit(async (tx) => {
     const live = await liveDreamers(tx)
     if (live.some((task) => dueAt(task, at))) return undefined
     await tx.createTask(
-      dreamerTask(deps),
+      dreamerTask(ports),
       { at },
       { ownership: { kind: "conversation" }, conversationId: root.id, background: true },
     )
@@ -128,7 +136,7 @@ const dueAt = (task: AnyTask, at: number): boolean => task.state.status !== "sle
 type DreamerInput = { readonly at: number }
 type DreamerState = { readonly phase: "wake" } | { readonly phase: "wait" } | { readonly phase: "pass" }
 
-export function dreamerTask(deps: ModuleDeps<"models">): Task<DreamerInput, DreamerState, null, object> {
+export function dreamerTask(ports: MemoryPorts): Task<DreamerInput, DreamerState, null, object> {
   return defineTask<DreamerInput, DreamerState, null, object>({
     name: DREAMER_TASK,
     version: 1,
@@ -136,19 +144,19 @@ export function dreamerTask(deps: ModuleDeps<"models">): Task<DreamerInput, Drea
     phases: {
       wake: async (task, runtime, ctx) => {
         const now = runtime.now()
-        const retry = (await readNumber(deps.db, RETRY_KEY)) ?? 0
+        const retry = (await readNumber(ports.db, RETRY_KEY)) ?? 0
         const at = Math.max(task.input.at, retry)
         if (at > now) return runtime.sleepUntil(at, { phase: "pass" }, ctx)
         await runtime.commit(() => ({ status: "running", checkpoint: { phase: "pass" } }), ctx)
       },
       wait: async (_task, runtime, ctx) => {
         const now = runtime.now()
-        const next = await nextPass(deps, now)
+        const next = await nextPass(ports, now)
         if (next > now) return runtime.sleepUntil(next, { phase: "wait" }, ctx)
         await runtime.commit(() => ({ status: "running", checkpoint: { phase: "pass" } }), ctx)
       },
       pass: async (task, runtime, ctx) => {
-        await runPass(deps, task.id, runtime, ctx)
+        await runPass(ports, task.id, runtime, ctx)
         await runtime.commit(() => ({ status: "running", checkpoint: { phase: "wait" } }), ctx)
       },
     },
@@ -156,12 +164,12 @@ export function dreamerTask(deps: ModuleDeps<"models">): Task<DreamerInput, Drea
   })
 }
 
-async function nextPass(deps: ModuleDeps<"models">, now: number): Promise<number> {
-  const retry = await readNumber(deps.db, RETRY_KEY)
+async function nextPass(ports: MemoryPorts, now: number): Promise<number> {
+  const retry = await readNumber(ports.db, RETRY_KEY)
   if (retry !== undefined && retry > now) return retry
-  const due = await readNumber(deps.db, DUE_KEY)
-  const cursor = (await readNumber(deps.db, CURSOR_KEY)) ?? 0
-  const newest = await deps.db.get<{ at: number }>(
+  const due = await readNumber(ports.db, DUE_KEY)
+  const cursor = (await readNumber(ports.db, CURSOR_KEY)) ?? 0
+  const newest = await ports.db.get<{ at: number }>(
     "SELECT at FROM notes WHERE id > ? AND retired_by IS NULL AND source != 'dreamer' ORDER BY at DESC LIMIT 1",
     cursor,
   )
@@ -179,29 +187,29 @@ function daily(now: number): number {
 }
 
 async function runPass(
-  deps: ModuleDeps<"models">,
+  ports: MemoryPorts,
   taskId: TaskId,
   runtime: TaskRuntime<DreamerInput, DreamerState, null, object>,
   ctx: Context,
 ): Promise<void> {
-  const requested = await readKv(deps.db, DUE_KEY)
-  const cursor = (await readNumber(deps.db, CURSOR_KEY)) ?? 0
-  const notes = await deps.db.all<NoteRow>(
+  const requested = await readKv(ports.db, DUE_KEY)
+  const cursor = (await readNumber(ports.db, CURSOR_KEY)) ?? 0
+  const notes = await ports.db.all<NoteRow>(
     "SELECT id, scope, text, at FROM notes WHERE id > ? AND retired_by IS NULL ORDER BY id ASC LIMIT ?",
     cursor,
     NOTES_LIMIT,
   )
   const included = withinBudget(notes)
   const end = included.at(-1)?.id ?? cursor
-  const transcriptCursor = (await readNumber(deps.db, TRANSCRIPT_CURSOR_KEY)) ?? 0
-  const transcripts = await readTranscript(deps.harness(), taskId, transcriptCursor, ctx, DREAMER_TASK)
-  const model = await chooseModel(deps, runtime, ctx)
-  const output = model === undefined ? undefined : await draft(deps, runtime, ctx, model, included, transcripts.text)
+  const transcriptCursor = (await readNumber(ports.db, TRANSCRIPT_CURSOR_KEY)) ?? 0
+  const transcripts = await readTranscript(ports.harness, taskId, transcriptCursor, ctx, DREAMER_TASK)
+  const model = await chooseModel(ports, runtime, ctx)
+  const output = model === undefined ? undefined : await draft(ports, runtime, ctx, model, included, transcripts.text)
   if (output === undefined) {
-    await writeKv(deps.db, RETRY_KEY, String(runtime.now() + RETRY_MS))
+    await writeKv(ports.db, RETRY_KEY, String(runtime.now() + RETRY_MS))
     return
   }
-  await apply(deps.db, taskId, output, end, transcripts.end, requested)
+  await apply(ports.db, taskId, output, end, transcripts.end, requested)
 }
 
 function withinBudget(notes: readonly NoteRow[]): readonly NoteRow[] {
@@ -220,16 +228,16 @@ const noteLine = (note: NoteRow): string =>
   `${note.id} (${note.scope}, ${new Date(note.at).toISOString()}): ${note.text}`
 
 async function draft(
-  deps: ModuleDeps<"models">,
+  ports: MemoryPorts,
   runtime: TaskRuntime<DreamerInput, DreamerState, null, object>,
   ctx: Context,
   model: Model<Api>,
   notes: readonly NoteRow[],
   transcripts: string,
 ): Promise<DreamerOutput | undefined> {
-  const prompt = renderPrompt(await readProfile(deps.db), notes, transcripts)
+  const prompt = renderPrompt(await readProfile(ports.db), notes, transcripts)
   const shown = new Set(notes.map((note) => note.id))
-  const secrets = await liveSecrets(deps)
+  const secrets = await liveSecrets(ports)
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     const answer = await complete(runtime, model, prompt)
     if (answer === undefined) return undefined
@@ -306,11 +314,11 @@ async function apply(
 }
 
 async function chooseModel(
-  deps: ModuleDeps<"models">,
+  ports: MemoryPorts,
   runtime: TaskRuntime<DreamerInput, DreamerState, null, object>,
   ctx: Context,
 ): Promise<Model<Api> | undefined> {
-  const resolved = resolveModel({ role: "utility", owner: await deps.services.models.ownerDefaults() })
+  const resolved = resolveModel({ role: "utility", owner: await ports.models.ownerDefaults() })
   const ref = resolved.kind === "model" ? resolved.model : (await runtime.agent(ctx)).model
   if (ref === undefined) return undefined
   return runtime.models.getModel(ref.provider, ref.modelId)

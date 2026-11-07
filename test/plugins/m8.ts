@@ -43,7 +43,7 @@ const greeting = {
   apply(ctx: Context, config: { greeting: string }) {
     ctx.pi.install(
       defineExtension({
-        name: "k-config",
+        name: "tool-k-config",
         tools: [
           defineTool({
             name: "k_greeting",

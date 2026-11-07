@@ -10,7 +10,7 @@ const echo = {
   apply(ctx: Context) {
     ctx.pi.install(
       defineExtension({
-        name: "s-echo",
+        name: "tool-s-echo",
         tools: [
           defineTool({
             name: "s_echo_secret",
@@ -36,7 +36,7 @@ const other = {
   apply(ctx: Context) {
     ctx.pi.install(
       defineExtension({
-        name: "s-other",
+        name: "tool-s-other",
         tools: [
           defineTool({
             name: "s_other_secret",

@@ -1,4 +1,18 @@
-import { hostModule } from "../../src/kernel/index.ts"
-import { create } from "./questions.ts"
+import type { Context } from "../../src/kernel/index.ts"
+import { createQuestions, type QuestionsPort, respondOp } from "./questions.ts"
 
-export const { name, inject, apply } = hostModule("questions", create, ["intake", "threads", "watchdog"])
+export const name = "questions"
+export const inject = ["harness", "ops", "clock", "intake", "threads", "watchdog"]
+
+export function apply(ctx: Context): void {
+  const port: QuestionsPort = {
+    harness: ctx.harness,
+    intake: ctx.intake,
+    threads: ctx.threads,
+    watchdog: ctx.watchdog,
+    arm: () => ctx.clock.arm(),
+    run: (command, actor) => ctx.ops.run(command, actor),
+  }
+  ctx.provide("questions", createQuestions(port))
+  ctx.ops.define(respondOp(port))
+}

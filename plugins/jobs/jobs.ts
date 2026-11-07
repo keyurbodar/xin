@@ -7,6 +7,8 @@ import {
   type DocumentReader,
   defineExtension,
   defineTask,
+  type Extension,
+  type Harness,
   type JsonObject,
   type Task,
   type TaskId,
@@ -15,6 +17,7 @@ import {
   type ToolExecutionResult,
   type ToolRegistration,
 } from "@earendil-works/pi-durable"
+import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
   JobsDoc,
   parseJobs,
@@ -25,7 +28,6 @@ import {
 } from "../../src/contracts/jobs.ts"
 
 export { JobsDoc, type JobRecord, type JobRun, type JobTool, type JobWork } from "../../src/contracts/jobs.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { projectInScope, ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
@@ -264,8 +266,19 @@ function jsonObjectOf(value: unknown): JsonObject {
   return found
 }
 
-export async function cancelJob(deps: ModuleDeps<"intake">, callerId: ConversationId, jobId: number): Promise<boolean> {
-  const harness = deps.harness()
+export type JobsPorts = {
+  readonly harness: Harness
+  readonly intake: IntakeService
+  arm(): Promise<void>
+}
+
+export type JobsModule = {
+  readonly service: JobsService
+  readonly extension: Extension
+  start(): Promise<() => void>
+}
+
+export async function cancelJob(harness: Harness, callerId: ConversationId, jobId: number): Promise<boolean> {
   const scope = await projectInScope(harness, callerId)
   if (scope === undefined) return false
   const doc = await harness.snapshot(JobsDoc, context)
@@ -276,14 +289,14 @@ export async function cancelJob(deps: ModuleDeps<"intake">, callerId: Conversati
   return true
 }
 
-export function create(deps: ModuleDeps<"intake">): HostModule {
+export function createJobs(ports: JobsPorts): JobsModule {
   const pending = new Set<string>()
   let scheduled = false
 
   const jobs: JobsService = {
     tool: jobTool,
     isJobTool,
-    cancel: (callerId, jobId) => cancelJob(deps, callerId, jobId),
+    cancel: (callerId, jobId) => cancelJob(ports.harness, callerId, jobId),
   }
 
   const collect = (value: JsonObject): void => {
@@ -309,13 +322,13 @@ export function create(deps: ModuleDeps<"intake">): HostModule {
     if (pending.size === 0) return
     const ids = [...pending]
     pending.clear()
-    const harness = deps.harness()
+    const harness = ports.harness
     const doc = await harness.snapshot(JobsDoc, context)
     if (doc === undefined) return
     for (const id of ids) {
       const job = doc.jobs[id]
       if (job?.result === undefined || job.detached !== true) continue
-      const accepted = await deps.services.intake.enqueue({
+      const accepted = await ports.intake.enqueue({
         target: job.parentId as ConversationId,
         commandId: `job:${id}`,
         kind: "job",
@@ -324,7 +337,7 @@ export function create(deps: ModuleDeps<"intake">): HostModule {
         status: job.result.isError ? "failed" : "completed",
         text: job.result.text,
       })
-      if (accepted) await deps.arm()
+      if (accepted) await ports.arm()
       await harness.commit(async (tx) => {
         const current = await tx.doc(JobsDoc)
         const entry = current.jobs[id]
@@ -343,11 +356,11 @@ export function create(deps: ModuleDeps<"intake">): HostModule {
   }
 
   return {
-    provides: { jobs },
-    extensions: [defineExtension({ name: "xin.jobs", tasks: [Job] })],
+    service: jobs,
+    extension: defineExtension({ name: "xin.jobs", tasks: [Job] }),
     async start() {
-      const observation = deps.harness().observeCommits(observe)
-      const doc = await deps.harness().snapshot(JobsDoc, context)
+      const observation = ports.harness.observeCommits(observe)
+      const doc = await ports.harness.snapshot(JobsDoc, context)
       if (doc !== undefined) collect(doc)
       schedule()
       return () => observation.detach()

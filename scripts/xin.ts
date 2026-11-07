@@ -18,6 +18,7 @@ type Found = {
   readonly pkg: string
   readonly version: string
   readonly dir: string
+  readonly local: boolean
   readonly specifier: (module: string) => string
   readonly plugins: Readonly<Record<string, Declared>>
   readonly bundle: readonly RowSpec[]
@@ -28,7 +29,7 @@ const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
 
-function parse(path: string, specifier: (module: string) => string): Found | undefined {
+function parse(path: string, specifier: (module: string) => string, local: boolean): Found | undefined {
   const manifest = readJson(path)
   const xin = field(manifest, "xin")
   if (xin === undefined) return undefined
@@ -64,7 +65,15 @@ function parse(path: string, specifier: (module: string) => string): Found | und
         }
       })
     : Object.keys(plugins).map((name) => ({ id: name, name: `cordis:${name}` }))
-  return { pkg, version: String(field(manifest, "version") ?? "0.0.0"), dir: dirname(path), specifier, plugins, bundle }
+  return {
+    pkg,
+    version: String(field(manifest, "version") ?? "0.0.0"),
+    dir: dirname(path),
+    local,
+    specifier,
+    plugins,
+    bundle,
+  }
 }
 
 function discover(): Found[] {
@@ -74,7 +83,7 @@ function discover(): Found[] {
     for (const name of readdirSync(local).toSorted()) {
       const manifest = join(local, name, "package.json")
       if (!existsSync(manifest)) continue
-      const parsed = parse(manifest, (module) => `../plugins/${name}/${module.replace(/^\.\//, "")}`)
+      const parsed = parse(manifest, (module) => `../plugins/${name}/${module.replace(/^\.\//, "")}`, true)
       if (parsed !== undefined) found.push(parsed)
     }
   }
@@ -82,7 +91,7 @@ function discover(): Found[] {
   for (const pkg of Object.keys(typeof deps === "object" && deps !== null ? deps : {}).toSorted()) {
     const manifest = join(ROOT, "node_modules", pkg, "package.json")
     if (!existsSync(manifest)) continue
-    const parsed = parse(manifest, (module) => `${pkg}/${module.replace(/^\.\//, "")}`)
+    const parsed = parse(manifest, (module) => `${pkg}/${module.replace(/^\.\//, "")}`, false)
     if (parsed !== undefined) found.push(parsed)
   }
   const seen = new Map<string, string>()
@@ -120,7 +129,7 @@ function render(found: readonly Found[]): string {
       const alias = `p${index++}`
       imports.push(`import * as ${alias} from ${JSON.stringify(entry.specifier(declared.module))}`)
       catalog.push(
-        `  ${JSON.stringify(name)}: { plugin: ${alias}, title: ${JSON.stringify(declared.title)}, description: ${JSON.stringify(declared.description)},${declared.multiple === true ? " multiple: true," : ""} source: ${JSON.stringify(`${entry.pkg}@${entry.version}`)} },`,
+        `  ${JSON.stringify(name)}: { plugin: ${alias}, title: ${JSON.stringify(declared.title)}, description: ${JSON.stringify(declared.description)},${declared.multiple === true ? " multiple: true," : ""}${entry.local ? " local: true," : ""} source: ${JSON.stringify(`${entry.pkg}@${entry.version}`)} },`,
       )
     }
     bundles.push(`  ${JSON.stringify(entry.pkg)}: ${JSON.stringify(entry.bundle)},`)
@@ -173,6 +182,37 @@ async function bun(args: readonly string[]): Promise<void> {
   if ((await child.exited) !== 0) throw new Error(`bun ${args.join(" ")} failed`)
 }
 
+type SyncPlan = { readonly add: readonly string[]; readonly remove: readonly string[] }
+
+const stringList = (value: unknown): string[] | undefined =>
+  Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined
+
+function syncPlan(value: unknown): SyncPlan {
+  const packages = field(value, "packages") ?? value
+  const add = stringList(field(packages, "add") ?? [])
+  const remove = stringList(field(packages, "remove") ?? [])
+  if (add === undefined || remove === undefined)
+    throw new Error("plugin sync needs { add: string[], remove: string[] }")
+  return { add, remove }
+}
+
+async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
+  const add = [...new Set(plan.add)]
+  const remove = [...new Set(plan.remove)]
+  if (add.length === 0 && remove.length === 0) return void console.warn("plugin sync: nothing to do")
+  if (dry) {
+    for (const pkg of remove) console.warn(`would remove ${pkg}`)
+    for (const spec of add) console.warn(`would add ${spec}`)
+    return
+  }
+  for (const pkg of remove) await bun(["remove", pkg])
+  const before = new Set(discover().map((entry) => entry.pkg))
+  for (const spec of add) await bun(["add", spec])
+  for (const pkg of remove) setBundle(pkg, false)
+  for (const entry of discover()) if (!before.has(entry.pkg)) setBundle(entry.pkg, true)
+  generate()
+}
+
 const usage = `usage: bun scripts/xin.ts plugin <command>
   list                       packages with a xin field, their plugins and whether their bundle is enabled
   generate                   rewrite src/catalog.gen.ts from plugins/* and installed dependencies
@@ -180,6 +220,7 @@ const usage = `usage: bun scripts/xin.ts plugin <command>
   remove <package>           drop its bundle from the profile, bun remove it, regenerate
   enable <package>           append a discovered package's bundle to the profile
   disable <package>          drop a package's bundle from the profile
+  sync <file|-> [--dry-run]  apply the pending { add, remove } list from the plugin manager
 Code changes reach a running Home only through a rebuild and deploy; activation and config are live ops.`
 
 async function main(argv: readonly string[]): Promise<void> {
@@ -207,8 +248,8 @@ async function main(argv: readonly string[]): Promise<void> {
     }
     case "remove": {
       if (target === undefined) throw new Error("remove needs a package name")
-      setBundle(target, false)
       await bun(["remove", target])
+      setBundle(target, false)
       return void generate()
     }
     case "enable":
@@ -216,6 +257,11 @@ async function main(argv: readonly string[]): Promise<void> {
       if (target === undefined) throw new Error(`${command} needs a package name`)
       if (!discover().some((entry) => entry.pkg === target)) throw new Error(`no discovered package ${target}`)
       return setBundle(target, command === "enable")
+    }
+    case "sync": {
+      if (target === undefined) throw new Error("sync needs a file or -")
+      const text = target === "-" ? await Bun.stdin.text() : readFileSync(target, "utf8")
+      return sync(syncPlan(JSON.parse(text)), flags.includes("--dry-run"))
     }
     default:
       console.warn(usage)

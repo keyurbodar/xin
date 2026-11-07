@@ -1,4 +1,16 @@
-import { hostModule } from "../../src/kernel/index.ts"
-import { create } from "./schedules.ts"
+import type { Context } from "../../src/kernel/index.ts"
+import { scheduleOps, schedulesExtension, schedulesService, type SchedulesPort } from "./schedules.ts"
 
-export const { name, inject, apply } = hostModule("schedules", create, ["intake"])
+export const name = "schedules"
+export const inject = ["harness", "intake", "clock", "pi", "ops"]
+
+export function apply(ctx: Context): void {
+  const port: SchedulesPort = {
+    harness: ctx.harness,
+    intake: ctx.intake,
+    arm: () => ctx.clock.arm(),
+  }
+  ctx.provide("schedules", schedulesService(port))
+  ctx.pi.install(schedulesExtension(port))
+  for (const op of scheduleOps(port)) ctx.ops.define(op)
+}

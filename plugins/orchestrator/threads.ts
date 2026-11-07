@@ -11,11 +11,18 @@ import {
   type TaskRuntime,
   type ToolRegistration,
   type Tx,
+  type Wake,
 } from "@earendil-works/pi-durable"
 import { int, obj, opt, str } from "@earendil-works/pi-schema"
-import { SendModeSchema, type ReporterInput } from "../../src/contracts/threads.ts"
+import type { IntakeService } from "../../src/contracts/intake.ts"
+import {
+  SendModeSchema,
+  type ReporterInput,
+  type ThreadSettled,
+  type ThreadSettledStatus,
+} from "../../src/contracts/threads.ts"
+import type { WatchdogService } from "../../src/contracts/watchdog.ts"
 import type { ProjectId } from "../../src/ids.ts"
-import type { ModuleDeps } from "../../src/module.ts"
 import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
   ThreadDoc,
@@ -64,7 +71,7 @@ export type ReportLanded = {
   readonly text: string
 }
 
-type ReportStatus = Extract<ThreadStatus, "completed" | "failed" | "cancelled">
+type ReportStatus = ThreadSettledStatus
 type ReporterCheckpoint =
   | { readonly phase: "deliver" }
   | {
@@ -77,7 +84,13 @@ type ReporterCheckpoint =
 export type ReporterTask = Task<ReporterInput, ReporterCheckpoint, null, object>
 export type AnchorTask = Task<null, { readonly phase: "done" }, null, object>
 
-export type ThreadDeps = Pick<ModuleDeps<"intake" | "watchdog">, "arm" | "harness" | "services">
+export type ThreadDeps = {
+  readonly harness: Harness
+  arm(wake?: Wake): Promise<void>
+  readonly intake: IntakeService
+  readonly watchdog: WatchdogService
+  settled(event: ThreadSettled): void
+}
 
 export const Anchor: AnchorTask = defineTask<null, { readonly phase: "done" }, null>({
   name: ANCHOR_KIND,
@@ -113,13 +126,17 @@ export function reporterTask(deps: ThreadDeps): ReporterTask {
           thread.beatAt = runtime.now()
           return {
             status: "running",
-            checkpoint: { phase: "report", status: settled.status, text: settled.text },
+            checkpoint: {
+              phase: "report",
+              status: settled.status,
+              text: settled.text,
+            },
           } as const
         }, taskContext)
       },
       report: async (task, runtime, taskContext) => {
         const checkpoint = task.state.checkpoint
-        const accepted = await deps.services.intake.enqueue({
+        const accepted = await deps.intake.enqueue({
           target: task.input.parentId as ConversationId,
           commandId: `report:${task.input.threadId}:${task.input.run}`,
           kind: "report",
@@ -129,6 +146,16 @@ export function reporterTask(deps: ThreadDeps): ReporterTask {
           text: checkpoint.text,
         })
         if (accepted) await deps.arm()
+        const projectId = await projectIdOf(runtime, task.input.threadId, taskContext)
+        if (projectId !== undefined)
+          deps.settled({
+            threadId: task.input.threadId,
+            parentId: task.input.parentId,
+            projectId,
+            title: task.input.title,
+            status: checkpoint.status,
+            result: checkpoint.text,
+          })
         await runtime.commit(
           () => ({ status: "terminal", outcome: { status: "completed", result: null } }),
           taskContext,
@@ -157,7 +184,7 @@ async function settle(
   const settled = await submission.wait(taskContext)
   if (settled.status === "done") {
     if (settled.type !== "input") return { status: "completed", text: "(no text)" }
-    const reader = await deps.harness().conversation(input.threadId as ConversationId, taskContext)
+    const reader = await deps.harness.conversation(input.threadId as ConversationId, taskContext)
     const page = await reader?.entries(
       { minEntryId: settled.answer, maxEntryId: settled.answer, order: "ascending" },
       1,
@@ -176,6 +203,16 @@ async function settle(
     status: "failed",
     text: settled.detail === undefined ? `failed: ${settled.reason}` : `failed: ${detailOf(settled.detail)}`,
   }
+}
+
+async function projectIdOf(read: DocumentReader, threadId: number, run: Context): Promise<string | undefined> {
+  const thread = await read.snapshot(ThreadDoc, threadId as ConversationId, run)
+  if (thread !== undefined) return thread.projectId
+  const workspace = await read.snapshot(WorkspaceDoc, run)
+  for (const [projectId, project] of Object.entries(workspace?.projects ?? {})) {
+    if (project.threadIds.includes(threadId)) return projectId
+  }
+  return undefined
 }
 
 function eventOf(status: ReportStatus): "done" | "unanswered" | "abort" {
@@ -276,7 +313,7 @@ async function sendToThread(
     delete thread.result
     thread.beatAt = now
     thread.deadlineAt = now + project.settings.deadlineMs
-    await deps.services.watchdog.ensure(tx, parentId)
+    await deps.watchdog.ensure(tx, parentId)
     await report(tx, {
       threadId: args.threadId,
       parentId,
@@ -411,7 +448,7 @@ export function lifecycle(deps: ThreadDeps): Threads {
         limit: project.settings.threadLimit,
       }
     }
-    await deps.services.watchdog.ensure(tx, args.parentId)
+    await deps.watchdog.ensure(tx, args.parentId)
     const anchor = await tx.createTask(Anchor, null, {
       ownership: { kind: "conversation" },
       conversationId: args.parentId,

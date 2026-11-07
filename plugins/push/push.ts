@@ -1,8 +1,7 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import { obj, str } from "@earendil-works/pi-schema"
 import type { Notification, PushService } from "../../src/contracts/push.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
-import { defineOp, OpRejected } from "../../src/ops.ts"
+import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
   encryptPayload,
   generateVapid,
@@ -31,6 +30,11 @@ export type Fetcher = (request: Request) => Promise<Response>
 export type { Notification }
 export type Notifier = PushService
 
+export type PushPort = {
+  readonly state: Pick<DurableObjectState, "getWebSockets">
+  readonly db: SqliteDatabase
+}
+
 type Delivery =
   | { readonly kind: "sent" }
   | { readonly kind: "gone" }
@@ -39,10 +43,10 @@ type Delivery =
 
 const send: Fetcher = (request) => fetch(request)
 
-export function notifier(deps: Pick<ModuleDeps, "ctx" | "db" | "env">, fetcher: Fetcher = send): Notifier {
+export function notifier(port: PushPort, fetcher: Fetcher = send): Notifier {
   let signer: Promise<VapidSigner> | undefined
   const signing = (): Promise<VapidSigner> => {
-    signer ??= loadVapid(deps.db)
+    signer ??= loadVapid(port.db)
       .then(vapidSigner)
       .catch((failure: unknown) => {
         signer = undefined
@@ -52,9 +56,9 @@ export function notifier(deps: Pick<ModuleDeps, "ctx" | "db" | "env">, fetcher: 
   }
   return {
     notify: async (notification) => {
-      if (deps.ctx.getWebSockets().length > 0) return
+      if (port.state.getWebSockets().length > 0) return
       try {
-        await deliverAll(deps.db, fetcher, signing, notification)
+        await deliverAll(port.db, fetcher, signing, notification)
       } catch (failure) {
         console.warn("push: delivery pass failed", failure)
       }
@@ -62,46 +66,43 @@ export function notifier(deps: Pick<ModuleDeps, "ctx" | "db" | "env">, fetcher: 
   }
 }
 
-export function create(deps: ModuleDeps<never>): HostModule {
-  return {
-    provides: { push: notifier(deps) },
-    ops: [
-      defineOp({
-        name: "push.key",
-        args: obj({}),
-        actors: ["owner"],
-        run: async () => ({ applicationServerKey: vapidPublicKey(await loadVapid(deps.db)) }),
+export function pushOps(db: SqliteDatabase): readonly Op[] {
+  return [
+    defineOp({
+      name: "push.key",
+      args: obj({}),
+      actors: ["owner"],
+      run: async () => ({ applicationServerKey: vapidPublicKey(await loadVapid(db)) }),
+    }),
+    defineOp({
+      name: "push.subscribe",
+      args: obj({
+        endpoint: str({ minLength: 1, maxLength: 2048 }),
+        keys: SubscriptionKeys,
       }),
-      defineOp({
-        name: "push.subscribe",
-        args: obj({
-          endpoint: str({ minLength: 1, maxLength: 2048 }),
-          keys: SubscriptionKeys,
-        }),
-        actors: ["owner"],
-        run: async (_api, args) => {
-          if (!httpsEndpoint(args.endpoint)) throw new OpRejected("bad_args", "push endpoint must be https")
-          if (!(await validSubscriptionKeys(args.keys)))
-            throw new OpRejected("bad_args", "push subscription keys are invalid")
-          await deps.db.run(
-            "INSERT INTO push_subs (endpoint, keys) VALUES (?, ?) ON CONFLICT (endpoint) DO UPDATE SET keys = excluded.keys",
-            args.endpoint,
-            JSON.stringify(args.keys),
-          )
-          return { endpoint: args.endpoint }
-        },
-      }),
-      defineOp({
-        name: "push.unsubscribe",
-        args: obj({ endpoint: str({ minLength: 1, maxLength: 2048 }) }),
-        actors: ["owner"],
-        run: async (_api, args) => {
-          await deps.db.run("DELETE FROM push_subs WHERE endpoint = ?", args.endpoint)
-          return { endpoint: args.endpoint }
-        },
-      }),
-    ],
-  }
+      actors: ["owner"],
+      run: async (_api, args) => {
+        if (!httpsEndpoint(args.endpoint)) throw new OpRejected("bad_args", "push endpoint must be https")
+        if (!(await validSubscriptionKeys(args.keys)))
+          throw new OpRejected("bad_args", "push subscription keys are invalid")
+        await db.run(
+          "INSERT INTO push_subs (endpoint, keys) VALUES (?, ?) ON CONFLICT (endpoint) DO UPDATE SET keys = excluded.keys",
+          args.endpoint,
+          JSON.stringify(args.keys),
+        )
+        return { endpoint: args.endpoint }
+      },
+    }),
+    defineOp({
+      name: "push.unsubscribe",
+      args: obj({ endpoint: str({ minLength: 1, maxLength: 2048 }) }),
+      actors: ["owner"],
+      run: async (_api, args) => {
+        await db.run("DELETE FROM push_subs WHERE endpoint = ?", args.endpoint)
+        return { endpoint: args.endpoint }
+      },
+    }),
+  ]
 }
 
 async function deliverAll(

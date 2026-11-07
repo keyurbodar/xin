@@ -1,11 +1,14 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Context, JsonValue } from "@earendil-works/chord"
+import type { Models } from "@earendil-works/pi-ai"
 import type {
   ConversationId,
   ConversationHandle,
   DocumentReader,
   EntryId,
+  Harness,
   ModelRef,
+  Registry,
   Submission,
   ToolRegistration,
   Tx,
@@ -30,12 +33,20 @@ import type {
   ThreadSummary,
 } from "../../src/contracts/threads.ts"
 import type { CommandId, ProjectId } from "../../src/ids.ts"
-import type { ModuleDeps } from "../../src/module.ts"
 import { entryText, detailOf, textOf } from "../../src/transcript.ts"
-import { resolveModel as resolveRoleModel } from "../../src/contracts/models.ts"
+import { resolveModel as resolveRoleModel, type ModelsService } from "../../src/contracts/models.ts"
 import { projectInScope, ThreadDoc, threadInScope, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
 import { WorkspaceDoc, type ProjectState } from "../../src/contracts/workspace.ts"
+import type { Actor, Command, Outcome } from "../../src/ops.ts"
 import type { Threads } from "./threads.ts"
+
+export type ServiceDeps = {
+  readonly harness: Harness
+  run(command: Command, actor: Actor): Promise<Outcome>
+  currentModels(): Models
+  readonly registry: Registry
+  readonly models: ModelsService
+}
 
 const context = BACKGROUND_CONTEXT
 const DEFAULT_WAIT_MS = 8_000
@@ -126,15 +137,15 @@ const threadOf = async (
   return scope === undefined ? undefined : summaryOf(threadId, scope.doc)
 }
 
-export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Threads): ThreadsService {
-  const models = () => deps.services.pi.currentModels()
+export function threadService(deps: ServiceDeps, threads: Threads): ThreadsService {
+  const models = () => deps.currentModels()
 
   const entriesOf = async (
     threadId: number,
     after: number | undefined,
     callContext: Context,
   ): Promise<readonly ThreadEntry[]> => {
-    const conversation = await deps.harness().conversation(threadId as ConversationId, callContext)
+    const conversation = await deps.harness.conversation(threadId as ConversationId, callContext)
     if (conversation === undefined) return []
     const page = await conversation.entries(
       { order: "ascending", ...(after === undefined ? {} : { minEntryId: (after + 1) as EntryId }) },
@@ -146,7 +157,7 @@ export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Thread
   }
 
   const answerText = async (threadId: number, answer: EntryId, callContext: Context): Promise<string> => {
-    const conversation = await deps.harness().conversation(threadId as ConversationId, callContext)
+    const conversation = await deps.harness.conversation(threadId as ConversationId, callContext)
     if (conversation === undefined) return ""
     const page = await conversation.entries(
       { minEntryId: answer, maxEntryId: answer, order: "ascending" },
@@ -158,7 +169,7 @@ export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Thread
   }
 
   const lastText = async (threadId: number, callContext: Context): Promise<string> => {
-    const conversation = await deps.harness().conversation(threadId as ConversationId, callContext)
+    const conversation = await deps.harness.conversation(threadId as ConversationId, callContext)
     if (conversation === undefined) return ""
     const page = await conversation.entries({ order: "descending" }, 40, undefined, callContext)
     const assistant = page.items.find((entry) => textOf(entry) !== "")
@@ -183,15 +194,15 @@ export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Thread
       }
       return { kind: "model", model: target }
     }
-    const workspace = await deps.harness().snapshot(WorkspaceDoc, context)
+    const workspace = await deps.harness.snapshot(WorkspaceDoc, context)
     const defaults = workspace?.projects[project.projectId]?.settings.models
     const resolved = resolveRoleModel({
       role,
       ...(defaults === undefined ? {} : { project: defaults }),
-      owner: await deps.services.models.ownerDefaults(),
+      owner: await deps.models.ownerDefaults(),
     })
     if (resolved.kind === "model") return { kind: "model", model: resolved.model }
-    const parent = await deps.harness().conversation(callerId, callContext)
+    const parent = await deps.harness.conversation(callerId, callContext)
     const parentModel = parent === undefined ? undefined : (await parent.agent(callContext)).model
     if (parentModel !== undefined) return { kind: "model", model: parentModel }
     return {
@@ -203,7 +214,7 @@ export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Thread
 
   const childRemovals = (): readonly ToolRegistration[] => {
     const registered = new Map(
-      deps.services.pi.registry
+      deps.registry
         .snapshot()
         .tools()
         .map(({ tool }) => [tool.name, tool]),
@@ -215,7 +226,7 @@ export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Thread
   }
 
   const delegate = async (caller: Caller, request: DelegateRequest, callContext: Context): Promise<DelegateOutcome> => {
-    const harness = deps.harness()
+    const harness = deps.harness
     const found = await coordinator(harness, caller.conversationId)
     if (found === undefined) return { kind: "not_coordinator" }
     const role: ThreadRole = request.role ?? "thread"
@@ -262,13 +273,13 @@ export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Thread
   }
 
   const status = async (caller: Caller, threadId: number, callContext: Context): Promise<StatusOutcome> => {
-    const found = await threadOf(deps.harness(), caller.conversationId, threadId)
+    const found = await threadOf(deps.harness, caller.conversationId, threadId)
     if (found === undefined) return { kind: "none" }
     return { kind: "thread", thread: found, last: await lastText(threadId, callContext) }
   }
 
   const stop = async (caller: Caller, threadId: number, reason: string | undefined): Promise<StopOutcome> => {
-    if ((await threadOf(deps.harness(), caller.conversationId, threadId)) === undefined) return { kind: "none" }
+    if ((await threadOf(deps.harness, caller.conversationId, threadId)) === undefined) return { kind: "none" }
     const outcome = await deps.run(
       {
         id: commandId(`thread.stop:${caller.taskId}`),
@@ -283,7 +294,7 @@ export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Thread
   }
 
   const send = async (caller: Caller, threadId: number, text: string, mode: SendMode): Promise<SendOutcome> => {
-    if ((await threadOf(deps.harness(), caller.conversationId, threadId)) === undefined) return { kind: "none" }
+    if ((await threadOf(deps.harness, caller.conversationId, threadId)) === undefined) return { kind: "none" }
     const outcome = await deps.run(
       { id: commandId(`thread.send:${caller.taskId}`), op: "thread.send", args: { threadId, text, mode } },
       { kind: "agent", conversationId: caller.conversationId },
@@ -298,7 +309,7 @@ export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Thread
     after: number | undefined,
     callContext: Context,
   ): Promise<ReadOutcome> => {
-    if ((await threadOf(deps.harness(), caller.conversationId, threadId)) === undefined) return { kind: "none" }
+    if ((await threadOf(deps.harness, caller.conversationId, threadId)) === undefined) return { kind: "none" }
     return {
       kind: "entries",
       entries: await entriesOf(threadId, after, callContext),
@@ -306,7 +317,7 @@ export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Thread
   }
 
   const list = async (caller: Caller, filter: ThreadFilter): Promise<ListOutcome> => {
-    const scope = await threadsOf(deps.harness(), caller.conversationId)
+    const scope = await threadsOf(deps.harness, caller.conversationId)
     if (scope === undefined) return { kind: "not_in_project" }
     if (filter.projectId !== undefined && filter.projectId !== scope.project.projectId)
       return { kind: "no_project", projectId: filter.projectId }
@@ -316,11 +327,11 @@ export function threadService(deps: ModuleDeps<"pi" | "models">, threads: Thread
   }
 
   const capabilities = async (caller: Caller, callContext: Context): Promise<CapabilitiesOutcome> => {
-    const conversation = await deps.harness().conversation(caller.conversationId, callContext)
+    const conversation = await deps.harness.conversation(caller.conversationId, callContext)
     const agent = conversation === undefined ? undefined : await conversation.agent(callContext)
     const listed = (await models().getAvailable()).slice(0, 10).map((model) => `${model.provider}/${model.id}`)
-    const found = await coordinator(deps.harness(), caller.conversationId)
-    const scope = found === undefined ? undefined : await threadsOf(deps.harness(), caller.conversationId)
+    const found = await coordinator(deps.harness, caller.conversationId)
+    const scope = found === undefined ? undefined : await threadsOf(deps.harness, caller.conversationId)
     const live = (scope?.threads ?? []).filter(
       (thread) => thread.status === "working" || thread.status === "waiting",
     ).length

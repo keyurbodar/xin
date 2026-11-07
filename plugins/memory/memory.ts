@@ -1,8 +1,7 @@
 import type { SqliteExecutor } from "@earendil-works/chord/sqlite"
-import { defineExtension } from "@earendil-works/pi-durable"
+import { defineExtension, type Extension } from "@earendil-works/pi-durable"
 import { obj, opt, str } from "@earendil-works/pi-schema"
 import type { MemoryService, Note } from "../../src/contracts/memory.ts"
-import type { HostModule, ModuleDeps } from "../../src/module.ts"
 import { defineOp, type Op } from "../../src/ops.ts"
 import {
   appendNote,
@@ -11,6 +10,7 @@ import {
   dreamerTask,
   ensurePass,
   IDLE_MS,
+  type MemoryPorts,
   readNumber,
   readProfile,
   requestPass,
@@ -22,43 +22,52 @@ const RECALL_LIMIT = 20
 const LIST_LIMIT = 100
 const OWNER_RETIREMENT = 0
 
-export function create(deps: ModuleDeps<"models">): HostModule {
+export type MemoryPlugin = {
+  readonly service: MemoryService
+  readonly extension: Extension
+  readonly ops: readonly Op[]
+  start(): Promise<void>
+  due(): Promise<number | undefined>
+  fire(now: number): Promise<void>
+}
+
+export function create(ports: MemoryPorts): MemoryPlugin {
   const memory: MemoryService = {
     remember: async (draft) => {
-      const inserted = await appendNote(deps.db, draft)
-      await requestPass(deps, draft.at + IDLE_MS)
+      const inserted = await appendNote(ports.db, draft)
+      await requestPass(ports, draft.at + IDLE_MS)
       return inserted
     },
-    search: (query, scopes, now, limit) => searchNotes(deps.db, query, scopes, now, limit),
-    profile: () => readProfile(deps.db),
+    search: (query, scopes, now, limit) => searchNotes(ports.db, query, scopes, now, limit),
+    profile: () => readProfile(ports.db),
   }
 
   return {
-    provides: { memory },
-    extensions: [defineExtension({ name: "memory", tasks: [dreamerTask(deps)] })],
-    ops: [forget(deps), list(deps), profile(deps)],
+    service: memory,
+    extension: defineExtension({ name: "memory", tasks: [dreamerTask(ports)] }),
+    ops: [forget(ports), list(ports), profile(ports)],
     start: async () => {
-      const cursor = (await readNumber(deps.db, CURSOR_KEY)) ?? 0
-      const newest = await deps.db.get<{ at: number }>(
+      const cursor = (await readNumber(ports.db, CURSOR_KEY)) ?? 0
+      const newest = await ports.db.get<{ at: number }>(
         "SELECT at FROM notes WHERE id > ? AND retired_by IS NULL AND source != 'dreamer' ORDER BY at DESC LIMIT 1",
         cursor,
       )
-      const due = await readNumber(deps.db, DUE_KEY)
+      const due = await readNumber(ports.db, DUE_KEY)
       const idle = newest === undefined ? undefined : newest.at + IDLE_MS
       const at = idle === undefined ? due : due === undefined ? idle : Math.min(idle, due)
-      if (at !== undefined) await ensurePass(deps, at)
+      if (at !== undefined) await ensurePass(ports, at)
     },
-    due: () => readNumber(deps.db, DUE_KEY),
+    due: () => readNumber(ports.db, DUE_KEY),
     fire: async (now) => {
-      const due = await readNumber(deps.db, DUE_KEY)
+      const due = await readNumber(ports.db, DUE_KEY)
       if (due === undefined || due > now) return
-      await writeKv(deps.db, DUE_KEY, String(now + IDLE_MS))
-      await ensurePass(deps, now)
+      await writeKv(ports.db, DUE_KEY, String(now + IDLE_MS))
+      await ensurePass(ports, now)
     },
   }
 }
 
-function forget(deps: ModuleDeps<"models">): Op {
+function forget(ports: MemoryPorts): Op {
   return defineOp({
     name: "memory.forget",
     args: obj({ query: str({ minLength: 1, maxLength: 200 }) }),
@@ -67,12 +76,12 @@ function forget(deps: ModuleDeps<"models">): Op {
       const tokens = tokenize(args.query)
       const retired =
         tokens.length === 0
-          ? await deps.db.runCounted(
+          ? await ports.db.runCounted(
               "UPDATE notes SET retired_by = ? WHERE retired_by IS NULL AND instr(lower(text), lower(?)) > 0",
               OWNER_RETIREMENT,
               args.query,
             )
-          : await deps.db.runCounted(
+          : await ports.db.runCounted(
               `UPDATE notes SET retired_by = ? WHERE retired_by IS NULL AND id IN (
                  SELECT n.id FROM notes_fts JOIN notes n ON n.id = notes_fts.rowid
                  WHERE notes_fts MATCH ? AND n.retired_by IS NULL
@@ -80,13 +89,13 @@ function forget(deps: ModuleDeps<"models">): Op {
               OWNER_RETIREMENT,
               ftsAll(tokens),
             )
-      await requestPass(deps, Date.now())
+      await requestPass(ports, Date.now())
       return { retired }
     },
   })
 }
 
-function list(deps: ModuleDeps<"models">): Op {
+function list(ports: MemoryPorts): Op {
   return defineOp({
     name: "memory.list",
     args: obj({ scope: opt(str({ pattern: SCOPE_PATTERN })) }),
@@ -94,11 +103,11 @@ function list(deps: ModuleDeps<"models">): Op {
     run: async (_api, args) => {
       const notes =
         args.scope === undefined
-          ? await deps.db.all<Note>(
+          ? await ports.db.all<Note>(
               "SELECT id, scope, text, at FROM notes WHERE retired_by IS NULL ORDER BY id DESC LIMIT ?",
               LIST_LIMIT,
             )
-          : await deps.db.all<Note>(
+          : await ports.db.all<Note>(
               "SELECT id, scope, text, at FROM notes WHERE retired_by IS NULL AND scope = ? ORDER BY id DESC LIMIT ?",
               args.scope,
               LIST_LIMIT,
@@ -108,12 +117,12 @@ function list(deps: ModuleDeps<"models">): Op {
   })
 }
 
-function profile(deps: ModuleDeps<"models">): Op {
+function profile(ports: MemoryPorts): Op {
   return defineOp({
     name: "memory.profile",
     args: obj({}),
     actors: ["owner"],
-    run: async () => ({ profile_md: await readProfile(deps.db) }),
+    run: async () => ({ profile_md: await readProfile(ports.db) }),
   })
 }
 

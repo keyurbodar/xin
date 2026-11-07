@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-presets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Named agent presets that choose a project's tool rows.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "presets": {
+        "module": "./index.ts",
+        "title": "Presets",
+        "description": "Named agent presets that choose a project's tool rows."
+      }
+    }
+  }
+}

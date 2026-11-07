@@ -71,7 +71,7 @@ describe("Home host loop", () => {
     const threads = 10
     const calls = 30
     const outcome = await runInDurableObject(stub, async (home: Home) => {
-      const extensions = [home.extension("test.ping")]
+      const extensions = [home.extension("tool-test-ping")]
       await home.arm({ active: true })
       const created: ConversationId[] = []
       for (let index = 0; index < threads; index++) {
