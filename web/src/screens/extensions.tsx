@@ -77,12 +77,12 @@ export function ExtensionsScreen(): JSX.Element {
 
   return (
     <>
-      <header class="flex h-12 shrink-0 items-center gap-0.5 border-b border-line px-4">
+      <header class="flex h-12 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-4">
         {TABS.map((tab) => (
           <button
             type="button"
             onClick={() => navigate(tab.to)}
-            class="flex h-7 items-center gap-1.5 rounded-[2px] px-2.5 text-[13px] transition-none"
+            class="flex h-7 shrink-0 items-center gap-1.5 rounded-[2px] px-2.5 text-[13px] transition-none"
             classList={{
               "bg-selected text-fg": view() === tab.id || (tab.id === "discover" && view() === "package"),
               "text-fg-3 hover:text-fg-2": view() !== tab.id,
@@ -98,26 +98,28 @@ export function ExtensionsScreen(): JSX.Element {
           </button>
         ))}
 
-        <div class="ml-auto flex items-center gap-2">
+        <div class="ml-auto hidden shrink-0 items-center gap-2 sm:flex">
           <button
             type="button"
+            aria-label="Sources"
             onClick={() => navigate("/extensions/sources")}
-            class="flex h-7 items-center gap-1.5 rounded-[2px] border px-2.5 text-[12.5px] font-medium transition-none"
+            class="flex h-7 items-center gap-1.5 rounded-[2px] border px-2 text-[12.5px] font-medium transition-none sm:px-2.5"
             classList={{
               "border-line bg-surface text-fg": view() === "sources",
               "border-transparent text-fg-2 hover:text-fg": view() !== "sources",
             }}
           >
             <Glyph name="git-branch" size={13} />
-            Sources
+            <span class="hidden sm:inline">Sources</span>
           </button>
           <button
             type="button"
+            aria-label="Add from URL"
             onClick={() => setAddUrl(true)}
-            class="flex h-7 items-center gap-1.5 rounded-[2px] border border-line-inner bg-raised px-2.5 text-[12.5px] font-medium text-fg transition-none hover:border-line-strong hover:bg-hover"
+            class="flex h-7 items-center gap-1.5 rounded-[2px] border border-line-inner bg-raised px-2 text-[12.5px] font-medium text-fg transition-none hover:border-line-strong hover:bg-hover sm:px-2.5"
           >
             <Glyph name="upload" size={13} />
-            Add from URL
+            <span class="hidden sm:inline">Add from URL</span>
           </button>
         </div>
       </header>
