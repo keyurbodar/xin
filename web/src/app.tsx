@@ -2,7 +2,7 @@ import { createSignal, onMount, Show, type JSX } from "solid-js"
 import { token, verifyToken } from "./lib/auth.ts"
 import { connect } from "./state/connection.ts"
 import { subscribeHome } from "./state/home.ts"
-import { route } from "./lib/router.ts"
+import { navigate, route } from "./lib/router.ts"
 import { Shell } from "./components/shell/shell.tsx"
 import { SignIn } from "./screens/signin.tsx"
 import { LandingScreen } from "./screens/landing.tsx"
@@ -11,10 +11,12 @@ import { WelcomeScreen } from "./screens/welcome.tsx"
 export function App(): JSX.Element {
   const [authed, setAuthed] = createSignal<boolean | undefined>(undefined)
 
+  /** A stored token that still works skips the form, and the address bar stops claiming to be on it. */
   const enter = (): void => {
     const streams = connect()
     subscribeHome(streams)
     setAuthed(true)
+    if (route().parts[0] === "signin") navigate("/")
   }
 
   onMount(() => {

@@ -73,11 +73,6 @@ function originLabel(origin: string): string {
   return stripped === "" ? "No origin sent" : stripped
 }
 
-function isThisBrowser(origin: string): boolean {
-  if (origin === "") return false
-  return origin.replace(/\/$/u, "") === window.location.origin
-}
-
 function Saving(props: { show: boolean }): JSX.Element {
   return (
     <Show when={props.show}>
@@ -430,7 +425,7 @@ export function Notifications(): JSX.Element {
                     {(device) => (
                       <DeviceRow
                         device={device}
-                        thisBrowser={isThisBrowser(device.origin)}
+                        thisBrowser={device.endpoint === endpoint()}
                         busy={removing() !== undefined}
                         removing={removing() === device.endpoint}
                         onRemove={() => void removeDevice(device.endpoint)}

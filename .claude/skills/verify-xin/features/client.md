@@ -40,6 +40,24 @@ Route-by-route screenshots:
 .claude/skills/verify-xin/shots.sh .verify/shots   # one png per route at 1440x900
 ```
 
+Settings panes, per feature (S1 General, S2 Usage, S3 Models, S4 Notifications, Profile + token, System):
+
+```bash
+agent-browser open "http://localhost:5174/#/settings/profile"
+agent-browser snapshot -i                       # the pane's real controls
+agent-browser screenshot body .verify/shots/x.png
+```
+
+Two browsers on one origin (the "which row is mine" proof): give each its own session, sign in with the same token, and compare what each marks.
+
+```bash
+export AGENT_BROWSER_SESSION=a; agent-browser open "http://localhost:5174/#/signin?token=verify-owner-token"
+export AGENT_BROWSER_SESSION=b; agent-browser open "http://localhost:5174/#/signin?token=verify-owner-token"
+# each session: click Continue, open #/settings/profile, then
+agent-browser eval "JSON.stringify([...document.querySelectorAll('button')].filter(b=>b.innerText.trim()==='Sign out').map(b=>b.parentElement.innerText))"
+# exactly one row per browser carries THIS BROWSER, and it is a different row in each
+```
+
 Build and typecheck are the client's own gate; run them in `web/`, never through `scripts/gate.ts`:
 
 ```bash
@@ -54,6 +72,6 @@ cd web && bun run typecheck && bun run build
 - The snapshot window is 60 entries: a conversation needs more than that before "Load older messages" appears, so seed one with many messages to drive that control.
 - One composer draft keeps one command id and `clientTs`; sending the same text again after a failure replays the same command instead of adding a second message.
 - Skeleton states come from skullet: the sample render must not throw, because an error inside a Solid effect aborts the queue and leaves the surface stuck.
-- Screenshots need the viewport set first: `agent-browser viewport 1440 900`.
+- Screenshots are `agent-browser screenshot body <path>`; this build takes `[selector] [path]`, and a bare path is read as a selector and dropped in a temp dir. There is no `viewport` command: phone width needs `close --all` and `--args "--window-size=390,844"`, then sign in again.
 - An attachment proof needs a real file: `agent-browser` sets the composer's hidden input with a paths list, then Send. The owner bubble shows a chip and the model's next reply names the file.
 - The faux transport bills every run at cost 0, so a live `usage.summary` shows `today.spend` 0 with non-zero tokens unless a real provider answered.

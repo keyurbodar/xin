@@ -105,6 +105,7 @@ describe("wire protocol", () => {
     expect(live.id.length).toBeGreaterThan(0)
     expect(live.origin).toBe("")
     expect(live.since).toBeGreaterThan(0)
+    expect(await socket.next((f) => f.t === "hello")).toMatchObject({ socket: live.id })
 
     const reply = await cmd(owner(), `close-${crypto.randomUUID()}`, "session.close", { id: live.id })
     expect(reply).toMatchObject({ ok: true, result: { closed: 1 } })

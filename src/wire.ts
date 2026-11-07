@@ -23,6 +23,7 @@ export type Stream = { readonly kind: "home" } | { readonly kind: "conv"; readon
 export type ServerFrame =
   | { readonly t: "ack"; readonly id: string; readonly ok: true; readonly result: unknown }
   | { readonly t: "ack"; readonly id: string; readonly ok: false; readonly error: { code: string; message: string } }
+  | { readonly t: "hello"; readonly socket: string }
   | { readonly t: "snap"; readonly stream: string; readonly value: unknown }
   | { readonly t: "ev"; readonly stream: string; readonly events: readonly unknown[] }
   | { readonly t: "error"; readonly message: string }
@@ -98,7 +99,9 @@ export class Sockets {
   accept(protocol: string | undefined, origin: string): Response {
     const { 0: client, 1: server } = new WebSocketPair()
     this.deps.ctx.acceptWebSocket(server)
-    server.serializeAttachment({ subs: [], id: crypto.randomUUID(), since: Date.now(), origin } satisfies Attachment)
+    const id = crypto.randomUUID()
+    server.serializeAttachment({ subs: [], id, since: Date.now(), origin } satisfies Attachment)
+    send(server, { t: "hello", socket: id })
     const headers = protocol === undefined ? undefined : { "sec-websocket-protocol": protocol }
     return new Response(null, { status: 101, webSocket: client, ...(headers === undefined ? {} : { headers }) })
   }

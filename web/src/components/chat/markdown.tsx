@@ -1,5 +1,69 @@
-import { For, type JSX } from "solid-js"
+import { createSignal, For, onCleanup, type JSX } from "solid-js"
+import { highlight } from "sugar-high"
+import { lang } from "sugar-high/lang"
+import { Glyph } from "../extensions/glyph.tsx"
+import { Morph } from "../ui/morph.tsx"
 
+function fenceLabel(fence: string): string {
+  return lang(fence) ?? (fence === "" ? "code" : fence)
+}
+
+/** Sugar High escapes the code it marks up. The newline between line spans is dropped so the gutter stacks. */
+function markedUp(code: string, fence: string): string {
+  const canonical = lang(fence)
+  const html = highlight(code, canonical === undefined ? { lang: "plaintext" } : { lang: canonical })
+  return html.replaceAll('\n<span class="sh__line', '<span class="sh__line')
+}
+
+function CodeBlock(props: { code: string; fence: string }): JSX.Element {
+  const [copied, setCopied] = createSignal(false)
+  const [wrapped, setWrapped] = createSignal(false)
+  let timer: number | undefined
+  onCleanup(() => window.clearTimeout(timer))
+
+  /** The label settles back on its own; a browser that refuses the clipboard leaves it alone. */
+  const copy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(props.code)
+      setCopied(true)
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => setCopied(false), 1600)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div class="code-block overflow-hidden rounded-[4px] border border-line-inner bg-surface">
+      <div class="flex h-8 items-center gap-3 border-b border-line px-3 font-mono text-[11px] text-fg-3">
+        <span>{fenceLabel(props.fence)}</span>
+        <span class="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            aria-pressed={wrapped()}
+            onClick={() => setWrapped((on) => !on)}
+            class="h-6 rounded-[2px] px-1.5 text-[11px] transition-none hover:text-fg"
+          >
+            {wrapped() ? "Wrapped" : "Wrap"}
+          </button>
+          <button
+            type="button"
+            aria-label="Copy code"
+            onClick={() => void copy()}
+            class="flex h-6 items-center gap-1.5 rounded-[2px] px-1.5 transition-none hover:text-fg"
+            classList={{ "text-fg": copied() }}
+          >
+            <Glyph name={copied() ? "check" : "copy"} size={13} />
+            <Morph value={copied() ? "Copied" : "Copy"} />
+          </button>
+        </span>
+      </div>
+      <pre classList={{ "is-wrapped": wrapped() }}>
+        <code innerHTML={markedUp(props.code, props.fence)} />
+      </pre>
+    </div>
+  )
+}
 
 function inline(text: string): JSX.Element[] {
   const parts: JSX.Element[] = []
@@ -11,6 +75,28 @@ function inline(text: string): JSX.Element[] {
   }
   while (index < text.length) {
     const rest = text.slice(index)
+    if (rest.startsWith("[")) {
+      const labelEnd = text.indexOf("](", index + 1)
+      const hrefEnd = labelEnd === -1 ? -1 : text.indexOf(")", labelEnd + 2)
+      if (labelEnd !== -1 && hrefEnd !== -1) {
+        const href = text.slice(labelEnd + 2, hrefEnd)
+        if (/^https?:\/\//u.test(href)) {
+          flush()
+          parts.push(
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              class="text-fg underline decoration-line-strong underline-offset-[3px] hover:decoration-fg"
+            >
+              {text.slice(index + 1, labelEnd)}
+            </a>,
+          )
+          index = hrefEnd + 1
+          continue
+        }
+      }
+    }
     if (rest.startsWith("**")) {
       const close = text.indexOf("**", index + 2)
       if (close !== -1) {
@@ -24,7 +110,7 @@ function inline(text: string): JSX.Element[] {
       const close = text.indexOf("*", index + 1)
       if (close !== -1 && close > index + 1) {
         flush()
-        parts.push(<em class="italic">{text.slice(index + 1, close)}</em>)
+        parts.push(<em class="not-italic">{text.slice(index + 1, close)}</em>)
         index = close + 1
         continue
       }
@@ -35,7 +121,7 @@ function inline(text: string): JSX.Element[] {
         flush()
         const code = text.slice(index + 1, close)
         parts.push(
-          <code class="rounded-[2px] border border-line bg-surface px-1 py-0.5 font-mono text-[12px] text-fg-2">
+          <code class="rounded-[2px] border border-line-inner bg-hover px-1 py-0.5 font-mono text-[12.5px] text-fg-2">
             {code}
           </code>,
         )
@@ -74,6 +160,7 @@ export function Markdown(props: { text: string; small?: boolean; muted?: boolean
       }
       const trimmed = line.trimStart()
       if (trimmed.startsWith("```")) {
+        const fence = trimmed.slice(3).trim().split(/\s+/u)[0] ?? ""
         index += 1
         const code: string[] = []
         while (index < lines.length && !(lines[index] ?? "").trimStart().startsWith("```")) {
@@ -81,11 +168,7 @@ export function Markdown(props: { text: string; small?: boolean; muted?: boolean
           index += 1
         }
         index += 1
-        output.push(
-          <pre class="overflow-x-auto rounded-[2px] border border-line bg-surface px-3 py-2.5 font-mono text-[12px] leading-[1.6] text-fg-2">
-            <code>{code.join("\n")}</code>
-          </pre>,
-        )
+        output.push(<CodeBlock code={code.join("\n")} fence={fence} />)
         continue
       }
       const heading = /^(#{1,3})\s+(.*)$/.exec(trimmed)

@@ -70,6 +70,18 @@
     --skullet-radius: var(--radius-control);
     --skullet-animation: group-shimmer;
     --skullet-speed: slow;
+
+    --sh-keyword: var(--color-accent-text);
+    --sh-string: #a7d39a;
+    --sh-property: #a9cbff;
+    --sh-class: var(--color-fg);
+    --sh-entity: var(--color-fg);
+    --sh-jsxliterals: #a7d39a;
+    --sh-sign: var(--color-fg-3);
+    --sh-comment: var(--color-fg-4);
+    --sh-identifier: #d6d0cb;
+    --sh-space: #d6d0cb;
+    --sh-break: #d6d0cb;
   }
 }
 
@@ -116,6 +128,65 @@
     font: inherit;
     letter-spacing: inherit;
     color: inherit;
+  }
+}
+
+/* C12: a fenced block keeps a numbered gutter, and a diff swaps the number for its sign. */
+@layer components {
+  .code-block {
+    counter-reset: line;
+  }
+
+  .code-block pre {
+    margin: 0;
+    padding: 9px 0;
+    overflow-x: auto;
+    font: 400 12.5px/1.65 var(--font-mono);
+    color: #d6d0cb;
+  }
+
+  .code-block pre.is-wrapped {
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .code-block pre .sh__line {
+    display: block;
+    counter-increment: line;
+    padding-right: 14px;
+  }
+
+  .code-block pre .sh__line::before {
+    content: counter(line);
+    display: inline-block;
+    width: 36px;
+    padding-right: 12px;
+    text-align: right;
+    color: var(--color-line-strong);
+  }
+
+  .code-block pre .sh__line--diff-add {
+    background: var(--color-ok-bg);
+  }
+
+  .code-block pre .sh__line--diff-add::before {
+    content: "+";
+    color: var(--color-ok);
+  }
+
+  .code-block pre .sh__line--diff-remove {
+    background: var(--color-bad-bg);
+  }
+
+  .code-block pre .sh__line--diff-remove::before {
+    content: "−";
+    color: var(--color-bad);
+  }
+
+  .code-block pre .sh__line--diff-hunk,
+  .code-block pre .sh__line--diff-meta {
+    color: var(--color-fg-4);
   }
 }
 

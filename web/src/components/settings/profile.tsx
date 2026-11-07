@@ -3,7 +3,7 @@ import { cmd } from "../../lib/api.ts"
 import { setToken, token } from "../../lib/auth.ts"
 import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
-import { reauthorize } from "../../state/connection.ts"
+import { reauthorize, sessionId } from "../../state/connection.ts"
 import { errorMessage } from "../../state/extensions.ts"
 import { closeSessions, owner, ownerName, rotateSession, sessions, type Session } from "../../state/settings.ts"
 import { Markdown } from "../chat/markdown.tsx"
@@ -15,12 +15,6 @@ import { Group, Row } from "./parts.tsx"
 function originLabel(origin: string): string {
   const stripped = origin.replace(/^https?:\/\//u, "").replace(/\/$/u, "")
   return stripped === "" ? "No origin sent" : stripped
-}
-
-/** True when this tab's page origin is the one the socket reported. */
-function isThisBrowser(session: Session): boolean {
-  if (session.origin === "") return false
-  return session.origin.replace(/\/$/u, "") === window.location.origin
 }
 
 /** `own_••••••••Q7x2`: enough of both ends to recognise a token, nothing to reuse. */
@@ -67,8 +61,8 @@ export function Profile(): JSX.Element {
     return state.kind === "ready" ? state.value : []
   }
 
-  /** Several tabs on one origin look identical, so only a lone match may claim to be this browser. */
-  const marked = (session: Session): boolean => isThisBrowser(session) && list().filter(isThisBrowser).length === 1
+  /** This tab's socket is the one the home greeted by id, so the row is exact even with several tabs open. */
+  const marked = (session: Session): boolean => session.id === sessionId()
 
   const signOut = async (id: string): Promise<void> => {
     setClosing(id)

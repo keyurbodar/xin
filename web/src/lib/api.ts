@@ -33,6 +33,7 @@ export async function cmd<T>(op: string, args: Record<string, unknown> = {}, opt
 }
 
 export type ServerFrame =
+  | { readonly t: "hello"; readonly socket: string }
   | { readonly t: "ack"; readonly id: string; readonly ok: boolean; readonly result?: unknown; readonly error?: { code: string; message: string } }
   | { readonly t: "snap"; readonly stream: string; readonly value: unknown }
   | { readonly t: "ev"; readonly stream: string; readonly events: readonly unknown[] }
@@ -53,9 +54,14 @@ export class Streams {
   #retry = 0
   #closed = false
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
+  readonly #onSession: (socket: string | undefined) => void
 
-  constructor(onStatus: (status: "connecting" | "open" | "closed") => void) {
+  constructor(
+    onStatus: (status: "connecting" | "open" | "closed") => void,
+    onSession: (socket: string | undefined) => void,
+  ) {
     this.#onStatus = onStatus
+    this.#onSession = onSession
   }
 
   subscribe(stream: string, subscription: Subscription): () => void {
@@ -87,6 +93,7 @@ export class Streams {
     socket.addEventListener("message", (event) => this.#receive(event.data))
     socket.addEventListener("close", () => {
       this.#ws = undefined
+      this.#onSession(undefined)
       this.#onStatus("closed")
       this.#reconnect()
     })
@@ -120,6 +127,10 @@ export class Streams {
     if (typeof raw !== "string") return
     const frame = parseFrame(raw)
     if (frame === undefined) return
+    if (frame.t === "hello") {
+      this.#onSession(frame.socket)
+      return
+    }
     if (frame.t === "snap") {
       for (const sub of this.#subs.get(frame.stream) ?? []) sub.value(frame.value)
       return
@@ -139,7 +150,7 @@ function parseFrame(raw: string): ServerFrame | undefined {
   }
   if (typeof value !== "object" || value === null) return undefined
   const t = Reflect.get(value, "t")
-  if (t === "snap" || t === "ev" || t === "ack" || t === "error") return value as ServerFrame
+  if (t === "snap" || t === "ev" || t === "ack" || t === "error" || t === "hello") return value as ServerFrame
   return undefined
 }
 

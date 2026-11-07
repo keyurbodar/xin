@@ -55,10 +55,13 @@ client → {t:"sub",  stream:"home"|"conv:<id>"}       stream subscription
 client → {t:"typing", conv, on}                       not stored; extends debounce (§5)
 client → {"_tag":"Ping"}                              auto-answered by the runtime: idle tabs never wake the DO
 
+server → {t:"hello", socket}                          the socket's own id, sent once on accept
 server → {t:"ack",  id, ok, result|error}
 server → {t:"snap", stream, value}                    bounded: last 60 entries + live state; older via cmd history.page
 server → {t:"ev",   stream, events[]}                 pi watchEvents deltas: text appends, tool output, status
 ```
+
+- `hello` is what lets a client recognise its own row in `session.list` without guessing from the origin; a browser behind one host otherwise looks like every other browser on it.
 
 - Sockets use `ctx.acceptWebSocket()`. Each socket's subscriptions live in `serializeAttachment()`, so they survive hibernation.
 - There is **one pi conversation watch per subscribed conversation** (`Conversation.watch`, a window of 60 to 120 entries), shared by all sockets. It starts on the first `sub`, and again on wake for every stream in the surviving sockets' attachments, so a hibernated tab keeps getting events. It stops when the last subscriber leaves. `ev.events` are the watch's delta ops against the snapshot's view.
