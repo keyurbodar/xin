@@ -32,14 +32,20 @@ function called(message: Message): readonly string[] {
   return (message.tool_calls ?? []).flatMap((call) => (call.function?.name === undefined ? [] : [call.function.name]))
 }
 
-/** A coordinator delegates once; a thread asks once, then answers once it has the answer in hand. */
+/** A coordinator remembers once and delegates once; a thread asks once, then answers once it has the answer. */
 function reply(body: Body): { readonly name: string; readonly args: Record<string, unknown> } | undefined {
   const tools = toolNames(body)
   const messages = body.messages ?? []
+  const done = (name: string): boolean => messages.some((message) => called(message).includes(name))
   const answered = messages.at(-1)?.role === "tool"
-  if (answered) return undefined
   if (tools.includes("delegate_task")) {
-    if (messages.some((message) => called(message).includes("delegate_task"))) return undefined
+    if (tools.includes("remember") && !done("remember")) {
+      return {
+        name: "remember",
+        args: { text: "Q1 hiring plan: the owner picked Rippling, about 12% under Gusto at this headcount." },
+      }
+    }
+    if (done("delegate_task")) return undefined
     return {
       name: "delegate_task",
       args: {
@@ -50,8 +56,7 @@ function reply(body: Body): { readonly name: string; readonly args: Record<strin
       },
     }
   }
-  if (!tools.includes("ask_user")) return undefined
-  if (messages.some((message) => called(message).includes("ask_user"))) return undefined
+  if (!tools.includes("ask_user") || done("ask_user") || answered) return undefined
   return {
     name: "ask_user",
     args: {
