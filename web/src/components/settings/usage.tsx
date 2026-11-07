@@ -1,6 +1,6 @@
 import { For, onMount, Show, type JSX } from "solid-js"
 import { money } from "../../lib/format.ts"
-import { usage, type UsageSummary } from "../../state/settings.ts"
+import { modelName, models, usage, type UsageSummary } from "../../state/settings.ts"
 import { Button, Empty, Failure, MissingOp, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Group } from "./parts.tsx"
 
@@ -9,6 +9,7 @@ type Recorded = Extract<UsageSummary, { readonly recorded: true }>
 export function Usage(): JSX.Element {
   onMount(() => {
     void usage.reload()
+    void models.reload()
   })
 
   const value = (): Recorded | undefined => {
@@ -59,7 +60,7 @@ export function Usage(): JSX.Element {
                 empty="No model usage is recorded."
                 rows={summary().byModel.map((entry) => ({
                   key: entry.name,
-                  name: entry.modelId === "" ? entry.name : entry.modelId,
+                  name: modelName(entry.provider, entry.modelId) ?? (entry.modelId === "" ? entry.name : entry.modelId),
                   detail: entry.provider === "" ? entry.name : entry.provider,
                   tokens: entry.totalTokens,
                   cost: entry.cost,

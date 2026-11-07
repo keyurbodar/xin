@@ -6,7 +6,7 @@ The first-party client is a SolidJS app in `web/` that talks to the same contrac
 
 - `#/signin` — owner token, verified with `GET /v1/status`, kept in `localStorage`.
 - `#/` — Home: greeting, the five counts, Needs You, the project grid, all from the `home` stream.
-- `#/p/:slug` — project chat: transcript over `conv:<coordinatorId>`, composer, right panel (Threads, Files, Memory, Schedules, Jobs). A transcript past the snapshot window shows a "Load older messages" button that pages `history.page` from the snapshot's own `before` and keeps the scroll position.
+- `#/p/:slug` — project chat: transcript over `conv:<coordinatorId>`, composer, right panel (Threads, Files, Memory, Schedules, Jobs; Jobs reads `job.list`). A transcript past the snapshot window shows a "Load older messages" button that pages `history.page` from the snapshot's own `before` and keeps the scroll position.
 - `#/inbox` — pending questions (`request.list`) plus waiting and failed threads.
 - `#/extensions` — Discover, Installed, Updates, Customize, Sources over `plugin.*`, `market.*`.
 - `#/settings/:tab` — general, usage, models, notifications, profile, system.

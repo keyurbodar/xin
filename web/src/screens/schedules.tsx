@@ -2,7 +2,7 @@ import { createMemo, createResource, createSignal, For, Show, type JSX } from "s
 import { cmd, OpError } from "../lib/api.ts"
 import { TopBar, TopButton } from "../components/shell/topbar.tsx"
 import { Icon } from "../components/ui/icon.tsx"
-import { ago } from "../lib/format.ts"
+import { ago, describeRule } from "../lib/format.ts"
 import { Skullet } from "../components/ui/skeleton.tsx"
 import { CreateSchedule } from "../components/schedules/create.tsx"
 
@@ -113,7 +113,8 @@ function ScheduleRow(props: { item: Schedule; onChanged?: (() => void) | undefin
           </Show>
         </span>
         <span class="mt-0.5 block truncate text-[12px] text-fg-3">
-          {props.item.rrule ?? when(props.item.at)} · {TARGET_WORD[props.item.target]} · next {when(props.item.nextAt)}
+          {props.item.rrule === undefined ? when(props.item.at) : describeRule(props.item.rrule)} ·{" "}
+          {TARGET_WORD[props.item.target]} · next {when(props.item.nextAt)}
         </span>
         <Show when={error() !== undefined}>
           <span class="mt-0.5 block text-[12px] text-bad">{error()}</span>

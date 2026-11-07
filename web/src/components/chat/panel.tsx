@@ -1,7 +1,7 @@
 import { For, Show, Switch, Match, createResource, createSignal, type JSX } from "solid-js"
 import type { Streams } from "../../lib/api.ts"
 import { cmd } from "../../lib/api.ts"
-import { bytes, ago } from "../../lib/format.ts"
+import { ago, bytes, describeRule } from "../../lib/format.ts"
 import { STATE_COLOR, STATE_WORD, visualState, type VisualState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import {
@@ -262,7 +262,7 @@ function nextRun(value: string | null): string {
 }
 
 function ruleOf(schedule: Schedule): string {
-  if (schedule.rrule !== undefined) return schedule.rrule
+  if (schedule.rrule !== undefined) return describeRule(schedule.rrule)
   if (schedule.at !== undefined) {
     const at = Date.parse(schedule.at)
     if (!Number.isNaN(at)) return new Date(at).toLocaleString()

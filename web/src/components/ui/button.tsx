@@ -13,7 +13,7 @@ const SIZES: Readonly<Record<ButtonSize, string>> = {
 }
 
 const VARIANTS: Readonly<Record<ButtonVariant, string>> = {
-  primary: "border border-accent bg-accent text-ink",
+  primary: "border border-accent bg-accent text-ink hover:opacity-90",
   ghost: "border border-line-inner bg-raised text-fg hover:border-line-strong hover:bg-hover",
   quiet: "border border-transparent bg-transparent text-fg-2 hover:text-fg",
   danger: "border border-bad/40 bg-bad-bg text-bad hover:border-bad",
