@@ -6,8 +6,7 @@ Xin is a personal agent backend on Cloudflare: one Worker, one SQLite-backed Dur
 
 ## Scope rules (hard)
 
-- Files only. No code execution: no bash tool, no sandbox, no codemode, no git tools for the agent.
-- Web only. No Telegram/SMS/VPS/computer/browser integrations. No A2A, no multi-agent rooms.
+- The core takes no position on what the agent may do. Code execution (bash, sandboxes, codemode), git, VPS and computer access, browsers and other channels are all allowed, as optional plugins: never in the kernel, off by default, and the owner sees what each one can reach before enabling it (owner decision 2026-11-07). The first-party client is the web app.
 - **No model ids in product code.** Models come from the pi-ai catalog at run time and from the owner's choices (`docs/plan/architecture/05-models.md`). Test code may name models.
 - Official primitives first: pi-durable (Harness, tasks, docs, inbox, hooks, `onWake`), pi-ai (catalog, `CredentialStore`), pi-mcp, Cloudflare runtime APIs. Before writing a mechanism, check whether pi already ships it (`node_modules/@earendil-works/pi-durable/README.md`).
 - No Effect, no RPC framework, no custom journal or storage proxy. Plain TypeScript, with one framework: the plugin layer is dsh's Cordis stack (`@deepseek-ai/cordis`, `cordis-plugin-loader`, `schemastery`). Everything is a loader row; see `docs/plan/architecture/09-plugins.md`.
@@ -45,7 +44,7 @@ bun scripts/gate.ts [run] [steps]                  # lead only: run now, still b
 - **Cache**: a step that passed is skipped until its inputs change, so an unchanged tree costs nothing.
 - **Logs**: `.gate/<step>[-<filter hash>].log` in the checkout, and results in `/tmp/xin-gate/results/<id>.json`. Read them instead of re-running.
 - `package.json` must define `fmt:check`, `lint`, `typecheck`, `test` and `bundle`. The gate calls exactly those.
-- Workers may only `submit test --only=<own path>` and `wait`, at most 3 jobs per lane. Only the lead submits the full gate, once per merged wave.
+- Workers may only `submit lint types test --only=<own path>` and `wait`, at most 3 jobs per lane. `lint` and `types` are cheap and whole-tree; including them stops lint debt piling up at merge. Only the lead submits the full gate, once per merged wave.
 
 ## Subagents
 

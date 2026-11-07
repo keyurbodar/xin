@@ -15,7 +15,23 @@
         "module": "./tools.ts",
         "title": "Skills tools",
         "description": "The model-facing skills tools. Disable to hide them; the skills service keeps running."
+      },
+      "skill": {
+        "module": "./skill.ts",
+        "title": "Skill",
+        "description": "One skill carried by a row, for bundles.",
+        "multiple": true
       }
-    }
+    },
+    "bundle": [
+      {
+        "id": "skills",
+        "plugin": "skills"
+      },
+      {
+        "id": "tool-skills",
+        "plugin": "tool-skills"
+      }
+    ]
   }
 }

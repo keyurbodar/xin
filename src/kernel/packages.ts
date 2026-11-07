@@ -1,7 +1,10 @@
 import type { Context } from "@deepseek-ai/cordis"
 import type { JsonValue } from "@earendil-works/chord"
 import { arr, compile, lit, obj, opt, str, union } from "@earendil-works/pi-schema"
+import { isPackageName, MAX_PACKAGE_NAME } from "../npmname.ts"
 import { defineOp, OpRejected } from "../ops.ts"
+import { satisfies } from "../semver.ts"
+import { BundleRowArg, createBundles, type BundleApplication, type BundleView, type RuntimeBundle } from "./bundles.ts"
 import type { Catalog } from "./loader.ts"
 
 declare const XIN_BUILD: string | undefined
@@ -22,8 +25,16 @@ export type Packages = {
 export type PackagesChanged = Packages & { readonly application: "applied" }
 
 export type PackagesService = {
+  readonly version: string
+  readonly local: readonly string[]
   list(): Packages
   pending(): PendingPackages
+  install(spec: string): PendingPackages
+  cancel(name: string): PendingPackages
+  bundles(): Promise<readonly BundleView[]>
+  put(bundle: RuntimeBundle): Promise<BundleApplication>
+  remove(name: string): Promise<{ readonly application: "applied"; readonly package: string }>
+  rollback(name: string): Promise<BundleApplication>
 }
 
 export type AddEntry = { readonly spec: PackageSpec; readonly build: string; readonly name?: string }
@@ -35,12 +46,12 @@ export type StoredPending = { readonly add: readonly AddEntry[]; readonly remove
 const PENDING_KEY = "plugins.packages"
 const OWNER = ["owner"] as const
 
-const REGISTRY_NAME = /^(?:@[A-Za-z0-9][A-Za-z0-9._-]*\/)?[A-Za-z0-9][A-Za-z0-9._-]*$/
 const REGISTRY_RANGE = /^[A-Za-z0-9.^~><=*xX|-]+$/
 const GITHUB_SPEC = /^github:([A-Za-z0-9][A-Za-z0-9._-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)(?:#([A-Za-z0-9._+/-]+))?$/
 const GIT_URL = /^(?:git\+)?https:\/\//i
 const REF = /^[A-Za-z0-9._+/-]+$/
 const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/
+const MAX_SPEC = MAX_PACKAGE_NAME + 64
 
 const SpecSchema = union([
   obj({ kind: lit("registry"), name: str({ minLength: 1 }), range: opt(str({ minLength: 1 })) }),
@@ -52,13 +63,13 @@ const StoredSchema = obj({
 })
 const storedCheck = compile(StoredSchema)
 
-const SpecArg = str({ minLength: 1, maxLength: 200 })
-const PackageArg = str({ minLength: 1, maxLength: 200 })
+const SpecArg = str({ minLength: 1, maxLength: MAX_SPEC })
+const PackageArg = str({ minLength: 1, maxLength: MAX_PACKAGE_NAME })
 
 export const buildId = (): string => (typeof XIN_BUILD === "string" ? XIN_BUILD : "dev")
 
 export function parseSpec(text: string): PackageSpec | undefined {
-  if (text.length === 0 || text.length > 200) return undefined
+  if (text.length === 0 || text.length > MAX_SPEC) return undefined
   if (text.startsWith("github:")) return parseGithub(text)
   if (GIT_URL.test(text)) return parseGitUrl(text)
   if (SCHEME.test(text)) return undefined
@@ -96,7 +107,7 @@ function parseRegistry(text: string): PackageSpec | undefined {
   const at = text.lastIndexOf("@")
   const name = at > 0 ? text.slice(0, at) : text
   const range = at > 0 ? text.slice(at + 1) : undefined
-  if (!REGISTRY_NAME.test(name)) return undefined
+  if (!isPackageName(name)) return undefined
   if (range !== undefined && !REGISTRY_RANGE.test(range)) return undefined
   return { kind: "registry", name, ...(range === undefined ? {} : { range }) }
 }
@@ -130,6 +141,19 @@ export function installedPackages(catalog: Catalog): readonly InstalledPackage[]
     .toSorted((left, right) => left.package.localeCompare(right.package))
 }
 
+export function localPackages(catalog: Catalog): readonly string[] {
+  const locals = new Map<string, boolean>()
+  for (const entry of Object.values(catalog)) {
+    const name = sourcePackage(entry.source)
+    const local = entry.local === true
+    locals.set(name, (locals.get(name) ?? true) && local)
+  }
+  return [...locals]
+    .filter(([, local]) => local)
+    .map(([name]) => name)
+    .toSorted()
+}
+
 export function readPending(storage: DurableObjectStorage): StoredPending {
   const value: unknown = storage.kv.get(PENDING_KEY)
   return storedCheck.check(value) ? value : { add: [], remove: [] }
@@ -158,7 +182,7 @@ function keepAdd(entry: AddEntry, versions: ReadonlyMap<string, string>, build: 
   if (entry.spec.kind === "registry") {
     const version = versions.get(entry.spec.name)
     if (version === undefined) return true
-    return entry.spec.range === undefined ? false : !rangeMatches(version, entry.spec.range)
+    return entry.spec.range === undefined ? false : !satisfies(version, entry.spec.range)
   }
   return entry.name !== undefined && !versions.has(entry.name)
 }
@@ -191,7 +215,46 @@ function removePending(catalog: Catalog, storage: DurableObjectStorage, pkg: str
   return next
 }
 
-const toJson = (value: unknown): JsonValue => (value === undefined ? null : JSON.parse(JSON.stringify(value)))
+function cancelPending(storage: DurableObjectStorage, name: string): StoredPending {
+  const pending = readPending(storage)
+  const next: StoredPending = {
+    add: pending.add.filter((entry) => (entry.spec.kind === "registry" ? entry.spec.name : entry.name) !== name),
+    remove: pending.remove.filter((entry) => entry.name !== name),
+  }
+  writePending(storage, next)
+  return next
+}
+
+export const toJson = (value: unknown): JsonValue => (value === undefined ? null : JSON.parse(JSON.stringify(value)))
+
+const BundleArgs = obj({
+  package: PackageArg,
+  rows: arr(BundleRowArg),
+  requires: opt(arr(str({ minLength: 1, maxLength: MAX_SPEC }))),
+})
+
+type BundleArgsValue = {
+  readonly package: string
+  readonly rows: readonly {
+    readonly id: string
+    readonly plugin: string
+    readonly config?: unknown
+    readonly disabled?: boolean
+  }[]
+  readonly requires?: readonly string[]
+}
+
+const localBundle = (args: BundleArgsValue): RuntimeBundle => ({
+  package: args.package,
+  source: { kind: "local" },
+  rows: args.rows.map((row) => ({
+    id: row.id,
+    plugin: row.plugin,
+    ...(row.config === undefined ? {} : { config: toJson(row.config) }),
+    ...(row.disabled === undefined ? {} : { disabled: row.disabled }),
+  })),
+  requires: [...(args.requires ?? [])],
+})
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
@@ -205,11 +268,32 @@ export const inject = ["host", "http", "kernel", "ops"]
 export function apply(ctx: Context): void {
   const storage = ctx.host.state.storage
   const catalog = ctx.kernel.composition.catalog
+  const bundles = createBundles(ctx.kernel, storage, {
+    validName: isPackageName,
+    parse: parseSpec,
+    record: (spec) => void addPending(storage, spec),
+    cancel: (pkg) => void cancelPending(storage, pkg),
+  })
   const view = (): Packages => {
     const pending = readPending(storage)
     return { installed: installedPackages(catalog), pending: pendingWire(pending) }
   }
-  const service: PackagesService = { list: view, pending: () => view().pending }
+  const service: PackagesService = {
+    version: ctx.kernel.composition.version,
+    local: localPackages(catalog),
+    list: view,
+    pending: () => view().pending,
+    install: (spec) => {
+      const parsed = parseSpec(spec)
+      if (parsed === undefined) throw new OpRejected("bad_args", `${spec} is not a supported package spec`)
+      return pendingWire(addPending(storage, parsed))
+    },
+    cancel: (pkg) => pendingWire(cancelPending(storage, pkg)),
+    bundles: () => bundles.list(),
+    put: (bundle) => bundles.put(bundle),
+    remove: (pkg) => bundles.remove(pkg),
+    rollback: (pkg) => bundles.rollback(pkg),
+  }
   writePending(storage, reconcilePending(readPending(storage), catalog, buildId()))
   ctx.provide("packages", service)
   ctx.http.route("GET /v1/build/packages", async () => Response.json(service.pending()))
@@ -218,7 +302,39 @@ export function apply(ctx: Context): void {
       name: "plugin.packages",
       args: obj({}),
       actors: OWNER,
-      run: async () => toJson(view()),
+      run: async () => toJson({ ...view(), bundles: await bundles.list() }),
+    }),
+  )
+  ctx.ops.define(
+    defineOp({
+      name: "bundle.list",
+      args: obj({}),
+      actors: OWNER,
+      run: async () => toJson(await bundles.list()),
+    }),
+  )
+  ctx.ops.define(
+    defineOp({
+      name: "bundle.put",
+      args: BundleArgs,
+      actors: OWNER,
+      run: async (_api, args) => toJson(await bundles.put(localBundle(args))),
+    }),
+  )
+  ctx.ops.define(
+    defineOp({
+      name: "bundle.remove",
+      args: obj({ package: PackageArg }),
+      actors: OWNER,
+      run: async (_api, args) => toJson(await bundles.remove(args.package)),
+    }),
+  )
+  ctx.ops.define(
+    defineOp({
+      name: "bundle.rollback",
+      args: obj({ package: PackageArg }),
+      actors: OWNER,
+      run: async (_api, args) => toJson(await bundles.rollback(args.package)),
     }),
   )
   ctx.ops.define(
@@ -245,73 +361,4 @@ export function apply(ctx: Context): void {
       },
     }),
   )
-}
-
-function rangeMatches(version: string, range: string): boolean {
-  const built = versionTuple(version)
-  if (built === undefined) return false
-  return range.split("||").some((alternative) => inAlternative(built, alternative.trim()))
-}
-
-type Tuple = readonly [number, number, number]
-
-function versionTuple(text: string): Tuple | undefined {
-  const match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-+].*)?$/.exec(text)
-  const major = match?.[1]
-  if (match === null || major === undefined) return undefined
-  return [Number(major), Number(match[2] ?? 0), Number(match[3] ?? 0)]
-}
-
-function inAlternative(version: Tuple, text: string): boolean {
-  if (text === "" || text === "*" || text === "x" || text === "X") return true
-  const match = /^(\^|~|>=|<=|>|<|=)?(.+)$/.exec(text)
-  const op = match?.[1] ?? ""
-  const body = match?.[2]
-  if (body === undefined) return false
-  const parts = body.split(".")
-  if (parts.length > 3) return false
-  const major = parts[0]
-  if (major === undefined) return false
-  const tuple: Tuple = [Number(major), Number(parts[1] ?? "0"), Number(parts[2] ?? "0")]
-  if (tuple.some((part) => Number.isNaN(part))) return false
-  const atLeast = compare(version, tuple) >= 0
-  switch (op) {
-    case "^": {
-      const upper: Tuple =
-        tuple[0] > 0 || parts.length === 1
-          ? [tuple[0] + 1, 0, 0]
-          : tuple[1] > 0 || parts.length === 2
-            ? [0, tuple[1] + 1, 0]
-            : [0, 0, tuple[2] + 1]
-      return atLeast && compare(version, upper) < 0
-    }
-    case "~": {
-      const upper: Tuple = parts.length === 1 ? [tuple[0] + 1, 0, 0] : [tuple[0], tuple[1] + 1, 0]
-      return atLeast && compare(version, upper) < 0
-    }
-    case ">=":
-      return atLeast
-    case ">":
-      return compare(version, tuple) > 0
-    case "<=":
-      return !(compare(version, tuple) > 0)
-    case "<":
-      return compare(version, tuple) < 0
-    default:
-      return matchesPrefix(version, tuple, parts.length)
-  }
-}
-
-function matchesPrefix(version: Tuple, tuple: Tuple, length: number): boolean {
-  if (length === 1) return version[0] === tuple[0]
-  if (length === 2) return version[0] === tuple[0] && version[1] === tuple[1]
-  return compare(version, tuple) === 0
-}
-
-function compare(left: Tuple, right: Tuple): number {
-  for (const index of [0, 1, 2] as const) {
-    const difference = left[index] - right[index]
-    if (difference !== 0) return difference
-  }
-  return 0
 }

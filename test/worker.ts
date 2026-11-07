@@ -14,6 +14,7 @@ import * as m7 from "./plugins/m7.ts"
 import * as m8 from "./plugins/m8.ts"
 import * as m9 from "./plugins/m9.ts"
 import * as mcp from "./plugins/mcp.ts"
+import * as p6 from "./plugins/p6.ts"
 import * as piext from "./plugins/piext.ts"
 import * as secretsTest from "./plugins/secrets.ts"
 import * as settled from "./plugins/settled.ts"
@@ -25,6 +26,7 @@ import { defineOp } from "../src/ops.ts"
 import { int, obj, opt } from "@earendil-works/pi-schema"
 import { env } from "cloudflare:workers"
 import { BUNDLES, CATALOG } from "../src/catalog.ts"
+import { XIN_VERSION } from "../src/catalog.gen.ts"
 import { Home as ProductHome, PROFILE } from "../src/host.ts"
 import type { Env } from "../src/env.ts"
 
@@ -85,6 +87,7 @@ const TEST_CATALOG: Catalog = {
   ...m7.catalog,
   ...m8.catalog,
   ...m9.catalog,
+  ...p6.catalog,
   ...skills.catalog,
   ...mcp.catalog,
   ...piext.catalog,
@@ -133,6 +136,7 @@ export class Home extends ProductHome {
       catalog: { ...CATALOG, ...TEST_CATALOG },
       bundles: { ...BUNDLES, test: TEST_ROWS },
       profile: { bundles: [...PROFILE.bundles, "test"], patch: PROFILE.patch },
+      version: XIN_VERSION,
     }
   }
 

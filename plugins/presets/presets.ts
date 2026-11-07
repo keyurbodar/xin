@@ -1,7 +1,14 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { SqliteDatabase, SqliteMigration } from "@earendil-works/chord/sqlite"
 import type { ConversationId, Extension, Harness } from "@earendil-works/pi-durable"
-import type { AssignOutcome, PresetTools, PresetView, PresetsService } from "../../src/contracts/presets.ts"
+import { createContributions } from "../../src/contributions.ts"
+import type {
+  AssignOutcome,
+  PresetContribution,
+  PresetTools,
+  PresetView,
+  PresetsService,
+} from "../../src/contracts/presets.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { ProjectId } from "../../src/ids.ts"
 
@@ -52,11 +59,25 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
   const fallback = views.get(port.config.default)
   if (fallback === undefined) throw new Error(`default preset "${port.config.default}" is not declared in presets`)
 
+  const contributed = createContributions<PresetView>({
+    key: (view) => view.id,
+    label: (id) => `preset "${id}"`,
+  })
+
+  const all = (): ReadonlyMap<string, PresetView> => {
+    const merged = new Map<string, PresetView>()
+    for (const view of contributed.values()) merged.set(view.id, view)
+    for (const [id, view] of views) merged.set(id, view)
+    return merged
+  }
+
+  const viewOf = (id: string): PresetView | undefined => all().get(id)
+
   const assignments = new Map<string, string>()
   for (const row of await port.db.all<{ project: string; preset: string }>("SELECT project, preset FROM presets"))
     assignments.set(row.project, row.preset)
 
-  const effective = (projectId: string): PresetView => views.get(assignments.get(projectId) ?? "") ?? fallback
+  const effective = (projectId: string): PresetView => viewOf(assignments.get(projectId) ?? "") ?? fallback
 
   const removalsOf = (tools: PresetTools): readonly Extension[] => {
     if (tools === "all") return []
@@ -118,10 +139,25 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
       }
     })
 
+  const contribute = async (preset: PresetContribution, source: string): Promise<() => Promise<void>> => {
+    const view: PresetView = {
+      id: preset.id ?? source,
+      title: preset.title,
+      description: preset.description,
+      tools: preset.tools,
+    }
+    const remove = contributed.add(source, view)
+    await applyAll()
+    return async () => {
+      remove()
+      await applyAll()
+    }
+  }
+
   const assign = async (projectId: string, presetId: string): Promise<AssignOutcome> => {
     const workspace = await port.harness.snapshot(WorkspaceDoc, context)
     if (workspace?.projects[projectId] === undefined) return { kind: "bad_args", reason: `no project ${projectId}` }
-    const preset = views.get(presetId)
+    const preset = viewOf(presetId)
     if (preset === undefined) return { kind: "bad_args", reason: `no preset "${presetId}"` }
     await port.db.run(
       "INSERT INTO presets (project, preset) VALUES (?, ?) ON CONFLICT (project) DO UPDATE SET preset = excluded.preset",
@@ -134,7 +170,11 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
   }
 
   return {
-    service: { list: () => [...views.values()].toSorted(byId), presetOf: (projectId) => effective(projectId) },
+    service: {
+      list: () => [...all().values()].toSorted(byId),
+      presetOf: (projectId) => effective(projectId),
+      contribute,
+    },
     applyAll,
     assign,
     clear,

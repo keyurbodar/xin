@@ -8,9 +8,14 @@ export type Patch =
 
 export type Profile = { readonly bundles: readonly string[]; readonly patch: readonly Patch[] }
 
-export type Layer = "bundle" | "profile" | "owner"
+export type Layer = "bundle" | "profile" | "runtime" | "owner"
 
 const FIELDS = ["name", "config", "disabled"] as const
+
+const PLUGIN_PREFIX = "cordis:"
+
+export const pluginOf = (row: Row): string =>
+  row.name.startsWith(PLUGIN_PREFIX) ? row.name.slice(PLUGIN_PREFIX.length) : row.name
 
 const clone = <T>(value: T): T => (value === undefined ? value : structuredClone(value))
 
@@ -45,6 +50,7 @@ export function applyPatches(
 export function compose(
   bundles: Readonly<Record<string, readonly Row[]>>,
   profile: Profile,
+  runtime: readonly Row[],
   warn: (message: string) => void,
 ): Row[] {
   const patches: Patch[] = []
@@ -53,7 +59,7 @@ export function compose(
     if (rows === undefined) warn(`profile names unknown bundle ${name}`)
     else patches.push({ insert: rows })
   }
-  return applyPatches([], [...patches, ...profile.patch], warn).rows
+  return applyPatches([], [...patches, ...profile.patch, { insert: runtime }], warn).rows
 }
 
 const normal = (field: (typeof FIELDS)[number], value: unknown): unknown =>
@@ -80,9 +86,10 @@ export function departures(lower: readonly Row[], current: readonly Row[]): Patc
   return patches
 }
 
-export function layerOf(id: string, profile: Profile, owner: readonly Patch[]): Layer {
+export function layerOf(id: string, profile: Profile, owner: readonly Patch[], runtime: ReadonlySet<string>): Layer {
   const touches = (patch: Patch) => ("insert" in patch ? patch.insert.some((row) => row.id === id) : patch.id === id)
   if (owner.some(touches)) return "owner"
+  if (runtime.has(id)) return "runtime"
   if (profile.patch.some(touches)) return "profile"
   return "bundle"
 }

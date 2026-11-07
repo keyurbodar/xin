@@ -10,7 +10,19 @@
         "module": "./index.ts",
         "title": "Presets",
         "description": "Named agent presets that choose a project's tool rows."
+      },
+      "preset": {
+        "module": "./preset.ts",
+        "title": "Preset",
+        "description": "One agent preset carried by a row, for bundles.",
+        "multiple": true
       }
-    }
+    },
+    "bundle": [
+      {
+        "id": "presets",
+        "plugin": "presets"
+      }
+    ]
   }
 }

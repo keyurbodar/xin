@@ -47,5 +47,6 @@ flowchart LR
 - [09 Plugins](./architecture/09-plugins.md): plugin manifest, reconcile lifecycle, host facade, MCP, trust.
 - [10 Time](./architecture/10-time.md): schedules as pi tasks and the single owned timer.
 - [11 Failures and cost](./architecture/11-failures-and-cost.md): the failure matrix and the DO row-cost model.
+- [12 Market](./architecture/12-market.md): runtime bundles, contribution rows, discovery and updates on the free plan.
 - [Provenance](./provenance.md): what came from pi-durable, pi-ai, t3code, kiko and the other sources.
 - [Milestones](./milestones.md): build order, each with its proof, dependencies and parallel work.

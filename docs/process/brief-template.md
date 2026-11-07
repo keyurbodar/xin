@@ -14,7 +14,7 @@ OWN (only you edit these): <files to create or edit>
 DO NOT TOUCH: <files other lanes own, plus package.json, the lockfile and wrangler.jsonc. Ask in your report if you need a change there>
 USE (already exists, import it, don't redefine it): <src/ids.ts, …>
 PROOF: write <path>.test.ts asserting <observable behaviour>. It must pass with:
-  bun scripts/gate.ts submit test --only=<path> && bun scripts/gate.ts wait <id>
+  bun scripts/gate.ts submit lint types test --only=<path> && bun scripts/gate.ts wait <id>
   (at most 3 gate jobs in total; never run vitest, tsc or wrangler directly; no bun install)
 DONE WHEN: the proof passes through the gate and the code matches the spec section.
 If the spec is unclear or wrong, stop and report "blocked" with the question. Don't invent a design.

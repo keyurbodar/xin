@@ -17,7 +17,9 @@
     "xin-plugin-time",
     "xin-plugin-watchdog",
     "xin-plugin-workspace",
-    "xin-plugin-presets"
+    "xin-plugin-presets",
+    "xin-plugin-market",
+    "xin-plugin-prompts"
   ],
   "patch": []
 }

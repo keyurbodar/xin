@@ -1,7 +1,10 @@
 import { Context, type Fiber, type Plugin } from "@deepseek-ai/cordis"
 import { Loader } from "@deepseek-ai/cordis-plugin-loader"
-import { applyPatches, compose, departures, type Patch, type Profile, type Row } from "./layers.ts"
+import { readBundles, runtimeRows, type RuntimeBundle } from "./bundles.ts"
+import { applyPatches, compose, departures, pluginOf, type Patch, type Profile, type Row } from "./layers.ts"
+import { sourcePackage } from "./packages.ts"
 import { parseOwnerPatch } from "./patch.ts"
+import { isRuntimeRowId } from "../rowid.ts"
 import type { Runtime } from "./types.ts"
 
 export type CatalogEntry = {
@@ -22,16 +25,19 @@ export type RowState =
   | { readonly kind: "disabled" }
   | { readonly kind: "failed"; readonly error: string }
   | { readonly kind: "missing" }
+  | { readonly kind: "superseded" }
 
 export type Composition = {
   readonly catalog: Catalog
   readonly bundles: Readonly<Record<string, readonly Row[]>>
   readonly profile: Profile
+  readonly version: string
 }
 
 export type XinLoaderConfig = {
   readonly baseUrl: string
   readonly composition: Composition
+  readonly runtime: readonly RuntimeBundle[]
   readonly owner: readonly Patch[]
   readonly warnings: readonly string[]
   persist(patch: readonly Patch[]): void
@@ -40,9 +46,6 @@ export type XinLoaderConfig = {
 const CORDIS_FIBER_ACTIVE = 2
 const CORDIS_FIBER_FAILED = 3
 const OWNER_PATCH = "plugins.patch"
-const PREFIX = "cordis:"
-
-export const pluginOf = (row: Row): string => (row.name.startsWith(PREFIX) ? row.name.slice(PREFIX.length) : row.name)
 
 const failure = async (fiber: Fiber): Promise<string> =>
   fiber.await().then(
@@ -50,29 +53,67 @@ const failure = async (fiber: Fiber): Promise<string> =>
     (error: unknown) => (error instanceof Error ? error.message : String(error)),
   )
 
+const changedRow = (left: Row, right: Row): boolean =>
+  left.disabled !== right.disabled || JSON.stringify(left.config ?? null) !== JSON.stringify(right.config ?? null)
+
+function duplicateFailures(rows: readonly Row[], catalog: Catalog): Map<string, string> {
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    const plugin = pluginOf(row)
+    counts.set(plugin, (counts.get(plugin) ?? 0) + 1)
+  }
+  const failed = new Map<string, string>()
+  for (const row of rows) {
+    const plugin = pluginOf(row)
+    const entry = catalog[plugin]
+    if (entry === undefined || entry.multiple === true) continue
+    if ((counts.get(plugin) ?? 0) < 2) continue
+    if (isRuntimeRowId(row.id)) failed.set(row.id, `a ${plugin} row already exists in this tree`)
+  }
+  return failed
+}
+
 export class XinLoader extends Loader {
   override internal = undefined
   readonly composition: Composition
-  readonly lower: readonly Row[]
   readonly warnings: string[]
+  readonly compiled: ReadonlySet<string>
+  private lowerRows: Row[]
+  private runtimeBundles: readonly RuntimeBundle[]
   private readonly initial: readonly Row[]
   private readonly persistPatch: (patch: readonly Patch[]) => void
   private missing: Row[]
+  private rejected: ReadonlyMap<string, string>
   private unresolved: readonly Patch[]
   private mounted = false
+  private quiet = false
 
   constructor(ctx: Context, config: XinLoaderConfig) {
     super(ctx, { baseUrl: config.baseUrl })
     this.composition = config.composition
     this.warnings = [...config.warnings]
-    const warn = (message: string) => void this.warnings.push(message)
+    this.compiled = new Set(Object.values(config.composition.catalog).map((entry) => sourcePackage(entry.source)))
+    this.runtimeBundles = config.runtime.filter((bundle) => !this.compiled.has(bundle.package))
     for (const [name, entry] of Object.entries(config.composition.catalog)) this.builtins[name] = entry.plugin
-    this.lower = compose(config.composition.bundles, config.composition.profile, warn)
-    const applied = applyPatches(this.lower, config.owner, warn)
+    this.lowerRows = this.lowerOf(config.runtime)
+    const applied = applyPatches(this.lowerRows, config.owner, (message) => this.warn(message))
     this.initial = applied.rows
+    this.rejected = duplicateFailures(this.initial, this.composition.catalog)
     this.unresolved = applied.unresolved
-    this.missing = applied.rows.filter((row) => !this.has(row))
+    this.missing = applied.rows.filter((row) => !this.has(row) || this.rejected.has(row.id))
     this.persistPatch = config.persist
+  }
+
+  get lower(): readonly Row[] {
+    return this.lowerRows
+  }
+
+  get runtime(): readonly RuntimeBundle[] {
+    return this.runtimeBundles
+  }
+
+  isSuperseded(pkg: string): boolean {
+    return this.compiled.has(pkg)
   }
 
   has(row: Row): boolean {
@@ -80,7 +121,7 @@ export class XinLoader extends Loader {
   }
 
   override commit(): void {
-    if (!this.mounted) return
+    if (!this.mounted || this.quiet) return
     this.persistPatch(this.ownerPatch())
     this.ctx.emit("plugins/changed")
   }
@@ -90,7 +131,7 @@ export class XinLoader extends Loader {
   }
 
   ownerPatch(): Patch[] {
-    return [...departures(this.lower, this.rows()), ...this.unresolved]
+    return [...departures(this.lowerRows, this.rows()), ...this.unresolved]
   }
 
   entryOf(id: string): CatalogEntry | undefined {
@@ -112,6 +153,8 @@ export class XinLoader extends Loader {
   }
 
   async state(id: string): Promise<RowState> {
+    const rejected = this.rejected.get(id)
+    if (rejected !== undefined) return { kind: "failed", error: rejected }
     const entry = this.store[id]
     if (entry === undefined || this.isMissing(id)) return { kind: "missing" }
     if (entry.disabled) return { kind: "disabled" }
@@ -124,9 +167,59 @@ export class XinLoader extends Loader {
   }
 
   async mount(): Promise<void> {
-    for (const row of this.initial) if (this.has(row)) await this.create(row)
+    for (const row of this.initial) if (this.has(row) && !this.rejected.has(row.id)) await this.create(row)
     await this.await()
     this.mounted = true
+  }
+
+  async recompose(runtime: readonly RuntimeBundle[]): Promise<void> {
+    const lower = this.lowerOf(runtime)
+    const applied = applyPatches(lower, this.ownerPatch(), (message) => this.warn(message))
+    const rejected = duplicateFailures(applied.rows, this.composition.catalog)
+    const present = applied.rows.filter((row) => this.has(row) && !rejected.has(row.id))
+    const missing = applied.rows.filter((row) => !this.has(row) || rejected.has(row.id))
+    const previous = [...this.root.data]
+    this.quiet = true
+    try {
+      for (const row of previous) if (!present.some((candidate) => candidate.id === row.id)) this.remove(row.id)
+      for (const row of present) {
+        const old = previous.find((candidate) => candidate.id === row.id)
+        await this.applyRow(old, row).catch(() => undefined)
+      }
+      await this.await()
+    } finally {
+      this.quiet = false
+    }
+    this.lowerRows = lower
+    this.runtimeBundles = runtime.filter((bundle) => !this.compiled.has(bundle.package))
+    this.rejected = rejected
+    this.missing = missing
+    this.unresolved = applied.unresolved
+    this.commit()
+  }
+
+  private lowerOf(runtime: readonly RuntimeBundle[]): Row[] {
+    const mounted = runtime.filter((bundle) => !this.compiled.has(bundle.package))
+    return compose(this.composition.bundles, this.composition.profile, runtimeRows(mounted), (message) =>
+      this.warn(message),
+    )
+  }
+
+  private warn(message: string): void {
+    if (!this.warnings.includes(message)) this.warnings.push(message)
+  }
+
+  private async applyRow(old: Row | undefined, row: Row): Promise<void> {
+    if (old === undefined) {
+      await this.create(row)
+      return
+    }
+    if (old.name !== row.name) {
+      this.remove(row.id)
+      await this.create(row)
+      return
+    }
+    if (changedRow(old, row)) await this.update(row.id, { config: row.config ?? null, disabled: row.disabled ?? null })
   }
 }
 
@@ -161,9 +254,11 @@ export async function boot(runtime: Runtime, composition: Composition): Promise<
   const storage = runtime.state.storage
   const warnings: string[] = []
   const owner = readOwnerPatch(storage, (message) => void warnings.push(message))
+  const runtimeBundles = readBundles(storage, (message) => void warnings.push(message)).map((entry) => entry.bundle)
   await root.plugin(XinLoader, {
     baseUrl: "file:///bundle/",
     composition,
+    runtime: runtimeBundles,
     owner,
     warnings,
     persist: (patch) => writeOwnerPatch(storage, patch),

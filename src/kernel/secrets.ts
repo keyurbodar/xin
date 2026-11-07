@@ -1,11 +1,10 @@
 import { type Context, Service } from "@deepseek-ai/cordis"
 import { obj, str } from "@earendil-works/pi-schema"
 import { defineOp } from "../ops.ts"
+import { RowId } from "../rowid.ts"
 import { Sealer } from "../seal.ts"
 import { redactionExtension } from "./redaction.ts"
 import { PluginSecrets } from "./sealed.ts"
-
-const RowId = str({ minLength: 1, maxLength: 64, pattern: "^[a-z][a-z0-9-]*$" })
 
 type LoaderLookup = { locate(fiber: Context["fiber"]): string | undefined }
 

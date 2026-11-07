@@ -3,6 +3,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Conversation, Harness, Wake } from "@earendil-works/pi-durable"
 import profile from "../xin.profile.json"
 import { BUNDLES, CATALOG } from "./catalog.ts"
+import { XIN_VERSION } from "./catalog.gen.ts"
 import type { Env } from "./env.ts"
 import { HEARTBEAT_MS } from "./kernel/clock.ts"
 import type { DbService } from "./kernel/db.ts"
@@ -30,7 +31,7 @@ export class Home extends DurableObject<Env> {
   }
 
   protected composition(): Composition {
-    return { catalog: CATALOG, bundles: BUNDLES, profile: PROFILE }
+    return { catalog: CATALOG, bundles: BUNDLES, profile: PROFILE, version: XIN_VERSION }
   }
 
   get #current(): Kernel {

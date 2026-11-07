@@ -9,6 +9,13 @@ export type PresetView = {
   readonly tools: PresetTools
 }
 
+export type PresetContribution = {
+  readonly id?: string
+  readonly title: string
+  readonly description: string
+  readonly tools: PresetTools
+}
+
 export type AssignOutcome =
   | { readonly kind: "assigned"; readonly projectId: ProjectId; readonly preset: PresetView }
   | { readonly kind: "bad_args"; readonly reason: string }
@@ -16,6 +23,7 @@ export type AssignOutcome =
 export interface PresetsService {
   list(): readonly PresetView[]
   presetOf(projectId: ProjectId): PresetView
+  contribute(preset: PresetContribution, source: string): Promise<() => Promise<void>>
 }
 
 declare module "@deepseek-ai/cordis" {

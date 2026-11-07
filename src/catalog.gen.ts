@@ -4,25 +4,30 @@ import * as p2 from "../plugins/files/index.ts"
 import * as p3 from "../plugins/files/tools.ts"
 import * as p4 from "../plugins/intake/index.ts"
 import * as p5 from "../plugins/jobs/index.ts"
-import * as p6 from "../plugins/mcp/index.ts"
-import * as p7 from "../plugins/mcp/tools.ts"
-import * as p8 from "../plugins/memory/index.ts"
-import * as p9 from "../plugins/memory/tools.ts"
-import * as p10 from "../plugins/models/index.ts"
-import * as p11 from "../plugins/models/tools.ts"
-import * as p12 from "../plugins/orchestrator/index.ts"
-import * as p13 from "../plugins/orchestrator/tools.ts"
-import * as p14 from "../plugins/presets/index.ts"
-import * as p15 from "../plugins/push/index.ts"
-import * as p16 from "../plugins/questions/index.ts"
-import * as p17 from "../plugins/questions/tools.ts"
-import * as p18 from "../plugins/schedules/index.ts"
-import * as p19 from "../plugins/schedules/tools.ts"
-import * as p20 from "../plugins/skills/index.ts"
-import * as p21 from "../plugins/skills/tools.ts"
-import * as p22 from "../plugins/time/index.ts"
-import * as p23 from "../plugins/watchdog/index.ts"
-import * as p24 from "../plugins/workspace/index.ts"
+import * as p6 from "../plugins/market/index.ts"
+import * as p7 from "../plugins/mcp/index.ts"
+import * as p8 from "../plugins/mcp/tools.ts"
+import * as p9 from "../plugins/mcp/server.ts"
+import * as p10 from "../plugins/memory/index.ts"
+import * as p11 from "../plugins/memory/tools.ts"
+import * as p12 from "../plugins/models/index.ts"
+import * as p13 from "../plugins/models/tools.ts"
+import * as p14 from "../plugins/orchestrator/index.ts"
+import * as p15 from "../plugins/orchestrator/tools.ts"
+import * as p16 from "../plugins/presets/index.ts"
+import * as p17 from "../plugins/presets/preset.ts"
+import * as p18 from "../plugins/prompts/index.ts"
+import * as p19 from "../plugins/push/index.ts"
+import * as p20 from "../plugins/questions/index.ts"
+import * as p21 from "../plugins/questions/tools.ts"
+import * as p22 from "../plugins/schedules/index.ts"
+import * as p23 from "../plugins/schedules/tools.ts"
+import * as p24 from "../plugins/skills/index.ts"
+import * as p25 from "../plugins/skills/tools.ts"
+import * as p26 from "../plugins/skills/skill.ts"
+import * as p27 from "../plugins/time/index.ts"
+import * as p28 from "../plugins/watchdog/index.ts"
+import * as p29 from "../plugins/workspace/index.ts"
 import type { Row } from "./kernel/layers.ts"
 import type { Catalog } from "./kernel/loader.ts"
 
@@ -69,120 +74,159 @@ export const CATALOG: Catalog = {
     local: true,
     source: "xin-plugin-jobs@0.1.0",
   },
-  mcp: {
+  market: {
     plugin: p6,
+    title: "Market",
+    description: "Discovery, install and update checks for plugin packages.",
+    local: true,
+    source: "xin-plugin-market@0.1.0",
+  },
+  mcp: {
+    plugin: p7,
     title: "MCP",
     description: "MCP servers as deferred tools.",
     local: true,
     source: "xin-plugin-mcp@0.1.0",
   },
   "tool-mcp": {
-    plugin: p7,
+    plugin: p8,
     title: "MCP tools",
     description: "The model-facing mcp tools. Disable to hide them; the mcp service keeps running.",
     local: true,
     source: "xin-plugin-mcp@0.1.0",
   },
+  "mcp-server": {
+    plugin: p9,
+    title: "MCP server",
+    description: "One MCP server connection carried by a row, for bundles.",
+    multiple: true,
+    local: true,
+    source: "xin-plugin-mcp@0.1.0",
+  },
   memory: {
-    plugin: p8,
+    plugin: p10,
     title: "Memory",
     description: "Notes with FTS recall and the Dreamer.",
     local: true,
     source: "xin-plugin-memory@0.1.0",
   },
   "tool-memory": {
-    plugin: p9,
+    plugin: p11,
     title: "Memory tools",
     description: "The model-facing memory tools. Disable to hide them; the memory service keeps running.",
     local: true,
     source: "xin-plugin-memory@0.1.0",
   },
   models: {
-    plugin: p10,
+    plugin: p12,
     title: "Models",
     description: "Run-time model catalog, credentials and set_model.",
     local: true,
     source: "xin-plugin-models@0.1.0",
   },
   "tool-models": {
-    plugin: p11,
+    plugin: p13,
     title: "Models tools",
     description: "The model-facing models tools. Disable to hide them; the models service keeps running.",
     local: true,
     source: "xin-plugin-models@0.1.0",
   },
   orchestrator: {
-    plugin: p12,
+    plugin: p14,
     title: "Orchestrator",
     description: "Coordinator tools and threads.",
     local: true,
     source: "xin-plugin-orchestrator@0.1.0",
   },
   "tool-orchestrator": {
-    plugin: p13,
+    plugin: p15,
     title: "Orchestrator tools",
     description: "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running.",
     local: true,
     source: "xin-plugin-orchestrator@0.1.0",
   },
   presets: {
-    plugin: p14,
+    plugin: p16,
     title: "Presets",
     description: "Named agent presets that choose a project's tool rows.",
     local: true,
     source: "xin-plugin-presets@0.1.0",
   },
+  preset: {
+    plugin: p17,
+    title: "Preset",
+    description: "One agent preset carried by a row, for bundles.",
+    multiple: true,
+    local: true,
+    source: "xin-plugin-presets@0.1.0",
+  },
+  prompt: {
+    plugin: p18,
+    title: "Prompt",
+    description: "One prompt section carried by a row.",
+    multiple: true,
+    local: true,
+    source: "xin-plugin-prompts@0.1.0",
+  },
   push: {
-    plugin: p15,
+    plugin: p19,
     title: "Web Push",
     description: "Encrypted pushes when no tab is open.",
     local: true,
     source: "xin-plugin-push@0.1.0",
   },
   questions: {
-    plugin: p16,
+    plugin: p20,
     title: "Questions",
     description: "ask_user and pending requests.",
     local: true,
     source: "xin-plugin-questions@0.1.0",
   },
   "tool-questions": {
-    plugin: p17,
+    plugin: p21,
     title: "Questions tools",
     description: "The model-facing questions tools. Disable to hide them; the questions service keeps running.",
     local: true,
     source: "xin-plugin-questions@0.1.0",
   },
   schedules: {
-    plugin: p18,
+    plugin: p22,
     title: "Schedules",
     description: "RRULE and one-shot schedules.",
     local: true,
     source: "xin-plugin-schedules@0.1.0",
   },
   "tool-schedules": {
-    plugin: p19,
+    plugin: p23,
     title: "Schedules tools",
     description: "The model-facing schedules tools. Disable to hide them; the schedules service keeps running.",
     local: true,
     source: "xin-plugin-schedules@0.1.0",
   },
   skills: {
-    plugin: p20,
+    plugin: p24,
     title: "Skills",
     description: "Markdown skills loaded on demand.",
     local: true,
     source: "xin-plugin-skills@0.1.0",
   },
   "tool-skills": {
-    plugin: p21,
+    plugin: p25,
     title: "Skills tools",
     description: "The model-facing skills tools. Disable to hide them; the skills service keeps running.",
     local: true,
     source: "xin-plugin-skills@0.1.0",
   },
+  skill: {
+    plugin: p26,
+    title: "Skill",
+    description: "One skill carried by a row, for bundles.",
+    multiple: true,
+    local: true,
+    source: "xin-plugin-skills@0.1.0",
+  },
   time: {
-    plugin: p22,
+    plugin: p27,
     title: "Current time",
     description: "A current_time tool in a configurable timezone.",
     multiple: true,
@@ -190,14 +234,14 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-time@0.1.0",
   },
   watchdog: {
-    plugin: p23,
+    plugin: p28,
     title: "Watchdog",
     description: "Fails stalled threads and overdue jobs.",
     local: true,
     source: "xin-plugin-watchdog@0.1.0",
   },
   workspace: {
-    plugin: p24,
+    plugin: p29,
     title: "Workspace",
     description: "Projects and thread documents.",
     local: true,
@@ -214,6 +258,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
   ],
   "xin-plugin-intake": [{ id: "intake", name: "cordis:intake" }],
   "xin-plugin-jobs": [{ id: "jobs", name: "cordis:jobs" }],
+  "xin-plugin-market": [{ id: "market", name: "cordis:market" }],
   "xin-plugin-mcp": [
     { id: "mcp", name: "cordis:mcp" },
     { id: "tool-mcp", name: "cordis:tool-mcp" },
@@ -231,6 +276,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
     { id: "tool-orchestrator", name: "cordis:tool-orchestrator" },
   ],
   "xin-plugin-presets": [{ id: "presets", name: "cordis:presets" }],
+  "xin-plugin-prompts": [],
   "xin-plugin-push": [{ id: "push", name: "cordis:push" }],
   "xin-plugin-questions": [
     { id: "questions", name: "cordis:questions" },
@@ -248,3 +294,5 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
   "xin-plugin-watchdog": [{ id: "watchdog", name: "cordis:watchdog" }],
   "xin-plugin-workspace": [{ id: "workspace", name: "cordis:workspace" }],
 }
+
+export const XIN_VERSION = "0.1.0"

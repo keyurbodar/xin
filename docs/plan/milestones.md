@@ -143,3 +143,19 @@ Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](.
 **Proof (test that must pass)**: `plugins/intake/batch.test.ts` (a listener rewrites the text the model sees; another drops the batch), `plugins/orchestrator/settled.test.ts` (one event with the result), `src/kernel/install.test.ts` (recording, idempotency, rejection, deployer payload, reconcile across eviction, owner-only route), `plugins/presets/presets.test.ts` (a preset hides tool rows from the coordinator and its threads, survives eviction, falls back to the default). The whole suite passes with zero boundary violations.
 
 **Depends on**: P4.
+
+## P6 · runtime bundles and contribution rows
+
+**Builds**: a fourth layer of runtime bundles (`kv` `plugins.bundles`) between the profile patch and the owner patch, mounted live with rollback (`docs/plan/architecture/12-market.md` §Runtime bundles). The `packages` service gains `bundles`, `put`, `remove` and `rollback`, with ops `bundle.list`, `bundle.put` (local), `bundle.remove` and `bundle.rollback`. Contribution rows `prompt`, `skill`, `mcp-server` and `preset`. `XIN_VERSION` in the generated catalog. The semver subset moves to `src/semver.ts`.
+
+**Proof (test that must pass)**: `src/kernel/bundles.test.ts` (a local bundle of a prompt and a skill mounts live and the model sees both; an update replaces it; a bundle with a failing row rolls back to the previous version; rollback and remove; an owner config override survives an update; everything survives eviction; invalid bundles are rejected whole), plus a test per contribution row.
+
+**Depends on**: P5.
+
+## P7 · market, discovery and updates
+
+**Builds**: the `market` plugin (`docs/plan/architecture/12-market.md` §Market): indexes plus npm keyword search, statuses, `market.search`, `market.entry`, `market.install`, `market.update`, `market.refresh`, `market.updates`, the daily update check with the `market` home part, and verified tarball fetch (sha512, gunzip, ustar, `$file` inlining).
+
+**Proof (test that must pass)**: `plugins/market/market.test.ts` against a fake registry transport: Lahn publishes 1.1.0 of an installed bundle, the check reports one update, `market.update` mounts 1.1.0 live, and `bundle.rollback` returns to 1.0.0; a code package update records `name@1.1.0` pending; a tarball with a wrong integrity is refused; an incompatible `engines.xin` is never offered.
+
+**Depends on**: P6.

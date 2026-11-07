@@ -29,7 +29,7 @@ flowchart LR
   - Use `isolation: "worktree"` only when two lanes must touch the same file. Never run more than 4 worktrees at once, and only when `bun scripts/gate.ts status` reports more than 15 GB free.
   - A worktree needs its own `bun install`. Bun hardlinks from its global cache, so the cost is small but not zero. The lead removes the worktree (`git worktree remove`) as soon as its lane is merged.
 - **Concurrency**: at most 24 live workers. Workers are I/O-bound (model calls), and the gate runner is the only CPU-heavy process, one job at a time.
-- **Gate use**: a worker may `gate submit test --only=<its test path>` followed by `gate wait <id>`, at most 3 times per lane. Nothing else. No `bun install` in the shared checkout (only the lead installs dependencies), no `wrangler dev`, no full gate.
+- **Gate use**: a worker may `gate submit lint types test --only=<its test path>` followed by `gate wait <id>`, at most 3 times per lane. Nothing else. No `bun install` in the shared checkout (only the lead installs dependencies), no `wrangler dev`, no full gate.
 - **A worker never commits** in the shared checkout. In a worktree it commits on its own branch, and the lead merges it.
 - **Report contract**: the worker's final message ends with:
   ```

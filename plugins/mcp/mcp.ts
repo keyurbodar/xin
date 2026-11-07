@@ -8,8 +8,9 @@ import {
 import { type ToolRegistration } from "@earendil-works/pi-durable"
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import { arr, compile, map, obj, opt, str, unknown, type Static } from "@earendil-works/pi-schema"
+import { createContributions } from "../../src/contributions.ts"
 import type { JobsService } from "../../src/contracts/jobs.ts"
-import type { McpService } from "../../src/contracts/mcp.ts"
+import type { McpServerContribution, McpService } from "../../src/contracts/mcp.ts"
 import type { Env } from "../../src/env.ts"
 import { defineOp, OpRejected, type Op } from "../../src/ops.ts"
 import { Sealer, SealedSchema, type Sealed } from "../../src/seal.ts"
@@ -55,6 +56,19 @@ const displayUrl = (raw: string): string => {
   return `${url.origin}${url.pathname}`
 }
 
+const serverUrl = (raw: string): URL => {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new Error(`"${raw}" is not a valid URL`)
+  }
+  if (url.protocol !== "https:") throw new Error(`MCP server URLs must be https, not ${url.protocol.slice(0, -1)}`)
+  if (url.username !== "" || url.password !== "")
+    throw new Error("MCP server URLs may not carry credentials; send them as headers")
+  return url
+}
+
 const hideQuery = (text: string, raw: string): string => {
   const query = new URL(raw).search
   return query === "" ? text : text.split(query).join("")
@@ -87,6 +101,19 @@ const summarize = (name: string, server: StoredServer) => ({
 
 type Row = { readonly name: string; readonly raw: string }
 
+type Connection = {
+  readonly name: string
+  readonly url: string
+  readonly tools: readonly StoredTool[]
+  readonly registrations: readonly ToolRegistration[]
+  readonly error: string | undefined
+}
+
+type Ownership =
+  | { readonly kind: "none" }
+  | { readonly kind: "stored" }
+  | { readonly kind: "row"; readonly source: string }
+
 export type McpPorts = {
   readonly env: Env
   readonly db: SqliteDatabase
@@ -100,14 +127,40 @@ export type McpModule = {
   start(): Promise<void>
 }
 
+async function withConnection<T>(
+  url: string,
+  headers: Readonly<Record<string, string>> | undefined,
+  run: (client: McpClient) => Promise<T>,
+): Promise<T> {
+  const client = new McpClient(CLIENT)
+  try {
+    await client.connect(
+      new StreamableHttpTransport({
+        url,
+        openGetStream: false,
+        ...(headers === undefined ? {} : { headers: { ...headers } }),
+      }),
+    )
+    return await run(client)
+  } finally {
+    await client.close().catch(() => undefined)
+  }
+}
+
 export function create(ports: McpPorts): McpModule {
   const sealer = new Sealer(ports.env.KEK)
   const definitions = new Map<string, readonly ToolRegistration[]>()
+  const contributed = createContributions<Connection>({
+    key: (connection) => connection.name,
+    label: (name) => `MCP server "${name}"`,
+  })
 
   const tools = (): readonly ToolRegistration[] => {
+    const sets = new Map<string, readonly ToolRegistration[]>()
+    for (const connection of contributed.values()) sets.set(connection.name, connection.registrations)
+    for (const [name, registered] of definitions) sets.set(name, registered)
     const byName = new Map<string, ToolRegistration>()
-    const sorted = [...definitions.entries()].toSorted(([left], [right]) => left.localeCompare(right))
-    for (const [, registered] of sorted)
+    for (const [, registered] of [...sets.entries()].toSorted(([left], [right]) => left.localeCompare(right)))
       for (const tool of registered) if (!byName.has(tool.name)) byName.set(tool.name, tool)
     return [...byName.values()]
   }
@@ -134,6 +187,12 @@ export function create(ports: McpPorts): McpModule {
   const readServer = async (name: string): Promise<StoredServer | undefined> => {
     const raw = await readRaw(name)
     return raw === undefined ? undefined : decodeServer(raw)
+  }
+
+  const ownerOf = async (name: string): Promise<Ownership> => {
+    const row = contributed.get(name)
+    if (row !== undefined) return { kind: "row", source: row.source }
+    return (await readRaw(name)) === undefined ? { kind: "none" } : { kind: "stored" }
   }
 
   const writeServer = async (name: string, server: StoredServer): Promise<void> => {
@@ -166,19 +225,7 @@ export function create(ports: McpPorts): McpModule {
     run: (client: McpClient) => Promise<T>,
   ): Promise<T> => {
     const headers = server.headers === undefined ? undefined : await headersOf(name, server.headers)
-    const client = new McpClient(CLIENT)
-    try {
-      await client.connect(
-        new StreamableHttpTransport({
-          url: server.url,
-          openGetStream: false,
-          ...(headers === undefined ? {} : { headers }),
-        }),
-      )
-      return await run(client)
-    } finally {
-      await client.close().catch(() => undefined)
-    }
+    return withConnection(server.url, headers, run)
   }
 
   const callTool = async (
@@ -248,6 +295,54 @@ export function create(ports: McpPorts): McpModule {
     for (const name of names) await refresh(name)
   }
 
+  const connect = async (server: McpServerContribution, source: string): Promise<() => void> => {
+    const url = serverUrl(server.url).toString()
+    const owner = await ownerOf(server.name)
+    switch (owner.kind) {
+      case "stored":
+        throw new Error(`an MCP server named "${server.name}" is already stored; remove it or rename this row`)
+      case "row":
+        throw new Error(
+          `an MCP server named "${server.name}" is already contributed by ${owner.source}; rename this row`,
+        )
+      case "none":
+        break
+    }
+    const headers = server.headers
+    let cached: readonly StoredTool[] = []
+    let error: string | undefined
+    try {
+      const listed = await withConnection(url, headers, (client) => client.listTools())
+      cached = listed.map(cacheTool)
+    } catch (caught) {
+      error = hideQuery(messageOf(caught), url)
+    }
+    const jobs = ports.jobs
+    const registrations = cached.map((tool) =>
+      jobs.tool(
+        {
+          name: toolName(server.name, tool.name),
+          description: tool.description,
+          parameters: parametersOf(tool.inputSchema),
+          deferred: true,
+        },
+        async (args, run) => {
+          const result = await withConnection(url, headers, (client) =>
+            client.callTool(tool.name, args, run.signal === undefined ? undefined : { signal: run.signal }),
+          )
+          return { output: toLlmContent(result), isError: result.isError === true }
+        },
+      ),
+    )
+    const connection: Connection = { name: server.name, url, tools: cached, registrations, error }
+    const remove = contributed.add(source, connection)
+    changed()
+    return () => {
+      remove()
+      changed()
+    }
+  }
+
   const add: Op = defineOp({
     name: "mcp.add",
     args: obj({
@@ -257,14 +352,15 @@ export function create(ports: McpPorts): McpModule {
     }),
     actors: ["owner"],
     run: async (_api, { name, url, headers }) => {
+      const owner = await ownerOf(name)
+      if (owner.kind === "row")
+        throw new OpRejected("bad_args", `MCP server "${name}" is already contributed by ${owner.source}`)
       let absolute: URL
       try {
-        absolute = new URL(url)
-      } catch {
-        throw new OpRejected("bad_args", `"${url}" is not a valid URL`)
+        absolute = serverUrl(url)
+      } catch (error) {
+        throw new OpRejected("bad_args", messageOf(error))
       }
-      if (absolute.username !== "" || absolute.password !== "")
-        throw new OpRejected("bad_args", "MCP server URLs may not carry credentials; send them as headers")
       const sealed = headers === undefined ? undefined : await sealer.seal(JSON.stringify(headers), label(name))
       await writeServer(name, {
         url: absolute.toString(),
@@ -293,14 +389,31 @@ export function create(ports: McpPorts): McpModule {
     name: "mcp.list",
     args: obj({}),
     actors: ["owner"],
-    run: async () =>
-      (await rows()).map((row) => {
+    run: async () => {
+      const stored = await rows()
+      const names = new Set(stored.map((row) => row.name))
+      const storedViews = stored.map((row) => {
         const server = decodeServer(row.raw)
         return server === undefined ? { name: row.name, error: "corrupt" } : summarize(row.name, server)
-      }),
+      })
+      const contributedViews = contributed.entries().flatMap(({ key, value, source }) =>
+        names.has(key)
+          ? []
+          : [
+              {
+                name: value.name,
+                url: displayUrl(value.url),
+                tools: value.tools.length,
+                ...(value.error === undefined ? {} : { error: value.error }),
+                source,
+              },
+            ],
+      )
+      return [...storedViews, ...contributedViews].toSorted((left, right) => left.name.localeCompare(right.name))
+    },
   })
 
-  const service: McpService = { tools }
+  const service: McpService = { tools, connect }
 
   return {
     service,

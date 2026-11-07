@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-market",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Find, install and update plugin packages from npm and market indexes.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "market": {
+        "module": "./index.ts",
+        "title": "Market",
+        "description": "Discovery, install and update checks for plugin packages."
+      }
+    }
+  }
+}

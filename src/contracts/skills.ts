@@ -6,9 +6,17 @@ export type Skill = {
   readonly body: string
 }
 
+export type SkillSource =
+  | { readonly kind: "stored" }
+  | { readonly kind: "bundled" }
+  | { readonly kind: "row"; readonly row: string }
+
+export type SkillEntry = Skill & { readonly source: SkillSource }
+
 export interface SkillsService {
-  /** Every skill the owner can load, sorted by name. */
-  list(): Promise<readonly Skill[]>
+  /** Every skill that wins for its name, sorted by name. A stored skill wins over a contributed one. */
+  list(): Promise<readonly SkillEntry[]>
+  contribute(skill: Skill, source: string): () => void
 }
 
 declare module "@deepseek-ai/cordis" {

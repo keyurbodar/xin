@@ -26,6 +26,13 @@ type Found = {
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"))
 
+function rootVersion(): string {
+  const value = readJson(join(import.meta.dirname, "..", "package.json"))
+  const version = typeof value === "object" && value !== null ? Reflect.get(value, "version") : undefined
+  if (typeof version !== "string") throw new Error("the root package.json needs a version")
+  return version
+}
+
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
 
@@ -142,6 +149,8 @@ function render(found: readonly Found[]): string {
     `export const CATALOG: Catalog = {${catalog.length === 0 ? "" : `\n${catalog.join("\n")}\n`}}`,
     "",
     `export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {${bundles.length === 0 ? "" : `\n${bundles.join("\n")}\n`}}`,
+    "",
+    `export const XIN_VERSION = ${JSON.stringify(rootVersion())}`,
     "",
   ].join("\n")
 }
