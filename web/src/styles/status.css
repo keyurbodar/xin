@@ -1,0 +1,42 @@
+@keyframes dQ {
+  0% { opacity: 1; }
+  11%, 100% { opacity: 0.12; }
+}
+@keyframes dW {
+  0% { opacity: 1; }
+  70%, 100% { opacity: 0.12; }
+}
+@keyframes dP {
+  0%, 100% { opacity: 0.14; }
+  50% { opacity: 1; }
+}
+@keyframes dF {
+  0% { opacity: 0.12; }
+  14%, 88% { opacity: 1; }
+  100% { opacity: 0.12; }
+}
+@keyframes dX {
+  0%, 20%, 40%, 100% { opacity: 1; }
+  10%, 30% { opacity: 0.2; }
+}
+@keyframes dBreathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.38; }
+}
+@keyframes dC {
+  0% { opacity: 1; }
+  30%, 100% { opacity: 0.35; }
+}
+
+.d-q { animation: dQ 4.5s linear infinite; }
+.d-w { animation: dW 0.96s linear infinite; }
+.d-p { animation: dP 1.6s ease-in-out infinite; }
+.d-f { animation: dF 3.2s infinite; }
+.d-x { animation: dX 2.4s infinite; }
+.d-pz { animation: dBreathe 2.4s ease-in-out infinite; }
+.d-c { animation: dC 3s linear infinite; }
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
