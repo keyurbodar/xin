@@ -142,14 +142,10 @@ export function Usage(): JSX.Element {
                 <div class="min-w-0">
                   <Group title="By project" detail="Sorted by cost">
                     <UsageTable
-                      tokens={false}
-                      empty={
-                        summary().byProject.length === 0
-                          ? "Projects appear here once they run."
-                          : "No project has spend yet."
-                      }
+                      tokens={true}
+                      empty="Projects appear here once they run."
                       rows={summary()
-                        .byProject.filter((entry) => entry.spend > 0)
+                        .byProject.filter((entry) => entry.spend > 0 || entry.tokens > 0)
                         .map(
                           (entry): Row => ({
                             key: entry.id,
