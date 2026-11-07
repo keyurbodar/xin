@@ -1,6 +1,6 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import type { ModelsService } from "../../src/contracts/models.ts"
-import { PluginSecrets } from "../../src/kernel/sealed.ts"
+import { CredentialStore } from "../../src/kernel/sealed.ts"
 import { Sealer } from "../../src/seal.ts"
 
 const MIN_SECRET_LENGTH = 4
@@ -13,18 +13,18 @@ export type SecretPort = {
 
 export async function liveSecrets(port: SecretPort): Promise<readonly string[]> {
   const found = new Set<string>(await port.models.credentialSecrets())
-  await pluginSecrets(port.db, new Sealer(port.kek), found)
+  await addCredentialValues(port.db, new Sealer(port.kek), found)
   return [...found]
     .filter((value) => value.length >= MIN_SECRET_LENGTH)
     .toSorted((left, right) => right.length - left.length)
 }
 
-async function pluginSecrets(db: SqliteDatabase, sealer: Sealer, found: Set<string>): Promise<void> {
-  const plugins = new PluginSecrets(db, sealer)
+async function addCredentialValues(db: SqliteDatabase, sealer: Sealer, found: Set<string>): Promise<void> {
+  const credentials = new CredentialStore(db, sealer)
   try {
-    await plugins.load()
+    await credentials.load()
   } catch {
     return
   }
-  for (const value of plugins.values()) found.add(value)
+  for (const value of credentials.values()) found.add(value)
 }

@@ -11,12 +11,11 @@ const pending = (ack: { result?: unknown }): unknown => field(ack.result, "pendi
 
 const deployerStub = async (stub: Stub): Promise<void> => {
   await cmd(stub, `off-${crypto.randomUUID()}`, "plugin.enable", { id: "deploy-hook", enabled: false })
-  const inserted = await cmd(stub, `in-${crypto.randomUUID()}`, "plugin.insert", {
-    id: "fake-deployer",
-    plugin: "k-package-deployer",
-    config: {},
+  const put = await cmd(stub, `in-${crypto.randomUUID()}`, "bundle.put", {
+    package: "xin-test-deployer",
+    rows: [{ id: "fake-deployer", plugin: "k-package-deployer", config: {} }],
   })
-  expect(field(inserted.result, "row")).toMatchObject({ state: { kind: "active" } })
+  expect(put.result).toMatchObject({ application: "applied" })
 }
 
 const writeStored = (stub: Stub, value: unknown): Promise<void> =>
@@ -32,6 +31,12 @@ describe("package specs", () => {
     expect(parseSpec("github:o/r#tag")).toEqual({ kind: "git", url: "github:o/r", ref: "tag" })
     expect(parseSpec("git+https://host/x.git")).toEqual({ kind: "git", url: "git+https://host/x.git" })
     expect(parseSpec("https://host/x.git#v1")).toEqual({ kind: "git", url: "https://host/x.git", ref: "v1" })
+    expect(parseSpec(`git+https://host/x.git#${"a".repeat(40)}&path:/packages/a`)).toEqual({
+      kind: "git",
+      url: "git+https://host/x.git",
+      ref: "a".repeat(40),
+      path: "packages/a",
+    })
   })
 
   it("rejects protocols, tarballs, whitespace and shell characters", () => {
@@ -47,6 +52,8 @@ describe("package specs", () => {
       "$(whoami)",
       "-x",
       "left-pad`",
+      "git+https://host/x.git#abc&path:/../x",
+      "git+https://host/x.git#abc&path:/a b",
     ])
       expect(parseSpec(spec), spec).toBeUndefined()
   })

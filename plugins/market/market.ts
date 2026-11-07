@@ -1,14 +1,14 @@
-import type { JsonValue } from "@earendil-works/chord"
 import type { SqliteDatabase, SqliteMigration } from "@earendil-works/chord/sqlite"
-import type { JsonObject } from "@earendil-works/pi-durable"
 import { arr, compile, obj, opt, str } from "@earendil-works/pi-schema"
+import type { JsonValue } from "@earendil-works/chord"
 import {
   BundlePatchArg,
   BundleRowArg,
   normalizePatch,
   normalizeRow,
+  parseSpec,
   Schema,
-  sourcePackage,
+  specId,
   toJson,
   type BundleApplication,
   type BundlePatch,
@@ -19,50 +19,45 @@ import {
 import { defineOp, OpRejected, type Op } from "../../src/ops.ts"
 import { compareVersions } from "../../src/semver.ts"
 import {
-  registry,
-  type Abbreviated,
-  type IndexEntry,
-  type Registry,
-  type RegistryFailure,
-  type RegistryVersion,
-} from "./registry.ts"
-import { compatible, kindOf, offeredVersion, status, type MarketStatus, type PackageKind } from "./select.ts"
-import { extractBundle, fetchTarball, inlineFiles, tarballAllowed } from "./tarball.ts"
-
-export const MAX_CHECK_REQUESTS = 40
-export const MAX_SEARCH_ENTRIES = 20
+  isSemver,
+  marketInstallTarget,
+  MarketIndexError,
+  parseMarketIndex,
+  type LocalizedText,
+  type MarketIndex,
+  type MarketPlugin,
+  type MarketVersion,
+} from "./marketindex.ts"
+import { fetchJson, fetchVersion, type RegistryFailure, type VersionDocument } from "./registry.ts"
+import { compatible, installationOf, kindOf, offeredVersion, type InstalledFact } from "./select.ts"
+import { extractBundle, fetchTarball } from "./tarball.ts"
 
 const MAX_REQUESTS = 40
-const HOUR_MS = 3_600_000
 const OWNER = ["owner"] as const
 
 export const Config = Schema.object({
   registry: Schema.string()
     .default("https://registry.npmjs.org")
-    .description("The npm registry the market reads and the host a bundle tarball must come from."),
+    .description("The npm registry read for a version whose index entry names no registry."),
   indexes: Schema.array(Schema.string().pattern(/^https:\/\//))
     .default([])
     .max(8)
-    .description("Static market index files, in dsh's format 1, at most 8 https URLs."),
-  search: Schema.boolean().default(true).description("Also search the registry for the keyword xin-plugin."),
-  checkHours: Schema.number().min(1).default(24).description("How often the update check runs."),
+    .description("Market index files in dsh's format 1, at most 8 https URLs."),
+  cacheTtlMs: Schema.number().min(1).default(600_000).description("How long a successfully read index stays cached."),
 })
 
 export type MarketConfig = Schemastery.TypeT<typeof Config>
 
-export type PendingList = {
-  readonly add: readonly string[]
-  readonly remove: readonly string[]
-}
-
 export type InstalledList = {
   readonly installed: readonly { readonly package: string; readonly version: string }[]
-  readonly pending: PendingList
+  readonly pending: {
+    readonly add: readonly string[]
+    readonly remove: readonly string[]
+  }
 }
 
 export type PackagesPort = {
   readonly version: string
-  readonly local: readonly string[]
   list(): InstalledList
   bundles(): Promise<readonly { readonly package: string; readonly source: BundleSource }[]>
   put(bundle: RuntimeBundle): Promise<BundleApplication>
@@ -74,19 +69,10 @@ export type MarketPorts = {
   readonly fetch: typeof fetch
   readonly db: SqliteDatabase
   readonly packages: PackagesPort
-  readonly publish: () => Promise<void>
 }
-
-export type Update = { readonly package: string; readonly installed: string; readonly latest: string }
-
-export type Updates = { readonly checkedAt: number | null; readonly updates: readonly Update[] }
 
 export type MarketFeature = {
   readonly ops: readonly Op[]
-  readonly home: () => Promise<JsonObject>
-  due(): Promise<number | undefined>
-  fire(now: number): Promise<void>
-  refresh(): Promise<Updates>
 }
 
 export const MIGRATIONS: readonly SqliteMigration[] = [
@@ -95,6 +81,14 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
     statements: [
       "CREATE TABLE market_versions (package TEXT PRIMARY KEY, version TEXT NOT NULL, checked_at INTEGER NOT NULL)",
       "CREATE TABLE market_checks (id TEXT PRIMARY KEY, checked_at INTEGER NOT NULL)",
+    ],
+  },
+  {
+    version: 2,
+    statements: [
+      "DROP TABLE IF EXISTS market_versions",
+      "DROP TABLE IF EXISTS market_checks",
+      "CREATE TABLE market_indexes (url TEXT PRIMARY KEY, document TEXT NOT NULL, expires_at INTEGER NOT NULL)",
     ],
   },
 ]
@@ -115,18 +109,46 @@ const InstallArgs = obj({
   name: str({ minLength: 1, maxLength: 200 }),
   version: opt(str({ minLength: 1, maxLength: 100 })),
 })
-
-const failureText = (error: RegistryFailure): string => `${error.kind}: ${error.message}`
-
-function bad(message: string): never {
-  throw new OpRejected("bad_args", message)
-}
+const UpdateArgs = obj({
+  name: str({ minLength: 1, maxLength: 200 }),
+  version: str({ minLength: 1, maxLength: 100 }),
+})
 
 type Declaration = {
   readonly rows: readonly BundleRow[]
   readonly patch: readonly BundlePatch[]
   readonly requires: readonly string[]
 }
+
+type Budget = { left: number }
+
+type IndexSummary = {
+  readonly url: string
+  readonly title?: LocalizedText
+  readonly description?: LocalizedText
+  readonly error?: string
+}
+
+type Loaded = {
+  readonly plugins: readonly MarketPlugin[]
+  readonly summaries: readonly IndexSummary[]
+}
+
+type Cached = { readonly document: string; readonly expires_at: number }
+
+function bad(message: string): never {
+  throw new OpRejected("bad_args", message)
+}
+
+const failureText = (error: RegistryFailure): string => `${error.kind}: ${error.message}`
+
+const countingFetch =
+  (fetchImpl: typeof fetch, budget: Budget): typeof fetch =>
+  (input, init) => {
+    if (budget.left <= 0) throw new Error("the market request budget is exhausted")
+    budget.left -= 1
+    return fetchImpl(input, init)
+  }
 
 function declarationOf(xin: unknown, label: string): Declaration {
   if (!bundleCheck.check(xin)) {
@@ -144,189 +166,181 @@ function declarationOf(xin: unknown, label: string): Declaration {
   }
 }
 
-type InstalledFact = {
-  readonly version: string
-  readonly source: "code" | "bundle"
-  readonly local: boolean
-  readonly pending?: string
+function maybeDeclaration(xin: unknown, label: string): Declaration | undefined {
+  try {
+    return declarationOf(xin, label)
+  } catch (error) {
+    if (error instanceof OpRejected) return undefined
+    throw error
+  }
 }
 
-type Installed = ReadonlyMap<string, InstalledFact>
-
-type SearchItem = {
-  readonly name: string
-  readonly title: string | null
-  readonly description: string | null
-  readonly icon: string | null
-  readonly author: string | null
-  readonly repository: string | null
-  readonly kind: PackageKind | null
-  readonly status: MarketStatus
+const textOf = (value: LocalizedText | undefined): readonly string[] => {
+  if (value === undefined) return []
+  return typeof value === "string" ? [value] : Object.values(value)
 }
 
-type Budget = { left: number }
+function matches(plugin: MarketPlugin, query: string | undefined): boolean {
+  const text = query?.trim().toLowerCase() ?? ""
+  if (text === "") return true
+  return [plugin.name, plugin.author ?? "", ...textOf(plugin.title), ...textOf(plugin.description)].some((value) =>
+    value.toLowerCase().includes(text),
+  )
+}
 
-const budgetOf = (limit: number): Budget => ({ left: limit })
+function applicationRows(application: BundleApplication): JsonValue {
+  return application.application === "failed" ? application.rows.map((row) => ({ id: row.id, error: row.error })) : []
+}
 
-const countingFetch =
-  (fetchImpl: typeof fetch, budget: Budget): typeof fetch =>
-  (input, init) => {
-    if (budget.left <= 0) throw new Error("the market request budget is exhausted")
-    budget.left -= 1
-    return fetchImpl(input, init)
-  }
-
-const checkTargets = (
-  known: Installed,
-  checked: ReadonlyMap<string, number>,
-): readonly { readonly package: string; readonly version: string; readonly checkedAt: number }[] =>
-  [...known]
-    .filter(([, fact]) => !fact.local && fact.version !== "")
-    .map(([name, fact]) => ({ package: name, version: fact.version, checkedAt: checked.get(name) ?? 0 }))
-    .toSorted((left, right) => left.checkedAt - right.checkedAt || left.package.localeCompare(right.package))
-
-const updatesOf = (known: Installed, stored: ReadonlyMap<string, string>): readonly Update[] => {
-  const found: Update[] = []
-  for (const [name, fact] of known) {
-    if (fact.local || fact.version === "") continue
-    const latest = stored.get(name)
-    if (latest === undefined || compareVersions(latest, fact.version) <= 0) continue
-    found.push({ package: name, installed: fact.version, latest })
-  }
-  return found.toSorted((left, right) => left.package.localeCompare(right.package))
+function factOf(
+  facts: ReadonlyMap<string, InstalledFact>,
+  name: string,
+  version: MarketVersion | undefined,
+): InstalledFact | undefined {
+  const direct = facts.get(name)
+  if (direct !== undefined || version === undefined) return direct
+  const spec = parseSpec(marketInstallTarget(name, version).spec)
+  if (spec === undefined || !facts.has(specId(spec))) return undefined
+  return { kind: "installed", version: version.version }
 }
 
 export function createMarket(ports: MarketPorts): MarketFeature {
   const { config, db } = ports
   const xinVersion = ports.packages.version
-  const startedAt = Date.now()
-  const apiFor = (budget: Budget): Registry =>
-    registry({ fetch: countingFetch(ports.fetch, budget), baseUrl: config.registry })
 
-  const installedFacts = async (): Promise<Installed> => {
-    const listed = ports.packages.list()
-    const locals = new Set(ports.packages.local)
+  const installedFacts = async (): Promise<ReadonlyMap<string, InstalledFact>> => {
     const facts = new Map<string, InstalledFact>()
-    for (const entry of listed.installed) {
-      facts.set(entry.package, { version: entry.version, source: "code", local: locals.has(entry.package) })
-    }
+    const listed = ports.packages.list()
+    for (const entry of listed.installed) facts.set(entry.package, { kind: "provided" })
     for (const bundle of await ports.packages.bundles()) {
       if (facts.has(bundle.package)) continue
-      const local = bundle.source.kind === "local"
       facts.set(bundle.package, {
-        version: local ? "local" : bundle.source.version,
-        source: "bundle",
-        local: local || locals.has(bundle.package),
+        kind: "installed",
+        ...(bundle.source.kind === "registry" ? { version: bundle.source.version } : {}),
       })
     }
-    for (const spec of listed.pending.add) {
-      const name = sourcePackage(spec)
-      const fact = facts.get(name)
-      facts.set(
-        name,
-        fact === undefined ? { version: "", source: "code", local: false, pending: spec } : { ...fact, pending: spec },
-      )
+    for (const text of listed.pending.add) {
+      const spec = parseSpec(text)
+      if (spec === undefined) continue
+      const id = specId(spec)
+      if (facts.has(id)) continue
+      facts.set(id, {
+        kind: "installed",
+        ...(spec.kind === "registry" && spec.range !== undefined ? { version: spec.range } : {}),
+      })
     }
     return facts
   }
 
-  const statusOf = (name: string, abbreviated: Abbreviated, known: Installed): MarketStatus => {
-    const fact = known.get(name)
-    return status({
-      local: fact?.local === true,
-      ...(fact === undefined || fact.version === "" ? {} : { installed: { version: fact.version } }),
-      ...(fact?.pending === undefined ? {} : { pending: fact.pending }),
-      versions: abbreviated.versions,
-      distTags: abbreviated.distTags,
-      xinVersion,
-    })
+  const cacheRead = async (url: string, now: number): Promise<MarketIndex | undefined> => {
+    const row = await db.get<Cached>("SELECT document, expires_at FROM market_indexes WHERE url = ?", url)
+    if (row === undefined || row.expires_at <= now) return undefined
+    try {
+      return parseMarketIndex(JSON.parse(row.document), url)
+    } catch {
+      return undefined
+    }
   }
 
-  const discover = async (api: Registry, query: string | undefined): Promise<readonly IndexEntry[]> => {
-    const [indexResults, searchResult] = await Promise.all([
-      Promise.all(config.indexes.map((url) => api.index(url))),
-      config.search ? api.search(query ?? "") : Promise.resolve(undefined),
-    ])
-    const merged = new Map<string, IndexEntry>()
-    const sources = config.indexes.length + (config.search ? 1 : 0)
-    let reached = 0
-    for (const found of indexResults) {
-      if (!found.ok) continue
-      reached += 1
-      for (const entry of found.value)
-        if (!merged.has(entry.name) && matches(entry, query)) merged.set(entry.name, entry)
+  const cacheWrite = (url: string, index: MarketIndex, now: number): Promise<void> =>
+    db.run(
+      "INSERT INTO market_indexes (url, document, expires_at) VALUES (?, ?, ?) " +
+        "ON CONFLICT (url) DO UPDATE SET document = excluded.document, expires_at = excluded.expires_at",
+      url,
+      JSON.stringify(index),
+      now + config.cacheTtlMs,
+    )
+
+  const load = async (budget: Budget, refresh: boolean): Promise<Loaded> => {
+    const now = Date.now()
+    const fetched = countingFetch(ports.fetch, budget)
+    const results = await Promise.all(
+      config.indexes.map(async (url): Promise<{ plugins?: readonly MarketPlugin[]; summary: IndexSummary }> => {
+        if (!refresh) {
+          const cached = await cacheRead(url, now)
+          if (cached !== undefined) return { plugins: cached.plugins, summary: { url } }
+        }
+        const document = await fetchJson(fetched, url)
+        if (!document.ok) return { summary: { url, error: failureText(document.error) } }
+        try {
+          const index = parseMarketIndex(document.value, url)
+          await cacheWrite(url, index, now)
+          return {
+            plugins: index.plugins,
+            summary: {
+              url,
+              title: index.title,
+              ...(index.description === undefined ? {} : { description: index.description }),
+            },
+          }
+        } catch (error) {
+          if (error instanceof MarketIndexError) return { summary: { url, error: `${error.path} ${error.reason}` } }
+          throw error
+        }
+      }),
+    )
+    const seen = new Set<string>()
+    const plugins: MarketPlugin[] = []
+    for (const result of results) {
+      for (const plugin of result.plugins ?? []) {
+        if (seen.has(plugin.name)) continue
+        seen.add(plugin.name)
+        plugins.push(plugin)
+      }
     }
-    if (searchResult !== undefined && searchResult.ok) {
-      reached += 1
-      for (const hit of searchResult.value)
-        if (!merged.has(hit.name))
-          merged.set(hit.name, {
-            name: hit.name,
-            ...(hit.description === undefined ? {} : { description: hit.description }),
-          })
-    }
-    if (sources > 0 && reached === 0) throw new Error("no market source could be reached")
-    return [...merged.values()]
+    return { plugins, summaries: results.map((result) => result.summary) }
   }
 
   const search = async (query: string | undefined, category: string | undefined): Promise<JsonValue> => {
-    const budget = budgetOf(MAX_REQUESTS)
-    const api = apiFor(budget)
-    const matched = (await discover(api, query)).filter((entry) => matchesCategory(entry, category))
-    const found = matched.slice(0, MAX_SEARCH_ENTRIES)
-    const known = await installedFacts()
-    const items: SearchItem[] = []
-    for (const entry of found) {
-      if (budget.left < 1) break
-      const abbreviated = await api.abbreviated(entry.name)
-      if (!abbreviated.ok) continue
-      const newest = offeredVersion(abbreviated.value.versions, abbreviated.value.distTags, xinVersion)
-      let kind: PackageKind | null = null
-      if (newest !== undefined && budget.left >= 1) {
-        const document = await api.version(entry.name, newest.version)
-        if (document.ok) kind = kindOf(document.value.xin) ?? null
-      }
-      items.push({
-        name: entry.name,
-        title: entry.title ?? null,
-        description: entry.description ?? null,
-        icon: entry.icon ?? null,
-        author: entry.author ?? null,
-        repository: entry.repository ?? null,
-        kind,
-        status: statusOf(entry.name, abbreviated.value, known),
-      })
-    }
-    return { entries: items }
+    const loaded = await load({ left: MAX_REQUESTS }, false)
+    const facts = await installedFacts()
+    const found = loaded.plugins.filter(
+      (plugin) => matches(plugin, query) && (category === undefined || plugin.metadata.category === category),
+    )
+    return toJson({
+      entries: found.map((plugin) => {
+        const offered = offeredVersion(plugin.versions, xinVersion)
+        return {
+          name: plugin.name,
+          title: plugin.title ?? null,
+          description: plugin.description ?? null,
+          icon: plugin.icon ?? null,
+          author: plugin.author ?? null,
+          homepage: plugin.homepage ?? null,
+          repository: plugin.repository ?? null,
+          category: plugin.metadata.category ?? null,
+          status:
+            offered === undefined
+              ? "not-installed"
+              : installationOf(offered.version, factOf(facts, plugin.name, offered)),
+        }
+      }),
+    })
   }
 
   const entry = async (name: string): Promise<JsonValue> => {
-    const api = apiFor(budgetOf(MAX_REQUESTS))
-    const abbreviated = await api.abbreviated(name)
-    if (!abbreviated.ok) {
-      if (abbreviated.error.kind === "input") bad(abbreviated.error.message)
-      throw new Error(`${name}: ${failureText(abbreviated.error)}`)
-    }
-    const versions = abbreviated.value.versions.toSorted((left, right) => compareVersions(right.version, left.version))
-    const chosen = offeredVersion(versions, abbreviated.value.distTags, xinVersion)
-    const document = chosen === undefined ? undefined : await api.version(name, chosen.version)
-    const kind = document !== undefined && document.ok ? (kindOf(document.value.xin) ?? null) : null
+    const budget = { left: MAX_REQUESTS }
+    const loaded = await load(budget, false)
+    const plugin = loaded.plugins.find((candidate) => candidate.name === name)
+    if (plugin === undefined) bad(`${name} is not in any market index`)
+    const offered = offeredVersion(plugin.versions, xinVersion)
+    const document = offered === undefined ? undefined : await versionDocument(budget, name, offered)
+    const kind = document === undefined ? null : (kindOf(document.xin) ?? null)
     const declaration =
-      kind === "bundle" && document !== undefined && document.ok
-        ? maybeDeclaration(document.value.xin, `${name}@${document.value.version}`)
-        : undefined
-    const known = await installedFacts()
+      document === undefined || kind !== "bundle"
+        ? undefined
+        : maybeDeclaration(document.xin, `${name}@${document.version}`)
+    const facts = await installedFacts()
     return toJson({
       name,
       kind,
-      status: statusOf(name, abbreviated.value, known),
-      versions: versions.map((version) => ({
+      status: offered === undefined ? "not-installed" : installationOf(offered.version, factOf(facts, name, offered)),
+      versions: plugin.versions.map((version) => ({
         version: version.version,
+        publishTimestamp: version.publishTimestamp,
         compatible: compatible(version, xinVersion),
-        deprecated: version.deprecated ?? null,
-        publishedAt: abbreviated.value.time?.[version.version] ?? null,
       })),
-      readme: document !== undefined && document.ok ? (document.value.readme ?? null) : null,
+      readme: document?.readme ?? null,
       requires: declaration === undefined ? [] : [...declaration.requires],
       rows:
         declaration === undefined
@@ -340,145 +354,95 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     })
   }
 
-  const install = async (
+  const versionDocument = async (
+    budget: Budget,
     name: string,
-    requested: string | undefined,
-    mode: "install" | "update",
-  ): Promise<JsonValue> => {
-    const known = await installedFacts()
-    const fact = known.get(name)
-    if (fact?.local === true) bad(`${name} is a local package`)
-    if (mode === "update" && (fact === undefined || fact.local)) bad(`${name} is not installed`)
+    version: MarketVersion,
+  ): Promise<VersionDocument | undefined> => {
+    if (version.source.type !== "npm") return undefined
+    const found = await fetchVersion(
+      countingFetch(ports.fetch, budget),
+      version.source.registry ?? config.registry,
+      name,
+      version.version,
+    )
+    return found.ok ? found.value : undefined
+  }
 
-    const budget = budgetOf(MAX_REQUESTS)
-    const api = apiFor(budget)
-    const abbreviated = await api.abbreviated(name)
-    if (!abbreviated.ok) {
-      if (abbreviated.error.kind === "input") bad(abbreviated.error.message)
-      throw new Error(`${name}: ${failureText(abbreviated.error)}`)
+  const installVersion = async (budget: Budget, name: string, version: MarketVersion): Promise<JsonValue> => {
+    const target = marketInstallTarget(name, version)
+    if (version.source.type === "git") {
+      ports.packages.install(target.spec)
+      return { application: "pending", package: name, version: version.version, kind: "code", rows: [] }
     }
-    const target = resolveTarget(name, abbreviated.value, requested, xinVersion)
-    const document = await api.version(name, target.version)
-    if (!document.ok) throw new Error(`${name}@${target.version}: ${failureText(document.error)}`)
+    const document = await fetchVersion(
+      countingFetch(ports.fetch, budget),
+      version.source.registry ?? config.registry,
+      name,
+      version.version,
+    )
+    if (!document.ok) {
+      if (document.error.kind === "input") bad(document.error.message)
+      throw new Error(`${target.spec}: ${failureText(document.error)}`)
+    }
     const kind = kindOf(document.value.xin)
-    if (kind === undefined) bad(`${name}@${target.version} is not a Xin plugin`)
+    if (kind === undefined) bad(`${target.spec} is not a Xin plugin`)
     if (kind === "code") {
-      ports.packages.install(`${name}@${target.version}`)
-      return { application: "pending", package: name, version: target.version, kind, rows: [] }
+      ports.packages.install(target.spec)
+      return { application: "pending", package: name, version: version.version, kind, rows: [] }
     }
     const integrity = document.value.dist.integrity
-    if (integrity === undefined) bad(`${name}@${target.version} has no dist.integrity`)
-    if (!tarballAllowed(document.value.dist.tarball, config.registry))
-      bad(`${name}@${target.version} serves its tarball outside ${config.registry}`)
+    if (integrity === undefined) bad(`${target.spec} has no dist.integrity`)
     const fetched = await fetchTarball(countingFetch(ports.fetch, budget), document.value.dist.tarball)
-    if (!fetched.ok) throw new Error(`${name}@${target.version}: ${fetched.error.message}`)
+    if (!fetched.ok) throw new Error(`${target.spec}: ${fetched.error.message}`)
     const extracted = await extractBundle({ bytes: fetched.value, integrity })
-    if (!extracted.ok) throw new Error(`${name}@${target.version}: ${extracted.error.message}`)
+    if (!extracted.ok) throw new Error(`${target.spec}: ${extracted.error.message}`)
     const tarballKind = kindOf(extracted.value.xin)
     if (tarballKind !== kind)
-      bad(
-        `${name}@${target.version}: the tarball declares ${tarballKind ?? "no"} Xin plugin, the registry says ${kind}`,
-      )
-    const declaration = declarationOf(extracted.value.xin, `${name}@${target.version}`)
-    const inlined = inlineFiles(declaration.rows, extracted.value.read)
-    if (!inlined.ok) throw new Error(`${name}@${target.version}: ${inlined.error.message}`)
+      bad(`${target.spec}: the tarball declares ${tarballKind ?? "no"} Xin plugin, the index says ${kind}`)
+    const declaration = declarationOf(extracted.value.xin, target.spec)
     const application = await ports.packages.put({
       package: name,
-      source: { kind: "registry", version: target.version, integrity },
-      rows: inlined.value,
+      source: { kind: "registry", version: version.version, integrity },
+      rows: declaration.rows,
       patch: declaration.patch,
       requires: declaration.requires,
     })
     return {
       application: application.application,
       package: name,
-      version: target.version,
+      version: version.version,
       kind,
       rows: applicationRows(application),
     }
   }
 
-  const lastCheckedAt = async (): Promise<number | null> => {
-    const row = await db.get<{ checked_at: number }>("SELECT checked_at FROM market_checks WHERE id = 'last'")
-    return row?.checked_at ?? null
-  }
-
-  const storedVersions = async (): Promise<Map<string, string>> => {
-    const rows = await db.all<{ package: string; version: string }>("SELECT package, version FROM market_versions")
-    return new Map(rows.map((row): [string, string] => [row.package, row.version]))
-  }
-
-  const checkedTimes = async (): Promise<Map<string, number>> => {
-    const rows = await db.all<{ package: string; checked_at: number }>(
-      "SELECT package, checked_at FROM market_versions",
-    )
-    return new Map(rows.map((row): [string, number] => [row.package, row.checked_at]))
-  }
-
-  const storeVersion = (name: string, version: string, at: number): Promise<void> =>
-    db.run(
-      "INSERT INTO market_versions (package, version, checked_at) VALUES (?, ?, ?) " +
-        "ON CONFLICT (package) DO UPDATE SET version = excluded.version, checked_at = excluded.checked_at",
-      name,
-      version,
-      at,
-    )
-
-  const recordCheck = (at: number): Promise<void> =>
-    db.run(
-      "INSERT INTO market_checks (id, checked_at) VALUES ('last', ?) " +
-        "ON CONFLICT (id) DO UPDATE SET checked_at = excluded.checked_at",
-      at,
-    )
-
-  const prune = async (known: Installed): Promise<void> => {
-    const names = [...known.keys()]
-    if (names.length === 0) {
-      await db.run("DELETE FROM market_versions")
-      return
+  const install = async (
+    mode: "install" | "update",
+    name: string,
+    requested: string | undefined,
+  ): Promise<JsonValue> => {
+    const budget = { left: MAX_REQUESTS }
+    const loaded = await load(budget, false)
+    const plugin = loaded.plugins.find((candidate) => candidate.name === name)
+    if (plugin === undefined) bad(`${name} is not in any market index`)
+    const facts = await installedFacts()
+    if (facts.get(name)?.kind === "provided") bad(`${name} is provided by this build`)
+    const target =
+      requested === undefined
+        ? offeredVersion(plugin.versions, xinVersion)
+        : plugin.versions.find((version) => version.version === requested)
+    if (target === undefined) bad(`${name} has no version ${requested ?? "to offer"}`)
+    if (!compatible(target, xinVersion)) bad(`${name}@${target.version} requires xin ${target.engines.xin ?? "?"}`)
+    const fact = factOf(facts, name, target)
+    if (mode === "install" && fact !== undefined) bad(`${name} is already installed`)
+    if (mode === "update") {
+      if (fact === undefined || fact.kind !== "installed" || fact.version === undefined) bad(`${name} is not installed`)
+      if (!isSemver(fact.version)) bad(`${name} is installed at a version that cannot be updated`)
+      if (compareVersions(target.version, fact.version) <= 0)
+        bad(`${name}@${target.version} is not newer than the installed ${fact.version}`)
     }
-    await db.run(`DELETE FROM market_versions WHERE package NOT IN (${names.map(() => "?").join(", ")})`, ...names)
-  }
-
-  const check = async (): Promise<Updates> => {
-    const at = Date.now()
-    const api = apiFor(budgetOf(MAX_REQUESTS))
-    try {
-      const known = await installedFacts()
-      const checked = await checkedTimes()
-      await prune(known)
-      const targets = checkTargets(known, checked).slice(0, MAX_CHECK_REQUESTS)
-      for (const target of targets) {
-        const abbreviated = await api.abbreviated(target.package)
-        if (!abbreviated.ok) continue
-        const latest = offeredVersion(abbreviated.value.versions, abbreviated.value.distTags, xinVersion)?.version
-        if (latest === undefined) continue
-        await storeVersion(target.package, latest, at)
-      }
-    } finally {
-      await recordCheck(at)
-    }
-    const updates = updatesOf(await installedFacts(), await storedVersions())
-    await ports.publish()
-    return { checkedAt: at, updates }
-  }
-
-  const refresh = (): Promise<Updates> => check()
-
-  const due = async (): Promise<number> => {
-    const last = await lastCheckedAt()
-    return (last ?? startedAt) + config.checkHours * HOUR_MS
-  }
-
-  const fire = async (now: number): Promise<void> => {
-    if (now < (await due())) return
-    await refresh().catch((error: unknown) => console.warn("market: update check failed", error))
-  }
-
-  const home = async (): Promise<JsonObject> => {
-    const checkedAt = await lastCheckedAt()
-    const updates = checkedAt === null ? [] : updatesOf(await installedFacts(), await storedVersions())
-    return { market: { updates: updates.length, checkedAt } }
+    return installVersion(budget, name, target)
   }
 
   const ops: readonly Op[] = [
@@ -498,82 +462,24 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       name: "market.install",
       args: InstallArgs,
       actors: OWNER,
-      run: async (_api, args) => install(args.name, args.version, "install"),
+      run: async (_api, args) => install("install", args.name, args.version),
     }),
     defineOp({
       name: "market.update",
-      args: InstallArgs,
+      args: UpdateArgs,
       actors: OWNER,
-      run: async (_api, args) => install(args.name, args.version, "update"),
+      run: async (_api, args) => install("update", args.name, args.version),
     }),
     defineOp({
       name: "market.refresh",
       args: obj({}),
       actors: OWNER,
-      run: async () => updatesJson(await refresh()),
-    }),
-    defineOp({
-      name: "market.updates",
-      args: obj({}),
-      actors: OWNER,
-      run: async () =>
-        updatesJson({
-          checkedAt: await lastCheckedAt(),
-          updates: updatesOf(await installedFacts(), await storedVersions()),
-        }),
+      run: async () => {
+        const loaded = await load({ left: MAX_REQUESTS }, true)
+        return toJson({ indexes: loaded.summaries })
+      },
     }),
   ]
 
-  return { ops, home, due, fire, refresh }
-}
-
-function maybeDeclaration(xin: unknown, label: string): Declaration | undefined {
-  try {
-    return declarationOf(xin, label)
-  } catch (error) {
-    if (error instanceof OpRejected) return undefined
-    throw error
-  }
-}
-
-function resolveTarget(
-  name: string,
-  abbreviated: Abbreviated,
-  requested: string | undefined,
-  xinVersion: string,
-): RegistryVersion {
-  if (requested === undefined) {
-    const newest = offeredVersion(abbreviated.versions, abbreviated.distTags, xinVersion)
-    if (newest === undefined) bad(`${name} has no version compatible with this Xin build`)
-    return newest
-  }
-  const found = abbreviated.versions.find((version) => version.version === requested)
-  if (found === undefined) bad(`${name} has no version ${requested}`)
-  if (!compatible(found, xinVersion)) bad(`${name}@${requested} requires xin ${found.engines?.xin ?? "?"}`)
-  return found
-}
-
-function updatesJson(updates: Updates): JsonValue {
-  return {
-    checkedAt: updates.checkedAt,
-    updates: updates.updates.map((entry) => ({
-      package: entry.package,
-      installed: entry.installed,
-      latest: entry.latest,
-    })),
-  }
-}
-
-function applicationRows(application: BundleApplication): JsonValue {
-  return application.application === "failed" ? application.rows.map((row) => ({ id: row.id, error: row.error })) : []
-}
-
-function matches(entry: IndexEntry, query: string | undefined): boolean {
-  const text = query?.trim().toLowerCase() ?? ""
-  if (text === "") return true
-  return [entry.name, entry.title, entry.description].some((value) => value?.toLowerCase().includes(text) === true)
-}
-
-function matchesCategory(entry: IndexEntry, category: string | undefined): boolean {
-  return category === undefined || entry.metadata?.categories?.includes(category) === true
+  return { ops }
 }

@@ -1,7 +1,7 @@
 import type { JsonValue } from "@earendil-works/chord"
 import { bool, obj, opt, unknown } from "@earendil-works/pi-schema"
 import { OpRejected } from "../ops.ts"
-import { FragmentId, isFragment, isRuntimeRowId } from "../rowid.ts"
+import { FragmentId, isFragment } from "../rowid.ts"
 import { configSchemaOf, validateConfig } from "./config.ts"
 import type { Catalog } from "./loader.ts"
 
@@ -47,7 +47,6 @@ export function validatePatches(
 ): void {
   for (const entry of patches) {
     if (!isFragment(entry.id)) fail(`bundle ${pkg} patch id ${entry.id} is invalid`)
-    if (isRuntimeRowId(entry.id)) fail(`bundle ${pkg} cannot patch runtime row ${entry.id}`)
     const plugin = pluginAt(entry.id)
     if (plugin === undefined) continue
     const target = catalog[plugin]

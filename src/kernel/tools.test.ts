@@ -36,28 +36,30 @@ async function results(home: Home): Promise<string[]> {
 }
 
 describe("plugin tools", () => {
-  it("lets the agent read plugin rows but not change them until the owner allows it", async () => {
+  it("keeps the plugin_manager tool off until its row is enabled, then lets the agent read and change rows", async () => {
     const stub = fresh()
+    await cmd(stub, "on", "plugin.enable", { id: "tool-plugins", enabled: true })
+
     respond([
       call("plugin_manager", { action: "list" }),
       call("plugin_manager", { action: "enable", id: "time", enabled: false }),
       fauxAssistantMessage("done"),
     ])
-    const [listed, refused] = await turn(stub, "t1")
+    const [listed, changed] = await turn(stub, "t1")
     expect(listed).toContain('"id": "time"')
-    expect(refused).toContain("owner-only")
-    expect(await cmd(stub, "g1", "plugin.list").then((ack) => JSON.stringify(ack.result))).toContain(
-      '"id":"time","plugin":"time"',
-    )
-
-    const allowed = await cmd(stub, "allow", "plugin.configure", { id: "tool-plugins", config: { allowAgent: true } })
-    expect(allowed.result).toMatchObject({ application: "applied", row: { state: { kind: "active" } } })
-    respond([call("plugin_manager", { action: "enable", id: "time", enabled: false }), fauxAssistantMessage("done")])
-    const [changed] = await turn(stub, "t2")
     expect(changed).toContain('"application": "applied"')
-    const rows = await cmd(stub, "g2", "plugin.list")
+    const rows = await cmd(stub, "g1", "plugin.list")
     const time = Array.isArray(rows.result) ? rows.result.find((row) => Reflect.get(row, "id") === "time") : undefined
     expect(time).toMatchObject({ disabled: true, state: { kind: "disabled" } })
+  })
+
+  it("returns a rejected change as a tool error", async () => {
+    const stub = fresh()
+    await cmd(stub, "on", "plugin.enable", { id: "tool-plugins", enabled: true })
+    respond([call("plugin_manager", { action: "enable", id: "pi", enabled: false }), fauxAssistantMessage("done")])
+    const [refused] = await turn(stub, "t2")
+    expect(refused).toContain("bad_args")
+    expect(refused).toContain("required")
   })
 
   it("runs the out-of-tree time plugin, reconfigures it, and fails a bad timezone without touching other rows", async () => {

@@ -1,23 +1,13 @@
-import { compareVersions, isPrerelease, satisfies } from "../../src/semver.ts"
+import { compareVersions, satisfies } from "../../src/semver.ts"
+import { isSemver } from "./marketindex.ts"
 
 export type PackageKind = "bundle" | "code"
 
-export type SelectableVersion = {
-  readonly version: string
-  readonly deprecated?: string
-  readonly engines?: { readonly xin?: string }
-}
+export type MarketStatus = "not-installed" | "installed" | "update-available" | "different-version" | "provided"
 
-export type MarketStatus = "available" | "installed" | "update" | "pending" | "local" | "incompatible"
+export type InstalledFact = { readonly kind: "provided" } | { readonly kind: "installed"; readonly version?: string }
 
-export type StatusInput = {
-  readonly local?: boolean
-  readonly installed?: { readonly version: string }
-  readonly pending?: string
-  readonly versions: readonly SelectableVersion[]
-  readonly distTags?: Readonly<Record<string, string>>
-  readonly xinVersion: string
-}
+export type VersionFact = { readonly version: string; readonly engines?: { readonly xin?: string } }
 
 export function kindOf(xin: unknown): PackageKind | undefined {
   if (!isRecord(xin)) return undefined
@@ -26,49 +16,24 @@ export function kindOf(xin: unknown): PackageKind | undefined {
   return undefined
 }
 
-export function compatible(version: SelectableVersion, xinVersion: string): boolean {
+export function compatible(version: VersionFact, xinVersion: string): boolean {
   const range = version.engines?.xin
   return range === undefined || satisfies(xinVersion, range)
 }
 
-export function newestCompatible<T extends SelectableVersion>(
-  versions: readonly T[],
-  xinVersion: string,
-): T | undefined {
-  const allowed = versions.filter((version) => version.deprecated === undefined && compatible(version, xinVersion))
-  const stable = allowed.filter((version) => !isPrerelease(version.version))
-  return newest(stable.length === 0 ? allowed : stable)
+export function offeredVersion<T extends VersionFact>(versions: readonly T[], xinVersion: string): T | undefined {
+  const newest = versions.toSorted((left, right) => compareVersions(right.version, left.version))
+  return newest.find((version) => compatible(version, xinVersion)) ?? newest[0]
 }
 
-export function offeredVersion<T extends SelectableVersion>(
-  versions: readonly T[],
-  distTags: Readonly<Record<string, string>>,
-  xinVersion: string,
-): T | undefined {
-  const tag = distTags["latest"]
-  if (tag !== undefined) {
-    const tagged = versions.find((version) => version.version === tag)
-    if (tagged !== undefined && tagged.deprecated === undefined && compatible(tagged, xinVersion)) return tagged
-  }
-  return newestCompatible(versions, xinVersion)
-}
-
-export function status(input: StatusInput): MarketStatus {
-  if (input.local === true) return "local"
-  if (input.pending !== undefined) return "pending"
-  const latest = offeredVersion(input.versions, input.distTags ?? {}, input.xinVersion)
-  if (latest === undefined) return "incompatible"
-  const installed = input.installed
-  if (installed === undefined) return "available"
-  return compareVersions(latest.version, installed.version) > 0 ? "update" : "installed"
-}
-
-function newest<T extends SelectableVersion>(versions: readonly T[]): T | undefined {
-  let found: T | undefined
-  for (const version of versions) {
-    if (found === undefined || compareVersions(version.version, found.version) > 0) found = version
-  }
-  return found
+export function installationOf(offered: string, fact: InstalledFact | undefined): MarketStatus {
+  if (fact === undefined) return "not-installed"
+  if (fact.kind === "provided") return "provided"
+  const installed = fact.version
+  if (installed === undefined) return "different-version"
+  if (installed === offered) return "installed"
+  const newer = isSemver(installed) && compareVersions(offered, installed) > 0
+  return newer ? "update-available" : "different-version"
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

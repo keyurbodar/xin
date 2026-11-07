@@ -6,7 +6,7 @@ Xin is a personal agent backend on Cloudflare: one Worker, one SQLite-backed Dur
 
 ## Scope rules (hard)
 
-- The core takes no position on what the agent may do. Code execution (bash, sandboxes, codemode), git, VPS and computer access, browsers and other channels are all allowed, as optional plugins: never in the kernel, off by default, and the owner sees what each one can reach before enabling it (owner decision 2026-11-07). The first-party client is the web app.
+- The core takes no position on what the agent may do. Code execution (bash, sandboxes, codemode), git, VPS and computer access, browsers and other channels are all allowed, as optional plugins: never in the kernel and off by default (owner decision 2026-11-07). Build only what dsh has: when adding a mechanism, point to the dsh package it mirrors (owner rule 2026-11-07). The first-party client is the web app.
 - **No model ids in product code.** Models come from the pi-ai catalog at run time and from the owner's choices (`docs/plan/architecture/05-models.md`). Test code may name models.
 - Official primitives first: pi-durable (Harness, tasks, docs, inbox, hooks, `onWake`), pi-ai (catalog, `CredentialStore`), pi-mcp, Cloudflare runtime APIs. Before writing a mechanism, check whether pi already ships it (`node_modules/@earendil-works/pi-durable/README.md`).
 - No Effect, no RPC framework, no custom journal or storage proxy. Plain TypeScript, with one framework: the plugin layer is dsh's Cordis stack (`@deepseek-ai/cordis`, `cordis-plugin-loader`, `schemastery`). Everything is a loader row; see `docs/plan/architecture/09-plugins.md`.

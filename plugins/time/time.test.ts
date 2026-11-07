@@ -22,12 +22,11 @@ describe("time", () => {
 
   it("names a second row's extension and tool after the row", async () => {
     const stub = fresh()
-    const inserted = await cmd(stub, `time-insert-${crypto.randomUUID()}`, "plugin.insert", {
-      id: "time-tokyo",
-      plugin: "time",
-      config: { timezone: "Asia/Tokyo" },
+    const put = await cmd(stub, `time-put-${crypto.randomUUID()}`, "bundle.put", {
+      package: "xin-test-time-tokyo",
+      rows: [{ id: "time-tokyo", plugin: "time", config: { timezone: "Asia/Tokyo" } }],
     })
-    expect(inserted.result).toMatchObject({ application: "applied" })
+    expect(put.result).toMatchObject({ application: "applied" })
     expect(await installed(stub)).toContain("tool-time-tokyo")
     const offers = recordOffers()
 

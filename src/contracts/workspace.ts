@@ -26,6 +26,7 @@ export const ProjectSchema = obj({
   slug: str({ pattern: SLUG }),
   name: str({ minLength: 1, maxLength: 200 }),
   goal: opt(str({ maxLength: 4_000 })),
+  preset: opt(str({ minLength: 1, maxLength: 200 })),
   coordinatorId: int({ minimum: 0 }),
   threadIds: arr(int({ minimum: 0 })),
   settings: SettingsSchema,

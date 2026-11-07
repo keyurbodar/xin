@@ -138,7 +138,6 @@ const entry = (plugin: Catalog[string]["plugin"], title: string) => ({
   title,
   description: title,
   source: "test",
-  multiple: true,
 })
 
 export const catalog: Catalog = {

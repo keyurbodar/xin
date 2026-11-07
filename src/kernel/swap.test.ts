@@ -10,6 +10,7 @@ import type { Home } from "../../test/worker.ts"
 
 const PATH = "/notes/a.md"
 const CONTENT = "hello fake"
+const BUNDLE = "xin-test-fake-files"
 
 const call = (name: string, args: JsonObject) =>
   fauxAssistantMessage([fauxToolCall(name, args, { id: `${name}-${crypto.randomUUID()}` })], { stopReason: "toolUse" })
@@ -42,8 +43,12 @@ describe("files seam", () => {
     expect(disabled.result).toMatchObject({ application: "applied", row: { state: { kind: "disabled" } } })
     expect(await rowState(stub, "tool-files")).toEqual({ kind: "pending" })
 
-    const inserted = await cmd(stub, "in", "plugin.insert", { id: "fake-files", plugin: "fake-files", config: {} })
-    expect(inserted.result).toMatchObject({ application: "applied", row: { state: { kind: "active" } } })
+    const put = await cmd(stub, "in", "bundle.put", {
+      package: BUNDLE,
+      rows: [{ id: "fake-files", plugin: "fake-files", config: {} }],
+    })
+    expect(put.result).toMatchObject({ application: "applied" })
+    expect(await rowState(stub, "fake-files")).toEqual({ kind: "active" })
     expect(await rowState(stub, "tool-files")).toEqual({ kind: "active" })
 
     respond([
@@ -68,7 +73,7 @@ describe("files seam", () => {
     expect(indexed).toBeUndefined()
     expect(await r2Texts()).not.toContain(CONTENT)
 
-    expect(await cmd(stub, "rm", "plugin.remove", { id: "fake-files" })).toMatchObject({ ok: true })
+    expect(await cmd(stub, "rm", "bundle.remove", { package: BUNDLE })).toMatchObject({ ok: true })
     const enabled = await cmd(stub, "on", "plugin.enable", { id: "files", enabled: true })
     expect(enabled.result).toMatchObject({ application: "applied", row: { state: { kind: "active" } } })
     expect(await rowState(stub, "tool-files")).toEqual({ kind: "active" })

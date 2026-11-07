@@ -20,7 +20,7 @@ describe("files tool row", () => {
     await turn(stub, `turn-${crypto.randomUUID()}`)
     const hidden = offers.latest().tools
     for (const name of FILE_TOOLS) expect(hidden).not.toContain(name)
-    expect(hidden).toContain("plugin_manager")
+    expect(hidden).toContain("capabilities")
 
     const path = `/projects/m4/tool-row-${crypto.randomUUID()}.txt`
     const put = await cmd(stub, "put", "file.put", { path, text: "still here" })

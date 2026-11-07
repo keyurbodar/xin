@@ -18,8 +18,7 @@
     "xin-plugin-watchdog",
     "xin-plugin-workspace",
     "xin-plugin-presets",
-    "xin-plugin-market",
-    "xin-plugin-prompts"
+    "xin-plugin-market"
   ],
   "patch": []
 }

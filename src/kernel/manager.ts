@@ -1,11 +1,11 @@
 import type { Context } from "@deepseek-ai/cordis"
 import type { JsonValue } from "@earendil-works/chord"
 import type { JsonObject } from "@earendil-works/pi-durable"
-import { bool, obj, str } from "@earendil-works/pi-schema"
+import { bool, obj } from "@earendil-works/pi-schema"
 import { defineOp, OpRejected } from "../ops.ts"
-import { FragmentId, RowId, runtimeRowId } from "../rowid.ts"
+import { FragmentId } from "../rowid.ts"
 import { configSchemaOf, validateConfig } from "./config.ts"
-import { layerOf, pluginOf, type Patch, type Row } from "./layers.ts"
+import { pluginOf, type Layer, type Row } from "./layers.ts"
 import type { RowState, XinLoader } from "./loader.ts"
 
 export type Application = "applied" | "failed"
@@ -15,7 +15,7 @@ export type RowView = {
   readonly plugin: string
   readonly title: string
   readonly required: boolean
-  readonly layer: "bundle" | "profile" | "runtime" | "owner"
+  readonly layer: Layer
   readonly disabled: boolean
   readonly config: JsonValue
   readonly state: RowState
@@ -29,9 +29,6 @@ export type Manager = {
   tree(): JsonObject
   enable(id: string, enabled: boolean): Promise<Changed>
   configure(id: string, config: JsonObject): Promise<Changed>
-  insert(id: string, plugin: string, config: JsonObject): Promise<Changed>
-  remove(id: string): Promise<{ readonly application: Application; readonly id: string }>
-  reset(id: string): Promise<Changed>
 }
 
 const ConfigSchema = obj({}, { open: true })
@@ -43,19 +40,16 @@ const toJson = (value: unknown): JsonValue => (value === undefined ? null : JSON
 
 export function createManager(loader: XinLoader): Manager {
   const { catalog, profile } = loader.composition
-  const runtimeIds = (): ReadonlySet<string> =>
-    new Set(
-      loader.runtime.flatMap((bundle) => [
-        ...bundle.rows.map((row) => runtimeRowId(bundle.package, row.id)),
-        ...bundle.patch.map((entry) => entry.id),
-      ]),
-    )
   const find = (id: string): Row => {
     const row = loader.rows().find((candidate) => candidate.id === id)
     if (row === undefined) throw new OpRejected("bad_args", `no plugin row ${id}`)
     return row
   }
-  const view = async (row: Row, ids: ReadonlySet<string>, owner: readonly Patch[]): Promise<RowView> => {
+  const layerAt = (id: string): Layer => {
+    const trace = loader.trace.get(id)
+    return trace === undefined ? "bundle" : (trace.patchedBy.at(-1) ?? trace.addedBy)
+  }
+  const view = async (row: Row): Promise<RowView> => {
     const plugin = pluginOf(row)
     const entry = catalog[plugin]
     return {
@@ -63,7 +57,7 @@ export function createManager(loader: XinLoader): Manager {
       plugin,
       title: entry?.title ?? plugin,
       required: entry?.required === true,
-      layer: layerOf(row.id, profile, owner, ids),
+      layer: layerAt(row.id),
       disabled: row.disabled === true,
       config: toJson(row.config),
       state: await loader.state(row.id),
@@ -71,7 +65,7 @@ export function createManager(loader: XinLoader): Manager {
   }
   const changed = async (id: string): Promise<Changed> => {
     await loader.await()
-    const row = await view(find(id), runtimeIds(), loader.ownerPatch())
+    const row = await view(find(id))
     return { application: row.state.kind === "failed" ? "failed" : "applied", row }
   }
   const attempt = async (id: string, work: () => Promise<void>): Promise<Changed> => {
@@ -87,11 +81,7 @@ export function createManager(loader: XinLoader): Manager {
     if (loader.isMissing(id)) throw new OpRejected("bad_args", `${id} has no code in this build`)
   }
   return {
-    list: () => {
-      const ids = runtimeIds()
-      const owner = loader.ownerPatch()
-      return Promise.all(loader.rows().map((row) => view(row, ids, owner)))
-    },
+    list: () => Promise.all(loader.rows().map((row) => view(row))),
     catalog: () =>
       Object.entries(catalog).map(([name, entry]) => ({
         name,
@@ -102,20 +92,18 @@ export function createManager(loader: XinLoader): Manager {
         schema: toJson(configSchemaOf(entry.plugin)?.toJSON() ?? null),
       })),
     tree: () => {
-      const ids = runtimeIds()
-      const owner = loader.ownerPatch()
       return {
         bundles: [...profile.bundles],
         runtime: loader.runtime.map((bundle) => ({
           package: bundle.package,
           source: toJson(bundle.source),
           requires: [...bundle.requires],
-          rows: bundle.rows.map((row) => runtimeRowId(bundle.package, row.id)),
+          rows: bundle.rows.map((row) => row.id),
           patch: bundle.patch.map((entry) => entry.id),
         })),
-        layers: Object.fromEntries(loader.rows().map((row) => [row.id, layerOf(row.id, profile, owner, ids)])),
+        layers: toJson(Object.fromEntries(loader.trace)),
         lower: toJson(loader.lower),
-        owner: toJson(owner),
+        owner: toJson(loader.ownerPatch()),
         rows: toJson(loader.rows()),
         warnings: [...loader.warnings],
       }
@@ -133,37 +121,6 @@ export function createManager(loader: XinLoader): Manager {
       if (schema === undefined) throw new OpRejected("bad_args", `${plugin} has no config schema`)
       validateConfig(plugin, schema, config)
       return attempt(id, () => loader.update(id, { config }))
-    },
-    insert: async (id, plugin, config) => {
-      if (loader.rows().some((row) => row.id === id)) throw new OpRejected("bad_args", `row ${id} already exists`)
-      const entry = catalog[plugin]
-      if (entry === undefined) throw new OpRejected("bad_args", `no plugin ${plugin} in this build`)
-      if (entry.required === true) throw new OpRejected("bad_args", `${plugin} is required and is always present`)
-      if (entry.multiple !== true && loader.rows().some((row) => pluginOf(row) === plugin))
-        throw new OpRejected("bad_args", `a ${plugin} row already exists`)
-      const schema = configSchemaOf(entry.plugin)
-      if (schema !== undefined) validateConfig(plugin, schema, config)
-      const row: Row = { id, name: `cordis:${plugin}`, config }
-      return attempt(id, async () => void (await loader.create(row)))
-    },
-    remove: async (id) => {
-      find(id)
-      if (loader.lower.some((row) => row.id === id))
-        throw new OpRejected("bad_args", `${id} comes from a bundle; disable it instead`)
-      if (loader.isMissing(id)) {
-        loader.dropMissing(id)
-        return { application: "applied", id }
-      }
-      loader.remove(id)
-      await loader.await()
-      return { application: "applied", id }
-    },
-    reset: async (id) => {
-      find(id)
-      ensurePresent(id)
-      const base = loader.lower.find((row) => row.id === id)
-      if (base === undefined) throw new OpRejected("bad_args", `${id} was added by the owner; remove it instead`)
-      return attempt(id, () => loader.update(id, { config: base.config, disabled: base.disabled ?? false }))
     },
   }
 }
@@ -188,7 +145,7 @@ export function apply(ctx: Context): void {
   ctx.ops.define(
     defineOp({
       name: "plugin.enable",
-      args: obj({ id: RowId, enabled: bool() }),
+      args: obj({ id: FragmentId, enabled: bool() }),
       actors: OWNER,
       run: async (_api, args) => toJson(await manager.enable(args.id, args.enabled)),
     }),
@@ -196,34 +153,9 @@ export function apply(ctx: Context): void {
   ctx.ops.define(
     defineOp({
       name: "plugin.configure",
-      args: obj({ id: RowId, config: ConfigSchema }),
+      args: obj({ id: FragmentId, config: ConfigSchema }),
       actors: OWNER,
       run: async (_api, args) => toJson(await manager.configure(args.id, isJsonObject(args.config) ? args.config : {})),
-    }),
-  )
-  ctx.ops.define(
-    defineOp({
-      name: "plugin.insert",
-      args: obj({ id: FragmentId, plugin: str({ minLength: 1 }), config: ConfigSchema }),
-      actors: OWNER,
-      run: async (_api, args) =>
-        toJson(await manager.insert(args.id, args.plugin, isJsonObject(args.config) ? args.config : {})),
-    }),
-  )
-  ctx.ops.define(
-    defineOp({
-      name: "plugin.remove",
-      args: obj({ id: RowId }),
-      actors: OWNER,
-      run: async (_api, args) => toJson(await manager.remove(args.id)),
-    }),
-  )
-  ctx.ops.define(
-    defineOp({
-      name: "plugin.reset",
-      args: obj({ id: RowId }),
-      actors: OWNER,
-      run: async (_api, args) => toJson(await manager.reset(args.id)),
     }),
   )
 }

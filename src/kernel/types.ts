@@ -47,5 +47,7 @@ declare module "@deepseek-ai/cordis" {
     "wire/typing"(conversation: ConversationId, on: boolean): Promise<void>
     /** @mode emit. The composed tree or a row's state changed. */
     "plugins/changed"(): void
+    /** @mode emit. A credential reference now resolves to a new value, or was deleted. */
+    "credentials/updated"(ref: string): void
   }
 }

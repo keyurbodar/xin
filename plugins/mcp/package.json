@@ -19,8 +19,7 @@
       "mcp-server": {
         "module": "./server.ts",
         "title": "MCP server",
-        "description": "One MCP server connection carried by a row, for bundles.",
-        "multiple": true
+        "description": "One MCP server connection carried by a row, for bundles."
       }
     },
     "bundle": [

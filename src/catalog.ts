@@ -8,7 +8,6 @@ import * as managerTool from "./kernel/managertool.ts"
 import { Ops } from "./kernel/ops.ts"
 import * as packages from "./kernel/packages.ts"
 import { Pi } from "./kernel/pi.ts"
-import * as profiles from "./kernel/profiles.ts"
 import { Secrets } from "./kernel/secrets.ts"
 import * as system from "./kernel/system.ts"
 import { Wire } from "./kernel/wire.ts"
@@ -29,25 +28,25 @@ export const CORE_CATALOG: Catalog = {
   ops: core(Ops, "Ops", "Commands with receipts and the ops/before policy waterfall."),
   http: core(Http, "HTTP", "Routes inside the Home Durable Object."),
   wire: core(Wire, "Wire", "The web socket protocol, home stream and /v1/cmd."),
-  secrets: core(Secrets, "Secrets", "Sealed per-plugin secrets and tool-output redaction."),
-  plugins: core(manager, "Plugin manager", "List, enable, configure, insert and remove plugin rows."),
+  secrets: core(Secrets, "Credentials", "Named credentials sealed with the KEK, and tool-output redaction."),
+  plugins: core(manager, "Plugin manager", "List, enable and configure plugin rows."),
   packages: core(packages, "Packages", "The build's packages, pending installs and the boot reconcile."),
   system: core(system, "System", "Version, restart and update."),
   "tool-plugins": {
     plugin: managerTool,
     title: "Plugin manager tool",
-    description: "The plugin_manager agent tool. Disable to hide it; allowAgent lets it change rows.",
-    source: "xin",
-  },
-  profiles: {
-    plugin: profiles,
-    title: "Profiles",
-    description: "Named setups: save, switch, delete and export runtime bundles with the owner patch.",
+    description: "The plugin_manager agent tool, off by default.",
     source: "xin",
   },
 }
 
-const row = (id: string): Row => ({ id, name: `cordis:${id}` })
+const DISABLED_BY_DEFAULT = new Set(["tool-plugins"])
+
+const row = (id: string): Row => ({
+  id,
+  name: `cordis:${id}`,
+  ...(DISABLED_BY_DEFAULT.has(id) ? { disabled: true } : {}),
+})
 
 export const CORE_BUNDLES: Readonly<Record<string, readonly Row[]>> = {
   "xin-base": Object.keys(CORE_CATALOG).map(row),

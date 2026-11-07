@@ -31,7 +31,6 @@ const entry = (plugin: CatalogPlugin, title: string) => ({
   title,
   description: title,
   source: "test",
-  multiple: true,
 })
 
 type CatalogPlugin = Catalog[string]["plugin"]

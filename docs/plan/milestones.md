@@ -167,3 +167,17 @@ Read with: [01 Host](./architecture/01-host.md) through [11 Failures and cost](.
 **Proof (test that must pass)**: `src/kernel/profiles.test.ts` (save two profiles with different bundles and a config override, switch between them and see the rows and config change live, a switch that breaks a required row rolls back, delete, export produces a package.json that `bundle.put` installs elsewhere with the same effect, survives eviction) and `src/kernel/bundles.test.ts` patch cases; `plugins/presets/presets.test.ts` (a preset hides a prompt row from the model; a conversation assignment wins over the project's and can be cleared).
 
 **Depends on**: P7.
+
+## P9 · match dsh: remove what dsh lacks
+
+**Builds**: the plugin, bundle and market layer cut to dsh's mechanisms (owner rule 2026-11-07, `docs/plan/architecture/12-market.md`). Removed: `plugin.insert`, `plugin.remove`, `plugin.reset`, the `multiple` flag, `allowAgent`, row-scoped secrets (now named credentials with `${credential:REF}`), `bundle.rollback` and the stored previous version, `p#x` row namespacing, `superseded`, the `prompt` and `skill` contribution rows, the `profiles` row and its ops, per-project preset assignment and the preset map in the registry config, npm keyword search, the scheduled update check with `checkHours`, the `market` home part and `market.updates`, the `latest` and deprecated rules, the tarball host check and `$file` inlining. Fixed: indexes are parsed as dsh format 1 (`plugins`, per-version `source` and `engines`). Statuses are dsh's.
+
+**Proof (test that must pass)**: `plugins/market/market.test.ts` against a real dsh-shaped format-1 index and a fake registry transport: an index entry's 1.1.0 shows `update-available` over an installed 1.0.0, `market.update` mounts 1.1.0 live, a 1.1.0 whose row fails restores 1.0.0, an older version is refused, a git-sourced version records a pending `git+` spec, a wrong integrity is refused; `src/kernel/bundles.test.ts` (a fresh install with a failing row stays installed and reports it; a bundle row adds the `fake-files` row for the swap test); `plugins/presets/presets.test.ts` (preset rows, per-conversation selection only while blank, threads inherit); `plugins/mcp/server.test.ts` (a `${credential:REF}` header resolves from `secret.set`). The whole suite passes with zero boundary violations.
+
+**Depends on**: P8.
+
+## P10 · approval (dsh `tools/pre-execute`, `user-approval`)
+
+**Builds**: a `tools/pre-execute` waterfall over model tool calls (allow, deny, cancel, ask) and a swappable `user-approval` service that answers `ask` through a question card. Nothing else.
+
+**Depends on**: P9.

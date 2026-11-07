@@ -14,14 +14,13 @@ import {
   type BundleView,
   type RuntimeBundle,
 } from "./bundles.ts"
-import type { Patch } from "./layers.ts"
 import type { Catalog } from "./loader.ts"
 
 declare const XIN_BUILD: string | undefined
 
 export type PackageSpec =
   | { readonly kind: "registry"; readonly name: string; readonly range?: string }
-  | { readonly kind: "git"; readonly url: string; readonly ref?: string }
+  | { readonly kind: "git"; readonly url: string; readonly ref?: string; readonly path?: string }
 
 export type PendingPackages = { readonly add: readonly string[]; readonly remove: readonly string[] }
 
@@ -44,10 +43,6 @@ export type PackagesService = {
   bundles(): Promise<readonly BundleView[]>
   put(bundle: RuntimeBundle): Promise<BundleApplication>
   remove(name: string): Promise<{ readonly application: "applied"; readonly package: string }>
-  rollback(name: string): Promise<BundleApplication>
-  queue<T>(work: () => Promise<T>): Promise<T>
-  replace(runtime: readonly RuntimeBundle[], owner: readonly Patch[]): Promise<BundleApplication>
-  replaceNow(runtime: readonly RuntimeBundle[], owner: readonly Patch[]): Promise<BundleApplication>
 }
 
 export type AddEntry = { readonly spec: PackageSpec; readonly build: string; readonly name?: string }
@@ -63,12 +58,19 @@ const REGISTRY_RANGE = /^[A-Za-z0-9.^~><=*xX|-]+$/
 const GITHUB_SPEC = /^github:([A-Za-z0-9][A-Za-z0-9._-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)(?:#([A-Za-z0-9._+/-]+))?$/
 const GIT_URL = /^(?:git\+)?https:\/\//i
 const REF = /^[A-Za-z0-9._+/-]+$/
+const GIT_SEGMENT = /^[A-Za-z0-9._@+-]+$/
+const PATH_PARAM = "&path:/"
 const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/
 const MAX_SPEC = MAX_PACKAGE_NAME + 64
 
 const SpecSchema = union([
   obj({ kind: lit("registry"), name: str({ minLength: 1 }), range: opt(str({ minLength: 1 })) }),
-  obj({ kind: lit("git"), url: str({ minLength: 1 }), ref: opt(str({ minLength: 1 })) }),
+  obj({
+    kind: lit("git"),
+    url: str({ minLength: 1 }),
+    ref: opt(str({ minLength: 1 })),
+    path: opt(str({ minLength: 1 })),
+  }),
 ])
 const StoredSchema = obj({
   add: arr(obj({ spec: SpecSchema, build: str(), name: opt(str()) })),
@@ -98,11 +100,23 @@ function parseGithub(text: string): PackageSpec | undefined {
   return { kind: "git", url: `github:${owner}/${repo}`, ...(ref === undefined ? {} : { ref }) }
 }
 
+const validPath = (path: string): boolean =>
+  path.length > 0 &&
+  path.split("/").every((segment) => segment !== "." && segment !== ".." && GIT_SEGMENT.test(segment))
+
 function parseGitUrl(text: string): PackageSpec | undefined {
   const hash = text.indexOf("#")
   const base = hash === -1 ? text : text.slice(0, hash)
-  const ref = hash === -1 ? undefined : text.slice(hash + 1)
-  if (ref !== undefined && !REF.test(ref)) return undefined
+  const fragment = hash === -1 ? undefined : text.slice(hash + 1)
+  let ref: string | undefined
+  let path: string | undefined
+  if (fragment !== undefined) {
+    const marker = fragment.indexOf(PATH_PARAM)
+    ref = marker === -1 ? fragment : fragment.slice(0, marker)
+    path = marker === -1 ? undefined : fragment.slice(marker + PATH_PARAM.length)
+    if (!REF.test(ref)) return undefined
+    if (path !== undefined && !validPath(path)) return undefined
+  }
   if (!base.endsWith(".git")) return undefined
   let url: URL
   try {
@@ -113,7 +127,7 @@ function parseGitUrl(text: string): PackageSpec | undefined {
   if (url.protocol !== "https:" && url.protocol !== "git+https:") return undefined
   if (url.hostname === "" || url.username !== "" || url.password !== "" || url.search !== "") return undefined
   if (!url.pathname.endsWith(".git") || url.pathname === ".git") return undefined
-  return { kind: "git", url: base, ...(ref === undefined ? {} : { ref }) }
+  return { kind: "git", url: base, ...(ref === undefined ? {} : { ref }), ...(path === undefined ? {} : { path }) }
 }
 
 function parseRegistry(text: string): PackageSpec | undefined {
@@ -125,14 +139,11 @@ function parseRegistry(text: string): PackageSpec | undefined {
   return { kind: "registry", name, ...(range === undefined ? {} : { range }) }
 }
 
-export const specText = (spec: PackageSpec): string =>
-  spec.kind === "registry"
-    ? spec.range === undefined
-      ? spec.name
-      : `${spec.name}@${spec.range}`
-    : spec.ref === undefined
-      ? spec.url
-      : `${spec.url}#${spec.ref}`
+export const specText = (spec: PackageSpec): string => {
+  if (spec.kind === "registry") return spec.range === undefined ? spec.name : `${spec.name}@${spec.range}`
+  if (spec.ref === undefined) return spec.url
+  return `${spec.url}#${spec.path === undefined ? spec.ref : `${spec.ref}&path:/${spec.path}`}`
+}
 
 export const specId = (spec: PackageSpec): string => (spec.kind === "registry" ? spec.name : spec.url)
 
@@ -311,10 +322,6 @@ export function apply(ctx: Context): void {
     bundles: () => bundles.list(),
     put: (bundle) => bundles.put(bundle),
     remove: (pkg) => bundles.remove(pkg),
-    rollback: (pkg) => bundles.rollback(pkg),
-    queue: <T>(work: () => Promise<T>) => bundles.queue(work),
-    replace: (runtime, owner) => bundles.replace(runtime, owner),
-    replaceNow: (runtime, owner) => bundles.replaceNow(runtime, owner),
   }
   writePending(storage, reconcilePending(readPending(storage), catalog, buildId()))
   ctx.provide("packages", service)
@@ -349,14 +356,6 @@ export function apply(ctx: Context): void {
       args: obj({ package: PackageArg }),
       actors: OWNER,
       run: async (_api, args) => toJson(await bundles.remove(args.package)),
-    }),
-  )
-  ctx.ops.define(
-    defineOp({
-      name: "bundle.rollback",
-      args: obj({ package: PackageArg }),
-      actors: OWNER,
-      run: async (_api, args) => toJson(await bundles.rollback(args.package)),
     }),
   )
   ctx.ops.define(

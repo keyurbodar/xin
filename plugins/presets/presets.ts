@@ -2,21 +2,12 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { SqliteDatabase, SqliteMigration } from "@earendil-works/chord/sqlite"
 import type { ConversationId, Extension, Harness } from "@earendil-works/pi-durable"
 import { createContributions } from "../../src/contributions.ts"
-import type {
-  AssignOutcome,
-  ConversationPresetView,
-  PresetContribution,
-  PresetPrompts,
-  PresetTools,
-  PresetView,
-  PresetsService,
-} from "../../src/contracts/presets.ts"
-import { type ProjectState, WorkspaceDoc, type WorkspaceState } from "../../src/contracts/workspace.ts"
-import type { ProjectId } from "../../src/ids.ts"
+import type { ConversationPresetView, PresetView, PresetsService } from "../../src/contracts/presets.ts"
+import { WorkspaceDoc, type ProjectState, type WorkspaceState } from "../../src/contracts/workspace.ts"
+import { serial } from "../../src/serial.ts"
 
 const context = BACKGROUND_CONTEXT
-const TOOL_ROW = "tool-"
-const PROMPT_ROW = "prompt-"
+const TOOL_EXTENSION = "tool-"
 
 export const MIGRATIONS: readonly SqliteMigration[] = [
   { version: 1, statements: ["CREATE TABLE presets (project TEXT PRIMARY KEY, preset TEXT NOT NULL)"] },
@@ -24,23 +15,22 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
     version: 2,
     statements: ["CREATE TABLE conversation_presets (conversation INTEGER PRIMARY KEY, preset TEXT NOT NULL)"],
   },
+  {
+    version: 3,
+    statements: [
+      "DROP TABLE IF EXISTS presets",
+      "DROP TABLE IF EXISTS conversation_presets",
+      "CREATE TABLE presets (conversation INTEGER PRIMARY KEY, preset TEXT NOT NULL)",
+    ],
+  },
 ]
-
-export type PresetDefinition = {
-  readonly title: string
-  readonly description: string
-  readonly tools: PresetTools
-  readonly prompts: PresetPrompts
-}
 
 export type PresetConfig = {
   readonly default: string
-  readonly presets: Readonly<Record<string, PresetDefinition>>
 }
 
 export type InstalledExtension = {
   readonly extension: Extension
-  readonly row: string | undefined
 }
 
 export type PresetsPort = {
@@ -50,19 +40,22 @@ export type PresetsPort = {
   readonly config: PresetConfig
 }
 
-export type PresetTarget =
-  | { readonly kind: "project"; readonly id: string }
-  | { readonly kind: "conversation"; readonly id: number }
+export type SelectOutcome =
+  | { readonly kind: "selected"; readonly conversation: ConversationId; readonly preset: PresetView }
+  | { readonly kind: "bad_args"; readonly reason: string }
 
 export type PresetsFeature = {
   readonly service: PresetsService
   applyAll(): Promise<void>
-  assign(target: PresetTarget, preset: string | null): Promise<AssignOutcome>
-  conversations(workspace: WorkspaceState): readonly ConversationPresetView[]
+  select(conversation: number, presetId: string): Promise<SelectOutcome>
+  conversations(): Promise<readonly ConversationPresetView[]>
   clear(): Promise<void>
 }
 
-const byId = (left: PresetView, right: PresetView): number => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+type ConversationEntry = {
+  readonly project: ProjectState
+  readonly conversationId: ConversationId
+}
 
 const names = (extensions: readonly Extension[]): readonly string[] =>
   extensions.map((extension) => extension.name).toSorted()
@@ -70,226 +63,170 @@ const names = (extensions: readonly Extension[]): readonly string[] =>
 const sameNames = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((name, index) => name === right[index])
 
-const projectOfConversation = (workspace: WorkspaceState | undefined, conversationId: number): string | undefined => {
-  if (workspace === undefined) return undefined
-  for (const [projectId, project] of Object.entries(workspace.projects))
-    if (project.coordinatorId === conversationId || project.threadIds.includes(conversationId)) return projectId
-  return undefined
-}
+const orderOf = (view: PresetView): number => view.order ?? Number.POSITIVE_INFINITY
 
-const removalsOf = (preset: PresetView, installed: readonly InstalledExtension[]): readonly Extension[] => {
-  const removed = new Set<string>()
-  if (preset.tools !== "all") {
-    const allowed = new Set(preset.tools)
-    for (const { extension } of installed)
-      if (extension.name.startsWith(TOOL_ROW) && !allowed.has(extension.name)) removed.add(extension.name)
-  }
-  if (preset.prompts !== "all") {
-    const allowed = new Set<string>(preset.prompts === "none" ? [] : preset.prompts)
-    for (const { extension, row } of installed)
-      if (extension.name.startsWith(PROMPT_ROW) && (row === undefined || !allowed.has(row))) removed.add(extension.name)
-  }
-  return installed.filter(({ extension }) => removed.has(extension.name)).map(({ extension }) => extension)
+const entriesOf = (workspace: WorkspaceState): readonly ConversationEntry[] =>
+  Object.values(workspace.projects).flatMap((project) => [
+    { project, conversationId: project.coordinatorId as ConversationId },
+    ...project.threadIds.map((conversationId) => ({ project, conversationId: conversationId as ConversationId })),
+  ])
+
+const hasTurns = (messages: readonly { readonly role: string }[]): boolean =>
+  messages.some((message) => message.role === "user" || message.role === "assistant")
+
+const removalsOf = (preset: PresetView | undefined, installed: readonly InstalledExtension[]): readonly Extension[] => {
+  if (preset === undefined || preset.tools === "all") return []
+  const allowed = new Set(preset.tools)
+  return installed
+    .filter(({ extension }) => extension.name.startsWith(TOOL_EXTENSION) && !allowed.has(extension.name))
+    .map(({ extension }) => extension)
 }
 
 export async function createPresets(port: PresetsPort): Promise<PresetsFeature> {
-  const views = new Map<string, PresetView>()
-  for (const [id, preset] of Object.entries(port.config.presets))
-    views.set(id, {
-      id,
-      title: preset.title,
-      description: preset.description,
-      tools: preset.tools,
-      prompts: preset.prompts,
-    })
-  const fallback = views.get(port.config.default)
-  if (fallback === undefined) throw new Error(`default preset "${port.config.default}" is not declared in presets`)
-
   const contributed = createContributions<PresetView>({
     key: (view) => view.id,
     label: (id) => `preset "${id}"`,
   })
+  const defaultId = port.config.default
 
-  const all = (): ReadonlyMap<string, PresetView> => {
-    const merged = new Map<string, PresetView>()
-    for (const view of contributed.values()) merged.set(view.id, view)
-    for (const [id, view] of views) merged.set(id, view)
-    return merged
+  const records = new Map<number, string>()
+  for (const row of await port.db.all<{ conversation: number; preset: string }>(
+    "SELECT conversation, preset FROM presets",
+  ))
+    records.set(row.conversation, row.preset)
+
+  const views = (): ReadonlyMap<string, PresetView> => new Map(contributed.values().map((view) => [view.id, view]))
+  const viewOf = (id: string | undefined): PresetView | undefined => (id === undefined ? undefined : views().get(id))
+  const resolved = (id: string | undefined): PresetView | undefined => {
+    const all = views()
+    return (id === undefined ? undefined : all.get(id)) ?? all.get(defaultId)
   }
 
-  const viewOf = (id: string | undefined): PresetView | undefined => (id === undefined ? undefined : all().get(id))
-
-  const projectAssignments = new Map<string, string>()
-  for (const row of await port.db.all<{ project: string; preset: string }>("SELECT project, preset FROM presets"))
-    projectAssignments.set(row.project, row.preset)
-
-  const conversationAssignments = new Map<number, string>()
-  for (const row of await port.db.all<{ conversation: number; preset: string }>(
-    "SELECT conversation, preset FROM conversation_presets",
-  ))
-    conversationAssignments.set(row.conversation, row.preset)
-
-  const projectPreset = (projectId: string): PresetView => viewOf(projectAssignments.get(projectId)) ?? fallback
-
-  const coordinatorPreset = (projectId: string, project: ProjectState): PresetView =>
-    viewOf(conversationAssignments.get(project.coordinatorId)) ?? projectPreset(projectId)
-
-  const conversationPreset = (projectId: string, project: ProjectState, conversationId: number): PresetView =>
-    viewOf(conversationAssignments.get(conversationId)) ??
-    (conversationId === project.coordinatorId ? projectPreset(projectId) : coordinatorPreset(projectId, project))
+  const list = (): readonly PresetView[] =>
+    contributed.values().toSorted((left, right) => {
+      const leftOrder = orderOf(left)
+      const rightOrder = orderOf(right)
+      if (leftOrder === rightOrder) return left.id.localeCompare(right.id)
+      return leftOrder < rightOrder ? -1 : 1
+    })
 
   const align = async (
     conversationId: number,
-    removals: readonly Extension[],
+    preset: PresetView | undefined,
     installed: readonly InstalledExtension[],
   ): Promise<void> => {
     const conversation = await port.harness.conversation(conversationId as ConversationId, context)
     if (conversation === undefined) return
+    const removals = removalsOf(preset, installed)
     const removed = new Set(removals.map((extension) => extension.name))
-    const remaining = installed.filter(({ extension }) => !removed.has(extension.name))
-    const expected = names(remaining.map(({ extension }) => extension))
+    const expected = names(
+      installed.filter(({ extension }) => !removed.has(extension.name)).map(({ extension }) => extension),
+    )
     const agent = await conversation.agent(context)
     if (sameNames(names(agent.extensions), expected)) return
     await conversation.configure({ extensions: removals.length === 0 ? null : { remove: removals } }, context)
   }
 
-  const applyProject = async (workspace: WorkspaceState, projectId: string): Promise<void> => {
-    const project = workspace.projects[projectId]
-    if (project === undefined) return
+  const remember = async (conversationId: number, preset: string): Promise<void> => {
+    if (records.has(conversationId)) return
+    await port.db.run("INSERT OR IGNORE INTO presets (conversation, preset) VALUES (?, ?)", conversationId, preset)
+    records.set(conversationId, preset)
+  }
+
+  const reconcile = async (): Promise<WorkspaceState | undefined> => {
+    const workspace = await port.harness.snapshot(WorkspaceDoc, context)
+    if (workspace === undefined) return undefined
+    for (const project of Object.values(workspace.projects)) {
+      const coordinator = project.coordinatorId
+      await remember(coordinator, project.preset ?? defaultId)
+      const inherited = records.get(coordinator) ?? project.preset ?? defaultId
+      for (const threadId of project.threadIds) await remember(threadId, inherited)
+    }
+    return workspace
+  }
+
+  const applyRecorded = async (workspace: WorkspaceState): Promise<void> => {
     const installed = port.extensions()
-    for (const conversationId of [project.coordinatorId, ...project.threadIds]) {
-      const removals = removalsOf(conversationPreset(projectId, project, conversationId), installed)
-      await align(conversationId, removals, installed)
+    const all = views()
+    const fallback = all.get(defaultId)
+    for (const { conversationId } of entriesOf(workspace)) {
+      const recorded = records.get(conversationId)
+      await align(conversationId, (recorded === undefined ? undefined : all.get(recorded)) ?? fallback, installed)
     }
   }
 
-  let queue: Promise<void> = Promise.resolve()
-  const enqueue = (work: () => Promise<void>): Promise<void> => {
-    const run = queue.then(work, work)
-    queue = run.then(
-      () => undefined,
-      () => undefined,
-    )
-    return run
-  }
-
-  const applyOne = async (projectId: string): Promise<void> => {
-    const workspace = await port.harness.snapshot(WorkspaceDoc, context)
-    if (workspace !== undefined) await applyProject(workspace, projectId)
-  }
+  const enqueue = serial()
 
   const applyAll = (): Promise<void> =>
     enqueue(async () => {
-      const workspace = await port.harness.snapshot(WorkspaceDoc, context)
-      if (workspace === undefined) return
-      for (const projectId of Object.keys(workspace.projects)) await applyProject(workspace, projectId)
+      const workspace = await reconcile()
+      if (workspace !== undefined) await applyRecorded(workspace)
     })
 
   const clear = (): Promise<void> =>
     enqueue(async () => {
       const workspace = await port.harness.snapshot(WorkspaceDoc, context)
-      if (workspace === undefined) return
+      const ids = new Set<number>(records.keys())
+      if (workspace !== undefined) for (const { conversationId } of entriesOf(workspace)) ids.add(conversationId)
       const installed = port.extensions()
-      for (const project of Object.values(workspace.projects))
-        for (const conversationId of [project.coordinatorId, ...project.threadIds])
-          await align(conversationId, [], installed)
+      for (const conversationId of ids) await align(conversationId, undefined, installed)
     })
 
-  const contribute = async (preset: PresetContribution, source: string): Promise<() => Promise<void>> => {
-    const view: PresetView = {
-      id: preset.id ?? source,
-      title: preset.title,
-      description: preset.description,
-      tools: preset.tools,
-      prompts: preset.prompts,
+  const contribute = async (preset: PresetView, source: string): Promise<() => Promise<void>> => {
+    if (preset.id.trim().length === 0) throw new Error("a preset id must not be empty")
+    const remove = contributed.add(source, preset)
+    try {
+      await applyAll()
+    } catch (error) {
+      remove()
+      throw error
     }
-    const remove = contributed.add(source, view)
-    await applyAll()
     return async () => {
       remove()
       await applyAll()
     }
   }
 
-  const assignProject = async (
-    workspace: WorkspaceState,
-    projectId: string,
-    presetId: string,
-  ): Promise<AssignOutcome> => {
-    if (workspace.projects[projectId] === undefined) return { kind: "bad_args", reason: `no project ${projectId}` }
-    const preset = viewOf(presetId)
-    if (preset === undefined) return { kind: "bad_args", reason: `no preset "${presetId}"` }
-    await port.db.run(
-      "INSERT INTO presets (project, preset) VALUES (?, ?) ON CONFLICT (project) DO UPDATE SET preset = excluded.preset",
-      projectId,
-      presetId,
-    )
-    projectAssignments.set(projectId, presetId)
-    await enqueue(() => applyOne(projectId))
-    return { kind: "assigned", target: { kind: "project", projectId: projectId as ProjectId }, preset }
-  }
-
-  const assignConversation = async (
-    workspace: WorkspaceState,
-    conversationId: number,
-    presetId: string | null,
-  ): Promise<AssignOutcome> => {
-    const projectId = projectOfConversation(workspace, conversationId)
-    if (projectId === undefined) return { kind: "bad_args", reason: `no conversation ${conversationId}` }
-    const preset = presetId === null ? null : viewOf(presetId)
-    if (presetId !== null && preset === undefined) return { kind: "bad_args", reason: `no preset "${presetId}"` }
-    if (presetId === null) {
-      await port.db.run("DELETE FROM conversation_presets WHERE conversation = ?", conversationId)
-      conversationAssignments.delete(conversationId)
-    } else {
+  const select = (conversationId: number, presetId: string): Promise<SelectOutcome> =>
+    enqueue(async () => {
+      const workspace = await port.harness.snapshot(WorkspaceDoc, context)
+      if (workspace === undefined) return { kind: "bad_args", reason: "Home is not ready" } as const
+      if (!entriesOf(workspace).some((entry) => entry.conversationId === conversationId))
+        return { kind: "bad_args", reason: `no conversation ${conversationId}` } as const
+      const preset = viewOf(presetId)
+      if (preset === undefined) return { kind: "bad_args", reason: `no preset "${presetId}"` } as const
+      const conversation = await port.harness.conversation(conversationId as ConversationId, context)
+      if (conversation === undefined)
+        return { kind: "bad_args", reason: `conversation ${conversationId} is gone` } as const
+      const current = await conversation.context(context)
+      if (hasTurns(current.messages))
+        return { kind: "bad_args", reason: `conversation ${conversationId} has already started` } as const
       await port.db.run(
-        "INSERT INTO conversation_presets (conversation, preset) VALUES (?, ?) ON CONFLICT (conversation) DO UPDATE SET preset = excluded.preset",
+        "INSERT INTO presets (conversation, preset) VALUES (?, ?) ON CONFLICT (conversation) DO UPDATE SET preset = excluded.preset",
         conversationId,
         presetId,
       )
-      conversationAssignments.set(conversationId, presetId)
-    }
-    await enqueue(() => applyOne(projectId))
-    return {
-      kind: "assigned",
-      target: { kind: "conversation", conversationId: conversationId as ConversationId },
-      preset: preset ?? null,
-    }
-  }
+      records.set(conversationId, presetId)
+      await align(conversationId, preset, port.extensions())
+      return { kind: "selected", conversation: conversationId as ConversationId, preset } as const
+    })
 
-  const assign = async (target: PresetTarget, presetId: string | null): Promise<AssignOutcome> => {
+  const conversations = async (): Promise<readonly ConversationPresetView[]> => {
     const workspace = await port.harness.snapshot(WorkspaceDoc, context)
-    if (workspace === undefined) return { kind: "bad_args", reason: "Home is not ready" }
-    if (target.kind === "project")
-      return presetId === null
-        ? { kind: "bad_args", reason: "a project assignment needs a preset" }
-        : assignProject(workspace, target.id, presetId)
-    return assignConversation(workspace, target.id, presetId)
+    if (workspace === undefined) return []
+    return entriesOf(workspace)
+      .map(({ conversationId }) => ({
+        conversation: conversationId,
+        preset: records.get(conversationId) ?? defaultId,
+      }))
+      .toSorted((left, right) => left.conversation - right.conversation)
   }
 
-  const conversations = (workspace: WorkspaceState): readonly ConversationPresetView[] => {
-    const found: ConversationPresetView[] = []
-    for (const [projectId, project] of Object.entries(workspace.projects)) {
-      for (const conversationId of [project.coordinatorId, ...project.threadIds]) {
-        if (!conversationAssignments.has(conversationId)) continue
-        found.push({
-          conversation: conversationId as ConversationId,
-          preset: conversationPreset(projectId, project, conversationId),
-        })
-      }
-    }
-    return found.toSorted((left, right) => left.conversation - right.conversation)
+  const service: PresetsService = {
+    list,
+    presetOf: (conversation) => resolved(records.get(conversation)),
+    contribute,
   }
 
-  return {
-    service: {
-      list: () => [...all().values()].toSorted(byId),
-      presetOf: (projectId) => projectPreset(projectId),
-      contribute,
-    },
-    applyAll,
-    assign,
-    conversations,
-    clear,
-  }
+  return { service, applyAll, select, conversations, clear }
 }

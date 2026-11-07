@@ -1,40 +1,27 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
-import { type Sealed, Sealer } from "../seal.ts"
+import { compile } from "@earendil-works/pi-schema"
+import { SealedSchema, Sealer, type Sealed } from "../seal.ts"
 
-const NO_SECRETS: ReadonlyMap<string, string> = new Map()
+const PREFIX = "secret."
+const label = (ref: string): string => `credential:${ref}`
+const keyOf = (ref: string): string => `${PREFIX}${ref}`
+const refOf = (key: string): string => key.slice(PREFIX.length)
 
-export const secretLabel = (id: string, key: string): string => `plugin:${id}:${key}`
+const sealedCheck = compile(SealedSchema)
 
-const isSealed = (value: unknown): value is Sealed =>
-  typeof value === "object" &&
-  value !== null &&
-  "iv" in value &&
-  typeof value.iv === "string" &&
-  "data" in value &&
-  typeof value.data === "string"
-
-const parseSealed = (raw: string | null): Readonly<Record<string, Sealed>> => {
-  if (raw === null) return {}
-  let parsed: unknown
+const parse = (ref: string, raw: string): Sealed => {
+  let value: unknown
   try {
-    parsed = JSON.parse(raw)
+    value = JSON.parse(raw)
   } catch {
-    throw new Error("plugin secrets are corrupt: not JSON")
+    throw new Error(`credential ${ref} is corrupt: not JSON`)
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
-    throw new Error("plugin secrets are corrupt: not an object")
-  const sealed: Record<string, Sealed> = {}
-  for (const [key, value] of Object.entries(parsed)) {
-    if (!isSealed(value)) throw new Error(`plugin secrets are corrupt: ${key}`)
-    sealed[key] = value
-  }
-  return sealed
+  if (!sealedCheck.check(value)) throw new Error(`credential ${ref} is corrupt: not a sealed value`)
+  return value
 }
 
-const jsonPath = (key: string): string => `$.${JSON.stringify(key)}`
-
-export class PluginSecrets {
-  readonly #plaintext = new Map<string, ReadonlyMap<string, string>>()
+export class CredentialStore {
+  readonly #plaintext = new Map<string, string>()
 
   constructor(
     private readonly db: SqliteDatabase,
@@ -43,37 +30,37 @@ export class PluginSecrets {
 
   async load(): Promise<void> {
     this.#plaintext.clear()
-    const rows = await this.db.all<{ id: string; sealed: string | null }>("SELECT id, sealed FROM plugins")
+    const rows = await this.db.all<{ key: string; value: string }>(
+      "SELECT key, value FROM kv WHERE key LIKE 'secret.%'",
+    )
     for (const row of rows) {
-      const values = new Map<string, string>()
-      for (const [key, entry] of Object.entries(parseSealed(row.sealed)))
-        values.set(key, await this.sealer.unseal(entry, secretLabel(row.id, key)))
-      if (values.size > 0) this.#plaintext.set(row.id, values)
+      const ref = refOf(row.key)
+      this.#plaintext.set(ref, await this.sealer.unseal(parse(ref, row.value), label(ref)))
     }
   }
 
-  forRow(row: string): ReadonlyMap<string, string> {
-    return this.#plaintext.get(row) ?? NO_SECRETS
+  get(ref: string): string | undefined {
+    return this.#plaintext.get(ref)
   }
 
   values(): readonly string[] {
-    const found = new Set<string>()
-    for (const values of this.#plaintext.values()) {
-      for (const value of values.values()) if (value.length > 0) found.add(value)
-    }
-    return Array.from(found).toSorted((a, b) => b.length - a.length)
+    const found = new Set(this.#plaintext.values())
+    found.delete("")
+    return Array.from(found).toSorted((left, right) => right.length - left.length)
   }
 
-  async set(row: string, key: string, value: string): Promise<void> {
-    const sealed = JSON.stringify(await this.sealer.seal(value, secretLabel(row, key)))
+  async set(ref: string, value: string): Promise<void> {
+    if (value === "") {
+      await this.db.run("DELETE FROM kv WHERE key = ?", keyOf(ref))
+      this.#plaintext.delete(ref)
+      return
+    }
+    const sealed = JSON.stringify(await this.sealer.seal(value, label(ref)))
     await this.db.run(
-      "INSERT INTO plugins (id, sealed) VALUES (?, json_object(?, json(?))) ON CONFLICT (id) DO UPDATE SET sealed = json_set(COALESCE(plugins.sealed, '{}'), ?, json(?))",
-      row,
-      key,
-      sealed,
-      jsonPath(key),
+      "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      keyOf(ref),
       sealed,
     )
-    this.#plaintext.set(row, new Map(this.forRow(row)).set(key, value))
+    this.#plaintext.set(ref, value)
   }
 }

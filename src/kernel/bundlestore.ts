@@ -1,9 +1,8 @@
 import type { JsonValue } from "@earendil-works/chord"
 import { arr, bool, compile, lit, obj, opt, str, union, unknown } from "@earendil-works/pi-schema"
-import { FragmentId, runtimeRowId } from "../rowid.ts"
+import { FragmentId } from "../rowid.ts"
 import { BundlePatchArg, normalizePatch, type BundlePatch, type PatchInput } from "./bundlepatch.ts"
-import type { Patch, Row } from "./layers.ts"
-import { parseOwnerPatch, readOwnerPatch, writeOwnerPatch } from "./patch.ts"
+import type { Row } from "./layers.ts"
 
 export type BundleSource =
   | { readonly kind: "registry"; readonly version: string; readonly integrity: string }
@@ -31,20 +30,9 @@ export type RuntimeBundle = {
   readonly requires: readonly string[]
 }
 
-export type StoredBundle = {
-  readonly bundle: RuntimeBundle
-  readonly previous?: RuntimeBundle
-}
-
 export type BundleFailure = { readonly id: string; readonly error: string }
 
-export type ActiveSetup = {
-  readonly bundles: readonly RuntimeBundle[]
-  readonly patch: readonly Patch[]
-}
-
 export const BUNDLES_KEY = "plugins.bundles"
-export const PROFILES_KEY = "plugins.profiles"
 
 const SourceSchema = union([
   obj({ kind: lit("registry"), version: str({ minLength: 1 }), integrity: str({ minLength: 1 }) }),
@@ -63,15 +51,9 @@ export const RuntimeBundleSchema = obj({
   patch: opt(arr(BundlePatchArg)),
   requires: arr(str()),
 })
-const StoredSchema = obj({ bundle: RuntimeBundleSchema, previous: opt(RuntimeBundleSchema) })
 const bundleCheck = compile(RuntimeBundleSchema)
-const storedCheck = compile(StoredSchema)
 
 type RuntimeBundleInput = Omit<RuntimeBundle, "patch"> & { readonly patch?: readonly PatchInput[] }
-
-type StoredInput = { readonly bundle: RuntimeBundleInput; readonly previous?: RuntimeBundleInput }
-
-type JsonRecord = { readonly [key: string]: unknown }
 
 export function normalizeRow(row: RowInput): BundleRow {
   return {
@@ -94,7 +76,7 @@ export function toRuntimeBundle(value: unknown): RuntimeBundle | undefined {
   }
 }
 
-const isJsonRecord = (value: unknown): value is JsonRecord =>
+const isJsonRecord = (value: unknown): value is { readonly [key: string]: unknown } =>
   typeof value === "object" && value !== null && !Array.isArray(value)
 
 export const sameJson = (left: unknown, right: unknown): boolean => {
@@ -111,28 +93,17 @@ export const sameJson = (left: unknown, right: unknown): boolean => {
 
 export function bundleRows(bundle: RuntimeBundle): Row[] {
   return bundle.rows.map((row) => ({
-    id: runtimeRowId(bundle.package, row.id),
+    id: row.id,
     name: `cordis:${row.plugin}`,
     ...(row.config === undefined ? {} : { config: row.config }),
     ...(row.disabled === undefined ? {} : { disabled: row.disabled }),
   }))
 }
 
-export function runtimeRows(bundles: readonly RuntimeBundle[]): Row[] {
-  return bundles.flatMap(bundleRows)
-}
-
-function storedBundle(value: unknown): StoredBundle | undefined {
-  if (!storedCheck.check(value)) return undefined
-  const entry = value as StoredInput
-  const bundle = toRuntimeBundle(entry.bundle)
-  if (bundle === undefined) return undefined
-  if (entry.previous === undefined) return { bundle }
-  const previous = toRuntimeBundle(entry.previous)
-  return previous === undefined ? undefined : { bundle, previous }
-}
-
-export function readBundles(storage: DurableObjectStorage, warn: (message: string) => void): readonly StoredBundle[] {
+export function readBundles(
+  storage: DurableObjectStorage,
+  warn: (message: string) => void = () => undefined,
+): readonly RuntimeBundle[] {
   const value: unknown = storage.kv.get(BUNDLES_KEY)
   if (value === undefined) return []
   if (!Array.isArray(value)) {
@@ -140,61 +111,14 @@ export function readBundles(storage: DurableObjectStorage, warn: (message: strin
     return []
   }
   return value.flatMap((entry, index) => {
-    const parsed = storedBundle(entry)
-    if (parsed !== undefined) return [parsed]
+    const bundle = toRuntimeBundle(entry)
+    if (bundle !== undefined) return [bundle]
     warn(`stored runtime bundle ${index} is not a bundle; ignored`)
     return []
   })
 }
 
-export function writeBundles(storage: DurableObjectStorage, bundles: readonly StoredBundle[]): void {
+export function writeBundles(storage: DurableObjectStorage, bundles: readonly RuntimeBundle[]): void {
   if (bundles.length === 0) storage.kv.delete(BUNDLES_KEY)
   else storage.kv.put(BUNDLES_KEY, bundles)
-}
-
-const setupOf = (record: JsonRecord): ActiveSetup | undefined => {
-  if (!Array.isArray(record.bundles) || !Array.isArray(record.patch)) return undefined
-  const bundles: RuntimeBundle[] = []
-  for (const entry of record.bundles) {
-    const bundle = toRuntimeBundle(entry)
-    if (bundle === undefined) return undefined
-    bundles.push(bundle)
-  }
-  return { bundles, patch: parseOwnerPatch(record.patch, () => undefined) }
-}
-
-export function readActiveSetup(
-  storage: DurableObjectStorage,
-  warn: (message: string) => void,
-): ActiveSetup | undefined {
-  const value: unknown = storage.kv.get(PROFILES_KEY)
-  if (!isJsonRecord(value)) return undefined
-  const setup = setupOf(value)
-  if (setup === undefined) warn("stored profiles have no usable active setup; ignored")
-  return setup
-}
-
-export function writeActiveSetup(
-  storage: DurableObjectStorage,
-  bundles: readonly RuntimeBundle[],
-  patch: readonly Patch[],
-): void {
-  const value: unknown = storage.kv.get(PROFILES_KEY)
-  if (!isJsonRecord(value) || typeof value.active !== "string") return
-  storage.kv.put(PROFILES_KEY, { ...value, bundles, patch })
-}
-
-export function reconcileActiveSetup(storage: DurableObjectStorage, warn: (message: string) => void): void {
-  const setup = readActiveSetup(storage, warn)
-  if (setup === undefined) return
-  const stored = readBundles(storage, warn).map((entry) => entry.bundle)
-  const owner = readOwnerPatch(storage, warn)
-  const matches =
-    stored.length === setup.bundles.length && stored.every((bundle, index) => sameJson(bundle, setup.bundles[index]))
-  if (!matches)
-    writeBundles(
-      storage,
-      setup.bundles.map((bundle) => ({ bundle })),
-    )
-  if (!sameJson(owner, setup.patch)) writeOwnerPatch(storage, setup.patch)
 }

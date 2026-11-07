@@ -47,7 +47,7 @@ Each service is a row in `xin-base`. A different row can provide the same key in
 | `http` | `http` | `route("GET /path" or "GET /prefix*", handler)` (effect), `handle(request)` |
 | `wire` | `wire` | sockets, `home(part, fn)` (effect), `publishHome()` |
 | `clock` | `clock` | `timer({ due, fire })` (effect), `arm(wake)`, `fire(now)`. It owns the single DO alarm (§1) |
-| `secrets` | `secrets` | `get(key)` and `set(key, value)` over values sealed with `KEK`, scoped to the calling row's loader entry id (found with `loader.locate`). `values()` is kernel-only and feeds the redaction hook. Defines the owner op `plugin.secret.set` |
+| `secrets` | `secrets` | named credentials, as dsh `credentials`: `get(ref)` and `set(ref, value)` over values sealed with `KEK`, one namespace for the Home. Config strings that accept credentials resolve `${credential:REF}` with `expandCredentials(text, secrets)` from `src/credentials.ts`. `values()` is kernel-only and feeds the redaction hook. Defines the owner op `secret.set { ref, value }` (empty `value` deletes) |
 | `plugins` | `plugins` | the plugin manager below |
 | `packages` | `packages` | the build's `installed` packages, the parsed `pending` list, `plugin.install` and `plugin.uninstall`, `GET /v1/build/packages`, and the boot reconcile |
 | `system` | `system` | version, restart, update. Deploys go through the `deployer` seam |
@@ -84,6 +84,7 @@ Events are declared on Cordis `Events` with an `@mode` tag. The dispatch mode is
 | `thread/settled(event)` | emit | a thread reached a terminal status. `event = { threadId, parentId, projectId, title, status, result? }`. Emitted from the reporter's replay-safe report phase after the status commit: at least once, never inside a transaction. Each listener is contained: a throw or rejection is logged and the others still run |
 | `wire/typing(conversation, on)` | parallel | typing indicators |
 | `plugins/changed()` | emit | the composed tree or a row's state changed |
+| `credentials/updated(ref)` | emit | a credential reference now resolves to a new value, or was deleted; rows with `${credential:REF}` templates reconnect |
 | `mcp/changed()` | emit | the MCP server tool set changed; `tool-mcp` republishes its extension |
 
 Turn, tool and request interception stay pi-native: install an extension with hooks or `wrapTool`.
@@ -92,11 +93,11 @@ Turn, tool and request interception stay pi-native: install an extension with ho
 
 A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disabled?, group?, isolate? }`.
 
-- **Catalog.** `src/catalog.ts` lists the kernel rows in the `xin-base` bundle: the required ones (`db`, `clock`, `pi`, `ops`, `http`, `wire`, `secrets`, `plugins`, `packages`, `system`) and two that are not required, `tool-plugins` and `profiles` (§12 Setups). Every feature is a package under `plugins/<name>/` (models, files, intake, memory, push, skills, mcp, workspace, schedules, orchestrator, jobs, questions, watchdog, failures, deploy-hook, time), and the generated `src/catalog.gen.ts` lists them and installed dependencies, one bundle per package. Entries are `{ plugin, title, description, required?, multiple?, local?, source }`; `local: true` marks a package that lives in this repository. A package can never declare a core plugin, bundle or row id.
+- **Catalog.** `src/catalog.ts` lists the kernel rows in the `xin-base` bundle: the required ones (`db`, `clock`, `pi`, `ops`, `http`, `wire`, `secrets`, `plugins`, `packages`, `system`) and one that is not required and is disabled by default, `tool-plugins`. Every feature is a package under `plugins/<name>/` (models, files, intake, memory, push, skills, mcp, workspace, schedules, orchestrator, jobs, questions, watchdog, failures, deploy-hook, time), and the generated `src/catalog.gen.ts` lists them and installed dependencies, one bundle per package. Entries are `{ plugin, title, description, required?, local?, source }`; `local: true` marks a package that lives in this repository. A package can never declare a core plugin, bundle or row id.
 - **Feature modules** are native Cordis plugins, as in dsh: `export const name`, `inject` and `apply(ctx, config)`. `apply` registers each part as an effect through the kernel services: `ctx.provide`, `ctx.pi.install`, `ctx.ops.define`, `ctx.http.route`, `ctx.wire.home`, `ctx.clock.timer`, `ctx.on("wire/typing")`, and `ctx.effect` for start-up work with a disposer. Helpers take narrow ports (`{ db, arm }`) that `apply` builds and tests build directly. (P1 to P4 mounted features through a `hostModule` adapter; P5 removed it.)
 - **Bundles.** A bundle is an ordered list of rows. `xin-base` holds the kernel rows. `xin.profile.json` names `xin-base` and every feature package's bundle. A package can ship its own bundle.
 - **Layers**, applied in order to an empty list (as in dsh):
-  1. The bundles named in `xin.profile.json`, in order.
+  1. The bundles named in `xin.profile.json`, in order, then the runtime bundles (§12).
   2. That file's `patch`. It is build time and checked in.
   3. The owner patch. It is run time and stored in the `kv` key `plugins.patch`.
 
@@ -105,7 +106,7 @@ A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disab
   - `{ insert: [rows] }` appends rows.
   - `{ id, ...fields }` replaces each named field of that row whole, `config` included, with no deep merge.
   - An unknown id is reported and skipped.
-- **Persistence.** `XinLoader.commit(change)` recomputes the owner patch as the minimal departure from the lower layers and stores it, so the owner patch records only what the owner changed.
+- **Persistence.** `XinLoader.commit(change)` recomputes the owner patch as the minimal departure from the lower layers and stores it, so the owner patch records only what the owner changed, and writing a row's inherited value back drops its override (dsh `config-editor`). The owner adds rows by putting a local bundle (§12), as dsh adds rows through a bundle.
 - **Failure.**
   - A failed `required` row puts Home in `boot_failed`. `/v1/status` reports it and ops return `unavailable`.
   - Any other failed row is reported as `failed` with its error, and the rest keep running.
@@ -117,53 +118,49 @@ A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disab
 | --- | --- |
 | `plugin.list` | rows with id, name, state (`active`, `pending`, `failed`, `disabled`, `missing`), error, layer, config and its schema JSON |
 | `plugin.catalog` | compiled plugins with meta, `Config` schema JSON and the package they came from |
-| `plugin.tree` | the composed rows with the layer that set each field (dsh `--dump-config`) |
+| `plugin.tree` | `{ [id]: { addedBy, patchedBy } }` for every composed row (dsh `--dump-config`), plus the bundles, runtime bundles, lower rows, owner patch and warnings |
 | `plugin.enable` | `{ id, enabled }`. Rejected for a `required` row |
 | `plugin.configure` | `{ id, config }`, validated against the plugin's `Config` before it is committed. Rejected for a plugin with no `Config` (every kernel service but `plugins`) and for a `missing` row |
-| `plugin.insert` | `{ id, plugin, config }` adds a catalog plugin as a new row. Rejected for a `required` plugin, and for a second row of a plugin unless its catalog entry sets `multiple: true` (most plugins register fixed tool and op names, so a second copy could only fail). `time` sets it: an extra row installs the extension `tool-<row id>` and the tool `current_time_<row>`. A package declares it as `xin.plugins.<name>.multiple: true` |
-| `plugin.remove` | removes a row that the owner patch inserted, including a `missing` one |
-| `plugin.reset` | drops the owner's override for a row, back to the lower layers |
 | `plugin.install` | `{ spec }` records a parsed package spec for the next build: `{ kind: "registry", name, range? }` or `{ kind: "git", url, ref? }`. Idempotent per spec, and it cancels a pending removal of the same package |
 | `plugin.uninstall` | `{ package }` records a package for the next build to remove. Rejected when the package provides a core row, is local to this repository, or is not in the build |
 | `plugin.packages` | the build's `installed` packages as `{package, version}`, and the `pending` `{add, remove}` list the next build will apply |
-| `plugin.secret.set` | `{ id, key, value }` for row `id`, sealed by `secrets` (the op lives in the `secrets` row) |
 
 `plugin.install`, `plugin.uninstall`, `plugin.packages`, the `GET /v1/build/packages` route and the boot reconcile live in the `packages` row; the other ops in this table live in `plugins`.
 
 Every mutating result carries `application: "applied" | "failed"` and the row's new state. A change applies live in place through Cordis disposal. New code always means a rebuild and `system.update`.
 
-The agent tool `plugin_manager` is its own row, `tool-plugins` (`src/kernel/managertool.ts`, not required). It takes `action: list | catalog | tree | enable | configure`. It mutates only when the `tool-plugins` row config has `allowAgent: true`, and otherwise tells the model which owner op to suggest. An owner op is always allowed.
+The agent tool `plugin_manager` is its own row, `tool-plugins` (`src/kernel/managertool.ts`, not required, disabled by default, as dsh ships `plugin_manager` as an optional tool row). It takes `action: list | catalog | tree | enable | configure`. Approval of its mutations follows dsh `tools/pre-execute` and `user-approval` (P10).
 
 A row whose new config or code fails to start is an outcome, not an error: the op returns `application: "failed"` with the row and its recorded error, and the other rows keep running.
 
 ## Presets
 
-A project can run its conversations with a named agent preset, as dsh does. The presets are the `presets` row's schemastery `Config`, so the owner edits them with `plugin.configure`:
+As in dsh (`agent-preset`, `agent-preset-registry`), a preset is an ordinary row and the registry only names the default.
 
-```json
-{
-  "default": "full",
-  "presets": {
-    "full": { "title": "Full", "description": "Every tool row.", "tools": "all" },
-    "minimal": { "title": "Minimal", "description": "Memory and skills only.", "tools": ["tool-memory", "tool-skills"] }
-  }
-}
+```yaml
+- id: presets                 # the registry row
+  plugin: presets
+  config: { default: full }
+- id: preset-full
+  plugin: preset
+  config: { id: full, name: Full, description: Every tool row., tools: all }
+- id: preset-minimal
+  plugin: preset
+  config: { id: minimal, name: Minimal, tools: [tool-memory, tool-skills] }
 ```
 
-`tools` is `"all"` or an allowlist of tool-row ids. `prompts` is `"all"` (default), `"none"` or an allowlist of `prompt` row ids (§12 Presets beyond tools). A config whose `default` is not declared fails the row (`failed`), and a project assigned a preset that a later config removes falls back to `default`.
+A `preset` row config is `{ id, name?, description?, order?, tools }`, where `tools` is `"all"` or an allowlist of tool extension names (dsh lists child plugin rows; Xin's agent shares one tree, so a preset selects the `tool-*` extensions those rows install). Every extension that carries tools is named `tool-*`: `ctx.pi.install` throws for any other name. A new preset, or an override of a shipped one, is a bundle row or patch entry, as in dsh. Two preset rows with one `id` leave the later row `failed`. As in dsh, an unknown id fails only when it is used: `preset.select` and `project.create` answer `bad_args`, and a conversation whose recorded preset and default are both undeclared keeps every tool.
 
-A preset selects tool rows by the extension name a tool row installs, and prompt rows by the row id `ctx.pi.installed` records for each extension (`pi.install` stores the installing loader row id). Every extension that carries tools is named `tool-*`: `ctx.pi.install` throws for any other name, so the prefix is enforced rather than assumed. A row's own id need not match (`time` installs `tool-time`, and its extra rows install `tool-time-tokyo`).
-
-- **Assignment** lives in the plugin's own table (`presets`, created through `ctx.db.applySqliteMigrations("presets", …)`); a project with no row uses `default`. The service is `ctx.presets`: `list()` and `presetOf(projectId)`, both synchronous over the row's config and that table.
-- **Removals.** For a project, the removed extensions are every installed extension named `tool-*` that the preset's allowlist does not name; `"all"` removes none. Each apply computes the removals from the project's current effective assignment and the end state from `ctx.pi.installed`, and calls `configure({ extensions: { remove } })` (or `null` for `"all"`) only when the resolved extension set differs, so replay is harmless.
-- **Serialization.** Every apply runs through one queue: the row's start, `plugins/changed`, a workspace change and `preset.assign` all append to it, and `assign` awaits its own apply after its SQL write. A stale apply therefore cannot land after a later assignment.
-- **Conversations.** The project's coordinator conversation and every thread conversation of the project are configured. pi starts a task-owned conversation as a copy of its owner's agent, so a new thread inherits the coordinator's selection; existing threads are configured directly.
-- **When.** The row applies on its own start (config change, restart, new build), on `plugins/changed` (a tool row was enabled, disabled or added), when the workspace document changes (a new project), and after `preset.assign`. When the row unloads, it configures every project conversation back to `extensions: null`, so disabling or removing the row restores every tool; a restart applies the presets again.
+- **Selection** is per conversation, as dsh records a preset per session. A conversation records its preset id when it is created (`project.create { preset? }` for a coordinator, else the registry `default`); `preset.select { conversation, preset }` changes it only while the conversation has no turns, as dsh allows only for a blank session. A thread records its coordinator's preset when it is spawned. The records live in the plugin's own table (`presets`, one row per conversation). The service is `ctx.presets`: `list()` and `presetOf(conversation)`.
+- **Definitions are read live.** A conversation keeps its preset id; each apply uses that preset's current definition, as dsh recovers a session with the current definition of its recorded preset. A conversation whose preset no longer exists uses `default`.
+- **Removals.** For a conversation, the removed extensions are every installed `tool-*` extension that the preset's allowlist does not name; `"all"` removes none. Each apply computes them from `ctx.pi.installed` and calls `configure({ extensions: { remove } })` (or `null` for `"all"`) only when the resolved set differs, so replay is harmless.
+- **Serialization.** Every apply runs through one queue: the row's start, `plugins/changed`, a new conversation and `preset.select` all append to it.
+- **When.** The row applies on its own start, on `plugins/changed`, and when a conversation is created or selected. When the row unloads, it configures every recorded conversation back to `extensions: null`.
 
 | Op | Effect |
 | --- | --- |
-| `preset.list` | the presets, each project's effective preset id, and the conversation assignments |
-| `preset.assign` | `{ projectId, preset }` or `{ conversation, preset }` (or `preset: null` to clear a conversation's) stores the assignment and applies it live; a conversation assignment wins over its project's; an unknown project, conversation or preset is `bad_args` |
+| `preset.list` | the presets in `order`, the default, and each conversation's recorded preset |
+| `preset.select` | `{ conversation, preset }` for a conversation with no turns; otherwise, or for an unknown conversation or preset, `bad_args` |
 
 ## Install, update, restart
 
@@ -175,7 +172,7 @@ A preset selects tool rows by the extension name a tool row installs, and prompt
 - **`system.restart`.**
   - `{ hard: false }` disposes the root context and boots it again in place, with the same code and fresh fibers.
   - `{ hard: true }` calls `state.abort()`, so the DO restarts on the next request.
-- **`system.update`** asks the `deployer` seam to deploy. The default row, `deploy-hook`, POSTs to a URL stored as its secret, such as a GitHub `workflow_dispatch` or a Cloudflare Workers Builds deploy hook. The new version comes up when Cloudflare restarts the DO on the new code. The result is `{ application: "deploying" }`, and the client polls `system.version`.
+- **`system.update`** asks the `deployer` seam to deploy. The default row, `deploy-hook`, POSTs to the URL, token and ref its config builds from `${credential:REF}` templates, such as a GitHub `workflow_dispatch` or a Cloudflare Workers Builds deploy hook. The new version comes up when Cloudflare restarts the DO on the new code. The result is `{ application: "deploying" }`, and the client polls `system.version`.
 
 ## Installing from the client
 

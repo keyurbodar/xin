@@ -42,6 +42,12 @@ const broken = {
   },
 }
 
+const required = {
+  name: "k-required",
+  Config: Schema.object({ text: Schema.string().required() }),
+  apply() {},
+}
+
 const secret = {
   name: "k-secret",
   inject: ["ops", "secrets"],
@@ -62,13 +68,18 @@ export const catalog: Catalog = {
     plugin: echo,
     title: "Echo bundle row",
     description: "Records its config and installs an echo tool for its row id.",
-    multiple: true,
     source: "test",
   },
   "k-bundle-broken": {
     plugin: broken,
     title: "Broken bundle row",
     description: "Throws on start.",
+    source: "test",
+  },
+  "k-required": {
+    plugin: required,
+    title: "Required config row",
+    description: "Its config schema has no defaults.",
     source: "test",
   },
   "k-secret": {

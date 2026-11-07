@@ -361,6 +361,5 @@ export const catalog: Catalog = {
     title: "Fake in-memory files",
     description: "An in-memory files service for testing that a different row can provide the files seam.",
     source: "test",
-    multiple: true,
   },
 }

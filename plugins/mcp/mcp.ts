@@ -12,6 +12,7 @@ import { createContributions } from "../../src/contributions.ts"
 import type { JobsService } from "../../src/contracts/jobs.ts"
 import type { McpServerContribution, McpService } from "../../src/contracts/mcp.ts"
 import type { Env } from "../../src/env.ts"
+import { messageOf } from "../../src/errors.ts"
 import { defineOp, OpRejected, type Op } from "../../src/ops.ts"
 import { Sealer, SealedSchema, type Sealed } from "../../src/seal.ts"
 
@@ -39,8 +40,6 @@ const headersCheck = compile(map(str()))
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
-
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 const toolName = (server: string, tool: string): string =>
   `mcp__${server}__${tool}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, MAX_TOOL_NAME)

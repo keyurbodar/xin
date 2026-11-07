@@ -1,40 +1,36 @@
 import { rowId } from "../../src/contributions.ts"
-import type { PresetPrompts } from "../../src/contracts/presets.ts"
 import { type Context, Schema } from "../../src/kernel/index.ts"
 
 export const name = "preset"
 export const inject = ["presets"]
 
 export const Config = Schema.object({
-  id: Schema.string().description("The preset id. Defaults to this row's id."),
-  title: Schema.string().required(),
-  description: Schema.string().required(),
+  id: Schema.string().required().description("The preset id a conversation records."),
+  name: Schema.string().description("Display name."),
+  description: Schema.string().description("One sentence on what this preset is for."),
+  order: Schema.number().description("Position in preset.list; lower comes first."),
   tools: Schema.union([Schema.const("all"), Schema.array(Schema.string())])
     .required()
-    .description('"all", or the tool rows the preset offers.'),
-  prompts: Schema.union([Schema.const("all"), Schema.const("none"), Schema.array(Schema.string())])
-    .default("all")
-    .description('"all", "none", or the prompt rows the preset offers.'),
+    .description('"all", or the tool extensions the preset offers.'),
 })
 
 type Config = {
-  readonly id?: string
-  readonly title: string
-  readonly description: string
+  readonly id: string
+  readonly name?: string
+  readonly description?: string
+  readonly order?: number
   readonly tools: "all" | readonly string[]
-  readonly prompts: PresetPrompts
 }
 
 export async function apply(ctx: Context, config: Config): Promise<() => Promise<void>> {
-  const row = rowId(ctx)
   return ctx.presets.contribute(
     {
-      ...(config.id === undefined ? {} : { id: config.id }),
-      title: config.title,
-      description: config.description,
+      id: config.id,
+      ...(config.name === undefined ? {} : { name: config.name }),
+      ...(config.description === undefined ? {} : { description: config.description }),
+      ...(config.order === undefined ? {} : { order: config.order }),
       tools: config.tools,
-      prompts: config.prompts,
     },
-    row,
+    rowId(ctx),
   )
 }

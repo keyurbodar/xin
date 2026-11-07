@@ -1,18 +1,20 @@
 import { Context, type Fiber, type Plugin } from "@deepseek-ai/cordis"
 import { Loader } from "@deepseek-ai/cordis-plugin-loader"
-import {
-  readBundles,
-  reconcileActiveSetup,
-  runtimeRows,
-  writeActiveSetup,
-  type BundleFailure,
-  type RuntimeBundle,
-} from "./bundles.ts"
 import { normalizePatch } from "./bundlepatch.ts"
-import { applyPatches, compose, departures, pluginOf, type Patch, type Profile, type Row } from "./layers.ts"
+import { configSchemaOf } from "./config.ts"
+import { readBundles, bundleRows, type BundleFailure, type RuntimeBundle } from "./bundles.ts"
+import {
+  applyPatches,
+  compose,
+  departures,
+  pluginOf,
+  type Patch,
+  type Profile,
+  type Row,
+  type RowTrace,
+} from "./layers.ts"
 import { sourcePackage } from "./packages.ts"
 import { readOwnerPatch, writeOwnerPatch } from "./patch.ts"
-import { isRuntimeRowId } from "../rowid.ts"
 import type { Runtime } from "./types.ts"
 
 export type CatalogEntry = {
@@ -20,7 +22,6 @@ export type CatalogEntry = {
   readonly title: string
   readonly description: string
   readonly required?: boolean
-  readonly multiple?: boolean
   readonly local?: boolean
   readonly source: string
 }
@@ -33,7 +34,6 @@ export type RowState =
   | { readonly kind: "disabled" }
   | { readonly kind: "failed"; readonly error: string }
   | { readonly kind: "missing" }
-  | { readonly kind: "superseded" }
 
 export type Composition = {
   readonly catalog: Catalog
@@ -63,34 +63,18 @@ const failure = async (fiber: Fiber): Promise<string> =>
 const changedRow = (left: Row, right: Row): boolean =>
   left.disabled !== right.disabled || JSON.stringify(left.config ?? null) !== JSON.stringify(right.config ?? null)
 
-function duplicateFailures(rows: readonly Row[], catalog: Catalog): Map<string, string> {
-  const counts = new Map<string, number>()
-  for (const row of rows) {
-    const plugin = pluginOf(row)
-    counts.set(plugin, (counts.get(plugin) ?? 0) + 1)
-  }
-  const failed = new Map<string, string>()
-  for (const row of rows) {
-    const plugin = pluginOf(row)
-    const entry = catalog[plugin]
-    if (entry === undefined || entry.multiple === true) continue
-    if ((counts.get(plugin) ?? 0) < 2) continue
-    if (isRuntimeRowId(row.id)) failed.set(row.id, `a ${plugin} row already exists in this tree`)
-  }
-  return failed
-}
-
 export class XinLoader extends Loader {
   override internal = undefined
   readonly composition: Composition
   readonly warnings: string[]
   readonly compiled: ReadonlySet<string>
   private lowerRows: Row[]
+  private lowerTrace: ReadonlyMap<string, RowTrace>
+  private rowTrace: ReadonlyMap<string, RowTrace>
   private runtimeBundles: readonly RuntimeBundle[]
   private readonly initial: readonly Row[]
   private readonly persistPatch: (patch: readonly Patch[]) => void
   private missing: Row[]
-  private rejected: ReadonlyMap<string, string>
   private unresolved: readonly Patch[]
   private runtimeUnresolved: readonly Patch[] = []
   private mounted = false
@@ -103,12 +87,14 @@ export class XinLoader extends Loader {
     this.compiled = new Set(Object.values(config.composition.catalog).map((entry) => sourcePackage(entry.source)))
     this.runtimeBundles = config.runtime.filter((bundle) => !this.compiled.has(bundle.package))
     for (const [name, entry] of Object.entries(config.composition.catalog)) this.builtins[name] = entry.plugin
-    this.lowerRows = this.lowerOf(config.runtime)
-    const applied = applyPatches(this.lowerRows, config.owner, (message) => this.warn(message))
+    const lower = this.lowerOf(config.runtime)
+    this.lowerRows = lower.rows
+    this.lowerTrace = lower.trace
+    const applied = applyPatches(lower.rows, config.owner, (message) => this.warn(message), "owner", lower.trace)
     this.initial = applied.rows
-    this.rejected = duplicateFailures(this.initial, this.composition.catalog)
+    this.rowTrace = applied.trace
     this.unresolved = applied.unresolved
-    this.missing = applied.rows.filter((row) => !this.has(row) || this.rejected.has(row.id))
+    this.missing = applied.rows.filter((row) => !this.has(row))
     this.persistPatch = config.persist
   }
 
@@ -120,8 +106,8 @@ export class XinLoader extends Loader {
     return this.runtimeBundles
   }
 
-  isSuperseded(pkg: string): boolean {
-    return this.compiled.has(pkg)
+  get trace(): ReadonlyMap<string, RowTrace> {
+    return this.rowTrace
   }
 
   has(row: Row): boolean {
@@ -130,7 +116,9 @@ export class XinLoader extends Loader {
 
   override commit(): void {
     if (!this.mounted || this.quiet) return
-    this.persistPatch(this.ownerPatch())
+    const patch = this.ownerPatch()
+    this.persistPatch(patch)
+    this.rowTrace = applyPatches(this.lowerRows, patch, (message) => this.warn(message), "owner", this.lowerTrace).trace
     this.ctx.emit("plugins/changed")
   }
 
@@ -139,7 +127,17 @@ export class XinLoader extends Loader {
   }
 
   ownerPatch(): Patch[] {
-    return [...departures(this.lowerRows, this.rows()), ...this.unresolved]
+    return [...departures(this.lowerRows, this.rows(), (row) => this.resolveConfig(row)), ...this.unresolved]
+  }
+
+  private resolveConfig(row: Row): unknown {
+    const schema = configSchemaOf(this.composition.catalog[pluginOf(row)]?.plugin)
+    if (schema === undefined) return row.config ?? null
+    try {
+      return JSON.parse(JSON.stringify(schema(row.config ?? {})))
+    } catch {
+      return row.config ?? null
+    }
   }
 
   entryOf(id: string): CatalogEntry | undefined {
@@ -155,14 +153,7 @@ export class XinLoader extends Loader {
     return this.missing.some((row) => row.id === id)
   }
 
-  dropMissing(id: string): void {
-    this.missing = this.missing.filter((row) => row.id !== id)
-    this.commit()
-  }
-
   async state(id: string): Promise<RowState> {
-    const rejected = this.rejected.get(id)
-    if (rejected !== undefined) return { kind: "failed", error: rejected }
     const entry = this.store[id]
     if (entry === undefined || this.isMissing(id)) return { kind: "missing" }
     if (entry.disabled) return { kind: "disabled" }
@@ -192,53 +183,55 @@ export class XinLoader extends Loader {
   private patchedRow(row: Row): Row {
     const patches = this.runtimeUnresolved.filter((patch) => !("insert" in patch) && patch.id === row.id)
     if (patches.length === 0) return row
-    const applied = applyPatches([row], patches, () => undefined).rows[0]
+    const applied = applyPatches([row], patches, () => undefined, "runtime").rows[0]
     return applied ?? row
   }
 
   async mount(): Promise<void> {
-    for (const row of this.initial) if (this.has(row) && !this.rejected.has(row.id)) await this.create(row)
+    for (const row of this.initial) if (this.has(row)) await this.create(row)
     await this.await()
     this.mounted = true
   }
 
   async recompose(runtime: readonly RuntimeBundle[], owner: readonly Patch[] = this.ownerPatch()): Promise<void> {
     const lower = this.lowerOf(runtime)
-    const applied = applyPatches(lower, owner, (message) => this.warn(message))
-    const rejected = duplicateFailures(applied.rows, this.composition.catalog)
-    const present = applied.rows.filter((row) => this.has(row) && !rejected.has(row.id))
-    const missing = applied.rows.filter((row) => !this.has(row) || rejected.has(row.id))
-    const previous = [...this.root.data]
+    const applied = applyPatches(lower.rows, owner, (message) => this.warn(message), "owner", lower.trace)
+    const present = applied.rows.filter((row) => this.has(row))
+    const missing = applied.rows.filter((row) => !this.has(row))
+    const mountedRows = [...this.root.data]
     this.quiet = true
     try {
-      for (const row of previous) if (!present.some((candidate) => candidate.id === row.id)) this.remove(row.id)
+      for (const row of mountedRows) if (!present.some((candidate) => candidate.id === row.id)) this.remove(row.id)
       for (const row of present) {
-        const old = previous.find((candidate) => candidate.id === row.id)
+        const old = mountedRows.find((candidate) => candidate.id === row.id)
         await this.applyRow(old, row).catch(() => undefined)
       }
       await this.await()
     } finally {
       this.quiet = false
     }
-    this.lowerRows = lower
+    this.lowerRows = lower.rows
+    this.lowerTrace = lower.trace
     this.runtimeBundles = runtime.filter((bundle) => !this.compiled.has(bundle.package))
-    this.rejected = rejected
     this.missing = missing
     this.unresolved = applied.unresolved
+    this.rowTrace = applied.trace
     this.commit()
   }
 
-  private lowerOf(runtime: readonly RuntimeBundle[]): Row[] {
+  private lowerOf(runtime: readonly RuntimeBundle[]): { rows: Row[]; trace: ReadonlyMap<string, RowTrace> } {
     const mounted = runtime.filter((bundle) => !this.compiled.has(bundle.package))
     const applied = compose(
       this.composition.bundles,
       this.composition.profile,
-      runtimeRows(mounted),
-      mounted.flatMap((bundle) => bundle.patch.map((entry) => normalizePatch(entry))),
+      mounted.map((bundle) => ({
+        rows: bundleRows(bundle),
+        patch: bundle.patch.map((entry) => normalizePatch(entry)),
+      })),
       (message) => this.warn(message),
     )
     this.runtimeUnresolved = applied.unresolved
-    return applied.rows
+    return { rows: applied.rows, trace: applied.trace }
   }
 
   private warn(message: string): void {
@@ -270,23 +263,15 @@ export async function boot(runtime: Runtime, composition: Composition): Promise<
   root.provide("host", runtime)
   const storage = runtime.state.storage
   const warnings: string[] = []
-  reconcileActiveSetup(storage, (message) => void warnings.push(message))
   const owner = readOwnerPatch(storage, (message) => void warnings.push(message))
-  const runtimeBundles = readBundles(storage, (message) => void warnings.push(message)).map((entry) => entry.bundle)
+  const runtimeBundles = readBundles(storage, (message) => void warnings.push(message))
   await root.plugin(XinLoader, {
     baseUrl: "file:///bundle/",
     composition,
     runtime: runtimeBundles,
     owner,
     warnings,
-    persist: (patch) => {
-      writeOwnerPatch(storage, patch)
-      writeActiveSetup(
-        storage,
-        readBundles(storage, () => undefined).map((entry) => entry.bundle),
-        patch,
-      )
-    },
+    persist: (patch) => writeOwnerPatch(storage, patch),
   })
   const loader = root.get("loader")
   if (!(loader instanceof XinLoader)) throw new Error("the loader did not start")
@@ -294,12 +279,9 @@ export async function boot(runtime: Runtime, composition: Composition): Promise<
   await loader.mount()
   const broken = await loader.brokenRequired()
   const harness = root.get("harness")
+  const detail = broken.map((row) => `${row.id}: ${row.error}`).join("; ") || "no harness"
   if (broken.length > 0 || harness === undefined)
-    return {
-      root,
-      loader,
-      failure: `required rows are not active (${broken.map((row) => `${row.id}: ${row.error}`).join("; ") || "no harness"})`,
-    }
+    return { root, loader, failure: `required rows are not active (${detail})` }
   await root.clock.arm(harness.wake())
   harness.resume()
   return { root, loader, failure: undefined }

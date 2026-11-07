@@ -9,8 +9,7 @@
       "time": {
         "module": "./index.ts",
         "title": "Current time",
-        "description": "A current_time tool in a configurable timezone.",
-        "multiple": true
+        "description": "A current_time tool in a configurable timezone."
       }
     },
     "bundle": [

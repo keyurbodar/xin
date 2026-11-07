@@ -33,37 +33,66 @@ async function turn(stub: Stub, tool: string, requestId: string): Promise<string
   })
 }
 
-describe("plugin secrets", () => {
-  it("reads only the calling row's secrets, keeps them across eviction, and redacts tool output", async () => {
+const stored = (stub: Stub): Promise<{ value: string } | undefined> =>
+  runInDurableObject(stub, (home: Home) =>
+    home.db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", "secret.TOKEN"),
+  )
+
+describe("credentials", () => {
+  it("sets, reads and redacts a credential, keeps it sealed at rest and across eviction", async () => {
     const stub = fresh()
     const secret = "s3cr3t-value"
 
-    const applied = await cmd(stub, "s1", "plugin.secret.set", { id: "s-echo", key: "TOKEN", value: secret })
-    expect(applied).toMatchObject({ ok: true, result: { application: "applied", id: "s-echo", key: "TOKEN" } })
+    expect(await cmd(stub, "s1", "secret.set", { ref: "TOKEN", value: secret })).toMatchObject({
+      ok: true,
+      result: { application: "applied", ref: "TOKEN" },
+    })
 
     expect(await turn(stub, "s_echo_secret", "e1")).toBe("token=[redacted]")
-
-    expect(await turn(stub, "s_other_secret", "o1")).toBe("token=undefined")
-    expect(await turn(stub, "s_other_values", "v1")).toBe("denied")
-
-    expect(await turn(stub, "s_other_write", "w1")).toBe("written")
-    expect(await turn(stub, "s_other_secret", "o2")).toBe("token=[redacted]")
     expect(await turn(stub, "s_echo_len", "l1")).toBe(`len=${secret.length}`)
-    expect(await turn(stub, "s_echo_secret", "e2")).toBe("token=[redacted]")
 
-    await evictDurableObject(stub)
-    expect(await turn(stub, "s_echo_secret", "e3")).toBe("token=[redacted]")
-    expect(await turn(stub, "s_echo_len", "l2")).toBe(`len=${secret.length}`)
+    const row = await stored(stub)
+    expect(row?.value).not.toContain(secret)
+    expect(JSON.parse(row?.value ?? "{}")).toMatchObject({
+      iv: expect.any(String),
+      data: expect.any(String),
+    })
 
-    const stored = await runInDurableObject(stub, async (home: Home) =>
+    const entries = await runInDurableObject(stub, async (home: Home) =>
       (await home.root()).entries({ order: "ascending" }, 200, undefined, BACKGROUND_CONTEXT),
     )
-    expect(JSON.stringify(stored.items)).not.toContain(secret)
+    expect(JSON.stringify(entries.items)).not.toContain(secret)
+
+    await evictDurableObject(stub)
+    expect(await turn(stub, "s_echo_secret", "e2")).toBe("token=[redacted]")
+    expect(await turn(stub, "s_echo_len", "l2")).toBe(`len=${secret.length}`)
   })
 
-  it("rejects a secret write with a row id that is not a plugin id", async () => {
+  it("denies a plugin row every credential value", async () => {
     const stub = fresh()
-    const refused = await cmd(stub, "s2", "plugin.secret.set", { id: "Bad Id", key: "TOKEN", value: "x" })
-    expect(refused).toMatchObject({ ok: false, error: { code: "bad_args" } })
+    expect(await cmd(stub, "s3", "secret.set", { ref: "TOKEN", value: "s3cr3t-value" })).toMatchObject({ ok: true })
+    expect(await turn(stub, "s_echo_values", "v1")).toBe("denied")
+  })
+
+  it("writes through the service and deletes with an empty value", async () => {
+    const stub = fresh()
+
+    expect(await turn(stub, "s_echo_write", "w1")).toBe("written")
+    expect(await turn(stub, "s_echo_secret", "e1")).toBe("token=[redacted]")
+
+    expect(await cmd(stub, "d1", "secret.set", { ref: "TOKEN", value: "" })).toMatchObject({
+      ok: true,
+      result: { application: "applied", ref: "TOKEN" },
+    })
+    expect(await stored(stub)).toBeUndefined()
+    expect(await turn(stub, "s_echo_secret", "e2")).toBe("token=undefined")
+  })
+
+  it("rejects a credential reference that breaks the ref grammar", async () => {
+    const stub = fresh()
+    expect(await cmd(stub, "s2", "secret.set", { ref: "Bad Ref", value: "x" })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
   })
 })

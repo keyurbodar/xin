@@ -11,7 +11,6 @@ type Declared = {
   readonly module: string
   readonly title: string
   readonly description: string
-  readonly multiple?: boolean
 }
 type RowSpec = { readonly id: string; readonly name: string; readonly config?: unknown; readonly disabled?: boolean }
 type Found = {
@@ -52,7 +51,6 @@ function parse(path: string, specifier: (module: string) => string, local: boole
       module,
       title: String(field(entry, "title") ?? name),
       description: String(field(entry, "description") ?? field(manifest, "description") ?? ""),
-      ...(field(entry, "multiple") === true ? { multiple: true } : {}),
     }
   }
   const rows = field(xin, "bundle")
@@ -136,7 +134,7 @@ function render(found: readonly Found[]): string {
       const alias = `p${index++}`
       imports.push(`import * as ${alias} from ${JSON.stringify(entry.specifier(declared.module))}`)
       catalog.push(
-        `  ${JSON.stringify(name)}: { plugin: ${alias}, title: ${JSON.stringify(declared.title)}, description: ${JSON.stringify(declared.description)},${declared.multiple === true ? " multiple: true," : ""}${entry.local ? " local: true," : ""} source: ${JSON.stringify(`${entry.pkg}@${entry.version}`)} },`,
+        `  ${JSON.stringify(name)}: { plugin: ${alias}, title: ${JSON.stringify(declared.title)}, description: ${JSON.stringify(declared.description)},${entry.local ? " local: true," : ""} source: ${JSON.stringify(`${entry.pkg}@${entry.version}`)} },`,
       )
     }
     bundles.push(`  ${JSON.stringify(entry.pkg)}: ${JSON.stringify(entry.bundle)},`)

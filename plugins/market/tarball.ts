@@ -1,29 +1,24 @@
-import type { BundleRow } from "../../src/kernel/index.ts"
-import type { JsonValue } from "@earendil-works/chord"
-import { obj, opt, str, unknown, compile } from "@earendil-works/pi-schema"
+import { compile, obj, opt, unknown } from "@earendil-works/pi-schema"
+import { messageOf } from "../../src/errors.ts"
 import { REQUEST_TIMEOUT_MS } from "./registry.ts"
 
 export const MAX_TARBALL_BYTES = 8 * 1024 * 1024
 export const MAX_UNPACKED_BYTES = 4 * 1024 * 1024
-export const MAX_FILE_BYTES = 64 * 1024
 
 const BLOCK = 512
 const PACKAGE_PREFIX = "package/"
 const MANIFEST = "package.json"
 
-export type ExtractedBundle = {
-  readonly xin: unknown
-  read(path: string): string | undefined
-}
+export type ExtractedBundle = { readonly xin: unknown }
 
 export type BundleFailure =
+  | { readonly kind: "input"; readonly message: string }
   | { readonly kind: "algorithm"; readonly message: string }
   | { readonly kind: "integrity"; readonly message: string }
   | { readonly kind: "gzip"; readonly message: string }
   | { readonly kind: "archive"; readonly message: string }
   | { readonly kind: "size"; readonly message: string }
   | { readonly kind: "manifest"; readonly message: string }
-  | { readonly kind: "file"; readonly message: string }
   | { readonly kind: "redirect"; readonly message: string }
   | { readonly kind: "http"; readonly message: string }
   | { readonly kind: "network"; readonly message: string }
@@ -49,6 +44,8 @@ export async function fetchTarball(
   url: string,
   options: FetchInput = {},
 ): Promise<BundleResult<Uint8Array>> {
+  const protocol = protocolOf(url)
+  if (protocol !== "https:") return { ok: false, error: { kind: "input", message: `tarball ${url} must use https` } }
   const cap = options.cap ?? MAX_TARBALL_BYTES
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? REQUEST_TIMEOUT_MS)
@@ -76,7 +73,16 @@ async function readCapped(response: Response, cap: number): Promise<BundleResult
       ? { ok: false, error: { kind: "size", message: `tarball exceeds ${cap} bytes` } }
       : { ok: true, value: bytes }
   }
-  const reader = response.body.getReader()
+  const bytes = await readAllCapped(response.body.getReader(), cap)
+  return bytes === undefined
+    ? { ok: false, error: { kind: "size", message: `tarball exceeds ${cap} bytes` } }
+    : { ok: true, value: bytes }
+}
+
+async function readAllCapped(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  cap: number,
+): Promise<Uint8Array | undefined> {
   const chunks: Uint8Array[] = []
   let total = 0
   for (;;) {
@@ -85,7 +91,7 @@ async function readCapped(response: Response, cap: number): Promise<BundleResult
     total += value.byteLength
     if (total > cap) {
       await reader.cancel()
-      return { ok: false, error: { kind: "size", message: `tarball exceeds ${cap} bytes` } }
+      return undefined
     }
     chunks.push(value)
   }
@@ -95,13 +101,10 @@ async function readCapped(response: Response, cap: number): Promise<BundleResult
     bytes.set(chunk, offset)
     offset += chunk.byteLength
   }
-  return { ok: true, value: bytes }
+  return bytes
 }
 
-const ManifestSchema = obj(
-  { name: opt(str({ minLength: 1 })), version: opt(str({ minLength: 1 })), xin: opt(unknown()) },
-  { open: true },
-)
+const ManifestSchema = obj({ xin: opt(unknown()) }, { open: true })
 const manifestCheck = compile(ManifestSchema)
 
 export async function extractBundle(input: ExtractInput): Promise<BundleResult<ExtractedBundle>> {
@@ -109,122 +112,30 @@ export async function extractBundle(input: ExtractInput): Promise<BundleResult<E
   if (!verified.ok) return verified
   const unpacked = await gunzip(input.bytes, input.cap ?? MAX_UNPACKED_BYTES)
   if (!unpacked.ok) return unpacked
-  const entries = parseUstar(unpacked.value)
-  if (!entries.ok) return entries
-  const files = new Map<string, Uint8Array>()
-  for (const entry of entries.value) {
-    if (files.has(entry.path))
-      return { ok: false, error: { kind: "archive", message: `tarball repeats ${entry.path}` } }
-    files.set(entry.path, entry.bytes)
-  }
-  const manifest = files.get(MANIFEST)
-  if (manifest === undefined) {
+  const manifest = readManifest(unpacked.value)
+  if (!manifest.ok) return manifest
+  if (manifest.value === undefined)
     return { ok: false, error: { kind: "manifest", message: `tarball has no ${PACKAGE_PREFIX}${MANIFEST}` } }
-  }
   let document: unknown
   try {
-    document = JSON.parse(new TextDecoder().decode(manifest))
+    document = JSON.parse(new TextDecoder().decode(manifest.value))
   } catch (error) {
     return { ok: false, error: { kind: "manifest", message: `${MANIFEST}: ${messageOf(error)}` } }
   }
   if (!manifestCheck.check(document)) {
-    const errors = manifestCheck.errors(document)
-    const first = errors[0]
+    const first = manifestCheck.errors(document)[0]
     const detail = first === undefined ? `${MANIFEST} is invalid` : `${MANIFEST}${first.path}: ${first.message}`
     return { ok: false, error: { kind: "manifest", message: detail } }
   }
-  const texts = new Map<string, string>()
-  return {
-    ok: true,
-    value: {
-      xin: document.xin,
-      read(path) {
-        if (!safeRelativePath(path)) return undefined
-        const cached = texts.get(path)
-        if (cached !== undefined) return cached
-        const bytes = files.get(path)
-        if (bytes === undefined) return undefined
-        const text = new TextDecoder().decode(bytes)
-        texts.set(path, text)
-        return text
-      },
-    },
-  }
+  return { ok: true, value: { xin: document.xin } }
 }
 
-export function inlineFiles(
-  rows: readonly BundleRow[],
-  read: (path: string) => string | undefined,
-): BundleResult<readonly BundleRow[]> {
-  const inlined: BundleRow[] = []
-  for (const row of rows) {
-    if (row.config === undefined) {
-      inlined.push(row)
-      continue
-    }
-    const config = inlineValue(row.config, read)
-    if (!config.ok) return config
-    inlined.push({ ...row, config: config.value })
-  }
-  return { ok: true, value: inlined }
-}
-
-export function safeRelativePath(path: string): boolean {
-  if (path.length === 0 || path.startsWith("/") || path.includes("\\")) return false
-  return !path.split("/").includes("..")
-}
-
-export function tarballAllowed(tarballUrl: string, registryUrl: string): boolean {
+function protocolOf(url: string): string | undefined {
   try {
-    const tarball = new URL(tarballUrl)
-    const registry = new URL(registryUrl)
-    return tarball.protocol === "https:" && tarball.host === registry.host
+    return new URL(url).protocol
   } catch {
-    return false
+    return undefined
   }
-}
-
-type Inline = { readonly ok: true; readonly value: JsonValue } | { readonly ok: false; readonly error: BundleFailure }
-
-function inlineValue(value: JsonValue, read: (path: string) => string | undefined): Inline {
-  const path = fileReference(value)
-  if (path !== undefined) return readFile(path, read)
-  if (Array.isArray(value)) {
-    const items: JsonValue[] = []
-    for (const item of value) {
-      const inlined = inlineValue(item, read)
-      if (!inlined.ok) return inlined
-      items.push(inlined.value)
-    }
-    return { ok: true, value: items }
-  }
-  if (isRecord(value)) {
-    const record: Record<string, JsonValue> = {}
-    for (const [key, item] of Object.entries(value)) {
-      const inlined = inlineValue(item, read)
-      if (!inlined.ok) return inlined
-      record[key] = inlined.value
-    }
-    return { ok: true, value: record }
-  }
-  return { ok: true, value }
-}
-
-function readFile(path: string, read: (path: string) => string | undefined): Inline {
-  if (!safeRelativePath(path)) return { ok: false, error: { kind: "file", message: `unsafe file path ${path}` } }
-  const text = read(path)
-  if (text === undefined) return { ok: false, error: { kind: "file", message: `missing file ${path}` } }
-  if (new TextEncoder().encode(text).byteLength > MAX_FILE_BYTES)
-    return { ok: false, error: { kind: "size", message: `file ${path} exceeds ${MAX_FILE_BYTES} bytes` } }
-  return { ok: true, value: text }
-}
-
-function fileReference(value: JsonValue): string | undefined {
-  if (!isRecord(value)) return undefined
-  const keys = Object.keys(value)
-  if (keys.length !== 1 || keys[0] !== "$file") return undefined
-  const path = value["$file"]
-  return typeof path === "string" ? path : undefined
 }
 
 async function verifyIntegrity(bytes: Uint8Array, integrity: string): Promise<BundleResult<Uint8Array>> {
@@ -253,35 +164,18 @@ async function gunzip(bytes: Uint8Array, cap: number): Promise<BundleResult<Uint
   } catch (error) {
     return { ok: false, error: { kind: "gzip", message: messageOf(error) } }
   }
-  const chunks: Uint8Array[] = []
-  let total = 0
   try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      total += value.byteLength
-      if (total > cap) {
-        await reader.cancel()
-        return { ok: false, error: { kind: "size", message: `unpacked tarball exceeds ${cap} bytes` } }
-      }
-      chunks.push(value)
-    }
+    const unpacked = await readAllCapped(reader, cap)
+    return unpacked === undefined
+      ? { ok: false, error: { kind: "size", message: `unpacked tarball exceeds ${cap} bytes` } }
+      : { ok: true, value: unpacked }
   } catch (error) {
     return { ok: false, error: { kind: "gzip", message: messageOf(error) } }
   }
-  const unpacked = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    unpacked.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return { ok: true, value: unpacked }
 }
 
-type TarEntry = { readonly path: string; readonly bytes: Uint8Array }
-
-function parseUstar(archive: Uint8Array): BundleResult<readonly TarEntry[]> {
-  const entries: TarEntry[] = []
+function readManifest(archive: Uint8Array): BundleResult<Uint8Array | undefined> {
+  let found: Uint8Array | undefined
   let offset = 0
   while (offset + BLOCK <= archive.byteLength) {
     const header = archive.subarray(offset, offset + BLOCK)
@@ -295,17 +189,14 @@ function parseUstar(archive: Uint8Array): BundleResult<readonly TarEntry[]> {
     const prefix = cstring(header, 345, 155)
     const next = offset + BLOCK + Math.ceil(size / BLOCK) * BLOCK
     if (next > archive.byteLength) return { ok: false, error: { kind: "archive", message: "tarball is truncated" } }
-    if (type === "0" || type === "\0") {
-      const full = prefix === "" ? name : `${prefix}/${name}`
-      if (full.startsWith(PACKAGE_PREFIX)) {
-        const path = full.slice(PACKAGE_PREFIX.length)
-        const bytes = archive.subarray(offset + BLOCK, offset + BLOCK + size)
-        if (safeRelativePath(path)) entries.push({ path, bytes })
-      }
+    const path = prefix === "" ? name : `${prefix}/${name}`
+    if ((type === "0" || type === "\0") && path === `${PACKAGE_PREFIX}${MANIFEST}`) {
+      if (found !== undefined) return { ok: false, error: { kind: "archive", message: `tarball repeats ${MANIFEST}` } }
+      found = archive.subarray(offset + BLOCK, offset + BLOCK + size)
     }
     offset = next
   }
-  return { ok: true, value: entries }
+  return { ok: true, value: found }
 }
 
 function cstring(header: Uint8Array, offset: number, length: number): string {
@@ -324,12 +215,4 @@ function octal(header: Uint8Array, offset: number, length: number): number | und
 
 function isZero(block: Uint8Array): boolean {
   return block.every((byte) => byte === 0)
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-function isRecord(value: unknown): value is Record<string, JsonValue> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

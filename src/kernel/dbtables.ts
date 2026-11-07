@@ -12,9 +12,7 @@ export const TABLE_OWNERS: Readonly<Record<string, string>> = {
   notes_fts: "memory",
   push_subs: "push",
   presets: "presets",
-  conversation_presets: "presets",
-  market_versions: "market",
-  market_checks: "market",
+  market_indexes: "market",
 }
 
 export function migrationsTable(owner: string): string {

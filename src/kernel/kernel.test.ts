@@ -1,8 +1,10 @@
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
-import { cmd, field, fresh, rowOf } from "../../test/support.ts"
+import { cmd, field, fresh, rowOf, type Stub } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
-import { writeActiveSetup } from "./bundles.ts"
+
+const put = (stub: Stub, rows: readonly { id: string; plugin: string; config?: unknown }[]): ReturnType<typeof cmd> =>
+  cmd(stub, `put-${crypto.randomUUID()}`, "bundle.put", { package: "xin-test-row", rows })
 
 describe("plugin kernel", () => {
   it("lists every kernel and feature row as active and failed rows with their error", async () => {
@@ -15,6 +17,7 @@ describe("plugin kernel", () => {
       error: "k harness exploded",
     })
     expect(field(await rowOf(stub, "orphan"), "state")).toEqual({ kind: "pending" })
+    expect(field(await rowOf(stub, "tool-plugins"), "state")).toEqual({ kind: "disabled" })
   })
 
   it("fails only the row whose harness startup throws", async () => {
@@ -34,34 +37,29 @@ describe("plugin kernel", () => {
     expect((await cmd(stub, "cp1", "test.bump")).result).toBe(1)
   })
 
-  it("refuses to insert a required plugin or a second copy of a single-instance plugin", async () => {
+  it("adds a second row of a plugin from a local bundle", async () => {
     const stub = fresh()
-    expect(await cmd(stub, "ip1", "plugin.insert", { id: "pi2", plugin: "pi", config: {} })).toMatchObject({
-      ok: false,
-      error: { code: "bad_args" },
+    expect(await put(stub, [{ id: "time-tokyo", plugin: "time", config: { timezone: "Asia/Tokyo" } }])).toMatchObject({
+      ok: true,
+      result: { application: "applied" },
     })
-    expect(await cmd(stub, "it1", "plugin.insert", { id: "files2", plugin: "files", config: {} })).toMatchObject({
-      ok: false,
-      error: { code: "bad_args" },
-    })
-    expect(await rowOf(stub, "files2")).toBeUndefined()
-  })
-
-  it("inserts a second row of a multiple plugin with its own extension and tool", async () => {
-    const stub = fresh()
-    expect(
-      await cmd(stub, "it2", "plugin.insert", { id: "time-tokyo", plugin: "time", config: { timezone: "Asia/Tokyo" } }),
-    ).toMatchObject({ ok: true })
     expect(field(await rowOf(stub, "time-tokyo"), "state")).toEqual({ kind: "active" })
     expect(field(await rowOf(stub, "time"), "state")).toEqual({ kind: "active" })
   })
 
-  it("reports an owner row whose plugin left the build as missing, refuses config, and removes it", async () => {
+  it("adds a bundle row that clashes on an op name and leaves the other rows running", async () => {
+    const stub = fresh()
+    const clash = await put(stub, [{ id: "clash", plugin: "k-clash" }])
+    expect(clash.result).toMatchObject({ application: "failed", rows: [{ id: "clash" }] })
+    expect(JSON.stringify(clash.result)).toContain("file.list is already defined")
+    expect(field(await rowOf(stub, "clash"), "state")).toMatchObject({ kind: "failed" })
+    expect((await cmd(stub, "f1", "file.list", { prefix: "/" })).ok).toBe(true)
+  })
+
+  it("reports an owner row whose plugin left the build as missing and refuses config", async () => {
     const stub = fresh()
     await runInDurableObject(stub, async (_home: Home, state) => {
-      const patch = [{ insert: [{ id: "ghost", name: "cordis:not-in-build" }] }]
-      state.storage.kv.put("plugins.patch", patch)
-      writeActiveSetup(state.storage, [], patch)
+      state.storage.kv.put("plugins.patch", [{ insert: [{ id: "ghost", name: "cordis:not-in-build" }] }])
     })
     await evictDurableObject(stub)
     expect(field(await rowOf(stub, "ghost"), "state")).toEqual({ kind: "missing" })
@@ -69,16 +67,10 @@ describe("plugin kernel", () => {
       ok: false,
       error: { code: "bad_args" },
     })
-    expect(await cmd(stub, "gm1", "plugin.reset", { id: "ghost" })).toMatchObject({
+    expect(await cmd(stub, "gm1", "plugin.enable", { id: "ghost", enabled: false })).toMatchObject({
       ok: false,
       error: { code: "bad_args" },
     })
-    expect((await cmd(stub, "gm2", "plugin.remove", { id: "ghost" })).result).toMatchObject({
-      application: "applied",
-      id: "ghost",
-    })
-    await evictDurableObject(stub)
-    expect(await rowOf(stub, "ghost")).toBeUndefined()
   })
 
   it("stays coherent after two back-to-back restarts", async () => {
@@ -100,10 +92,10 @@ describe("plugin kernel", () => {
     expect((await cmd(stub, "g2", "k.greeting")).result).toBe("hola")
     await evictDurableObject(stub)
     expect((await cmd(stub, "g3", "k.greeting")).result).toBe("hola")
-    await cmd(stub, "r1", "plugin.reset", { id: "k-config" })
+    await cmd(stub, "r1", "plugin.configure", { id: "k-config", config: { greeting: "hi" } })
     expect((await cmd(stub, "g4", "k.greeting")).result).toBe("hi")
-    const tree = await cmd(stub, "t1", "plugin.tree")
-    expect(field(tree.result, "owner")).toEqual([])
+    expect(await rowOf(stub, "k-config")).toMatchObject({ layer: "bundle", config: { greeting: "hi" } })
+    expect(field((await cmd(stub, "t1", "plugin.tree")).result, "owner")).toEqual([])
   })
 
   it("disables a row so its ops vanish, re-enables it, and refuses to disable a required row", async () => {
@@ -120,16 +112,6 @@ describe("plugin kernel", () => {
     })
   })
 
-  it("inserts a second copy of a catalog plugin, and an inserted clash fails alone", async () => {
-    const stub = fresh()
-    const clash = await cmd(stub, "i1", "plugin.insert", { id: "clash", plugin: "k-clash", config: {} })
-    expect(clash.result).toMatchObject({ application: "failed", row: { state: { kind: "failed" } } })
-    expect(JSON.stringify(clash.result)).toContain("file.list is already defined")
-    expect((await cmd(stub, "f1", "file.list", { prefix: "/" })).ok).toBe(true)
-    await cmd(stub, "rm", "plugin.remove", { id: "clash" })
-    expect(await rowOf(stub, "clash")).toBeUndefined()
-  })
-
   it("runs an ops/before policy over every op and drops it when the row is disabled", async () => {
     const stub = fresh()
     expect(await cmd(stub, "p1", "test.bump", { by: 13 })).toMatchObject({ ok: false, error: { code: "forbidden" } })
@@ -139,7 +121,7 @@ describe("plugin kernel", () => {
 
   it("runs harness startup work for a row mounted late", async () => {
     const stub = fresh()
-    await cmd(stub, "late", "plugin.insert", { id: "late", plugin: "k-ready", config: {} })
+    await put(stub, [{ id: "late", plugin: "k-ready" }])
     const ran = await runInDurableObject(stub, async (_home: Home, state) => state.storage.kv.get<number>("k-ready"))
     expect(ran).toBe(1)
   })
@@ -148,7 +130,7 @@ describe("plugin kernel", () => {
     const stub = fresh()
     expect((await cmd(stub, "u0", "system.update")).result).toMatchObject({ application: "failed" })
     await cmd(stub, "dh", "plugin.enable", { id: "deploy-hook", enabled: false })
-    await cmd(stub, "fd", "plugin.insert", { id: "fake-deployer", plugin: "k-deployer", config: {} })
+    await put(stub, [{ id: "fake-deployer", plugin: "k-deployer" }])
     expect((await cmd(stub, "u1", "system.update")).result).toMatchObject({ application: "deploying" })
     expect((await cmd(stub, "b1", "test.bump")).result).toBe(1)
     expect((await cmd(stub, "x1", "system.restart", {})).result).toMatchObject({ application: "restarting" })

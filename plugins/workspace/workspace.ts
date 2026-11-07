@@ -111,6 +111,7 @@ function projectEntry(id: string, project: ProjectState): JsonObject {
     slug: project.slug,
     name: project.name,
     ...(project.goal === undefined ? {} : { goal: project.goal }),
+    ...(project.preset === undefined ? {} : { preset: project.preset }),
     coordinatorId: project.coordinatorId,
     threadIds: [...project.threadIds],
     settings: settingsOf(project.settings),
@@ -219,6 +220,7 @@ export function create(port: WorkspacePort): WorkspaceFeature {
       slug: str({ pattern: SLUG, maxLength: 64 }),
       name: str({ minLength: 1, maxLength: 200 }),
       goal: opt(str({ maxLength: 4_000 })),
+      preset: opt(str({ minLength: 1, maxLength: 200 })),
     }),
     actors: ["owner", "agent"],
     run: async (api, args) => {
@@ -234,6 +236,7 @@ export function create(port: WorkspacePort): WorkspaceFeature {
           slug: args.slug,
           name: args.name,
           ...(args.goal === undefined ? {} : { goal: args.goal }),
+          ...(args.preset === undefined ? {} : { preset: args.preset }),
           coordinatorId: coordinator.id,
           threadIds: [],
           settings: defaultSettings(),

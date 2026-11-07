@@ -110,39 +110,43 @@ const stored = (stub: Stub, name: string): Promise<{ value: string } | undefined
     home.db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", `mcp:${name}`),
   )
 
-async function insert(stub: Stub, id: string, config: Record<string, unknown>): Promise<unknown> {
-  const ack = await cmd(stub, `insert-${id}`, "plugin.insert", { id, plugin: "mcp-server", config })
+async function install(stub: Stub, id: string, config: Record<string, unknown>): Promise<unknown> {
+  const ack = await cmd(stub, `install-${id}-${crypto.randomUUID()}`, "bundle.put", {
+    package: `xin-plugin-${id}`,
+    rows: [{ id, plugin: "mcp-server", config }],
+  })
   return ack.result
 }
 
 afterEach(() => vi.restoreAllMocks())
 
 describe("mcp-server row", () => {
-  it("connects a server held by the row, sends its secret header, and leaves the table alone", async () => {
+  it("waits for a credentialed header, then connects the server held by the row", async () => {
     const stub = fresh()
     const fake = fakeServer()
     serve(fake)
 
     expect(
-      await cmd(stub, "secret-1", "plugin.secret.set", {
-        id: "demo-row",
-        key: "authorization",
-        value: "Bearer row-token",
-      }),
-    ).toMatchObject({ ok: true })
-
-    expect(
-      await insert(stub, "demo-row", {
+      await install(stub, "demo-row", {
         name: "demo",
         url: "https://mcp.test/mcp",
-        headers: ["authorization"],
+        headers: { authorization: "Bearer ${credential:gh}" },
       }),
     ).toMatchObject({ application: "applied" })
+    expect(await rowState(stub, "demo-row")).toMatchObject({ kind: "active" })
+    expect((await cmd(stub, "list-waiting", "mcp.list")).result).toEqual([])
+
+    expect(await cmd(stub, "secret-1", "secret.set", { ref: "gh", value: "row-token" })).toMatchObject({
+      ok: true,
+      result: { application: "applied", ref: "gh" },
+    })
 
     expect(await stored(stub, "demo")).toBeUndefined()
-    expect((await cmd(stub, "list-1", "mcp.list")).result).toEqual([
-      { name: "demo", url: "https://mcp.test/mcp", tools: 2, source: "demo-row" },
-    ])
+    await expect
+      .poll(async () => (await cmd(stub, `list-waiting-${crypto.randomUUID()}`, "mcp.list")).result, {
+        timeout: 5_000,
+      })
+      .toEqual([{ name: "demo", url: "https://mcp.test/mcp", tools: 2, source: "demo-row" }])
     expect(await installed(stub)).toEqual(["mcp__demo__echo", "mcp__demo__fail"])
     expect(fake.calls[0]?.headers.get("authorization")).toBe("Bearer row-token")
 
@@ -167,7 +171,7 @@ describe("mcp-server row", () => {
   it("takes the tools away when the row is disabled", async () => {
     const stub = fresh()
     serve(fakeServer())
-    expect(await insert(stub, "demo-row", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
+    expect(await install(stub, "demo-row", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
       application: "applied",
     })
     expect(await installed(stub)).toContain("mcp__demo__echo")
@@ -183,7 +187,7 @@ describe("mcp-server row", () => {
     serve(fakeServer())
     await cmd(stub, "add-1", "mcp.add", { name: "demo", url: "https://mcp.test/mcp" })
 
-    expect(await insert(stub, "demo-row", { name: "demo", url: "https://mcp.test/other" })).toMatchObject({
+    expect(await install(stub, "demo-row", { name: "demo", url: "https://mcp.test/other" })).toMatchObject({
       application: "failed",
     })
     expect(await rowState(stub, "demo-row")).toMatchObject({
@@ -198,11 +202,11 @@ describe("mcp-server row", () => {
   it("fails the row when another row already owns the server name", async () => {
     const stub = fresh()
     serve(fakeServer())
-    expect(await insert(stub, "row-one", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
+    expect(await install(stub, "row-one", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
       application: "applied",
     })
 
-    expect(await insert(stub, "row-two", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
+    expect(await install(stub, "row-two", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
       application: "failed",
     })
     expect(await rowState(stub, "row-two")).toMatchObject({
@@ -217,7 +221,7 @@ describe("mcp-server row", () => {
   it("rejects mcp.add for a name a row owns", async () => {
     const stub = fresh()
     serve(fakeServer())
-    expect(await insert(stub, "owner-row", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
+    expect(await install(stub, "owner-row", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
       application: "applied",
     })
 
@@ -230,7 +234,7 @@ describe("mcp-server row", () => {
 
   it("fails the row on a URL that is not https", async () => {
     const stub = fresh()
-    expect(await insert(stub, "demo-row", { name: "demo", url: "http://mcp.test/mcp" })).toMatchObject({
+    expect(await install(stub, "demo-row", { name: "demo", url: "http://mcp.test/mcp" })).toMatchObject({
       application: "failed",
     })
     expect(await rowState(stub, "demo-row")).toMatchObject({
