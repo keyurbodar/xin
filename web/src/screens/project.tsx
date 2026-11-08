@@ -25,6 +25,7 @@ import { Transcript, TranscriptSkeleton, type PendingMessage } from "../componen
 import { Composer } from "../components/chat/composer.tsx"
 import { ProjectPanel } from "../components/chat/panel.tsx"
 import { BottomSheet } from "../components/shell/sheet.tsx"
+import { FileScreen } from "./file.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 
 function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
@@ -269,6 +270,14 @@ export function ProjectScreen(): JSX.Element {
     const wanted = slug()
     return wanted === undefined ? undefined : homeProjects().find((candidate) => candidate.slug === wanted)
   })
+  const filePath = (): string | undefined => {
+    if (param(2) !== "files" || param(3) === undefined) return undefined
+    try {
+      return decodeURIComponent(param(3) ?? "")
+    } catch {
+      return undefined
+    }
+  }
 
   return (
     <Show
@@ -295,7 +304,11 @@ export function ProjectScreen(): JSX.Element {
         </>
       }
     >
-      {(resolved) => <ProjectChat project={resolved()} />}
+      {(resolved) => (
+        <Show when={filePath()} fallback={<ProjectChat project={resolved()} />}>
+          {(path) => <FileScreen project={resolved()} path={path()} />}
+        </Show>
+      )}
     </Show>
   )
 }

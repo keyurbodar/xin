@@ -2,6 +2,7 @@ import { For, Show, Switch, Match, createResource, createSignal, type JSX } from
 import type { Streams } from "../../lib/api.ts"
 import { cmd } from "../../lib/api.ts"
 import { ago, bytes, describeRule } from "../../lib/format.ts"
+import { navigate } from "../../lib/router.ts"
 import { STATE_COLOR, STATE_WORD, visualState, type VisualState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import {
@@ -17,7 +18,6 @@ import { Skullet } from "../ui/skeleton.tsx"
 import { EmptyState, PanelGhost } from "./ui.tsx"
 import { AnsweredQuestionCard, OpenQuestionCard, ThreadRow } from "./cards.tsx"
 import { EntryList, itemsOf, type ItemContext } from "./entries.tsx"
-import { Markdown } from "./markdown.tsx"
 import { SteerComposer } from "./composer.tsx"
 
 type Tab = "threads" | "files" | "memory" | "schedules" | "jobs"
@@ -38,8 +38,6 @@ type FileEntry = {
   readonly project: string | null
   readonly updated_at: number
 }
-
-type FileContent = FileEntry & { readonly text: string | null }
 
 type Note = {
   readonly id: number
@@ -143,7 +141,6 @@ function FilesTab(props: { slug: string }): JSX.Element {
     () => props.slug,
     (slug) => cmd<readonly FileEntry[]>("file.list", { prefix: `/projects/${slug}` }),
   )
-  const [selected, setSelected] = createSignal<string | undefined>()
   const root = (): string => `/projects/${props.slug}/`
   const name = (path: string): string => path.slice(path.lastIndexOf("/") + 1)
   const folder = (path: string): string => {
@@ -151,11 +148,6 @@ function FilesTab(props: { slug: string }): JSX.Element {
     const cut = relative.lastIndexOf("/")
     return cut === -1 ? "project root" : relative.slice(0, cut)
   }
-  const chosen = (): FileEntry | undefined => {
-    const path = selected()
-    return path === undefined ? undefined : files()?.find((entry) => entry.path === path)
-  }
-  const [content] = createResource(selected, (path) => cmd<FileContent>("file.read", { path }))
 
   return (
     <Skullet loading={files.loading} sample={() => <PanelGhost rows={7} />} label="Loading files">
@@ -177,9 +169,8 @@ function FilesTab(props: { slug: string }): JSX.Element {
                 {(entry) => (
                   <button
                     type="button"
-                    onClick={() => setSelected(entry.path === selected() ? undefined : entry.path)}
+                    onClick={() => navigate(`/p/${props.slug}/files/${encodeURIComponent(entry.path)}`)}
                     class="flex items-center gap-2.5 border-b border-line px-3 py-2.5 text-left transition-none hover:bg-hover"
-                    classList={{ "bg-selected": entry.path === selected() }}
                   >
                     <Icon name="file" size={15} class="shrink-0 text-fg-3" />
                     <span class="min-w-0 flex-1">
@@ -193,40 +184,6 @@ function FilesTab(props: { slug: string }): JSX.Element {
                 )}
               </For>
             </div>
-            <Show when={chosen()}>
-              {(entry) => (
-                <div class="border-b border-line bg-raised px-3 py-3">
-                  <div class="label mb-2">File</div>
-                  <div class="flex flex-col gap-1.5 font-mono text-[11.5px] leading-[1.6] text-fg-3">
-                    <span class="break-all text-fg-2">{entry().path}</span>
-                    <span>
-                      {entry().type} · {bytes(entry().size)}
-                    </span>
-                    <span>
-                      updated {ago(entry().updated_at)} · {entry().sha256.slice(0, 12)}
-                    </span>
-                  </div>
-                  <Show
-                    when={content()?.text ?? null}
-                    fallback={
-                      <p class="mt-2.5 text-[12px] leading-[1.5] text-fg-3">
-                        {content.loading
-                          ? "Opening…"
-                          : "No text preview for this type. Open it from the thread that wrote it."}
-                      </p>
-                    }
-                  >
-                    {(text) => (
-                      <div class="mt-2.5 max-h-[420px] overflow-y-auto">
-                        <Show when={entry().type === "text/markdown"} fallback={<pre class="whitespace-pre-wrap font-mono text-[12px] leading-[1.55] text-fg-2">{text()}</pre>}>
-                          <Markdown small text={text()} />
-                        </Show>
-                      </div>
-                    )}
-                  </Show>
-                </div>
-              )}
-            </Show>
           </Show>
         )}
       </Show>
@@ -236,11 +193,24 @@ function FilesTab(props: { slug: string }): JSX.Element {
 
 function MemoryTab(): JSX.Element {
   const [notes, { refetch }] = createResource(() => cmd<{ readonly notes: readonly Note[] }>("memory.list", {}))
+  const [busy, setBusy] = createSignal<number | undefined>()
+  const forget = async (note: Note): Promise<void> => {
+    setBusy(note.id)
+    try {
+      await cmd("memory.forget", { query: note.text })
+      await refetch()
+    } catch {
+      setBusy(undefined)
+    }
+  }
   return (
     <Skullet loading={notes.loading} sample={() => <PanelGhost rows={6} />} label="Loading memory">
       <Show when={notes.error} fallback={null}>
         <ResourceError what="memory" error={notes.error} onRetry={() => void refetch()} />
       </Show>
+      <div class="border-b border-line px-3 py-2.5 text-[12px] leading-[1.5] text-fg-3">
+        What the coordinator keeps between chats. Every thread can read it.
+      </div>
       <Show when={notes()}>
         {(data) => (
           <Show
@@ -250,14 +220,25 @@ function MemoryTab(): JSX.Element {
             <div class="flex flex-col">
               <For each={data().notes}>
                 {(note) => (
-                  <div class="flex flex-col gap-1.5 border-b border-line px-3 py-3">
-                    <span class="text-[13px] leading-[1.5] text-fg">{note.text}</span>
-                    <span class="flex items-center gap-2 text-[11.5px] text-fg-3">
-                      <span class="rounded-[2px] border border-line-inner px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.06em]">
-                        {note.scope}
+                  <div class="group flex items-start gap-2 border-b border-line px-3 py-3">
+                    <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <span class="text-[13px] leading-[1.5] text-fg">{note.text}</span>
+                      <span class="flex items-center gap-2 text-[11.5px] text-fg-3">
+                        <span class="rounded-[2px] border border-line-inner px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.06em]">
+                          {note.scope}
+                        </span>
+                        {ago(note.at)}
                       </span>
-                      {ago(note.at)}
-                    </span>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Forget this"
+                      disabled={busy() === note.id}
+                      class="mt-0.5 shrink-0 rounded-[2px] p-1 text-fg-4 opacity-0 transition-none hover:bg-hover hover:text-fg-2 group-hover:opacity-100 disabled:opacity-50"
+                      onClick={() => void forget(note)}
+                    >
+                      <Icon name="trash" size={13} />
+                    </button>
                   </div>
                 )}
               </For>
@@ -299,6 +280,18 @@ function SchedulesTab(): JSX.Element {
       <Show when={schedules.error} fallback={null}>
         <ResourceError what="schedules" error={schedules.error} onRetry={() => void refetch()} />
       </Show>
+      <div class="flex items-center gap-2 border-b border-line px-3 py-2.5">
+        <span class="min-w-0 flex-1 text-[12px] leading-[1.5] text-fg-3">
+          Starts a thread on a timer. Results land in this chat.
+        </span>
+        <button
+          type="button"
+          class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 transition-none hover:border-line-strong hover:text-fg"
+          onClick={() => navigate("/schedules")}
+        >
+          New
+        </button>
+      </div>
       <Show when={schedules()}>
         {(data) => (
           <Show
