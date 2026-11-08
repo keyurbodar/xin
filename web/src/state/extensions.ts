@@ -390,10 +390,18 @@ export const parseSkills = (value: unknown): readonly SkillRow[] =>
     return [{ name, description: strOf(item["description"]) ?? "" }]
   })
 
-export const parsePresets = (value: unknown): readonly PresetRow[] => {
+export type PresetSelection = { readonly conversation: number; readonly preset: string }
+
+export type PresetList = {
+  readonly presets: readonly PresetRow[]
+  readonly default: string | undefined
+  readonly conversations: readonly PresetSelection[]
+}
+
+export const parsePresets = (value: unknown): PresetList => {
   const root: Readonly<Record<string, unknown>> = isRecord(value) ? value : {}
   const fallback = strOf(root["default"])
-  return records(root["presets"]).flatMap((item) => {
+  const presets = records(root["presets"]).flatMap((item): readonly PresetRow[] => {
     const id = strOf(item["id"])
     if (id === undefined) return []
     const tools = item["tools"]
@@ -407,6 +415,12 @@ export const parsePresets = (value: unknown): readonly PresetRow[] => {
       },
     ]
   })
+  const conversations = records(root["conversations"]).flatMap((item) => {
+    const conversation = numOf(item["conversation"])
+    const preset = strOf(item["preset"])
+    return conversation === undefined || preset === undefined ? [] : [{ conversation, preset }]
+  })
+  return { presets, default: fallback, conversations }
 }
 
 export const parseServers = (value: unknown): readonly McpServer[] =>
@@ -577,8 +591,19 @@ export async function skipMarketVersion(name: string, version: string | undefine
 
 export async function unskipMarketVersion(name: string): Promise<void> {
   await cmd("market.unskip", { name })
-  await Promise.all([market.reload(), marketDetail(name).reload()])
+  await Promise.all([market.reload(), marketDetail(name).reload(), skippedMarket.reload()])
 }
+
+export type SkippedVersion = { readonly name: string; readonly version: string | undefined }
+
+export const skippedMarket: RemoteHandle<readonly SkippedVersion[]> = remote(
+  () => cmd("market.skipped"),
+  (value) =>
+    records(value).flatMap((item) => {
+      const name = strOf(item["name"])
+      return name === undefined ? [] : [{ name, version: strOf(item["version"]) }]
+    }),
+)
 
 export type RollbackResult = { readonly application: string; readonly reason?: string | undefined }
 

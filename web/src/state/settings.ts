@@ -4,6 +4,8 @@ import { errorMessage, isKnownOpError, isRecord, remote, type RemoteHandle } fro
 
 export type ModelRole = "chat" | "thread" | "utility"
 
+export type ModelPrice = { readonly input: number; readonly output: number }
+
 export type ModelInfo = {
   readonly provider: string
   readonly modelId: string
@@ -11,6 +13,17 @@ export type ModelInfo = {
   readonly contextWindow: number
   readonly vision: boolean
   readonly reasoning: boolean
+  readonly keyed: boolean
+  readonly cost: ModelPrice | undefined
+}
+
+/** V3: one mark per price band, from the catalog's own rate per million tokens, blended across input and output. */
+export function priceMarks(price: ModelPrice | undefined): string {
+  if (price === undefined) return ""
+  const perMillion = (price.input + price.output) / 2
+  if (perMillion <= 0) return ""
+  if (perMillion < 2) return "$"
+  return perMillion < 10 ? "$$" : "$$$"
 }
 
 export type ModelRef = { readonly provider: string; readonly modelId: string }
@@ -31,6 +44,14 @@ export const ROLE_LABEL: Readonly<Record<ModelRole, string>> = {
 }
 
 export const roles = MODEL_ROLES
+
+const priceOf = (value: unknown): ModelPrice | undefined => {
+  if (!isRecord(value)) return undefined
+  const input = value["input"]
+  const output = value["output"]
+  if (typeof input !== "number" || typeof output !== "number") return undefined
+  return { input, output }
+}
 
 export const parseModels = (value: unknown): ModelsList => {
   const root: Readonly<Record<string, unknown>> = isRecord(value) ? value : {}
@@ -53,6 +74,8 @@ export const parseModels = (value: unknown): ModelsList => {
           contextWindow: typeof contextWindow === "number" ? contextWindow : 0,
           vision: entry["vision"] === true,
           reasoning: entry["reasoning"] === true,
+          keyed: entry["keyed"] !== false,
+          cost: priceOf(entry["cost"]),
         },
       ]
     }),
@@ -61,6 +84,13 @@ export const parseModels = (value: unknown): ModelsList => {
 }
 
 export const models: RemoteHandle<ModelsList> = remote(() => cmd("models.list"), parseModels)
+
+/** The composer's picker: the catalog with unkeyed models included; the server filters and ranks a non-empty query. */
+export async function searchModels(query: string): Promise<ModelsList> {
+  const trimmed = query.trim()
+  const args = trimmed === "" ? { includeUnkeyed: true } : { includeUnkeyed: true, query: trimmed }
+  return parseModels(await cmd<unknown>("models.list", args))
+}
 
 /** The catalog's own name for a model, so no surface shows a raw id when the catalog knows it. */
 export function modelName(provider: string | undefined, modelId: string | undefined): string | undefined {

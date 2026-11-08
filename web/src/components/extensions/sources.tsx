@@ -8,6 +8,8 @@ import {
   refreshMarket,
   rows,
   setMarketPolicy,
+  skippedMarket,
+  unskipMarketVersion,
 } from "../../state/extensions.ts"
 import { Button, Empty, Failure, MONO_INPUT, Note, Panel, Pending, Toggle } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
@@ -27,7 +29,25 @@ export function Sources(): JSX.Element {
     void rows.reload()
     void packages.reload()
     void marketPolicy.reload()
+    void skippedMarket.reload()
   })
+
+  const skipped = () => {
+    const state = skippedMarket.state()
+    return state.kind === "ready" ? state.value : []
+  }
+
+  const unskip = async (name: string): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      await unskipMarketVersion(name)
+    } catch (failure: unknown) {
+      setError(errorMessage(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const autoUpdate = (): boolean => {
     const state = marketPolicy.state()
@@ -237,6 +257,31 @@ export function Sources(): JSX.Element {
             <PolicyRow icon="user" title="Who can install" detail="One owner signs in; members do not exist in this build." value="Owner" />
           </Panel>
         </section>
+
+        <Show when={skipped().length > 0}>
+          <section class="flex flex-col gap-2.5">
+            <div class="flex items-center gap-2">
+              <span class="label">Skipped versions</span>
+              <span class="text-[12px] text-fg-3">Updates you told this build to ignore</span>
+            </div>
+            <Panel>
+              <For each={skipped()}>
+                {(entry) => (
+                  <div class="flex items-center gap-3 border-b border-line px-3.5 py-2.5 last:border-0">
+                    <Glyph name="package" size={13} class="shrink-0 text-fg-3" />
+                    <span class="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-2">
+                      {entry.name}
+                      {entry.version === undefined ? "" : `@${entry.version}`}
+                    </span>
+                    <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void unskip(entry.name)}>
+                      Unskip
+                    </Button>
+                  </div>
+                )}
+              </For>
+            </Panel>
+          </section>
+        </Show>
 
         <section class="flex flex-col gap-2.5">
           <div class="flex items-center gap-2">

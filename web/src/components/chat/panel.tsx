@@ -397,12 +397,15 @@ export function ProjectPanel(props: {
     )
   }
 
+  const docked = (): boolean => props.variant === undefined || props.variant === "sidebar"
+
   return (
     <Show when={props.open}>
       <aside
         class="flex min-h-0 shrink-0 flex-col bg-surface"
         classList={{
-          "w-[400px] border-l border-line min-[1440px]:w-[440px]": props.variant === undefined || props.variant === "sidebar",
+          "w-[400px] border-l border-line min-[1440px]:w-[440px]": docked() && props.thread === undefined,
+          "w-[520px] border-l border-line": docked() && props.thread !== undefined,
           "w-full": props.variant === "drawer",
           "w-full flex-1 border-l-0": props.variant === "sheet",
         }}

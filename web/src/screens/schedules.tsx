@@ -5,6 +5,7 @@ import { Icon } from "../components/ui/icon.tsx"
 import { ago, describeRule } from "../lib/format.ts"
 import { Skullet } from "../components/ui/skeleton.tsx"
 import { CreateSchedule } from "../components/schedules/create.tsx"
+import { EmptyState } from "../components/chat/ui.tsx"
 
 type Target = "this_session" | "new_once" | "new"
 
@@ -57,13 +58,11 @@ export function SchedulesScreen(): JSX.Element {
           <Show
             when={schedules().length > 0}
             fallback={
-              <div class="flex flex-col items-center gap-2 rounded-[4px] border border-dashed border-line-inner px-6 py-14 text-center">
-                <Icon name="calendar" size={18} class="text-fg-3" />
-                <span class="text-[13px] text-fg-2">No schedules yet</span>
-                <span class="max-w-[380px] text-[12px] text-fg-3">
-                  Ask the agent to schedule something in a project, or create one here. Delivery targets the conversation that created it.
-                </span>
-              </div>
+              <EmptyState
+                pictogram="schedules"
+                title="No schedules yet"
+                detail="Ask the agent to schedule something in a project, or create one here. Delivery targets the conversation that created it."
+              />
             }
           >
             <ScheduleRows items={schedules()} onChanged={reload} />

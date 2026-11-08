@@ -3,17 +3,19 @@ import { connect } from "../state/connection.ts"
 import { homeLoaded, homeProjects, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
 import {
   agentModelOf,
+  agentThinkingOf,
   createConversationView,
   entryBatchRows,
   parseHistoryPage,
   type AnsweredView,
   type EntryView,
   type RequestRow,
+  type ThinkingLevel,
 } from "../state/conversation.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
 import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
-import { modelName, models, type ModelInfo, type ModelRef } from "../state/settings.ts"
-import { prompts } from "../state/extensions.ts"
+import { modelName, models, searchModels, type ModelInfo, type ModelRef } from "../state/settings.ts"
+import { presets as presetStore, prompts } from "../state/extensions.ts"
 import { expandSlash } from "../lib/slash.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { navigate, param } from "../lib/router.ts"
@@ -24,6 +26,7 @@ import { ProjectGlyph, projectState } from "../components/chat/project-glyph.tsx
 import { Transcript, TranscriptSkeleton, type PendingMessage } from "../components/chat/transcript.tsx"
 import { Composer } from "../components/chat/composer.tsx"
 import { ProjectPanel } from "../components/chat/panel.tsx"
+import { ProjectSettings } from "../components/project/settings.tsx"
 import { BottomSheet, RightDrawer } from "../components/shell/sheet.tsx"
 import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
@@ -34,6 +37,7 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
   const snapshot = createConversationView(streams, () => props.project.coordinatorId)
   const [threadId, setThreadId] = createSignal<number | undefined>()
   const [sheetOpen, setSheetOpen] = createSignal(false)
+  const [settingsOpen, setSettingsOpen] = createSignal(false)
   const docked = mediaQuery("(min-width: 1280px)")
   const overlay = mediaQuery("(min-width: 1024px)")
   const [panelOpen, setPanelOpen] = createSignal(true)
@@ -45,6 +49,7 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
   onMount(() => {
     loadRequests()
     void prompts.reload()
+    void presetStore.reload()
   })
   createEffect(() => {
     void props.project.openRequests
@@ -120,6 +125,28 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
     const state = models.state()
     return state.kind === "ready" ? state.value.models : []
   }
+  const [modelQuery, setModelQuery] = createSignal("")
+  const [pickerModels] = createResource(modelQuery, searchModels)
+  const choices = (): readonly ModelInfo[] => pickerModels.latest?.models ?? catalog()
+  const currentInfo = (): ModelInfo | undefined => {
+    const ref = chosenModel()
+    if (ref === undefined) return undefined
+    return choices().find((model) => model.provider === ref.provider && model.modelId === ref.modelId)
+  }
+  const presetRows = () => {
+    const state = presetStore.state()
+    return state.kind === "ready" ? state.value.presets : []
+  }
+  const presetId = (): string | undefined => {
+    const state = presetStore.state()
+    if (state.kind !== "ready") return undefined
+    const found = state.value.conversations.find((entry) => entry.conversation === props.project.coordinatorId)
+    return found?.preset ?? state.value.default
+  }
+  const started = (): boolean => {
+    const value = snapshot()
+    return value !== undefined && value.entries.length > 0
+  }
   const modelLabel = (): string => {
     const ref = chosenModel()
     if (ref === undefined) return "Default model"
@@ -152,17 +179,27 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
       <TopBar
         leading={<ProjectGlyph slug={props.project.slug} name={props.project.name} goal={props.project.goal} state={projectState(props.project)} />}
         title={props.project.name}
-        subtitle={props.project.goal === undefined ? "" : `· ${props.project.goal}`}
+        subtitle={props.project.goal === undefined || props.project.goal === "" ? "" : `· ${props.project.goal}`}
         actions={
-          <button
-            type="button"
-            onClick={togglePanel}
-            aria-label={docked() && panelOpen() ? "Hide the panel" : "Open the project panel"}
-            class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
-            classList={{ "bg-selected text-fg": docked() && panelOpen() }}
-          >
-            <Icon name="panel" size={15} />
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Project settings"
+              class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
+            >
+              <Icon name="more" size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={togglePanel}
+              aria-label={docked() && panelOpen() ? "Hide the panel" : "Open the project panel"}
+              class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
+              classList={{ "bg-selected text-fg": docked() && panelOpen() }}
+            >
+              <Icon name="panel" size={15} />
+            </button>
+          </>
         }
       />
       <div class="flex min-h-0 flex-1">
@@ -192,10 +229,25 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
             projectName={props.project.name}
             modelLabel={modelLabel()}
             model={chosenModel()}
-            models={catalog()}
+            models={choices()}
+            omitted={pickerModels.latest?.omitted ?? 0}
+            query={modelQuery()}
+            onSearch={setModelQuery}
             busy={busy()}
+            presets={presetRows()}
+            presetId={presetId()}
+            presetLocked={started()}
+            effort={agentThinkingOf(snapshot())}
+            reasoning={currentInfo()?.reasoning === true}
             onPickModel={async (model) => {
               await cmd("conv.configure", { conv: props.project.coordinatorId, model })
+            }}
+            onPickPreset={async (preset) => {
+              await cmd("preset.select", { conversation: props.project.coordinatorId, preset })
+              await presetStore.reload()
+            }}
+            onPickEffort={async (thinking: ThinkingLevel) => {
+              await cmd("conv.configure", { conv: props.project.coordinatorId, thinking })
             }}
             onAttach={(file, onProgress) => uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress)}
             onSend={async (text, key, attachments) => {
@@ -268,6 +320,12 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
           />
         </BottomSheet>
       </Show>
+      <ProjectSettings
+        project={props.project}
+        open={settingsOpen()}
+        onClose={() => setSettingsOpen(false)}
+        onArchived={() => navigate("/")}
+      />
     </>
   )
 }

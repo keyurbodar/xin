@@ -280,6 +280,20 @@ export function agentModelOf(snapshot: Snapshot | undefined): ModelRefView | und
   return provider === undefined || modelId === undefined ? undefined : { provider, modelId }
 }
 
+export type ThinkingLevel = "off" | "low" | "medium" | "high"
+
+export const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "low", "medium", "high"]
+
+const isThinkingLevel = (value: string): value is ThinkingLevel =>
+  THINKING_LEVELS.some((level) => level === value)
+
+/** The thinking level the conversation's agent runs at, or undefined when it uses the model's own default. */
+export function agentThinkingOf(snapshot: Snapshot | undefined): ThinkingLevel | undefined {
+  const agent = recordOf(snapshot?.docs["pi.agent"])
+  const value = strOf(agent?.thinkingLevel)
+  return value !== undefined && isThinkingLevel(value) ? value : undefined
+}
+
 export type HistoryPage = { readonly entries: readonly EntryView[]; readonly nextBefore: number | undefined }
 
 export function parseHistoryPage(value: unknown): HistoryPage {

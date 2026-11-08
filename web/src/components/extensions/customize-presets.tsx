@@ -1,5 +1,5 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
-import { deletePrompt, errorMessage, presets, prompts, putPrompt, type Prompt } from "../../state/extensions.ts"
+import { deletePrompt, errorMessage, presets, prompts, putPrompt, type PresetRow, type Prompt } from "../../state/extensions.ts"
 import { Button, Chip, Empty, Failure, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
 
@@ -242,9 +242,9 @@ function toolsOf(preset: { readonly tools: "all" | readonly string[] }): readonl
 
 export function Presets(): JSX.Element {
   const [selected, setSelected] = createSignal<string | undefined>(undefined)
-  const list = () => {
+  const list = (): readonly PresetRow[] => {
     const state = presets.state()
-    return state.kind === "ready" ? state.value : []
+    return state.kind === "ready" ? state.value.presets : []
   }
   const current = () => list().find((preset) => preset.id === selected())
 

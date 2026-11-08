@@ -46,7 +46,7 @@ export function Customize(props: { initialRowId?: string | undefined }): JSX.Ele
         return 0
       case "presets": {
         const state = presets.state()
-        return state.kind === "ready" ? state.value.length : undefined
+        return state.kind === "ready" ? state.value.presets.length : undefined
       }
       case "advanced": {
         const state = rows.state()

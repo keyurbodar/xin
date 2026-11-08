@@ -11,6 +11,14 @@ import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
 
+type ListedModel = {
+  provider: string
+  modelId: string
+  keyed: boolean
+  cost: { input: number; output: number }
+}
+type ListReply = { ok: boolean; result: { models: ListedModel[] } }
+
 async function history(conversation: Conversation): Promise<EntryRecord[]> {
   const page = await conversation.entries({ order: "ascending" }, 500, undefined, context)
   return [...page.items]
@@ -328,6 +336,28 @@ describe("models", () => {
       expect(listed.result.models.some((model) => model.provider === "anthropic")).toBe(true)
     } finally {
       await cmd("cred-2", "credential.delete", { provider: "anthropic" })
+    }
+  })
+
+  it("adds the rest of the catalog only when asked, and prices every model", async () => {
+    const keyedOnly = (await cmd("unkeyed-1", "models.list", {})) as ListReply
+    expect(keyedOnly.ok).toBe(true)
+    expect(keyedOnly.result.models.every((model) => model.keyed)).toBe(true)
+
+    const complete = (await cmd("unkeyed-2", "models.list", { includeUnkeyed: true })) as ListReply
+    expect(complete.ok).toBe(true)
+    expect(complete.result.models.length).toBeGreaterThanOrEqual(keyedOnly.result.models.length)
+    for (const model of keyedOnly.result.models) {
+      expect(complete.result.models).toContainEqual(model)
+    }
+    const unkeyed = complete.result.models.filter((model) => !model.keyed)
+    expect(unkeyed.length).toBeGreaterThan(0)
+    const keyedIds = new Set(keyedOnly.result.models.map((model) => `${model.provider}/${model.modelId}`))
+    expect(unkeyed.some((model) => !keyedIds.has(`${model.provider}/${model.modelId}`))).toBe(true)
+    for (const model of complete.result.models) {
+      expect(typeof model.keyed).toBe("boolean")
+      expect(typeof model.cost.input).toBe("number")
+      expect(typeof model.cost.output).toBe("number")
     }
   })
 

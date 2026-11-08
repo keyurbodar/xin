@@ -653,7 +653,7 @@ function search(catalog: readonly Model<Api>[], query: string): ModelMatch[] {
     )
 }
 
-function describe(model: Model<Api>): JsonValue {
+function describe(model: Model<Api>, keyed: boolean): JsonValue {
   return {
     provider: model.provider,
     modelId: model.id,
@@ -661,6 +661,8 @@ function describe(model: Model<Api>): JsonValue {
     contextWindow: model.contextWindow,
     vision: model.input.includes("image"),
     reasoning: model.reasoning,
+    cost: { input: model.cost.input, output: model.cost.output },
+    keyed,
   }
 }
 
@@ -739,15 +741,24 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const list = defineOp({
     name: "models.list",
-    args: obj({ query: opt(str()) }),
+    args: obj({ query: opt(str()), includeUnkeyed: opt(bool()) }),
     actors: ["owner", "agent"],
-    run: async (api, { query }) => {
+    run: async (api, { query, includeUnkeyed }) => {
       const catalog = await available(registry)
       const settings = await readSettings(db)
       const current = await currentModel(api.harness, api.actor)
-      const ordered = ranked(catalog, settings, current, query)
-      const listed = ordered.slice(0, MAX_LISTED)
-      return { models: listed.map(describe), omittedModels: ordered.length - listed.length }
+      const keyedIds = new Set(catalog.map((model) => `${model.provider}/${model.id}`))
+      const hasKey = (model: Model<Api>): boolean => keyedIds.has(`${model.provider}/${model.id}`)
+      const source = includeUnkeyed === true ? registry.models.getModels() : catalog
+      const ordered = ranked(source, settings, current, query)
+      // Keyed models come first so the cap never hides one the owner can run.
+      const unkeyed = ordered.filter((model) => !hasKey(model))
+      const arranged = includeUnkeyed === true ? [...ordered.filter(hasKey), ...unkeyed] : ordered
+      const listed = arranged.slice(0, MAX_LISTED)
+      return {
+        models: listed.map((model) => describe(model, hasKey(model))),
+        omittedModels: arranged.length - listed.length,
+      }
     },
   })
 
