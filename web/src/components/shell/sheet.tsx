@@ -40,7 +40,7 @@ export function BottomSheet(props: {
   return (
     <Show when={mounted()}>
       <div
-        class="fixed inset-0 z-40 bg-black/64 transition-opacity duration-200"
+        class="fixed inset-0 z-40 bg-[var(--scrim)] backdrop-blur-[6px] backdrop-saturate-[0.7] transition-opacity duration-200"
         classList={{ "fade-in opacity-100": !leaving(), "opacity-0": leaving() }}
         onMouseDown={props.onClose}
       />
@@ -49,7 +49,7 @@ export function BottomSheet(props: {
         aria-modal="true"
         aria-label={props.label}
         data-no-press
-        class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-[8px] border-t border-line-strong bg-raised"
+        class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-[16px] border-t border-line-inner bg-overlay"
         classList={{ "sheet-in": !leaving(), "sheet-out": leaving() }}
         style={{
           height: full() ? "calc(100% - 24px)" : "76%",
@@ -67,7 +67,7 @@ export function BottomSheet(props: {
           onPointerUp={up}
           onPointerCancel={up}
         >
-          <span class="h-1 w-9 rounded-[2px] bg-line-strong" />
+          <span class="h-1 w-9 rounded-[8px] bg-line-strong" />
         </button>
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden">{props.children}</div>
       </div>
@@ -90,7 +90,7 @@ export function RightDrawer(props: {
       <aside
         role="dialog"
         aria-label={props.label}
-        class="fixed inset-y-0 right-0 z-30 flex w-[400px] flex-col border-l border-line-strong bg-surface shadow-[-8px_0_32px_rgba(0,0,0,0.5)] min-[1440px]:w-[440px]"
+        class="fixed inset-y-0 right-0 z-30 flex w-[400px] flex-col border-l border-line bg-overlay shadow-[var(--shadow-float)] min-[1440px]:w-[440px]"
         classList={{ "slide-right": !leaving(), "slide-right-out": leaving() }}
       >
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden">{props.children}</div>

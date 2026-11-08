@@ -14,9 +14,10 @@ import {
   type PushDevice,
   type QuietHours,
 } from "../../state/settings.ts"
-import { Button, Chip, Failure, Note, Panel, Pending, Toggle, failureOf } from "../extensions/chrome.tsx"
+import { Button, Chip, Failure, Note, Pending, Toggle, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { Group, Row } from "./parts.tsx"
+import { MONO_FIELD } from "../ui/field.ts"
 
 const EVENTS: readonly { readonly key: NotifyKind; readonly title: string; readonly detail: string }[] = [
   { key: "waiting", title: "A thread is waiting on you", detail: "The choices show as buttons" },
@@ -26,8 +27,7 @@ const EVENTS: readonly { readonly key: NotifyKind; readonly title: string; reado
 
 const MINUTES_IN_DAY = 24 * 60
 
-const TIME_FIELD =
-  "h-8 w-[68px] rounded-[2px] border border-line-inner bg-page px-2 text-center font-mono text-[12px] text-fg tabular-nums placeholder:text-fg-4 focus:border-line-strong focus:outline-none disabled:opacity-40"
+const TIME_FIELD = `${MONO_FIELD} max-w-[68px] text-center tabular-nums`
 
 type Problem = { readonly message: string; readonly retry?: (() => void) | undefined }
 
@@ -89,7 +89,7 @@ function DeviceRow(props: {
   onRemove: () => void
 }): JSX.Element {
   return (
-    <div class="flex items-center gap-2.5 border-b border-line-inner px-3.5 py-2.5 last:border-0">
+    <div class="-mx-2 flex items-center gap-2.5 rounded-[8px] px-2 py-2.5 transition-colors hover:bg-hover">
       <Glyph name="monitor" size={14} class="shrink-0 text-fg-3" />
       <span class="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-2" title={props.device.origin}>
         {originLabel(props.device.origin)}
@@ -282,7 +282,7 @@ export function Notifications(): JSX.Element {
               }
             >
               <Chip tone="ok">Subscribed</Chip>
-              <span class="font-mono text-[10.5px] text-fg-4">{endpoint()?.replace(/^https:\/\//u, "").slice(0, 42)}…</span>
+              <span class="font-mono text-[11px] text-fg-4">{endpoint()?.replace(/^https:\/\//u, "").slice(0, 42)}…</span>
               <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void turnOff()}>Turn off</Button>
             </Show>
             <Show when={sent()}>
@@ -293,7 +293,7 @@ export function Notifications(): JSX.Element {
         <Row title="Send test" detail="Delivers one notification to every subscribed browser">
           <div class="flex items-center gap-2">
             <Show when={tested()}>
-              {(result) => <span class="text-[12px] text-fg-3">{result()}</span>}
+              {(result) => <span class="text-[12.5px] text-fg-3">{result()}</span>}
             </Show>
             <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void sendTest()}>
               Send test
@@ -306,7 +306,7 @@ export function Notifications(): JSX.Element {
         <For each={EVENTS}>
           {(event) => (
             <Row title={event.title} detail={event.detail}>
-              <div class="flex items-center gap-2.5">
+              <div class="ml-auto flex items-center gap-2.5">
                 <Toggle
                   on={notifyNow()[event.key]}
                   disabled={saving() !== undefined}
@@ -319,7 +319,7 @@ export function Notifications(): JSX.Element {
           )}
         </For>
         <Row title="Spend passes the alert" detail={spendDetail()}>
-          <div class="flex items-center gap-2.5">
+          <div class="ml-auto flex items-center gap-2.5">
             <Toggle
               on={notifyNow()["spend"]}
               disabled={saving() !== undefined}
@@ -330,7 +330,7 @@ export function Notifications(): JSX.Element {
           </div>
         </Row>
         <Row title="A schedule runs" detail="Off: results still land in chat">
-          <div class="flex items-center gap-2.5">
+          <div class="ml-auto flex items-center gap-2.5">
             <Toggle
               on={notifyNow()["schedule"]}
               disabled={saving() !== undefined}
@@ -340,7 +340,7 @@ export function Notifications(): JSX.Element {
             <Saving show={saving() === "schedule"} />
           </div>
         </Row>
-        <div class="pt-2">
+        <div class="pb-3 pt-2">
           <Note>
             Push is skipped while this tab is open: the socket already shows the change. During quiet hours a report waits
             for the window to end; a question comes through once it has waited two hours.
@@ -356,7 +356,7 @@ export function Notifications(): JSX.Element {
           <Show
             when={quiet()}
             fallback={
-              <span class="text-[12.5px] text-fg-3">
+              <span class="text-[13.5px] text-fg-3">
                 {quietHours.state().kind === "loading" ? "Reading quiet hours…" : "Not loaded"}
               </span>
             }
@@ -375,7 +375,7 @@ export function Notifications(): JSX.Element {
                   value={shownTime("start")}
                   onChange={(event) => void commitTime("start", event.currentTarget)}
                 />
-                <span class="text-[12px] text-fg-3">to</span>
+                <span class="text-[12.5px] text-fg-3">to</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -401,7 +401,7 @@ export function Notifications(): JSX.Element {
             )}
           </Show>
         </Row>
-        <div class="pt-2">
+        <div class="pb-3 pt-2">
           <Note>Waiting-on-you still comes through.</Note>
         </div>
       </Group>
@@ -411,7 +411,7 @@ export function Notifications(): JSX.Element {
           {(message) => <Failure message={message()} onRetry={() => void pushDevices.reload()} />}
         </Show>
         <Show when={pushDevices.state().kind !== "failed"}>
-          <Panel>
+          <div class="divide-y divide-line">
             <Show when={pushDevices.state().kind === "loading"}>
               <Pending label="Reading devices" />
             </Show>
@@ -419,7 +419,7 @@ export function Notifications(): JSX.Element {
               {(list) => (
                 <Show
                   when={list().length > 0}
-                  fallback={<div class="px-3.5 py-3 text-[12.5px] text-fg-3">No device has a push subscription.</div>}
+                  fallback={<div class="py-3 text-[13px] text-fg-3">No device has a push subscription.</div>}
                 >
                   <For each={list()}>
                     {(device) => (
@@ -435,7 +435,7 @@ export function Notifications(): JSX.Element {
                 </Show>
               )}
             </Show>
-          </Panel>
+          </div>
         </Show>
       </Group>
     </div>

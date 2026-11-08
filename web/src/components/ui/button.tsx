@@ -4,19 +4,21 @@ export type ButtonVariant = "primary" | "ghost" | "quiet" | "danger"
 export type ButtonSize = "sm" | "md" | "lg"
 
 const BASE =
-  "inline-flex items-center justify-center whitespace-nowrap rounded-[2px] font-medium disabled:opacity-40"
+  "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[8px] font-medium transition-[background-color,color,border-color,transform] duration-[120ms] ease-[var(--ease-kiko)] outline-none active:scale-[0.975] disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100"
 
 const SIZES: Readonly<Record<ButtonSize, string>> = {
-  sm: "h-7 gap-1.5 px-2.5 text-[12.5px]",
-  md: "h-10 gap-2 px-3.5 text-[13.5px]",
-  lg: "h-11 gap-2 px-4 text-[14.5px]",
+  sm: "h-7 px-2.5 text-[12.5px]",
+  md: "h-8 px-3.5 text-[14px]",
+  lg: "h-12 px-5 text-[15px]",
 }
 
 const VARIANTS: Readonly<Record<ButtonVariant, string>> = {
-  primary: "border border-accent bg-accent text-ink hover:opacity-90",
-  ghost: "border border-line-inner bg-raised text-fg hover:border-line-strong hover:bg-hover",
-  quiet: "border border-transparent bg-transparent text-fg-2 hover:text-fg",
-  danger: "border border-bad/40 bg-bad-bg text-bad hover:border-bad",
+  primary:
+    "bg-accent text-ink shadow-[inset_0_var(--hl-y)_0_0_var(--color-hl-primary)] hover:bg-accent/90 active:bg-accent/80",
+  ghost:
+    "border border-line bg-fill text-fg/80 shadow-[inset_0_var(--hl-y)_0_0_var(--hl-top),0_0_0_0.5px_var(--color-ring-crisp)] hover:bg-fill-strong hover:text-fg active:bg-hover",
+  quiet: "text-fg-2 hover:bg-hover hover:text-fg",
+  danger: "border border-bad/25 bg-bad-bg text-bad hover:bg-bad/20",
 }
 
 export function Button(props: {

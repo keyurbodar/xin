@@ -2,6 +2,7 @@ import { createResource, createSignal, For, Show, type JSX } from "solid-js"
 import { errorMessage, putSkill, readSkill, removeSkill, skills } from "../../state/extensions.ts"
 import { Button, Empty, Failure, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
+import { MONO_AREA } from "../ui/field.ts"
 
 export function Skills(): JSX.Element {
   const [selected, setSelected] = createSignal<string | undefined>(undefined)
@@ -57,7 +58,7 @@ export function Skills(): JSX.Element {
                   >
                     <Glyph name="book-open" size={15} class="mt-0.5 shrink-0 text-fg-3" />
                     <span class="min-w-0 flex-1">
-                      <span class="block truncate text-[12.5px] font-medium text-fg">{skill.name}</span>
+                      <span class="block truncate text-[13px] font-medium text-fg">{skill.name}</span>
                       <span class="line-clamp-2 block text-[11.5px] leading-snug text-fg-3">{skill.description}</span>
                     </span>
                   </button>
@@ -151,7 +152,7 @@ function SkillDetail(props: { name: string; description: string; onRemoved: () =
         <Glyph name="book-open" size={16} class="text-fg-3" />
         <div class="min-w-0 flex-1">
           <span class="block truncate text-[16px] font-medium text-fg">{props.name}.md</span>
-          <span class="block truncate text-[12px] text-fg-3">{props.description}</span>
+          <span class="block truncate text-[12.5px] text-fg-3">{props.description}</span>
         </div>
         <Show when={editing()}>
           <Button size="sm" variant="primary" disabled={busy() || draft().trim() === ""} onClick={() => void saveSkill()}>
@@ -258,7 +259,7 @@ function NewSkill(props: { onCreated: (name: string) => void; onCancel: () => vo
       <header class="flex items-center gap-3 border-b border-line px-6 py-4">
         <div class="min-w-0 flex-1">
           <span class="block text-[16px] font-medium text-fg">New skill</span>
-          <span class="block text-[12px] text-fg-3">Frontmatter names the skill; the body says what it does</span>
+          <span class="block text-[12.5px] text-fg-3">Frontmatter names the skill; the body says what it does</span>
         </div>
       </header>
       <div class="flex min-h-0 flex-1 flex-col gap-4 px-6 py-5">
@@ -266,7 +267,7 @@ function NewSkill(props: { onCreated: (name: string) => void; onCancel: () => vo
           value={markdown()}
           onInput={(event) => setMarkdown(event.currentTarget.value)}
           spellcheck={false}
-          class="min-h-0 flex-1 resize-none rounded-[2px] border border-line-inner bg-page p-3 font-mono text-[12px] leading-relaxed text-fg focus:border-line-strong focus:outline-none"
+          class={`${MONO_AREA} min-h-0 flex-1 resize-none`}
           aria-label="Skill markdown"
         />
         <Show when={error()}>

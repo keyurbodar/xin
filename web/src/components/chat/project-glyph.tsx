@@ -37,7 +37,7 @@ export function ProjectGlyph(props: {
   const size = (): number => props.size ?? 24
   return (
     <span
-      class={`relative grid shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2 ${props.class ?? ""}`}
+      class={`relative grid shrink-0 place-items-center rounded-[8px] border border-line-inner bg-raised text-fg-2 ${props.class ?? ""}`}
       style={{ width: `${size()}px`, height: `${size()}px` }}
     >
       <ProjectMark slug={props.slug} name={props.name} goal={props.goal} size={Math.round(size() * 0.62)} />
@@ -49,10 +49,10 @@ export function ProjectGlyph(props: {
 export function Corner(props: { state: VisualState | undefined }): JSX.Element {
   return (
     <span
-      class="absolute -top-[3px] -right-[3px] h-1.5 w-1.5 rounded-[1px] border border-page"
+      class="absolute -top-[3px] -right-[3px] h-1.5 w-1.5 rounded-[4px] border border-page"
       classList={{
         "bg-fg breath": props.state === "working",
-        "bg-accent pulse": props.state === "waiting",
+        "bg-waiting pulse": props.state === "waiting",
         "bg-bad": props.state === "failed",
         hidden: props.state === undefined || !["working", "waiting", "failed"].includes(props.state),
       }}

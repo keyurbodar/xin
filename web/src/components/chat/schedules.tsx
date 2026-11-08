@@ -66,19 +66,19 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
         <ResourceError what="schedules" error={schedules.error} onRetry={() => void refetch()} />
       </Show>
       <div class="flex items-center gap-2 border-b border-line px-3 py-2.5">
-        <span class="min-w-0 flex-1 text-[12px] leading-[1.5] text-fg-3">
+        <span class="min-w-0 flex-1 text-[12.5px] leading-[1.5] text-fg-3">
           Starts a thread on a timer. Results land in this chat.
         </span>
         <button
           type="button"
-          class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg"
+          class="shrink-0 rounded-[8px] border border-line px-2 py-1 text-[12.5px] text-fg-2 hover:border-line-strong hover:text-fg"
           onClick={() => navigate("/schedules")}
         >
           New
         </button>
       </div>
       <Show when={action.failed()}>
-        {(message) => <div class="border-b border-line px-3 py-2 text-[12px] text-bad">{message()}</div>}
+        {(message) => <div class="border-b border-line px-3 py-2 text-[12.5px] text-bad">{message()}</div>}
       </Show>
       <Show when={schedules()}>
         {(data) => (
@@ -92,7 +92,7 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
                   <div class="flex flex-col gap-1.5 border-b border-line px-3 py-3" classList={{ "opacity-60": !schedule.active }}>
                     <div class="flex items-center gap-2">
                       <StatusGlyph state={schedule.active ? "queued" : "paused"} size={16} />
-                      <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{schedule.title}</span>
+                      <span class="min-w-0 flex-1 truncate text-[13.5px] font-medium text-fg">{schedule.title}</span>
                       <Toggle
                         on={schedule.active}
                         label={schedule.active ? `Pause ${schedule.title}` : `Resume ${schedule.title}`}
@@ -100,11 +100,11 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
                         onChange={() => void toggle(schedule)}
                       />
                     </div>
-                    <div class="flex items-center gap-1.5 text-[12px] text-fg-3">
+                    <div class="flex items-center gap-1.5 text-[12.5px] text-fg-3">
                       <Icon name="refresh" size={12} />
                       <span class="truncate">{ruleOf(schedule)}</span>
                     </div>
-                    <div class="flex items-center gap-2 font-mono text-[10.5px] text-fg-4">
+                    <div class="flex items-center gap-2 font-mono text-[11px] text-fg-4">
                       <span>next {nextRun(schedule.nextAt)}</span>
                       <Show when={schedule.lastDelivery}>
                         {(last) => <span>· last ran {ago(Date.parse(last().deliveredAt))}</span>}
@@ -117,7 +117,7 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
                                 type="button"
                                 aria-label={`Run ${run.deliveredAt}: ${run.outcome}`}
                                 title={`${new Date(run.deliveredAt).toLocaleString()} · ${run.outcome}`}
-                                class="h-2 w-2 shrink-0 rounded-[1px] hover:opacity-75"
+                                class="h-1.5 w-1.5 shrink-0 rounded-full hover:opacity-75"
                                 classList={{
                                   "bg-ok": run.outcome === "done",
                                   "bg-bad": run.outcome === "failed",

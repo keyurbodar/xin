@@ -1,13 +1,13 @@
 export type VisualState = "queued" | "working" | "waiting" | "done" | "failed" | "paused" | "cancelled"
 
 export const STATE_COLOR: Readonly<Record<VisualState, string>> = {
-  queued: "#80756f",
-  working: "#6aa8ff",
-  waiting: "#ff5a00",
-  done: "#6fae5d",
-  failed: "#f0442e",
-  paused: "#f7a828",
-  cancelled: "#6b615c",
+  queued: "var(--color-queued)",
+  working: "var(--color-working)",
+  waiting: "var(--color-waiting)",
+  done: "var(--color-done)",
+  failed: "var(--color-failed)",
+  paused: "var(--color-paused)",
+  cancelled: "var(--color-cancelled)",
 }
 
 export const STATE_WORD: Readonly<Record<VisualState, string>> = {

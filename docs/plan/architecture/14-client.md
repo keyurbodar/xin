@@ -2,24 +2,48 @@
 
 This section decides how the first-party web client is built and what it talks to. The client is a SolidJS app in `web/`, a separate package from the Worker so the backend gate never compiles it.
 
-**Design source.** The design system is the Doop canvas `fTzMMHDuiN`, guideline `xin-system`: dark only, Factory core-v2 tokens, Geist and Geist Mono, one orange, square geometry. The frames are the specification for every screen; the guideline is the specification for every token. A rule the frames follow and this client must keep:
+**Design source.** Structure, sizing, density and motion follow kiko's web client (`/home/keyur/kiko/apps/web-solid`); colour and the composition of controls follow `app.lighter.xyz`. The Doop canvas `fTzMMHDuiN` still defines which screens and controls exist, but its Factory palette and square geometry no longer apply. kiko is a reference for composition only: no kiko code, data or copy is imported. The tokens live in `web/src/styles/app.css`; a hex or oklch value exists once, in that block. A rule the screens keep:
 
-- **Orange means "needs you" or "primary action". Nothing else.**
-- **Blue means "working". Nothing else.** (status palette below)
+- **White is the primary action.** A primary button is `ink` on `fg`, like lighter's connect button. It is never coloured.
+- **Orange means "needs you". Nothing else.** `--color-waiting`.
+- **Blue means "working". Nothing else.**
+- **Mint successes, red failures, amber pauses, grey queue and cancel.**
 - No product name in the UI chrome; the wordmark slot stays a placeholder.
-- No star or sparkle icons. No coloured pictograms. No duotone project tiles.
+- No star or sparkle icons. A pinned model uses the pin glyph, never a star. No coloured pictograms. No duotone project tiles.
+
+## Theme
+
+The palette is lighter's dark set, read from its bundle: a cool near-black page, four greys above it, white-alpha hairlines and fills, one pale lavender link. Type is kiko's: Satoshi for everything, Fraunces for page and display headings, JetBrains Mono for figures, labels and code. All three are self-hosted in `web/public/fonts`; no font request leaves the origin.
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `page` | `#06060c` | the page ground |
+| `surface` | `oklch(18.5% .012 285)` | sidebar, cards, panels |
+| `raised` | `oklch(19.3% .008 286)` | composer box, dialogs |
+| `overlay` | `oklch(20.7% .011 285)` | menus, popovers, drawers |
+| `elevated` | `oklch(29.1% .009 286)` | the hover/selected step |
+| `fg` / `fg-2` / `fg-3` / `fg-4` | `96.4%` / `74.1%` / `64.5%` / `56%` lightness | ink, body, meta, faint |
+| `line` / `line-inner` / `line-strong` | white `7%` / `10%` / `16%` | hairline, control edge, focus |
+| `fill` / `fill-strong` | white `5%` / `8%` | field ground, resting control |
+| `hover` / `selected` | white `6%` / `10%` | row hover, active row or tab |
+| `accent` / `ink` | `oklch(96.4% 0 0)` / `#06060c` | primary button |
+| `accent-text` | `oklch(85.7% .07 271.6)` | links and quiet emphasis |
+
+Only the radii and type tokens that CSS reads are declared: `--radius-micro` 4, `control` 8, `card`/`pop` 12, `full` 999, and `--text-section` 26/32 with `--text-title` 40/44. Every other value in the scale is written where it is used, so the scale cannot drift from what renders: radii 16, 18, 20 and 22 on sheets, bubbles, heroes and the composer; controls at 32px, chips 26, rows 34, the sidebar 296, the rail 56, the top bar 52, the header 44, the chat column 820. Type is `nano` 10, `micro` 11, `hint` 11.5, `label` 12.5, `caption` 13, `row` 13.5, `ui` 14, `msg` 15/24, `heading` 16. Fraunces is set at weight 400 with `SOFT 50, WONK 0`.
+
+A floating surface is one hairline inside a 24px/64px shadow (`--shadow-float`); a scrim is 50% black with `blur(6px) saturate(.7)`. A menu is `overlay`, 12px radius, 4px padding, 28-32px rows at 4px radius. Hovering a menu, a settings nav or a picker slides one fill between rows over 160ms on `--ease-kiko` instead of repainting each row (`components/ui/glide.tsx`). A segmented control is one 34px track (`line` edge, `fill` ground) with a sliding `selected` pill over a group of buttons, each carrying `aria-pressed`; every tab strip, range switch and editor switch uses that one primitive (`components/ui/segmented.tsx`). Every text input, select and textarea is the shared `FIELD` style (`components/ui/field.ts`), in five exports: `FIELD` and `MONO_FIELD` for one-line controls, `FIELD_AREA` and `MONO_AREA` for multi-line ones, `FIELD_ROW` for a bordered box that holds an icon and an unstyled input, and `FIELD_BOX` for a bordered box that holds a field and a footer bar. Each is a `line` edge on a `fill` ground with an inset top highlight; border and fill step up on hover and focus, and no field ever draws a ring. A pictogram's single accent mark is orange (`--color-waiting`), never white: white is the primary button, not decoration.
 
 ## Status palette
 
-| State | Hex | Word |
+| State | Value | Word |
 | --- | --- | --- |
-| queued | `#80756f` | Queued |
-| working | `#6aa8ff` | Working |
+| queued | `oklch(56% .006 286)` | Queued |
+| working | `oklch(70% .12 255)` | Working |
 | waiting | `#ff5a00` | Waiting on you |
-| done | `#6fae5d` | Done |
-| failed | `#f0442e` | Failed |
-| paused | `#f7a828` | Paused |
-| cancelled | `#6b615c` | Cancelled |
+| done | `oklch(82.8% .186 159)` | Done |
+| failed | `oklch(67% .195 19)` | Failed |
+| paused | `oklch(84% .172 84)` | Paused |
+| cancelled | `oklch(47.8% .007 256)` | Cancelled |
 
 Rows, chips and the sidebar use the **D Grid** family from `I2`: a 3×3 grid of square cells where every state is its own pattern, at 12, 16, 20 or 24px. Chat chips use the **Capsule** family, which pairs the glyph with the state's word.
 
@@ -48,7 +72,8 @@ The client talks to the Worker over the same contract the agent uses.
 - **Home answers instead of redirecting.** The `home` snapshot carries up to five pending questions (`{ requests: [...] }`, contributed by the questions plugin through `wire.home`), so a Needs You row shows the question and its option chips and answers with the same `request.respond` the Inbox uses; a failed row keeps Retry. The projection's own `openRequests` count still drives the numbers and the mobile Inbox dot.
 - **One entry renders once.** `components/chat/entries.tsx` maps a transcript's entries to items and renders them; the project chat and a thread's body both call it, so a new entry kind reaches both.
 - **A send is keyed once per draft.** The composer mints one command id and `clientTs` per draft text and reuses them on retry, so a lost ack cannot add a second message: the host dedupes on the command id.
-- **The composer's row is attach, preset, model, effort, send** (`V3-a`). The preset comes from `preset.list`'s `conversations` map and changes with `preset.select`; the effort comes from the snapshot's `pi.agent.thinkingLevel` and changes with `conv.configure { thinking }`, and the chip is drawn only when the catalog calls the current model reasoning. The model menu puts **This project** first, then **Catalog**, marks each price with `$` to `$$$`, and greys a model whose provider has no credential with `no key` instead of hiding it, from `models.list { includeUnkeyed: true }`. Once the catalog passes twelve models the menu searches the server (`models.list { query }`), because the op caps a reply at forty and a client-side filter could never reach the rest.
+- **The composer is a 16px raised box with one hairline, a 15px/24 textarea, and a footer of 32px round controls** (`V3-a`): attach, preset, model, effort, then a 32px round send that is white when it will send. Menus open upward from their trigger, are `overlay` surfaces with 4px padding, and slide one fill between rows. The preset comes from `preset.list`'s `conversations` map and changes with `preset.select`; the effort comes from the snapshot's `pi.agent.thinkingLevel` and changes with `conv.configure { thinking }`, and the chip is drawn only when the catalog calls the current model reasoning.
+- **The model picker is a 400×392 anchored panel** (`components/chat/model-picker.tsx`): a 112px provider rail of full provider names on the left, a server-backed search field, 36px rows with `$` to `$$$` price marks and `no key` on an unkeyed provider, a pin per row (favourites are local, never a star), an animated check on the current model, and arrow/Enter keyboard movement. It reads `models.list { includeUnkeyed: true }`; once the catalog passes twelve models the search is the server's (`models.list { query }`), because the op caps a reply at forty and a client-side filter could never reach the rest.
 - **Auth** is the owner token, kept in `localStorage`, checked with `GET /v1/status`. Same-origin in production; Vite proxies `/v1` and `/health` to `wrangler dev` in development.
 
 Deviations from the backend spec that the UI needs are logged in `docs/log/decisions.tsv` as they land.
@@ -103,7 +128,7 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 | `#/signin` | O1 | owner token |
 | `#/welcome` | O2–O5 | first provider key, first project, first message, notifications |
 
-Layout follows the breakpoint table in `DDL0wyMU8c`. At 1280 and up the sidebar is 264 wide with labels and the panel is docked: 400 wide, 440 from 1440. From 1024 to 1279 the sidebar collapses to the 56px rail and the panel is a non-modal drawer, 400 wide with an elevation shadow and no scrim, so the chat stays readable at the left edge. Below 1024 the sidebar becomes the bottom tab bar and the panel becomes a bottom sheet at 76% height, on a 64% scrim, with a grab handle that drags it down to dismiss. An opened thread takes the docked panel to 520 (`V3-a`). The chat column never exceeds 720, and the composer and top bar align to it.
+Layout follows the breakpoint table in `DDL0wyMU8c`, at kiko's sizes. At 1280 and up the sidebar is 296 wide with labels and the panel is docked: 400 wide, 440 from 1440. From 1024 to 1279 the sidebar collapses to the 56px rail and the panel is a non-modal drawer, 400 wide with an elevation shadow and no scrim, so the chat stays readable at the left edge. Below 1024 the sidebar becomes the bottom tab bar and the panel becomes a bottom sheet at 76% height, on a blurred scrim, with a grab handle that drags it down to dismiss. An opened thread takes the docked panel to 520 (`V3-a`). The chat column never exceeds 820, and the composer and top bar align to it. Settings is a 1240×820 surface on the page: a 240px side nav of 34px rows with the glide fill, a serif 26px page title, and 12px cards inside.
 
 ## Identity
 
@@ -117,19 +142,20 @@ Small loads use the arc from `I1`: a faint ring with a quarter arc turning once 
 
 ## Motion
 
-Tokens are `--dur-instant|fast|base|slow|deliberate` (80/140/200/320/480) and `--ease-standard|enter|exit|spring` (F4). Exits are always faster than entrances, and spring is only for a surface arriving from an edge on touch.
+Tokens are `--dur-instant|fast|base|slow|deliberate` (80/120/200/320/450) on kiko's curves: `--ease-kiko` `cubic-bezier(.2,.8,.2,1)` for most things, `--ease-snap` `cubic-bezier(.32,.72,0,1)` for exits, and `--ease-pop` `cubic-bezier(.34,1.3,.64,1)` only for a surface arriving from an edge on touch. Exits are always faster or equal to entrances, never slower. A hover fill glides between rows in 160ms; a press is 120ms.
 
 | Surface | Enter | Exit | Utility |
 | --- | --- | --- | --- |
-| Dialog | 200, opacity and scale .98 to 1, enter curve | 140, exit curve | `enter`, `dialog-out` |
+| Dialog | 200, opacity and scale .98 to 1, kiko curve | 140, exit curve | `enter`, `dialog-out` |
 | Right sheet and panel drawer | 320, 24px from the right plus fade, standard | 200, exit curve | `slide-right`, `slide-right-out` |
 | Bottom sheet | 320 on the spring, 100% from the bottom | 200, exit curve | `sheet-in`, `sheet-out` |
-| Menu and popover | 140, 4px drop, enter curve | unmount | `menu-in` |
+| Menu and popover | 200, 4px drop and .98 scale, kiko curve | unmount | `menu-in` |
+| Glide fill | 160, transform and size, kiko curve | 120 fade | `.glide-mark` |
 | Fan-out row | 200, 4px drop, 40ms stagger capped at six | unmount | `row-in` |
 | Report card | 320, 6px rise | unmount | `card-in` |
 | Scrim | 200 linear fade | 200 | `fade-in` |
 
-Panel tabs slide their pill over 200 and crossfade the body over 140. Controls answer within 80ms: a press scales .98, a hover tints in 80 and fades out over 140, a toggle knob travels in 140, and a rejected input shakes 4px once over 240. `prefers-reduced-motion` collapses every animation and transition to 1ms.
+Panel tabs slide their pill over 200 and crossfade the body over 140. Controls answer within 120ms: a press scales .98, a hover tints in 120 and fades out over 120, a toggle knob travels in 120, and a rejected input shakes 4px once over 240. `prefers-reduced-motion` collapses every animation and transition to 1ms.
 
 ## Decisions taken from the review frame's open questions
 

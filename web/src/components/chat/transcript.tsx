@@ -30,7 +30,7 @@ function threadsOf(project: ProjectSummary): readonly ThreadSummary[] {
 
 function CoordinatorMeta(props: { busy?: boolean | undefined }): JSX.Element {
   return (
-    <div class="font-mono text-[11px] leading-none text-fg-4">
+    <div class="mono-meta leading-none uppercase">
       <span classList={{ shimmer: props.busy === true }}>{props.busy === true ? "Coordinator · working" : "Coordinator"}</span>
     </div>
   )
@@ -42,7 +42,7 @@ function Welcome(props: { project: ProjectSummary }): JSX.Element {
       <ProjectGlyph slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={40} />
       <div class="flex flex-col gap-1.5">
         <span class="text-[15px] font-medium text-fg">Start the conversation</span>
-        <span class="max-w-[360px] text-[13px] leading-[1.6] text-fg-3">
+        <span class="max-w-[360px] text-[13.5px] leading-[1.6] text-fg-3">
           {props.project.goal ?? "Tell the coordinator what you want done. It can fan work out into threads and report back here."}
         </span>
       </div>
@@ -123,18 +123,18 @@ export function Transcript(props: {
       }}
       class="min-h-0 flex-1 overflow-y-auto"
     >
-      <div class="mx-auto flex w-full max-w-[720px] flex-col gap-[18px] px-6 pb-6 pt-7">
+      <div class="mx-auto flex w-full max-w-[820px] flex-col gap-[18px] px-6 pb-6 pt-7">
         <Show when={props.hasOlder}>
           <div class="flex flex-col items-center gap-2 pb-1">
             <button
               type="button"
               disabled={loadingOlder()}
               onClick={() => void loadOlder()}
-              class="rounded-[2px] border border-line-inner px-2.5 py-1 text-[12px] text-fg-2 transition-colors hover:border-line-strong hover:bg-hover disabled:text-fg-4"
+              class="rounded-[8px] border border-line px-2.5 py-1 text-[12.5px] text-fg-2 transition-colors hover:border-line-strong hover:bg-fill-strong disabled:text-fg-4"
             >
               {loadingOlder() ? "Loading" : "Load older messages"}
             </button>
-            <span class="font-mono text-[10.5px] text-fg-4">showing recent history</span>
+            <span class="font-mono text-[11px] text-fg-4">showing recent history</span>
           </div>
         </Show>
 
@@ -167,7 +167,7 @@ export function Transcript(props: {
               <Show
                 when={live().partial !== ""}
                 fallback={
-                  <div class="text-[13px] text-fg-3">
+                  <div class="text-[13.5px] text-fg-3">
                     <span class="shimmer">
                       {live().tools.at(-1)?.name === undefined ? "Thinking" : `Running ${live().tools.at(-1)?.name}`}
                     </span>
@@ -195,23 +195,23 @@ export function Transcript(props: {
 
 export function TranscriptSkeleton(): JSX.Element {
   return (
-    <div class="mx-auto flex w-full max-w-[720px] flex-col gap-[18px] px-6 pb-6 pt-7">
+    <div class="mx-auto flex w-full max-w-[820px] flex-col gap-[18px] px-6 pb-6 pt-7">
       <div class="flex justify-end">
-        <div class="h-11 w-[340px] rounded-[4px] border border-line-inner bg-hover" />
+        <div class="h-11 w-[340px] rounded-[18px] bg-fill" />
       </div>
       <div class="flex gap-3">
-        <span class="h-6 w-6 shrink-0 rounded-[2px] border border-line-inner bg-raised" />
+        <span class="h-6 w-6 shrink-0 rounded-[8px] border border-line bg-surface" />
         <div class="flex flex-1 flex-col gap-2.5">
-          <span class="h-2.5 w-24 rounded-[1px] bg-hover" />
-          <span class="h-3 w-[86%] rounded-[1px] bg-hover" />
-          <span class="h-3 w-[72%] rounded-[1px] bg-hover" />
-          <span class="h-3 w-[48%] rounded-[1px] bg-hover" />
+          <span class="h-2.5 w-24 rounded-[4px] bg-fill" />
+          <span class="h-3 w-[86%] rounded-[4px] bg-fill" />
+          <span class="h-3 w-[72%] rounded-[4px] bg-fill" />
+          <span class="h-3 w-[48%] rounded-[4px] bg-fill" />
         </div>
       </div>
       <div class="flex gap-3">
-        <span class="h-6 w-6 shrink-0 rounded-[2px] border border-line-inner bg-raised" />
+        <span class="h-6 w-6 shrink-0 rounded-[8px] border border-line bg-surface" />
         <div class="flex flex-1 flex-col gap-2.5">
-          <span class="h-16 w-full rounded-[4px] border border-line-inner bg-raised" />
+          <span class="h-16 w-full rounded-[12px] border border-line bg-surface" />
         </div>
       </div>
     </div>

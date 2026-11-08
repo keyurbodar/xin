@@ -95,13 +95,13 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
     <div class="flex min-h-0 flex-1 overflow-hidden">
       <section class="flex min-w-0 flex-1 flex-col">
         <header class="flex h-12 shrink-0 items-center gap-2 border-b border-line px-4">
-          <button type="button" class="link truncate text-[13px]" onClick={() => navigate(`/p/${props.project.slug}`)}>
+          <button type="button" class="link truncate text-[13.5px]" onClick={() => navigate(`/p/${props.project.slug}`)}>
             {props.project.name}
           </button>
           <span class="text-fg-4">/</span>
-          <span class="text-[13px] text-fg-3">Files</span>
+          <span class="text-[13.5px] text-fg-3">Files</span>
           <span class="text-fg-4">/</span>
-          <span class="min-w-0 truncate text-[13px] font-medium text-fg">{name(props.path)}</span>
+          <span class="min-w-0 truncate text-[13.5px] font-medium text-fg">{name(props.path)}</span>
           <Show when={shown()}>
             {(entry) => (
               <span class="ml-auto shrink-0 font-mono text-[11.5px] text-fg-4">{bytes(entry().size)}</span>
@@ -110,7 +110,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
           <Show when={content()}>
             {(entry) => (
               <Show when={entry().versions > 1 && viewing() === undefined}>
-                <span class="shrink-0 rounded-[2px] border border-line-inner px-1.5 py-0.5 font-mono text-[10.5px] text-fg-3">
+                <span class="shrink-0 rounded-[8px] border border-line-inner px-1.5 py-0.5 font-mono text-[11px] text-fg-3">
                   {entry().versions} versions
                 </span>
               </Show>
@@ -119,21 +119,21 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
           <Show when={shown()?.text ?? null}>
             <button
               type="button"
-              class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg"
+              class="shrink-0 rounded-[8px] border border-line px-2 py-1 text-[12.5px] text-fg-2 hover:border-line-strong hover:text-fg"
               onClick={ask}
             >
               Ask about this
             </button>
             <button
               type="button"
-              class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg"
+              class="shrink-0 rounded-[8px] border border-line px-2 py-1 text-[12.5px] text-fg-2 hover:border-line-strong hover:text-fg"
               onClick={() => void copy()}
             >
               {copied() ? "Copied" : "Copy"}
             </button>
             <button
               type="button"
-              class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg"
+              class="shrink-0 rounded-[8px] border border-line px-2 py-1 text-[12.5px] text-fg-2 hover:border-line-strong hover:text-fg"
               onClick={() => {
                 const text = shown()?.text
                 if (text !== undefined && text !== null) save({ path: props.path, type: shown()?.type ?? "text/plain" }, text)
@@ -146,10 +146,10 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
 
         <Show when={viewing()}>
           {(sha) => (
-            <div class="flex items-center gap-2 border-b border-accent-line bg-accent-dim px-4 py-2 text-[12px] text-fg-2">
+            <div class="flex items-center gap-2 border-b border-accent-line bg-accent-dim px-4 py-2 text-[12.5px] text-fg-2">
               <span>Viewing an earlier version · {ago(older()?.at ?? Date.now())}</span>
-              <span class="font-mono text-[10.5px] text-fg-4">{sha().slice(0, 12)}</span>
-              <button type="button" class="ml-auto link text-[12px]" onClick={() => setViewing(undefined)}>
+              <span class="font-mono text-[11px] text-fg-4">{sha().slice(0, 12)}</span>
+              <button type="button" class="ml-auto link text-[12.5px]" onClick={() => setViewing(undefined)}>
                 Back to current
               </button>
             </div>
@@ -157,7 +157,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
         </Show>
 
         <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-          <Skullet loading={content.loading} sample={() => <div class="h-3 w-2/3 rounded-[1px] bg-hover" />} label="Opening file">
+          <Skullet loading={content.loading} sample={() => <div class="h-3 w-2/3 rounded-[4px] bg-hover" />} label="Opening file">
             <Show when={content()} fallback={<EmptyState pictogram="folder" title="File not found" detail="It may have been deleted." />}>
               {(entry) => (
                 <Show
@@ -172,11 +172,11 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
                 >
                   {(text) => (
                     <article class="mx-auto max-w-[720px]">
-                      <h1 class="mb-1 text-[20px] font-medium text-fg">{name(entry().path)}</h1>
+                      <h1 class="mb-1 font-display text-[20px] leading-[1.2] text-fg">{name(entry().path)}</h1>
                       <p class="mb-5 font-mono text-[11.5px] text-fg-4">{folder(entry().path, root())}</p>
                       <Show
                         when={(shown()?.type ?? "") === "text/markdown"}
-                        fallback={<pre class="whitespace-pre-wrap font-mono text-[12.5px] leading-[1.6] text-fg-2">{text()}</pre>}
+                        fallback={<pre class="whitespace-pre-wrap font-mono text-[13px] leading-[1.6] text-fg-2">{text()}</pre>}
                       >
                         <Markdown text={text()} />
                       </Show>
@@ -188,14 +188,14 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
                               {(revision) => (
                                 <button
                                   type="button"
-                                  class="flex items-center gap-2 border-b border-line-inner py-2 text-left text-[12px] hover:text-fg"
+                                  class="flex items-center gap-2 border-b border-line-inner py-2 text-left text-[12.5px] hover:text-fg"
                                   classList={{ "text-accent-text": viewing() === revision.sha256, "text-fg-3": viewing() !== revision.sha256 }}
                                   onClick={() => setViewing(revision.sha256)}
                                 >
                                   <Icon name="file" size={13} />
-                                  <span class="font-mono text-[10.5px]">{revision.sha256.slice(0, 12)}</span>
+                                  <span class="font-mono text-[11px]">{revision.sha256.slice(0, 12)}</span>
                                   <span>{ago(revision.at)}</span>
-                                  <span class="ml-auto font-mono text-[10.5px] text-fg-4">{bytes(revision.size)}</span>
+                                  <span class="ml-auto font-mono text-[11px] text-fg-4">{bytes(revision.size)}</span>
                                 </button>
                               )}
                             </For>
@@ -230,7 +230,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
                   }}
                 >
                   <span class="min-w-0 flex-1">
-                    <span class="block truncate text-[12.5px] text-fg">{name(entry.path)}</span>
+                    <span class="block truncate text-[13px] text-fg">{name(entry.path)}</span>
                     <span class="block truncate text-[11px] text-fg-4">{folder(entry.path, root())}</span>
                   </span>
                   <span class="mono-meta shrink-0">{bytes(entry.size)}</span>
@@ -240,7 +240,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
           </div>
           <div class="shrink-0 p-3">
             <label
-              class="flex flex-col items-center gap-1 rounded-[4px] border border-dashed px-3 py-4 text-center text-[11.5px] text-fg-4"
+              class="flex flex-col items-center gap-1 rounded-[12px] border border-dashed px-3 py-4 text-center text-[11.5px] text-fg-4"
               classList={{ "border-accent-line text-accent-text": dropping(), "border-line-inner": !dropping() }}
               onDragOver={(event) => {
                 event.preventDefault()
@@ -256,7 +256,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
             >
               <Icon name="upload" size={16} />
               <span>Drop a file here</span>
-              <span class="text-[10.5px]">It lands in this project's folder</span>
+              <span class="text-[11px]">It lands in this project's folder</span>
               <input
                 type="file"
                 multiple

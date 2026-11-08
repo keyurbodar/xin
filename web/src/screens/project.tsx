@@ -186,7 +186,7 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
               type="button"
               onClick={() => setSettingsOpen(true)}
               aria-label="Project settings"
-              class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
+              class="grid h-7 w-7 place-items-center rounded-[8px] text-fg-3 hover:bg-hover hover:text-fg"
             >
               <Icon name="more" size={15} />
             </button>
@@ -194,7 +194,7 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
               type="button"
               onClick={togglePanel}
               aria-label={docked() && panelOpen() ? "Hide the panel" : "Open the project panel"}
-              class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
+              class="grid h-7 w-7 place-items-center rounded-[8px] text-fg-3 hover:bg-hover hover:text-fg"
               classList={{ "bg-selected text-fg": docked() && panelOpen() }}
             >
               <Icon name="panel" size={15} />
@@ -401,24 +401,24 @@ export function ProjectScreen(): JSX.Element {
 function ProjectSkeleton(): JSX.Element {
   return (
     <div class="flex min-h-full flex-col">
-      <div class="flex h-12 items-center gap-2.5 border-b border-line px-4">
-        <span class="h-6 w-6 rounded-[2px] border border-line-inner bg-raised" />
-        <span class="h-3 w-32 rounded-[1px] bg-hover" />
-        <span class="ml-2 h-2.5 w-56 rounded-[1px] bg-hover" />
-        <span class="ml-auto h-7 w-28 rounded-[2px] border border-line-inner bg-raised" />
+      <div class="flex h-13 items-center gap-2.5 border-b border-line px-4">
+        <span class="h-6 w-6 rounded-[8px] border border-line-inner bg-raised" />
+        <span class="h-3 w-32 rounded-[4px] bg-hover" />
+        <span class="ml-2 h-2.5 w-56 rounded-[4px] bg-hover" />
+        <span class="ml-auto h-7 w-28 rounded-[8px] border border-line-inner bg-raised" />
       </div>
       <div class="flex min-h-0 flex-1">
         <div class="min-w-0 flex-1">
           <TranscriptSkeleton />
         </div>
         <div class="hidden w-[400px] border-l border-line bg-surface min-[1280px]:block min-[1440px]:w-[440px]">
-          <div class="flex h-12 items-center gap-3 border-b border-line px-3">
+          <div class="flex h-13 items-center gap-3 border-b border-line px-3">
             <For each={["Threads", "Files", "Memory", "Schedules", "Jobs"]}>
-              {(label) => <span class="text-[12.5px] text-fg-4">{label}</span>}
+              {(label) => <span class="text-[13px] text-fg-4">{label}</span>}
             </For>
           </div>
           <div class="px-3 pt-3">
-            <div class="h-2.5 w-24 rounded-[1px] bg-hover" />
+            <div class="h-2.5 w-24 rounded-[4px] bg-hover" />
           </div>
         </div>
       </div>

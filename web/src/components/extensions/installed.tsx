@@ -12,6 +12,7 @@ import {
 } from "../../state/extensions.ts"
 import { Button, Chip, Empty, Failure, Note, Panel, Pending, StateChip, Toggle, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
+import { FIELD_ROW } from "../ui/field.ts"
 
 type Membership = { readonly bundle: BundleView }
 
@@ -52,7 +53,7 @@ export function Installed(props: { onCustomize: (rowId: string) => void }): JSX.
     <div class="flex min-h-0 flex-1">
       <div class="flex min-w-0 flex-1 flex-col">
         <div class="flex items-center gap-2 border-b border-line px-4 py-2.5">
-          <div class="flex h-7 w-[280px] items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-2.5">
+          <div class={`${FIELD_ROW} w-[280px]`}>
             <Glyph name="search" size={13} class="text-fg-3" />
             <input
               value={filter()}
@@ -60,7 +61,7 @@ export function Installed(props: { onCustomize: (rowId: string) => void }): JSX.
               placeholder="Filter installed"
               spellcheck={false}
               aria-label="Filter installed extensions"
-              class="min-w-0 flex-1 bg-transparent text-[12.5px] text-fg placeholder:text-fg-4 focus:outline-none"
+              class="min-w-0 flex-1 bg-transparent text-[13px] text-fg placeholder:text-fg-4 focus:outline-none"
             />
           </div>
           <span class="text-[11.5px] text-fg-3">
@@ -151,11 +152,11 @@ function InstalledRow(props: {
       classList={{ "bg-hover": props.selected, "opacity-55": props.row.state.kind === "disabled" }}
     >
       <button type="button" onClick={props.onSelect} class="flex min-w-0 items-center gap-2.5 text-left">
-        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg-2">
+        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] border border-line-inner bg-hover text-fg-2">
           <Glyph name="layers" size={15} />
         </span>
         <span class="min-w-0">
-          <span class="block truncate text-[12.5px] font-medium text-fg">{props.row.title}</span>
+          <span class="block truncate text-[13px] font-medium text-fg">{props.row.title}</span>
           <span class="block truncate text-[11.5px] text-fg-3">
             {props.row.plugin} · {props.row.id}
           </span>
@@ -225,11 +226,11 @@ function RowPanel(props: {
   return (
     <aside class="flex w-[460px] shrink-0 flex-col border-l border-line bg-surface">
       <header class="flex items-center gap-3 border-b border-line px-4 py-3.5">
-        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-hover text-fg">
           <Glyph name="layers" size={18} />
         </span>
         <div class="min-w-0 flex-1">
-          <span class="block truncate text-[14px] font-medium text-fg">{props.row.title}</span>
+          <span class="block truncate text-[15px] font-medium text-fg">{props.row.title}</span>
           <span class="block truncate text-[11.5px] text-fg-3">
             {props.row.plugin} · {props.bundle === undefined ? "compiled" : props.bundle.package}
           </span>
@@ -267,17 +268,17 @@ function RowPanel(props: {
               <section>
                 <span class="label mb-2 block">Bundle</span>
                 <Panel>
-                  <div class="flex items-center justify-between border-b border-line px-3 py-2 text-[12px] last:border-0">
+                  <div class="flex items-center justify-between border-b border-line px-3 py-2 text-[12.5px] last:border-0">
                     <span class="text-fg-3">Package</span>
                     <span class="font-mono text-[11.5px] text-fg-2">{bundle().package}</span>
                   </div>
-                  <div class="flex items-center justify-between border-b border-line px-3 py-2 text-[12px] last:border-0">
+                  <div class="flex items-center justify-between border-b border-line px-3 py-2 text-[12.5px] last:border-0">
                     <span class="text-fg-3">Source</span>
                     <span class="font-mono text-[11.5px] text-fg-2">
                       {sourceLabel(bundle().source)}
                     </span>
                   </div>
-                  <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+                  <div class="flex items-center justify-between px-3 py-2 text-[12.5px]">
                     <span class="text-fg-3">Rows</span>
                     <span class="font-mono text-[11.5px] text-fg-2">{bundle().rows.length}</span>
                   </div>

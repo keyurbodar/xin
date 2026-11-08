@@ -9,22 +9,16 @@ export function failureOf(state: Remote<unknown>): string | undefined {
   return state.kind === "failed" ? state.message : undefined
 }
 
-export const INPUT =
-  "h-8 w-full rounded-[2px] border border-line-inner bg-page px-2.5 text-[12.5px] text-fg placeholder:text-fg-4 focus:border-line-strong focus:outline-none"
-
-export const MONO_INPUT =
-  "h-8 w-full rounded-[2px] border border-line-inner bg-page px-2.5 font-mono text-[12px] text-fg placeholder:text-fg-4 focus:border-line-strong focus:outline-none"
-
 export type ChipTone = "default" | "accent" | "ok" | "bad" | "warn" | "working"
 
 export function Chip(props: { children: JSX.Element; tone?: ChipTone | undefined; class?: string | undefined }): JSX.Element {
   const tone = (): ChipTone => props.tone ?? "default"
   return (
     <span
-      class={`inline-flex w-max items-center gap-1 rounded-[2px] border px-1 py-px font-mono text-[9.5px] font-medium uppercase tracking-[0.06em] ${props.class ?? ""}`}
+      class={`inline-flex h-[26px] w-max items-center gap-1 rounded-[6px] border px-2 font-mono text-[10.5px] font-medium uppercase tracking-[0.06em] ${props.class ?? ""}`}
       classList={{
-        "border-line-inner text-fg-3": tone() === "default",
-        "border-accent-line bg-accent-dim text-accent-text": tone() === "accent",
+        "border-line-inner bg-fill text-fg-3": tone() === "default",
+        "border-line-inner bg-fill text-accent-text": tone() === "accent",
         "border-ok/30 bg-ok-bg text-ok": tone() === "ok",
         "border-bad/30 bg-bad-bg text-bad": tone() === "bad",
         "border-warn/30 bg-warn-bg text-warn": tone() === "warn",
@@ -70,19 +64,22 @@ export function Toggle(props: {
       aria-label={props.label}
       disabled={props.disabled === true}
       onClick={() => props.onChange(!props.on)}
-      class="knob relative h-4 w-7 shrink-0 rounded-[2px] disabled:opacity-40"
-      classList={{ "bg-fg": props.on, "bg-line-inner": !props.on }}
+      class="relative inline-block h-4 w-9 shrink-0 overflow-hidden rounded-full shadow-[inset_0_var(--hl-y)_0_0_var(--hl-top),0_0_0_0.5px_var(--color-ring-crisp)] outline-none disabled:cursor-not-allowed disabled:opacity-40"
     >
       <span
-        class="knob absolute top-0.5 h-3 w-3 rounded-[1px] bg-page"
-        classList={{ "left-3.5": props.on, "left-0.5 bg-fg-3": !props.on }}
+        class="pointer-events-none absolute inset-0 rounded-full transition-colors duration-150 ease-out"
+        classList={{ "bg-accent": props.on, "bg-fill-strong": !props.on }}
+      />
+      <span
+        class="pointer-events-none absolute top-0.5 left-0.5 h-3 w-[18px] rounded-full shadow-[var(--shadow-toggle-thumb)] transition-[transform,background-color] duration-150 ease-out"
+        classList={{ "translate-x-3.5 bg-ink": props.on, "bg-fg-2": !props.on }}
       />
     </button>
   )
 }
 
 export function Panel(props: { children: JSX.Element; class?: string | undefined }): JSX.Element {
-  return <div class={`overflow-hidden rounded-[4px] border border-line bg-surface ${props.class ?? ""}`}>{props.children}</div>
+  return <div class={`panel overflow-hidden ${props.class ?? ""}`}>{props.children}</div>
 }
 
 export function MissingOp(props: { op: string; detail?: string | undefined }): JSX.Element {

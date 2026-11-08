@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js
 import { market, packages, rows, type MarketStatus, type MarketSummary } from "../../state/extensions.ts"
 import { Button, Chip, Empty, Failure, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph, type GlyphName } from "./glyph.tsx"
+import { FIELD_ROW } from "../ui/field.ts"
 
 function readyBundles() {
   const state = packages.state()
@@ -95,7 +96,7 @@ export function Discover(props: { onOpen: (name: string) => void; onSources: () 
   return (
     <div class="min-h-0 flex-1 overflow-y-auto">
       <div class="flex flex-col gap-6 px-8 pb-12 pt-6">
-      <div class="flex h-10 items-center gap-2.5 rounded-[2px] border border-line-inner bg-surface px-3">
+      <div class={`${FIELD_ROW} w-full`}>
         <Glyph name="search" size={15} class="text-fg-3" />
         <input
           value={query()}
@@ -119,14 +120,14 @@ export function Discover(props: { onOpen: (name: string) => void; onSources: () 
             <button
               type="button"
               onClick={() => setCategory(name)}
-              class="inline-flex h-7 items-center gap-1.5 rounded-[2px] border px-2.5 text-[12.5px]"
+              class="inline-flex h-[26px] items-center gap-1.5 rounded-[6px] border px-2.5 text-[12.5px]"
               classList={{
-                "border-fg bg-fg font-medium text-page": category() === name,
-                "border-line-inner text-fg-2 hover:border-line-strong hover:text-fg": category() !== name,
+                "border-fg bg-fg font-medium text-ink": category() === name,
+                "border-line-inner bg-fill text-fg-2 hover:border-line-strong hover:text-fg": category() !== name,
               }}
             >
               {name}
-              <span class="font-mono text-[10.5px]" classList={{ "text-page/60": category() === name, "text-fg-4": category() !== name }}>
+              <span class="font-mono text-[11px]" classList={{ "text-ink/60": category() === name, "text-fg-4": category() !== name }}>
                 {count}
               </span>
             </button>
@@ -155,12 +156,12 @@ export function Discover(props: { onOpen: (name: string) => void; onSources: () 
         <section class="flex flex-col gap-3">
           <div class="flex items-baseline gap-2.5">
             <span class="label">Market</span>
-            <span class="text-[12px] text-fg-3">{filtered().length} packages</span>
+            <span class="text-[12.5px] text-fg-3">{filtered().length} packages</span>
             <Show when={query().trim() !== ""}>
-              <span class="ml-auto text-[12px] text-fg-3">Search: {query().trim()}</span>
+              <span class="ml-auto text-[12.5px] text-fg-3">Search: {query().trim()}</span>
             </Show>
           </div>
-          <div class="grid grid-cols-1 overflow-hidden rounded-[4px] border border-line md:grid-cols-2 xl:grid-cols-3">
+          <div class="grid grid-cols-1 overflow-hidden rounded-[12px] border border-line md:grid-cols-2 xl:grid-cols-3">
             <For each={filtered()}>{(entry) => <MarketCard entry={entry} onOpen={props.onOpen} />}</For>
           </div>
         </section>
@@ -189,17 +190,17 @@ export function Discover(props: { onOpen: (name: string) => void; onSources: () 
               <section class="flex flex-col gap-2.5">
                 <div class="flex items-baseline gap-2.5">
                   <span class="label">Runtime bundles</span>
-                  <span class="text-[12px] text-fg-3">Installed without a rebuild</span>
+                  <span class="text-[12.5px] text-fg-3">Installed without a rebuild</span>
                 </div>
                 <Panel>
                   <For each={list()}>
                     {(bundle) => (
                       <div class="flex items-center gap-3 border-b border-line px-3.5 py-2.5 last:border-0">
-                        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg-2">
+                        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] border border-line-inner bg-hover text-fg-2">
                           <Glyph name="package" size={15} />
                         </span>
                         <span class="min-w-0 flex-1">
-                          <span class="block truncate text-[12.5px] text-fg">{bundle.package}</span>
+                          <span class="block truncate text-[13px] text-fg">{bundle.package}</span>
                           <span class="block truncate text-[11.5px] text-fg-3">
                             {bundle.source.kind === "registry" ? `v${bundle.source.version}` : "local"} · {bundle.rows.length}{" "}
                             {bundle.rows.length === 1 ? "row" : "rows"}
@@ -232,12 +233,12 @@ export function Discover(props: { onOpen: (name: string) => void; onSources: () 
 function MarketCard(props: { entry: MarketSummary; onOpen: (name: string) => void }): JSX.Element {
   return (
     <div class="flex gap-3 border-b border-r border-line bg-surface p-3.5 last:border-r-0 hover:bg-hover">
-      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg">
+      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-hover text-fg">
         <Glyph name={glyphFor(props.entry.category)} size={18} />
       </span>
       <div class="flex min-w-0 flex-1 flex-col gap-1">
         <button type="button" onClick={() => props.onOpen(props.entry.name)} class="flex min-w-0 items-center gap-1.5 text-left">
-          <span class="truncate text-[13px] font-medium text-fg">{props.entry.title}</span>
+          <span class="truncate text-[13.5px] font-medium text-fg">{props.entry.title}</span>
           <Show when={props.entry.status === "provided"}>
             <Chip>Official</Chip>
           </Show>
@@ -245,10 +246,10 @@ function MarketCard(props: { entry: MarketSummary; onOpen: (name: string) => voi
             <Chip tone="accent">Update</Chip>
           </Show>
         </button>
-        <p class="line-clamp-2 text-[12px] leading-snug text-fg-3">
+        <p class="line-clamp-2 text-[12.5px] leading-snug text-fg-3">
           {props.entry.description === "" ? "No description in the index." : props.entry.description}
         </p>
-        <div class="mt-0.5 flex flex-wrap items-center gap-2 font-mono text-[10.5px] text-fg-4">
+        <div class="mt-0.5 flex flex-wrap items-center gap-2 font-mono text-[11px] text-fg-4">
           <span>{props.entry.category ?? "Package"}</span>
           <Show when={props.entry.author}>
             {(author) => (

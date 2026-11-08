@@ -7,7 +7,7 @@ export type RailItem = { readonly label: string; readonly state: RailState }
 
 export function Wordmark(): JSX.Element {
   return (
-    <span class="rounded-[2px] border border-dashed border-line-strong px-2 py-1 font-mono text-[11px] uppercase tracking-[0.08em] text-fg-3">
+    <span class="rounded-[8px] border border-dashed border-line-strong px-2 py-1 font-mono text-[11px] uppercase tracking-[0.08em] text-fg-3">
       Name TBD
     </span>
   )
@@ -21,7 +21,7 @@ export function StepRail(props: { items: readonly RailItem[]; onSelect?: ((index
 
   return (
     <>
-      <span class="ml-auto font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-4 md:hidden">
+      <span class="ml-auto font-mono text-[11px] uppercase tracking-[0.08em] text-fg-4 md:hidden">
         Step {current() + 1} of {props.items.length}
       </span>
       <div class="ml-auto hidden items-center gap-1.5 md:flex">
@@ -38,19 +38,19 @@ export function StepRail(props: { items: readonly RailItem[]; onSelect?: ((index
                 type="button"
                 disabled={item.state === "todo" || props.onSelect === undefined}
                 onClick={() => props.onSelect?.(index())}
-                class="flex items-center gap-1.5 rounded-[2px] text-[12px]"
+                class="flex h-[34px] items-center gap-1.5 rounded-[8px] px-2 text-[12.5px]"
                 classList={{
                   "cursor-default text-fg-4": item.state === "todo",
-                  "text-fg": item.state === "current",
-                  "text-fg-3 enabled:hover:text-fg-2": item.state === "done",
+                  "bg-selected text-fg": item.state === "current",
+                  "text-fg-3 enabled:hover:bg-fill-strong enabled:hover:text-fg-2": item.state === "done",
                 }}
               >
                 <span
-                  class="grid h-5 w-5 place-items-center rounded-[2px] border font-mono text-[10.5px]"
+                  class="grid h-5 w-5 place-items-center rounded-[6px] border font-mono text-[11px]"
                   classList={{
                     "border-line-inner text-fg-4": item.state === "todo",
-                    "border-accent text-accent-text": item.state === "current",
-                    "border-fg bg-fg text-page": item.state === "done",
+                    "border-line-strong text-fg": item.state === "current",
+                    "border-fg bg-fg text-ink": item.state === "done",
                   }}
                 >
                   <Show when={item.state === "done"} fallback={index() + 1}>

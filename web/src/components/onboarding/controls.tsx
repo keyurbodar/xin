@@ -1,5 +1,6 @@
 import { Show, type JSX } from "solid-js"
 import { Button } from "../ui/button.tsx"
+import { FIELD_AREA, FIELD_ROW } from "../ui/field.ts"
 
 export function Spinner(props: { tone?: "dark" | "light" }): JSX.Element {
   return (
@@ -47,8 +48,8 @@ export function StepHeading(props: { step: string; title: string; intro: string 
   return (
     <div class="flex flex-col gap-2.5">
       <span class="label">{props.step}</span>
-      <h1 class="text-[28px] font-light leading-[1.15] tracking-[-0.03em] md:text-[32px]">{props.title}</h1>
-      <p class="max-w-[520px] text-[13.5px] leading-[1.6] text-fg-3">{props.intro}</p>
+      <h1 class="type-section">{props.title}</h1>
+      <p class="max-w-[520px] text-[14px] leading-[1.6] text-fg-3">{props.intro}</p>
     </div>
   )
 }
@@ -56,10 +57,10 @@ export function StepHeading(props: { step: string; title: string; intro: string 
 export function Field(props: { label: string; hint?: string; children: JSX.Element }): JSX.Element {
   return (
     <div class="flex flex-col gap-1.5">
-      <span class="text-[12px] font-medium text-fg-2">{props.label}</span>
+      <span class="text-[12.5px] font-medium text-fg-2">{props.label}</span>
       {props.children}
       <Show when={props.hint !== undefined}>
-        <span class="text-[12px] leading-[1.5] text-fg-3">{props.hint}</span>
+        <span class="text-[12.5px] leading-[1.5] text-fg-3">{props.hint}</span>
       </Show>
     </div>
   )
@@ -79,7 +80,7 @@ export function TextInput(props: {
   trailing?: JSX.Element
 }): JSX.Element {
   return (
-    <div class="flex h-10 items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-3 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]">
+    <div class={`${FIELD_ROW} w-full`}>
       {props.leading}
       <input
         type={props.type ?? "text"}
@@ -119,7 +120,7 @@ export function TextArea(props: {
       rows={props.rows ?? 3}
       spellcheck={false}
       aria-label={props.ariaLabel}
-      class="min-h-[84px] w-full resize-none rounded-[2px] border border-line-inner bg-surface px-3 py-2.5 text-[13.5px] leading-[1.55] text-fg placeholder:text-fg-4 focus:border-accent focus:shadow-[0_0_0_3px_rgba(255,90,0,0.18)] focus:outline-none"
+      class={`${FIELD_AREA} min-h-[84px] resize-none`}
     />
   )
 }
@@ -127,7 +128,7 @@ export function TextArea(props: {
 export function StatusLine(props: { tone: "error" | "ok" | "muted"; text?: string | undefined }): JSX.Element {
   return (
     <p
-      class="min-h-4 text-[12px] leading-4"
+      class="min-h-4 text-[12.5px] leading-4"
       classList={{
         "text-bad": props.tone === "error",
         "text-ok": props.tone === "ok",

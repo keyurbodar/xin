@@ -63,13 +63,13 @@ export function Customize(props: { initialRowId?: string | undefined }): JSX.Ele
             <button
               type="button"
               onClick={() => setSection(entry.id)}
-              class="flex h-8 items-center gap-2.5 rounded-[2px] px-2.5 text-[13px]"
+              class="flex h-8 items-center gap-2.5 rounded-[8px] px-2.5 text-[13.5px]"
               classList={{ "bg-selected text-fg": section() === entry.id, "text-fg-2 hover:bg-hover": section() !== entry.id }}
             >
               <Glyph name={entry.icon} size={14} class="text-fg-3" />
               {entry.label}
               <Show when={countOf(entry.id) !== undefined}>
-                <span class="ml-auto font-mono text-[10.5px] text-fg-4">{countOf(entry.id)}</span>
+                <span class="ml-auto font-mono text-[11px] text-fg-4">{countOf(entry.id)}</span>
               </Show>
             </button>
           )}

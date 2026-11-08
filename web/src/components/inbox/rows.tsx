@@ -1,9 +1,11 @@
 import { createSignal, For, Show, type JSX } from "solid-js"
+import { ANSWER_CHIP } from "../ui/state.tsx"
 import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import { respondToQuestion, retryThread, type InboxQuestion } from "../../state/requests.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
+import { FIELD } from "../ui/field.ts"
 
 function joined(parts: readonly (string | undefined)[]): string {
   return parts.filter((part): part is string => part !== undefined && part !== "").join(" · ")
@@ -40,15 +42,15 @@ export function QuestionRow(props: {
   }
 
   return (
-    <div class="flex gap-3 border-b border-line bg-raised px-3.5 py-3.5 last:border-0">
+    <div class="flex gap-3 rounded-[12px] border border-waiting/40 bg-surface px-3.5 py-3.5 hover:bg-hover">
       <StatusGlyph state="waiting" size={16} class="mt-0.5 shrink-0" />
       <div class="min-w-0 flex-1">
         <div class="flex items-baseline gap-3">
-          <span class="min-w-0 flex-1 text-[13px] font-medium leading-relaxed">{props.question.question}</span>
+          <span class="min-w-0 flex-1 text-[13.5px] font-medium leading-relaxed">{props.question.question}</span>
           <span class="mono-meta shrink-0">{ago(props.question.askedAt)}</span>
         </div>
         <div class="mt-1 flex items-center gap-2">
-          <span class="min-w-0 flex-1 truncate text-[12px] text-fg-3">
+          <span class="min-w-0 flex-1 truncate text-[12.5px] text-fg-3">
             {joined([props.projectName, props.threadTitle])}
           </span>
           <Show when={props.projectSlug}>
@@ -68,7 +70,7 @@ export function QuestionRow(props: {
                   type="button"
                   disabled={busy()}
                   onClick={() => void answer(option)}
-                  class="chip hover:border-line-strong hover:bg-selected disabled:opacity-50"
+                  class={ANSWER_CHIP}
                 >
                   {option}
                 </button>
@@ -89,12 +91,12 @@ export function QuestionRow(props: {
             disabled={busy()}
             aria-label="Answer in your own words"
             placeholder="Or answer in your own words…"
-            class="h-8 min-w-0 flex-1 rounded-[2px] border border-line-inner bg-page px-2.5 text-[12.5px] outline-none placeholder:text-fg-4 focus:border-accent-line disabled:opacity-50"
+            class={`${FIELD} min-w-0 flex-1`}
           />
           <button
             type="submit"
             disabled={busy()}
-            class="h-8 shrink-0 rounded-[2px] border border-line-inner px-2.5 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg disabled:opacity-50"
+            class="h-8 shrink-0 rounded-[8px] border border-line-inner bg-fill px-2.5 text-[12.5px] text-fg-2 hover:bg-selected hover:text-fg disabled:opacity-50"
           >
             Answer
           </button>
@@ -136,20 +138,23 @@ export function ThreadRow(props: {
     ])
 
   return (
-    <div class="flex gap-3 border-b border-line bg-raised px-3.5 py-3.5 last:border-0">
+    <div
+      class="flex gap-3 rounded-[12px] border bg-surface px-3.5 py-3.5 hover:bg-hover"
+      classList={{ "border-waiting/40": props.state === "waiting", "border-line": props.state !== "waiting" }}
+    >
       <StatusGlyph state={props.state} size={16} class="mt-0.5 shrink-0" />
       <div class="min-w-0 flex-1">
         <div class="flex items-baseline gap-3">
-          <span class="min-w-0 flex-1 truncate text-[13px] font-medium">{props.thread.title}</span>
+          <span class="min-w-0 flex-1 truncate text-[13.5px] font-medium">{props.thread.title}</span>
           <span class="mono-meta shrink-0">{ago(props.thread.beatAt)}</span>
         </div>
-        <div class="mt-1 truncate text-[12px] text-fg-3">{meta()}</div>
+        <div class="mt-1 truncate text-[12.5px] text-fg-3">{meta()}</div>
 
         <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={() => navigate(`/p/${props.project.slug}`)}
-            class="chip hover:border-line-strong hover:bg-selected"
+            class={ANSWER_CHIP}
           >
             Open thread
           </button>
@@ -158,7 +163,7 @@ export function ThreadRow(props: {
               type="button"
               disabled={busy()}
               onClick={() => void retry()}
-              class="chip hover:border-line-strong hover:bg-selected disabled:opacity-50"
+              class={ANSWER_CHIP}
             >
               {busy() ? "Retrying…" : "Retry"}
             </button>

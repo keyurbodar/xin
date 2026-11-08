@@ -12,6 +12,8 @@ import {
 } from "../../state/settings.ts"
 import { Button, Empty, Failure, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph, type GlyphName } from "../extensions/glyph.tsx"
+import { FIELD_ROW } from "../ui/field.ts"
+import { Segmented } from "../ui/segmented.tsx"
 import { Group, Saved } from "./parts.tsx"
 
 type Recorded = Extract<UsageSummary, { readonly recorded: true }>
@@ -67,28 +69,18 @@ export function Usage(): JSX.Element {
   return (
     <div class="flex max-w-[900px] flex-col gap-6">
       <div class="flex flex-wrap items-center gap-2">
-        <span class="label">Usage + cost</span>
-        <span class="text-[12px] text-fg-3">Billed by day, in UTC</span>
-        <div class="ml-auto flex items-center gap-1">
-          <For each={RANGES}>
-            {(entry) => (
-              <button
-                type="button"
-                onClick={() => setRange(entry.key)}
-                class="rounded-[2px] px-2 py-1 text-[12px]"
-                classList={{
-                  "bg-hover text-fg": range() === entry.key,
-                  "text-fg-3 hover:text-fg": range() !== entry.key,
-                }}
-              >
-                {entry.label}
-              </button>
-            )}
-          </For>
+        <span class="text-[13px] text-fg-3">Billed by day, in UTC</span>
+        <div class="ml-auto flex items-center gap-2">
+          <Segmented
+            label="Usage range"
+            items={RANGES.map((entry) => ({ id: entry.key, label: entry.label }))}
+            value={range()}
+            onChange={setRange}
+          />
           <button
             type="button"
             onClick={() => setTable((shown) => !shown)}
-            class="rounded-[2px] px-2 py-1 text-[12px] text-fg-3 hover:text-fg"
+            class="flex h-[34px] items-center rounded-[8px] border border-line bg-fill px-3 text-[13px] text-fg-2 shadow-[inset_0_var(--hl-y)_0_0_var(--hl-top),0_0_0_0.5px_var(--color-ring-crisp)] hover:bg-fill-strong hover:text-fg"
           >
             {table() ? "Chart" : "Table"}
           </button>
@@ -118,8 +110,8 @@ export function Usage(): JSX.Element {
           const label = (): string => RANGES.find((entry) => entry.key === range())?.label ?? ""
           return (
             <>
-              <div class="grid grid-cols-2 overflow-hidden rounded-[4px] border border-line md:grid-cols-4">
-                <Kpi label={`Spend · ${label()}`} value={money(spent())} detail="Model and tool cost" />
+              <div class="grid grid-cols-2 gap-px overflow-hidden rounded-[12px] border border-line bg-line md:grid-cols-4">
+                <Kpi label="Spend" value={money(spent())} detail={label()} />
                 <Kpi label="Tokens" value={formatTokens(tokens())} detail="In this range" />
                 <Kpi label="Models used" value={String(summary().byModel.length)} detail="In this home" />
                 <Kpi label="Tools used" value={String(summary().byTool.length)} detail="In this home" />
@@ -206,9 +198,9 @@ export function Usage(): JSX.Element {
 
 function Kpi(props: { label: string; value: string; detail: string }): JSX.Element {
   return (
-    <div class="border-b border-r border-line px-3.5 py-3 last:border-r-0">
+    <div class="bg-surface px-3.5 py-3.5">
       <span class="label">{props.label}</span>
-      <span class="mt-2 block text-[24px] font-light tracking-[-0.02em]">{props.value}</span>
+      <span class="mt-2 block font-mono text-[21px] tabular-nums tracking-[-0.02em] text-fg">{props.value}</span>
       <span class="mt-0.5 block text-[11.5px] text-fg-3">{props.detail}</span>
     </div>
   )
@@ -220,17 +212,17 @@ function SpendChart(props: { days: readonly UsageDay[]; alert: number }): JSX.El
   const top = (): number => Math.max(0.01, Math.ceil(Math.max(peak(), props.alert) * 100) / 100)
   const alertAt = (): number => (1 - props.alert / top()) * 100
   return (
-    <Panel>
+    <div>
       <Show
         when={peak() > 0 || props.alert > 0}
         fallback={
-          <p class="px-3.5 py-6 text-[12.5px] text-fg-3">
+          <p class="py-6 text-[13px] text-fg-3">
             No spend in this range. The models that answered report no cost, so only tokens are recorded.
           </p>
         }
       >
-      <div class="flex gap-3 px-3.5 pt-3">
-        <div class="flex h-[132px] w-9 shrink-0 flex-col justify-between pb-5 text-right font-mono text-[10px] text-fg-4">
+      <div class="flex gap-3 pb-1 pt-1">
+        <div class="flex h-[132px] w-9 shrink-0 flex-col justify-between pb-5 text-right font-mono text-[10px] text-fg-4 tabular-nums">
           <span>{money(top())}</span>
           <span>{money(top() / 2)}</span>
           <span>{money(0)}</span>
@@ -241,7 +233,7 @@ function SpendChart(props: { days: readonly UsageDay[]; alert: number }): JSX.El
             <div class="absolute inset-x-0 top-1/2 border-t border-dashed border-line" />
             <Show when={props.alert > 0}>
               <div
-                class="absolute inset-x-0 border-t border-dashed border-fg-4"
+                class="absolute inset-x-0 border-t border-dashed border-warn"
                 style={{ top: `${alertAt()}%` }}
                 aria-hidden="true"
               />
@@ -260,10 +252,9 @@ function SpendChart(props: { days: readonly UsageDay[]; alert: number }): JSX.El
                   <div
                     class="w-full rounded-t-[1px]"
                     classList={{
-                      "bg-fg-2": day.spend > 0,
                       "bg-line": day.spend === 0,
-                      "opacity-100": hover() === index(),
-                      "opacity-70": hover() !== index() && day.spend > 0,
+                      "bg-line-strong": day.spend > 0 && hover() !== index(),
+                      "bg-ok": day.spend > 0 && hover() === index(),
                     }}
                     style={{ height: day.spend > 0 ? `${Math.max(3, (day.spend / top()) * 100)}%` : "1px" }}
                   />
@@ -278,12 +269,12 @@ function SpendChart(props: { days: readonly UsageDay[]; alert: number }): JSX.El
           <Show when={hover()}>
             {(index) => (
               <div
-                class="pointer-events-none absolute bottom-[calc(100%-132px)] z-10 -translate-x-1/2 rounded-[2px] border border-line-inner bg-surface px-2 py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
+                class="pointer-events-none absolute bottom-[calc(100%-132px)] z-10 -translate-x-1/2 rounded-[8px] border border-line bg-overlay px-2 py-1.5 shadow-[var(--shadow-pop)]"
                 style={{ left: `${((index() + 0.5) / props.days.length) * 100}%` }}
               >
-                <span class="block font-mono text-[10.5px] text-fg-3">{props.days[index()]?.day}</span>
-                <span class="block text-[12px] text-fg">{money(props.days[index()]?.spend ?? 0)}</span>
-                <span class="block text-[11px] text-fg-3">{formatTokens(props.days[index()]?.tokens ?? 0)} tokens</span>
+                <span class="block font-mono text-[11px] text-fg-4 tabular-nums">{props.days[index()]?.day}</span>
+                <span class="block font-mono text-[12px] text-fg tabular-nums">{money(props.days[index()]?.spend ?? 0)}</span>
+                <span class="block font-mono text-[11px] text-fg-3 tabular-nums">{formatTokens(props.days[index()]?.tokens ?? 0)} tokens</span>
               </div>
             )}
           </Show>
@@ -291,7 +282,7 @@ function SpendChart(props: { days: readonly UsageDay[]; alert: number }): JSX.El
       </div>
       </Show>
       <div class="h-3" />
-    </Panel>
+    </div>
   )
 }
 
@@ -378,10 +369,10 @@ function Limits(props: { summary: Recorded }): JSX.Element {
   return (
     <Panel>
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 pb-2.5 pt-3.5">
-        <span class="text-[12.5px] font-medium text-fg">Monthly cap</span>
+        <span class="text-[13.5px] font-medium text-fg">Monthly cap</span>
         <span class="text-[11.5px] text-fg-3">Threads pause at the cap and ask you</span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
-          <span class="font-mono text-[11.5px] text-fg-2">{capLabel()}</span>
+          <span class="font-mono text-[11.5px] text-fg-3 tabular-nums">{capLabel()}</span>
           <DollarField
             label="Monthly cap in USD"
             value={capText()}
@@ -401,10 +392,10 @@ function Limits(props: { summary: Recorded }): JSX.Element {
       </div>
 
       <div class="px-3.5 pb-3">
-        <div class="relative h-1.5 rounded-[1px] bg-line">
-          <div class="h-full rounded-[1px] bg-fg-2" style={{ width: `${share()}%` }} />
+        <div class="relative h-1.5 rounded-[4px] bg-fill-strong">
+          <div class="h-full rounded-[4px] bg-fg/[0.5]" style={{ width: `${share()}%` }} />
           <Show when={cap() !== null}>
-            <span class="absolute -top-0.5 -bottom-0.5 w-px bg-fg-3" style={{ left: "80%" }} aria-hidden="true" />
+            <span class="absolute -top-0.5 -bottom-0.5 w-px bg-fg/[0.3]" style={{ left: "80%" }} aria-hidden="true" />
           </Show>
         </div>
       </div>
@@ -414,7 +405,7 @@ function Limits(props: { summary: Recorded }): JSX.Element {
       </Show>
 
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-3.5 py-3">
-        <span class="text-[12.5px] font-medium text-fg">Daily alert</span>
+        <span class="text-[13.5px] font-medium text-fg">Daily alert</span>
         <span class="text-[11.5px] text-fg-3">The dashed line on the daily chart; $0 turns it off</span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <DollarField
@@ -444,8 +435,8 @@ function DollarField(props: {
   onEnter: () => void
 }): JSX.Element {
   return (
-    <label class="flex h-8 w-[104px] items-center gap-1 rounded-[2px] border border-line-inner bg-page px-2 focus-within:border-line-strong">
-      <span class="font-mono text-[12px] text-fg-3" aria-hidden="true">$</span>
+    <label class={`${FIELD_ROW} w-[104px]`}>
+      <span class="font-mono text-[12.5px] text-fg-3" aria-hidden="true">$</span>
       <input
         type="text"
         inputmode="decimal"
@@ -456,7 +447,7 @@ function DollarField(props: {
         onKeyDown={(event) => {
           if (event.key === "Enter") props.onEnter()
         }}
-        class="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-fg outline-none placeholder:text-fg-4"
+        class="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-fg tabular-nums outline-none placeholder:text-fg-4"
       />
     </label>
   )
@@ -473,27 +464,27 @@ function usdOf(text: string): number | undefined {
 function DayTable(props: { days: readonly UsageDay[] }): JSX.Element {
   const shown = (): readonly UsageDay[] => props.days.filter((day) => day.spend > 0 || day.tokens > 0)
   return (
-    <Panel>
-      <div class="grid grid-cols-[minmax(0,1fr)_72px_80px] items-center gap-2 border-b border-line px-3.5 py-2">
+    <div>
+      <div class="grid grid-cols-[minmax(0,1fr)_72px_80px] items-center gap-2 border-b border-line py-2">
         <span class="label">Day</span>
         <span class="label text-right">Tokens</span>
         <span class="label text-right">Spend</span>
       </div>
       <Show
         when={shown().length > 0}
-        fallback={<div class="px-3.5 py-3 text-[12.5px] text-fg-3">No spend is recorded in this range.</div>}
+        fallback={<div class="py-3 text-[13px] text-fg-3">No spend is recorded in this range.</div>}
       >
         <For each={shown()}>
           {(day) => (
-            <div class="grid grid-cols-[minmax(0,1fr)_72px_80px] items-center gap-2 border-b border-line px-3.5 py-2 text-[12.5px] last:border-0">
-              <span class="font-mono text-[11.5px] text-fg-2">{day.day}</span>
-              <span class="text-right font-mono text-[11.5px] text-fg-2">{formatTokens(day.tokens)}</span>
-              <span class="text-right font-mono text-[11.5px] text-fg-2">{money(day.spend)}</span>
+            <div class="grid grid-cols-[minmax(0,1fr)_72px_80px] items-center gap-2 border-b border-line py-2 last:border-0">
+              <span class="font-mono text-[11.5px] text-fg-3 tabular-nums">{day.day}</span>
+              <span class="text-right font-mono text-[11.5px] text-fg-2 tabular-nums">{formatTokens(day.tokens)}</span>
+              <span class="text-right font-mono text-[11.5px] text-fg-2 tabular-nums">{money(day.spend)}</span>
             </div>
           )}
         </For>
       </Show>
-    </Panel>
+    </div>
   )
 }
 
@@ -517,10 +508,10 @@ function UsageTable(props: { rows: readonly Row[]; empty: string; tokens?: boole
   const max = (): number => Math.max(0.0001, ...props.rows.map((row) => row.cost))
   const withTokens = (): boolean => props.tokens !== false
   const columns = (): string =>
-    withTokens() ? "grid-cols-[minmax(0,1fr)_72px_64px_80px]" : "grid-cols-[minmax(0,1fr)_64px_80px]"
+    withTokens() ? "grid-cols-[minmax(0,1fr)_56px_44px_64px]" : "grid-cols-[minmax(0,1fr)_44px_64px]"
   return (
-    <Panel>
-      <div class={`grid ${columns()} items-center gap-2 border-b border-line px-3.5 py-2`}>
+    <div>
+      <div class={`grid ${columns()} items-center gap-2 border-b border-line py-2`}>
         <span class="label">Name</span>
         <Show when={withTokens()}>
           <span class="label text-right">Tokens</span>
@@ -528,35 +519,35 @@ function UsageTable(props: { rows: readonly Row[]; empty: string; tokens?: boole
         <span class="label">Share</span>
         <span class="label text-right">Cost</span>
       </div>
-      <Show when={props.rows.length > 0} fallback={<div class="px-3.5 py-3 text-[12.5px] text-fg-3">{props.empty}</div>}>
+      <Show when={props.rows.length > 0} fallback={<div class="py-3 text-[13px] text-fg-3">{props.empty}</div>}>
         <For each={props.rows}>
           {(row) => (
-            <div class={`grid ${columns()} items-center gap-2 border-b border-line px-3.5 py-2 text-[12.5px] last:border-0`}>
+            <div class={`grid ${columns()} items-center gap-2 border-b border-line py-2 text-[13px] last:border-0`}>
               <span class="flex min-w-0 items-center gap-1.5">
                 <Show when={row.glyph}>
                   {(glyph) => <Glyph name={glyph()} size={13} class="shrink-0 text-fg-3" />}
                 </Show>
                 <span class="min-w-0">
-                  <span class="block truncate text-fg">{row.name}</span>
+                  <span class="block truncate text-[13.5px] text-fg">{row.name}</span>
                   <Show when={row.detail !== ""}>
-                    <span class="block truncate text-[11px] text-fg-3">{row.detail}</span>
+                    <span class="block truncate font-mono text-[11px] text-fg-4">{row.detail}</span>
                   </Show>
                 </span>
               </span>
               <Show when={withTokens()}>
-                <span class="text-right font-mono text-[11.5px] text-fg-2">{formatTokens(row.tokens)}</span>
+                <span class="text-right font-mono text-[11.5px] text-fg-2 tabular-nums">{formatTokens(row.tokens)}</span>
               </Show>
-              <span class="h-1.5 overflow-hidden rounded-[1px] bg-line">
+              <span class="h-1.5 overflow-hidden rounded-[4px] bg-fill-strong">
                 <span
-                  class="block h-full rounded-[1px] bg-fg-2"
+                  class="block h-full rounded-[4px] bg-line-strong"
                   style={{ width: `${Math.round((row.cost / max()) * 100)}%` }}
                 />
               </span>
-              <span class="text-right font-mono text-[11.5px] text-fg-2">{money(row.cost)}</span>
+              <span class="text-right font-mono text-[11.5px] text-fg-2 tabular-nums">{money(row.cost)}</span>
             </div>
           )}
         </For>
       </Show>
-    </Panel>
+    </div>
   )
 }

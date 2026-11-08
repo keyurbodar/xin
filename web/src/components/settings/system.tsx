@@ -10,7 +10,7 @@ import {
   type SystemMetrics,
   type SystemVersion,
 } from "../../state/settings.ts"
-import { Button, Chip, Failure, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
+import { Button, Chip, Failure, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { Group, Row } from "./parts.tsx"
 
@@ -145,7 +145,7 @@ export function System(): JSX.Element {
       </Show>
       <Show when={note()}>
         {(message) => (
-          <div class="flex items-center gap-2 rounded-[4px] border border-line-inner bg-surface px-3.5 py-2.5 text-[12.5px] text-fg-2">
+          <div class="flex items-center gap-2 rounded-[8px] border border-line bg-raised px-3.5 py-2.5 text-[13px] text-fg-2">
             <Glyph name="info" size={13} class="text-fg-3" />
             {message()}
           </div>
@@ -163,10 +163,10 @@ export function System(): JSX.Element {
         {(version) => (
           <>
             <Show when={version().degraded}>
-              <div class="flex items-start gap-2.5 rounded-[4px] border border-warn/30 bg-warn-bg px-3 py-2.5">
+              <div class="flex items-start gap-2.5 rounded-[12px] border border-warn/30 bg-warn-bg px-3 py-2.5">
                 <Glyph name="warning" size={14} class="mt-0.5 shrink-0 text-warn" />
                 <div>
-                  <span class="block text-[12.5px] text-warn">Degraded</span>
+                  <span class="block text-[13.5px] font-medium text-warn">Degraded</span>
                   <p class="mt-0.5 text-[11.5px] text-fg-2">
                     {counts().failed.length + counts().missing.length} plugin rows are not running. Threads that need them will
                     say so; nothing is lost.
@@ -176,10 +176,10 @@ export function System(): JSX.Element {
             </Show>
 
             <Group title="Update">
-              <div class="rounded-[4px] border border-line-inner bg-hover p-3">
+              <div class="my-3 rounded-[8px] border border-line bg-raised p-3">
                 <div class="flex items-center gap-2">
-                  <span class="text-[13px] font-medium text-fg">Build packages</span>
-                  <span class="font-mono text-[12px] text-fg-3">{version().build}</span>
+                  <span class="text-[13.5px] font-medium text-fg">Build packages</span>
+                  <span class="font-mono text-[11px] text-fg-4">{version().build}</span>
                   <span class="ml-auto" />
                   <Button size="sm" onClick={() => void update()}>
                     <Glyph name="refresh" size={14} />
@@ -199,12 +199,12 @@ export function System(): JSX.Element {
               <Show when={failureOf(systemMetrics.state())}>
                 {(message) => <Failure message={message()} onRetry={() => void systemMetrics.reload()} />}
               </Show>
-              <Panel>
+              <div class="divide-y divide-line">
                 <For each={figures()}>
                   {(service) => (
-                    <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2 text-[12.5px] last:border-0">
+                    <div class="-mx-2 flex items-center gap-2.5 rounded-[8px] px-2 py-2 text-[13.5px] transition-colors hover:bg-hover">
                       <span
-                        class="h-1.5 w-1.5 rounded-[1px]"
+                        class="h-1.5 w-1.5 rounded-[4px]"
                         classList={{
                           "bg-ok": service.tone === "ok",
                           "bg-warn": service.tone === "warn",
@@ -212,11 +212,11 @@ export function System(): JSX.Element {
                         }}
                       />
                       <span class="min-w-0 flex-1 text-fg">{service.label}</span>
-                      <span class="font-mono text-[11.5px] text-fg-3">{service.figure}</span>
+                      <span class="font-mono text-[11.5px] text-fg-3 tabular-nums">{service.figure}</span>
                     </div>
                   )}
                 </For>
-              </Panel>
+              </div>
               <Show when={counts().failed.length + counts().missing.length > 0}>
                 <div class="flex flex-col gap-1 pt-1">
                   <For each={[...counts().failed, ...counts().missing]}>
@@ -229,7 +229,7 @@ export function System(): JSX.Element {
                   </For>
                 </div>
               </Show>
-              <div class="flex items-center gap-2 pt-1">
+              <div class="flex items-center gap-2 pb-3 pt-1">
                 <Button size="sm" variant="quiet" onClick={() => void systemMetrics.reload()}>
                   <Glyph name="refresh" size={14} />
                   Refresh
@@ -238,18 +238,18 @@ export function System(): JSX.Element {
             </Group>
 
             <Group title="Version">
-              <Panel>
-                <div class="flex items-center gap-2 border-b border-line px-3.5 py-2 text-[12.5px] last:border-0">
+              <div>
+                <div class="flex items-center gap-2 border-b border-line py-2 text-[13.5px]">
                   <span class="text-fg-3">Running</span>
                   <span class="ml-auto font-mono text-[11.5px] text-fg-2">{version().build}</span>
                 </div>
-                <div class="flex items-center gap-2 px-3.5 py-2 text-[12.5px]">
+                <div class="flex items-center gap-2 py-2 text-[13.5px]">
                   <span class="text-fg-3">Bundles</span>
-                  <span class="ml-auto min-w-0 truncate font-mono text-[11.5px] text-fg-2">
+                  <span class="ml-auto min-w-0 text-right font-mono text-[11.5px] leading-relaxed text-fg-2 [overflow-wrap:anywhere]">
                     {version().bundles.length === 0 ? "none" : version().bundles.join(", ")}
                   </span>
                 </div>
-              </Panel>
+              </div>
             </Group>
 
             <Group title="Restart">
@@ -264,7 +264,7 @@ export function System(): JSX.Element {
                       </Button>
                     }
                   >
-                    <span class="text-[12px] text-fg-2">Restart takes about 20 s. Running threads resume from their last step.</span>
+                    <span class="text-[12.5px] text-fg-2">Restart takes about 20 s. Running threads resume from their last step.</span>
                     <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
                     <Button
                       size="sm"
@@ -277,7 +277,7 @@ export function System(): JSX.Element {
                   </Show>
                 </div>
               </Row>
-              <div class="pt-1">
+              <div class="py-3">
                 <div class="flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void downloadLogs()}>
                     <Glyph name="download" size={14} />

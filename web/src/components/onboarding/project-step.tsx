@@ -81,7 +81,7 @@ export function ProjectStep(): JSX.Element {
 
   return (
     <div class="enter px-6 pb-16 pt-12 md:pt-16">
-      <div class="mx-auto grid w-full max-w-[1024px] grid-cols-1 justify-center gap-12 lg:grid-cols-[560px_400px] lg:gap-16">
+      <div class="mx-auto flex w-full max-w-[560px] flex-col gap-8">
         <div class="flex flex-col gap-4">
           <StepHeading
             step="Step 2 of 4"
@@ -95,7 +95,7 @@ export function ProjectStep(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => applyTemplate(template)}
-                  class="flex items-start gap-2.5 rounded-[2px] border px-3 py-2.5 text-left"
+                  class="flex items-start gap-2.5 rounded-[12px] border px-3 py-2.5 text-left"
                   classList={{
                     "border-line-strong bg-hover": name() === template.name && goal() === template.goal,
                     "border-line-inner bg-surface hover:border-line-strong hover:bg-hover":
@@ -104,7 +104,7 @@ export function ProjectStep(): JSX.Element {
                 >
                   <Icon name={template.icon} size={14} class="mt-0.5 shrink-0 text-fg-3" />
                   <span class="min-w-0">
-                    <span class="block text-[12.5px] font-medium">{template.name}</span>
+                    <span class="block text-[13px] font-medium">{template.name}</span>
                     <span class="block truncate text-[11.5px] text-fg-3">{template.goal}</span>
                   </span>
                 </button>
@@ -144,12 +144,12 @@ export function ProjectStep(): JSX.Element {
           <StatusLine tone={failure() === undefined ? "muted" : "error"} text={failure()} />
 
           <Show when={project() !== undefined}>
-            <div class="flex items-center gap-2.5 rounded-[2px] border border-line-inner bg-raised px-3 py-2.5">
+            <div class="flex items-center gap-2.5 rounded-[8px] border border-line-inner bg-raised px-3 py-2.5">
               <Icon name="check" size={14} class="shrink-0 text-ok" />
-              <span class="min-w-0 truncate text-[12.5px] text-fg-2">
+              <span class="min-w-0 truncate text-[13px] text-fg-2">
                 Created <span class="text-fg">{project()?.name}</span>
               </span>
-              <span class="ml-auto shrink-0 font-mono text-[10.5px] text-fg-4">/p/{project()?.slug}</span>
+              <span class="ml-auto shrink-0 font-mono text-[11px] text-fg-4">/p/{project()?.slug}</span>
             </div>
           </Show>
 
@@ -166,19 +166,19 @@ export function ProjectStep(): JSX.Element {
 
         <div class="min-w-0">
           <span class="label">Preview in the sidebar</span>
-          <div class="mt-3 overflow-hidden rounded-[4px] border border-line bg-surface">
+          <div class="mt-3 overflow-hidden rounded-[12px] border border-line bg-surface">
             <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-3">
-              <span class="grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2">
+              <span class="grid h-6 w-6 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-raised text-fg-2">
                 <ProjectMark slug={slugify(previewName())} name={previewName()} size={15} />
               </span>
               <div class="min-w-0 flex-1">
-                <div class="truncate text-[13px] font-medium">{previewName()}</div>
+                <div class="truncate text-[13.5px] font-medium">{previewName()}</div>
                 <div class="text-[11.5px] text-fg-3">New · no threads yet</div>
               </div>
             </div>
-            <div class="px-3.5 py-3.5 text-[12.5px] leading-[1.6] text-fg-3">{previewGoal()}</div>
+            <div class="px-3.5 py-3.5 text-[13px] leading-[1.6] text-fg-3">{previewGoal()}</div>
           </div>
-          <p class="mt-3.5 text-[12px] leading-[1.6] text-fg-3">
+          <p class="mt-3.5 text-[12.5px] leading-[1.6] text-fg-3">
             The sidebar picks a glyph from the name. Preset defaults to Full; change it in the project’s settings.
           </p>
         </div>

@@ -13,11 +13,11 @@ export function RunScreen(props: { project: ProjectSummary; conversationId: numb
   return (
     <div class="flex min-h-0 flex-1 flex-col">
       <header class="flex h-12 shrink-0 items-center gap-2 border-b border-line px-4">
-        <button type="button" class="link truncate text-[13px]" onClick={() => navigate(`/p/${props.project.slug}`)}>
+        <button type="button" class="link truncate text-[13.5px]" onClick={() => navigate(`/p/${props.project.slug}`)}>
           {props.project.name}
         </button>
         <span class="text-fg-4">/</span>
-        <span class="text-[13px] text-fg-3">Scheduled run</span>
+        <span class="text-[13.5px] text-fg-3">Scheduled run</span>
         <Show when={props.label}>
           {(label) => <span class="ml-auto shrink-0 font-mono text-[11px] text-fg-4">{label()}</span>}
         </Show>

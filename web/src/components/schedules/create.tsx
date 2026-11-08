@@ -3,6 +3,7 @@ import { cmd, OpError } from "../../lib/api.ts"
 import { describeRule } from "../../lib/format.ts"
 import { Icon } from "../ui/icon.tsx"
 import { Button } from "../ui/button.tsx"
+import { FIELD, FIELD_AREA } from "../ui/field.ts"
 
 type Target = "this_session" | "new_once" | "new"
 
@@ -99,7 +100,7 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
     <Show when={props.open}>
       <div class="fixed inset-0 z-50 grid place-items-center bg-page/80 p-6" onMouseDown={close}>
         <form
-          class="crosshair enter w-[520px] rounded-[4px] border border-line-inner bg-surface"
+          class="crosshair enter w-[520px] rounded-[16px] border border-line-inner bg-surface"
           onMouseDown={(event) => event.stopPropagation()}
           onSubmit={(event) => void submit(event)}
         >
@@ -110,11 +111,11 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
 
           <div class="flex flex-col gap-4 px-5 py-4">
             <Field label="Title">
-              <input class={INPUT} value={title()} onInput={(event) => setTitle(event.currentTarget.value)} placeholder="Weekly pipeline review" />
+              <input class={FIELD} value={title()} onInput={(event) => setTitle(event.currentTarget.value)} placeholder="Weekly pipeline review" />
             </Field>
             <Field label="Prompt">
               <textarea
-                class={`${INPUT} min-h-[72px] resize-y py-2`}
+                class={`${FIELD_AREA} min-h-[72px] resize-y`}
                 value={prompt()}
                 onInput={(event) => setPrompt(event.currentTarget.value)}
                 placeholder="Review the pipeline and post the deals that slipped."
@@ -122,7 +123,7 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
             </Field>
             <Field label="When">
               <input
-                class={INPUT}
+                class={FIELD}
                 value={when()}
                 onInput={(event) => setWhen(event.currentTarget.value)}
                 placeholder="every friday at 4pm"
@@ -142,14 +143,14 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
               {(message) => <div class="font-mono text-[11px] text-fg-4">{message()}</div>}
             </Show>
             <Field label="Target">
-              <select class={INPUT} value={target()} onChange={(event) => setTarget(event.currentTarget.value as Target)}>
+              <select class={FIELD} value={target()} onChange={(event) => setTarget(event.currentTarget.value as Target)}>
                 <option value="this_session">This session</option>
                 <option value="new_once">A new thread, once</option>
                 <option value="new">A new thread each time</option>
               </select>
             </Field>
             <Show when={error() !== undefined}>
-              <div class="text-[12px] text-bad">{error()}</div>
+              <div class="text-[12.5px] text-bad">{error()}</div>
             </Show>
           </div>
 
@@ -166,9 +167,6 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
     </Show>
   )
 }
-
-const INPUT =
-  "h-8 w-full rounded-[2px] border border-line-inner bg-raised px-2.5 text-[12.5px] outline-none placeholder:text-fg-4 focus:border-line-strong"
 
 function Field(props: { label: string; children: JSX.Element }): JSX.Element {
   return (

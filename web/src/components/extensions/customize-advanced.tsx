@@ -45,8 +45,8 @@ export function Advanced(props: { initialRowId?: string | undefined }): JSX.Elem
                 classList={{ "bg-hover": selected() === row.id }}
               >
                 <span class="min-w-0 flex-1">
-                  <span class="block truncate text-[12.5px] font-medium text-fg">{row.title}</span>
-                  <span class="block truncate font-mono text-[10.5px] text-fg-3">
+                  <span class="block truncate text-[13px] font-medium text-fg">{row.title}</span>
+                  <span class="block truncate font-mono text-[11px] text-fg-3">
                     {row.id} · {row.plugin}
                   </span>
                 </span>
@@ -74,7 +74,7 @@ export function Advanced(props: { initialRowId?: string | undefined }): JSX.Elem
               <header class="flex items-center gap-3 border-b border-line px-6 py-4">
                 <div class="min-w-0 flex-1">
                   <span class="block truncate text-[16px] font-medium text-fg">{row().title}</span>
-                  <span class="block truncate text-[12px] text-fg-3">
+                  <span class="block truncate text-[12.5px] text-fg-3">
                     {row().plugin} · {row().layer} · <span class="font-mono">{row().id}</span>
                   </span>
                 </div>

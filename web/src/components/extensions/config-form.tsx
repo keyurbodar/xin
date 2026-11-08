@@ -1,6 +1,8 @@
 import { createEffect, createSignal, For, Show, type JSX } from "solid-js"
 import { configureRow, errorMessage, isRecord } from "../../state/extensions.ts"
-import { Button, Failure, INPUT, MONO_INPUT, Note, Toggle } from "./chrome.tsx"
+import { Button, Failure, Note, Toggle } from "./chrome.tsx"
+import { FIELD, MONO_AREA, MONO_FIELD } from "../ui/field.ts"
+import { Segmented } from "../ui/segmented.tsx"
 
 export type ConfigField = {
   readonly key: string
@@ -260,31 +262,25 @@ export function ConfigForm(props: {
     }
   }
 
+  const editors: readonly { readonly id: "form" | "raw"; readonly label: JSX.Element }[] = [
+    { id: "form", label: "Form" },
+    { id: "raw", label: <span class="font-mono">Raw</span> },
+  ]
+
   return (
     <div class="flex min-h-0 flex-col gap-3">
       <div class="flex items-center gap-2">
         <span class="label">Settings</span>
-        <div class="ml-auto flex items-center gap-0.5 rounded-[2px] border border-line-inner p-px">
-          <button
-            type="button"
-            onClick={() => setMode("form")}
-            class="h-6 rounded-[1px] px-2 text-[11.5px]"
-            classList={{ "bg-selected text-fg": mode() === "form", "text-fg-3": mode() !== "form" }}
-          >
-            Form
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setRaw(JSON.stringify(configOf(fields()), null, 2))
-              setMode("raw")
-            }}
-            class="h-6 rounded-[1px] px-2 font-mono text-[11px]"
-            classList={{ "bg-selected text-fg": mode() === "raw", "text-fg-3": mode() !== "raw" }}
-          >
-            Raw
-          </button>
-        </div>
+        <Segmented
+          class="ml-auto"
+          label="Config editor"
+          items={editors}
+          value={mode()}
+          onChange={(next) => {
+            if (next === "raw") setRaw(JSON.stringify(configOf(fields()), null, 2))
+            setMode(next)
+          }}
+        />
       </div>
 
       <Show
@@ -297,7 +293,7 @@ export function ConfigForm(props: {
               setRaw(event.currentTarget.value)
             }}
             spellcheck={false}
-            class="min-h-[220px] w-full resize-y rounded-[2px] border border-line-inner bg-page p-3 font-mono text-[11.5px] leading-relaxed text-fg focus:border-line-strong focus:outline-none"
+            class={`${MONO_AREA} min-h-[220px] resize-y`}
             aria-label="Raw config JSON"
           />
         }
@@ -305,22 +301,22 @@ export function ConfigForm(props: {
         <Show
           when={fields().length > 0}
           fallback={
-            <div class="rounded-[4px] border border-dashed border-line-inner px-3.5 py-4">
-              <p class="text-[12.5px] text-fg-2">This row declares no settings schema.</p>
+            <div class="rounded-[12px] border border-dashed border-line-inner px-3.5 py-4">
+              <p class="text-[13px] text-fg-2">This row declares no settings schema.</p>
               <p class="mt-1 text-[11.5px] text-fg-3">
                 Raw mode still writes a config object through plugin.configure, if the row accepts one.
               </p>
             </div>
           }
         >
-          <div class="flex flex-col overflow-hidden rounded-[4px] border border-line">
+          <div class="flex flex-col overflow-hidden rounded-[12px] border border-line">
             <For each={fields()}>
               {(field) => {
                 const problem = () => problems().get(field.key)
                 return (
                   <div class="grid grid-cols-[200px_1fr] items-start gap-4 border-b border-line px-3.5 py-3 last:border-0">
                     <div class="min-w-0">
-                      <span class="block text-[12.5px] text-fg">{field.label}</span>
+                      <span class="block text-[13px] text-fg">{field.label}</span>
                       <span class="mono-meta block">{field.key}</span>
                       <Show when={field.description}>
                         {(description) => <span class="mt-1 block text-[11.5px] leading-snug text-fg-3">{description()}</span>}
@@ -337,7 +333,7 @@ export function ConfigForm(props: {
                               )
                             }
                             spellcheck={false}
-                            class={INPUT}
+                            class={FIELD}
                             classList={{ "border-bad/50": problem() !== undefined }}
                           />
                         )}
@@ -354,7 +350,7 @@ export function ConfigForm(props: {
                                 current.kind === "number" ? { ...current, value: event.currentTarget.value } : current,
                               )
                             }
-                            class={`${INPUT} max-w-[160px] font-mono`}
+                            class={`${MONO_FIELD} max-w-[160px]`}
                             classList={{ "border-bad/50": problem() !== undefined }}
                           />
                         )}
@@ -383,7 +379,7 @@ export function ConfigForm(props: {
                             }
                             spellcheck={false}
                             placeholder="One entry per line"
-                            class={`${MONO_INPUT} h-auto min-h-[64px] resize-y py-2 leading-relaxed`}
+                            class={`${MONO_AREA} min-h-[64px] resize-y`}
                             classList={{ "border-bad/50": problem() !== undefined }}
                           />
                         )}
@@ -397,7 +393,7 @@ export function ConfigForm(props: {
                                 current.kind === "select" ? { ...current, value: event.currentTarget.value } : current,
                               )
                             }
-                            class={`${INPUT} max-w-[220px]`}
+                            class={`${FIELD} max-w-[220px]`}
                           >
                             <option value="">Default</option>
                             <For each={select().options}>
@@ -416,7 +412,7 @@ export function ConfigForm(props: {
                               )
                             }
                             spellcheck={false}
-                            class={`${MONO_INPUT} h-auto min-h-[64px] resize-y py-2 leading-relaxed`}
+                            class={`${MONO_AREA} min-h-[64px] resize-y`}
                             classList={{ "border-bad/50": problem() !== undefined }}
                           />
                         )}

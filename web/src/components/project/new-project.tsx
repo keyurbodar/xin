@@ -2,7 +2,8 @@ import { createSignal, Show, type JSX } from "solid-js"
 import { cmd } from "../../lib/api.ts"
 import { navigate } from "../../lib/router.ts"
 import { slugify } from "../../lib/slug.ts"
-import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
+import { Dialog, Field, resetOnOpen } from "../ui/dialog.tsx"
+import { FIELD, FIELD_AREA } from "../ui/field.ts"
 
 type CreatedProject = {
   readonly slug: string
@@ -75,14 +76,14 @@ export function NewProjectDialog(props: { open: boolean; onClose: () => void }):
             type="button"
             disabled={busy()}
             onClick={props.onClose}
-            class="h-8 rounded-[2px] px-3 text-[12.5px] text-fg-2 hover:text-fg disabled:opacity-50"
+            class="h-8 rounded-[8px] px-3 text-[13px] text-fg-2 hover:text-fg disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={!ready()}
-            class="flex h-8 items-center gap-1.5 rounded-[2px] bg-accent px-3 text-[12.5px] font-medium text-ink disabled:opacity-40"
+            class="flex h-8 items-center gap-1.5 rounded-[8px] bg-accent px-3 text-[13px] font-medium text-ink disabled:opacity-40"
           >
             {busy() ? "Creating…" : "Create project"}
             <span class="kbd border-ink/30 text-ink">⌘↵</span>
@@ -93,7 +94,7 @@ export function NewProjectDialog(props: { open: boolean; onClose: () => void }):
       <Field label="Name" hint="Shown in the sidebar and in push notifications">
         <input
           autofocus
-          class={`${FIELD_INPUT} h-[34px]`}
+          class={FIELD}
           value={name()}
           maxlength={200}
           disabled={busy()}
@@ -104,7 +105,7 @@ export function NewProjectDialog(props: { open: boolean; onClose: () => void }):
 
       <Field label="Goal" optional hint="The coordinator reads this on every turn.">
         <textarea
-          class={`${FIELD_INPUT} min-h-[76px] resize-y py-2`}
+          class={`${FIELD_AREA} min-h-[76px] resize-none`}
           value={goal()}
           disabled={busy()}
           placeholder="What should this project get done?"
@@ -114,7 +115,7 @@ export function NewProjectDialog(props: { open: boolean; onClose: () => void }):
 
       <Field label="First message" optional hint="Sent to the coordinator once the project is created.">
         <textarea
-          class={`${FIELD_INPUT} min-h-[64px] resize-y py-2`}
+          class={`${FIELD_AREA} min-h-[64px] resize-none`}
           value={message()}
           disabled={busy()}
           placeholder="Start with the launch brief."
@@ -123,7 +124,7 @@ export function NewProjectDialog(props: { open: boolean; onClose: () => void }):
       </Field>
 
       <Show when={failure()}>
-        {(text) => <div class="text-[12px] text-bad">{text()}</div>}
+        {(text) => <div class="text-[12.5px] text-bad">{text()}</div>}
       </Show>
     </Dialog>
   )

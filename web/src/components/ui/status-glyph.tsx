@@ -14,7 +14,7 @@ const GROUPS: Readonly<Record<VisualState, readonly number[]>> = {
 
 const CELL = 2.5
 const STEP = 4
-const BASE = "#211d1b"
+const BASE = "var(--color-line-strong)"
 
 function cell(index: number, fill: string, cls?: string, delay?: number): JSX.Element {
   const x = CELL + (index % 3) * STEP

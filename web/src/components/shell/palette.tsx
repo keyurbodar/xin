@@ -217,22 +217,25 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
 
   return (
     <Show when={props.open}>
-      <div class="fixed inset-0 z-50 flex justify-center bg-page/80" onMouseDown={close}>
+      <div
+        class="fixed inset-0 z-50 flex justify-center bg-[var(--scrim)] backdrop-blur-[6px] backdrop-saturate-[0.7]"
+        onMouseDown={close}
+      >
         <div
-          class="crosshair enter mt-[150px] h-fit w-[560px] overflow-hidden rounded-[4px] border border-line-inner bg-surface shadow-[0_8px_12px_rgb(0_0_0/50%)]"
+          class="enter mt-[150px] h-fit w-[560px] overflow-hidden rounded-[16px] border border-line-inner bg-overlay shadow-[var(--shadow-float)]"
           onMouseDown={(event) => event.stopPropagation()}
           role="dialog"
           aria-modal="true"
           aria-label="Command palette"
         >
-          <div class="flex h-12 items-center gap-2.5 border-b border-line px-4">
+          <div class="flex h-14 items-center gap-2.5 border-b border-line px-4">
             <Icon name="search" size={16} class="text-fg-3" />
             <input
               ref={input}
               value={query()}
               onInput={(event) => setQuery(event.currentTarget.value)}
               placeholder="Search projects, threads, pages and actions"
-              class="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-fg-4"
+              class="min-w-0 flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-fg-4"
             />
             <span class="kbd">esc</span>
           </div>
@@ -243,7 +246,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
                 <button
                   type="button"
                   onClick={() => setTab(entry.id)}
-                  class="flex h-6 items-center rounded-[2px] px-2 text-[12px]"
+                  class="flex h-7 items-center rounded-[8px] px-2.5 text-[12.5px]"
                   classList={{ "bg-selected text-fg": tab() === entry.id, "text-fg-3 hover:text-fg-2": tab() !== entry.id }}
                 >
                   {entry.label}
@@ -253,7 +256,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
           </div>
 
           <div class="max-h-[420px] overflow-y-auto pb-1.5">
-            <Show when={results().length > 0} fallback={<div class="px-4 py-6 text-center text-[12.5px] text-fg-3">Nothing matches that.</div>}>
+            <Show when={results().length > 0} fallback={<div class="px-4 py-6 text-center text-[13px] text-fg-3">Nothing matches that.</div>}>
               <For each={groups()}>
                 {(group) => (
                   <>
@@ -264,7 +267,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
                           type="button"
                           onMouseEnter={() => setCursor(position(item))}
                           onClick={() => choose(item)}
-                          class="mx-1.5 flex h-9 w-[calc(100%-12px)] items-center gap-2.5 rounded-[2px] px-2.5 text-left text-[12.5px]"
+                          class="mx-1.5 flex h-9 w-[calc(100%-12px)] items-center gap-2.5 rounded-[8px] px-2.5 text-left text-[13.5px]"
                           classList={{
                             "bg-selected text-fg": cursor() === position(item),
                             "text-fg-2": cursor() !== position(item),

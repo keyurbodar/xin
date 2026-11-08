@@ -2,6 +2,7 @@ import { createSignal, Match, onMount, Show, Switch, type JSX } from "solid-js"
 import { navigate, route } from "../lib/router.ts"
 import { market, rows } from "../state/extensions.ts"
 import { Glyph } from "../components/extensions/glyph.tsx"
+import { Segmented } from "../components/ui/segmented.tsx"
 import { Discover } from "../components/extensions/discover.tsx"
 import { PackagePage } from "../components/extensions/package-page.tsx"
 import { Installed } from "../components/extensions/installed.tsx"
@@ -40,10 +41,11 @@ export function ExtensionsScreen(): JSX.Element {
   const [addUrl, setAddUrl] = createSignal(false)
   const view = (): View => viewOf(route().parts[1])
 
-  onMount(() => {
-    void rows.reload()
-    void market.reload()
-  })
+  const activeTab = (): View | undefined => {
+    const current = view()
+    if (current === "package") return "discover"
+    return TABS.some((tab) => tab.id === current) ? current : undefined
+  }
 
   const installedCount = (): number | undefined => {
     const state = rows.state()
@@ -54,6 +56,26 @@ export function ExtensionsScreen(): JSX.Element {
     const state = market.state()
     return state.kind === "ready" ? state.value.filter((entry) => entry.status === "update-available").length : 0
   }
+
+  const tabItems = TABS.map((tab) => ({
+    id: tab.id,
+    label: (
+      <>
+        {tab.label}
+        <Show when={tab.id === "installed" && installedCount() !== undefined}>
+          <span class="font-mono text-[11px] text-fg-4">{installedCount()}</span>
+        </Show>
+        <Show when={tab.id === "updates" && updateCount() > 0}>
+          <span class="font-mono text-[11px] text-accent-text">{updateCount()}</span>
+        </Show>
+      </>
+    ),
+  }))
+
+  onMount(() => {
+    void rows.reload()
+    void market.reload()
+  })
 
   const packageName = (): string | undefined => {
     const part = route().parts[2]
@@ -77,36 +99,23 @@ export function ExtensionsScreen(): JSX.Element {
 
   return (
     <>
-      <header class="flex h-12 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-4">
-        {TABS.map((tab) => (
-          <button
-            type="button"
-            onClick={() => navigate(tab.to)}
-            class="flex h-7 shrink-0 items-center gap-1.5 rounded-[2px] px-2.5 text-[13px]"
-            classList={{
-              "bg-selected text-fg": view() === tab.id || (tab.id === "discover" && view() === "package"),
-              "text-fg-3 hover:text-fg-2": view() !== tab.id,
-            }}
-          >
-            {tab.label}
-            <Show when={tab.id === "installed" && installedCount() !== undefined}>
-              <span class="font-mono text-[10.5px] text-fg-4">{installedCount()}</span>
-            </Show>
-            <Show when={tab.id === "updates" && updateCount() > 0}>
-              <span class="font-mono text-[10.5px] text-accent-text">{updateCount()}</span>
-            </Show>
-          </button>
-        ))}
+      <header class="flex h-[52px] shrink-0 items-center gap-2 overflow-x-auto border-b border-line px-4">
+        <Segmented
+          label="Extensions views"
+          items={tabItems}
+          value={activeTab()}
+          onChange={(id) => navigate(TABS.find((tab) => tab.id === id)?.to ?? "/extensions")}
+        />
 
         <div class="ml-auto hidden shrink-0 items-center gap-2 sm:flex">
           <button
             type="button"
             aria-label="Sources"
             onClick={() => navigate("/extensions/sources")}
-            class="flex h-7 items-center gap-1.5 rounded-[2px] border px-2 text-[12.5px] font-medium sm:px-2.5"
+            class="flex h-8 items-center gap-1.5 rounded-[8px] px-2.5 text-[13px] font-medium sm:px-3"
             classList={{
-              "border-line bg-surface text-fg": view() === "sources",
-              "border-transparent text-fg-2 hover:text-fg": view() !== "sources",
+              "bg-selected text-fg": view() === "sources",
+              "text-fg-2 hover:bg-hover hover:text-fg": view() !== "sources",
             }}
           >
             <Glyph name="git-branch" size={13} />
@@ -116,7 +125,7 @@ export function ExtensionsScreen(): JSX.Element {
             type="button"
             aria-label="Add from URL"
             onClick={() => setAddUrl(true)}
-            class="flex h-7 items-center gap-1.5 rounded-[2px] border border-line-inner bg-raised px-2 text-[12.5px] font-medium text-fg hover:border-line-strong hover:bg-hover sm:px-2.5"
+            class="flex h-8 items-center gap-1.5 rounded-[8px] border border-line bg-fill px-2.5 text-[13px] font-medium text-fg/80 shadow-[inset_0_var(--hl-y)_0_0_var(--hl-top),0_0_0_0.5px_var(--color-ring-crisp)] hover:bg-fill-strong hover:text-fg sm:px-3"
           >
             <Glyph name="upload" size={13} />
             <span class="hidden sm:inline">Add from URL</span>

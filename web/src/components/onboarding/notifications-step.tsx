@@ -86,12 +86,12 @@ export function NotificationsStep(): JSX.Element {
 
   return (
     <div class="enter px-6 pb-16 pt-12 md:pt-16">
-      <div class="mx-auto w-full max-w-[560px] overflow-hidden rounded-[4px] border border-line-inner bg-raised shadow-[0_24px_64px_rgba(0,0,0,0.45)]">
+      <div class="mx-auto w-full max-w-[560px] overflow-hidden rounded-[20px] border border-line-inner bg-raised shadow-[var(--shadow-float)]">
         <div class="relative h-[200px] overflow-hidden border-b border-line bg-page">
           <For each={PREVIEWS}>
             {(preview, index) => (
               <div
-                class="absolute left-1/2 flex w-[360px] max-w-[calc(100%_-_32px)] items-start gap-2.5 rounded-[4px] border border-line-strong bg-raised px-3 py-2.5 text-[12.5px] shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+                class="absolute left-1/2 flex w-[360px] max-w-[calc(100%_-_32px)] items-start gap-2.5 rounded-[12px] border border-line-strong bg-raised px-3 py-2.5 text-[13px] shadow-[var(--shadow-pop)]"
                 style={{
                   top: `${56 + index() * 10}px`,
                   transform: `translateX(-50%) scale(${1 - index() * 0.04}) translateY(${index() * 8}px)`,
@@ -99,7 +99,7 @@ export function NotificationsStep(): JSX.Element {
                   "z-index": 3 - index(),
                 }}
               >
-                <span class="grid h-7 w-7 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2">
+                <span class="grid h-7 w-7 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-raised text-fg-2">
                   <Icon name={preview.icon} size={14} />
                 </span>
                 <div class="min-w-0 flex-1">
@@ -117,8 +117,8 @@ export function NotificationsStep(): JSX.Element {
 
         <div class="flex flex-col gap-3.5 px-6 py-5">
           <span class="label">Step 4 · optional</span>
-          <h2 class="text-[17px] font-medium tracking-[-0.02em]">Get a nudge when a thread needs you</h2>
-          <p class="text-[13.5px] leading-[1.55] text-fg-2">
+          <h2 class="text-[18px] font-medium tracking-[-0.02em]">Get a nudge when a thread needs you</h2>
+          <p class="text-[14px] leading-[1.55] text-fg-2">
             Threads keep working after you close the tab. Turn on push and we’ll only tell you about these three things.
           </p>
 
@@ -126,12 +126,12 @@ export function NotificationsStep(): JSX.Element {
             <For each={KINDS}>
               {(kind) => (
                 <div class="flex items-center gap-3 border-b border-line py-2.5 last:border-0">
-                  <span class="grid h-7 w-7 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-surface">
+                  <span class="grid h-7 w-7 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-surface">
                     <StatusGlyph state={kind.state} size={14} />
                   </span>
                   <div class="min-w-0 flex-1">
-                    <div class="text-[13px] font-medium">{kind.title}</div>
-                    <p class="text-[12px] text-fg-3">{kind.detail}</p>
+                    <div class="text-[13.5px] font-medium">{kind.title}</div>
+                    <p class="text-[12.5px] text-fg-3">{kind.detail}</p>
                   </div>
                   <button
                     type="button"
@@ -139,11 +139,11 @@ export function NotificationsStep(): JSX.Element {
                     aria-checked={notifyNow()[kind.key]}
                     aria-label={kind.title}
                     onClick={() => void setNotifyPrefs({ [kind.key]: !notifyNow()[kind.key] })}
-                    class="knob relative ml-auto h-4 w-7 shrink-0 rounded-[2px]"
+                    class="knob relative ml-auto h-4 w-7 shrink-0 rounded-[8px]"
                     classList={{ "bg-fg": notifyNow()[kind.key], "bg-line-inner": !notifyNow()[kind.key] }}
                   >
                     <span
-                      class="knob absolute top-0.5 h-3 w-3 rounded-[1px] bg-page"
+                      class="knob absolute top-0.5 h-3 w-3 rounded-full bg-page"
                       classList={{ "left-3.5": notifyNow()[kind.key], "left-0.5": !notifyNow()[kind.key] }}
                     />
                   </button>
