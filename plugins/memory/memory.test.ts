@@ -226,6 +226,51 @@ describe("memory", () => {
     expect(outcome.retired).toEqual([false, true, false])
   })
 
+  it("suggests a rule from the owner's last message and drops it once dismissed", async () => {
+    const stub = fresh()
+    const outcome = await runInDurableObject(stub, async (home: Home) => {
+      const root = await home.root()
+      await home.submit(
+        "Never contact candidates directly. Draft every email for review. Thanks for the notes.",
+        `suggest-${crypto.randomUUID()}`,
+      )
+      await home.harness.waitForIdle(context)
+      const args = { conversationId: root.id, scope: "project:p1" }
+      return {
+        first: await run(home, "suggest-1", "memory.suggested", args),
+        dismissed: await run(home, "suggest-dismiss", "memory.dismiss", {
+          text: "Never contact candidates directly.",
+        }),
+        afterDismiss: await run(home, "suggest-2", "memory.suggested", args),
+      }
+    })
+
+    expect(outcome.first).toMatchObject({
+      kind: "ok",
+      result: { suggestions: [{ text: "Never contact candidates directly.", scope: "project:p1" }] },
+    })
+    expect(outcome.dismissed).toMatchObject({ kind: "ok", result: { dismissed: true } })
+    expect(outcome.afterDismiss).toMatchObject({ kind: "ok", result: { suggestions: [] } })
+  })
+
+  it("does not suggest a rule the notes already hold", async () => {
+    const stub = fresh()
+    const outcome = await runInDurableObject(stub, async (home: Home) => {
+      await appendNote(home.db, {
+        text: "Always use British spelling in job posts",
+        scope: "me",
+        source: "remember",
+        originTask: "seed-rule",
+        at: Date.now(),
+      })
+      const root = await home.root()
+      await home.submit("Always use British spelling in job posts.", `suggest-note-${crypto.randomUUID()}`)
+      await home.harness.waitForIdle(context)
+      return run(home, "suggest-3", "memory.suggested", { conversationId: root.id })
+    })
+    expect(outcome).toMatchObject({ kind: "ok", result: { suggestions: [] } })
+  })
+
   it("writes the profile the pane reads, exactly, and clears it with whitespace", async () => {
     const stub = fresh()
     const evidence = await runInDurableObject(stub, async (home: Home) => {

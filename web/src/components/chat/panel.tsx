@@ -409,10 +409,10 @@ export function ProjectPanel(props: {
                     <FilesTab slug={props.project.slug} />
                   </Match>
                   <Match when={tab() === "memory"}>
-                    <MemoryTab />
+                    <MemoryTab conversationId={props.project.coordinatorId} scope={`project:${props.project.id}`} />
                   </Match>
                   <Match when={tab() === "schedules"}>
-                    <SchedulesTab />
+                    <SchedulesTab slug={props.project.slug} />
                   </Match>
                   <Match when={tab() === "jobs"}>
                     <JobsTab />

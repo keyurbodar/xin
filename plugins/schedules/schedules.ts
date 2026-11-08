@@ -12,7 +12,7 @@ import {
   type TaskRuntime,
   type Tx,
 } from "@earendil-works/pi-durable"
-import { bool, compile, int, lit, map, obj, opt, type Static, str, union } from "@earendil-works/pi-schema"
+import { arr, bool, compile, int, lit, map, obj, opt, type Static, str, union } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
 import type { Notification, PushService } from "../../src/contracts/push.ts"
 import {
@@ -32,6 +32,8 @@ import {
   type ScheduleListPage,
   type ScheduleListRequest,
   type SchedulePatch,
+  type ScheduleRun,
+  type ScheduleRunOutcome,
   type ScheduleTargetChoice,
   type ScheduleTask,
   type ScheduleViewResult,
@@ -77,6 +79,15 @@ const LastDeliverySchema = obj({
   targetSessionId: int({ minimum: 0 }),
 })
 
+const StoredRunSchema = obj({
+  slot: int({ minimum: 0 }),
+  deliveredAt: int({ minimum: 0 }),
+  conversationId: int({ minimum: 0 }),
+  after: int({ minimum: 0 }),
+})
+
+type StoredRun = Static<typeof StoredRunSchema>
+
 export const ScheduleRecordSchema = obj({
   id: str({ pattern: ID_SOURCE }),
   title: str({ minLength: 1, maxLength: MAX_TITLE }),
@@ -92,6 +103,7 @@ export const ScheduleRecordSchema = obj({
   updatedAt: str({ minLength: 1, maxLength: 100 }),
   cursor: PositionSchema,
   lastDelivery: opt(LastDeliverySchema),
+  runs: opt(arr(StoredRunSchema)),
 })
 
 export const SchedulesStateSchema = obj({ records: map(ScheduleRecordSchema) })
@@ -105,6 +117,8 @@ type SchedulesState = Static<typeof SchedulesStateSchema>
 
 const RECORD = compile(ScheduleRecordSchema)
 const SCHEDULES = compile(SchedulesStateSchema)
+
+const RUNS_KEPT = 6
 
 export const SchedulesDoc = defineDoc<SchedulesState>({
   kind: "xin.schedules",
@@ -249,6 +263,7 @@ export async function sendDue(
   now: number,
 ): Promise<StoredSchedule> {
   const delivered = await deliveryOf(port, record)
+  const after = await lastEntryId(port, delivered.target)
   await port.intake.enqueue({
     target: delivered.target,
     commandId: slotKey(record.id, due.latest),
@@ -261,6 +276,7 @@ export async function sendDue(
   })
   await port.arm()
   await notifyDue(port, record, due.latest)
+  const run: StoredRun = { slot: due.latest, deliveredAt: now, conversationId: delivered.target, after }
   return {
     ...delivered.record,
     cursor: { last: due.latest, index: due.index + 1 },
@@ -269,7 +285,43 @@ export async function sendDue(
       deliveredAt: iso(now),
       targetSessionId: delivered.target,
     },
+    runs: [...(delivered.record.runs ?? []), run].slice(-RUNS_KEPT),
   }
+}
+
+async function lastEntryId(port: SchedulesPort, conversationId: ConversationId): Promise<number> {
+  const conversation = await port.harness.conversation(conversationId, context)
+  if (conversation === undefined) return 0
+  const page = await conversation.entries({ order: "descending" }, 1, undefined, context)
+  return page.items[0]?.id ?? 0
+}
+
+async function runsOf(port: SchedulesPort, record: StoredSchedule): Promise<ScheduleRun[]> {
+  return Promise.all(
+    (record.runs ?? []).map(async (run) => ({
+      slot: iso(run.slot),
+      deliveredAt: iso(run.deliveredAt),
+      conversationId: run.conversationId,
+      outcome: await outcomeOf(port, run),
+    })),
+  )
+}
+
+const ERROR_KIND = "xin.error"
+const ASSISTANT_KIND = "pi.assistant"
+const RUN_SCAN = 100
+
+async function outcomeOf(port: SchedulesPort, run: StoredRun): Promise<ScheduleRunOutcome> {
+  const conversation = await port.harness.conversation(run.conversationId as ConversationId, context)
+  if (conversation === undefined) return "failed"
+  const page = await conversation.entries({ order: "descending" }, RUN_SCAN, undefined, context)
+  let replied = false
+  for (const entry of page.items) {
+    if (entry.id === run.after) return replied ? "done" : "running"
+    if (entry.kind === ERROR_KIND) return "failed"
+    if (entry.kind === ASSISTANT_KIND) replied = true
+  }
+  return replied ? "done" : "running"
 }
 
 const NOTIFY_BODY = 120
@@ -455,7 +507,11 @@ async function listSchedules(port: SchedulesPort, request: ScheduleListRequest):
     return record === undefined ? [] : [record]
   })
   const matching = records.filter((record) => matches(record, request.active)).toSorted(compare)
-  const items = matching.slice(offset, offset + limit).map(taskOf)
+  const page = matching.slice(offset, offset + limit)
+  const items =
+    request.outcomes === true
+      ? await Promise.all(page.map(async (record) => ({ ...taskOf(record), runs: await runsOf(port, record) })))
+      : page.map(taskOf)
   return { items, shown: items.length, total: matching.length, limit, offset }
 }
 
@@ -649,6 +705,7 @@ const LIST_ARGS = obj({
   active: opt(bool()),
   limit: opt(int({ minimum: 1, maximum: MAX_LIST_LIMIT })),
   offset: opt(int({ minimum: 0 })),
+  outcomes: opt(bool()),
 })
 
 const VIEW_ARGS = obj({ id: str({ pattern: ID_SOURCE }) })

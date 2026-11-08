@@ -29,13 +29,13 @@ The op set:
 ```text
 ops: message.send · message.withdraw · conv.configure(model, thinking) · conv.stop
      project.create/update/archive · thread.send(mode) · thread.stop · thread.rename
-     request.respond · file.put/read/revision/revisions/delete · memory.add/forget/pin/edit · plugin.enable/configure · credential.set
+     request.respond · file.put/read/revision/revisions/delete · memory.add/forget/pin/edit/dismiss · plugin.enable/configure · credential.set
 reads (owner): history.page(conversationId, before?, limit?) · request.list(limit?, projectId?) · job.list(limit?)
                usage.summary · usage.cap · usage.cap.set(usd?, clear?) · usage.alert · usage.alert.set(usd)
                notify.prefs · notify.set(waiting?, finished?, failed?, spend?, schedule?) · notify.quiet · notify.quiet.set(enabled?, start?, end?)
                push.list · push.test · owner.read · owner.set(name?, instructions?)
                session.list · session.close(id?) · session.rotate
-               system.logs · skill.read(name) · mcp.tools(name) · memory.profile.write(markdown) · prompt.list/put/delete
+               system.logs · skill.read(name) · mcp.tools(name) · memory.profile.write(markdown) · memory.suggested(conversationId, scope?) · prompt.list/put/delete
                market.policy · market.policy.set(autoUpdate) · market.refresh · market.skip/unskip/skipped · market.rollback
 ```
 

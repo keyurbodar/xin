@@ -110,6 +110,75 @@ describe("schedules", () => {
     await eventually(stub, async (home: Home) => (await timers(home)).length === 0)
   })
 
+  it("keeps six runs and resolves each run's outcome only when asked", async () => {
+    const stub = fresh()
+    const at = await runInDurableObject(stub, async (home: Home) => {
+      const slot = Date.now() + 400
+      const outcome = await run(home, "r1-create", "schedule.create", {
+        id: "runs-1",
+        title: "Runs",
+        at: slot,
+        tz: "UTC",
+        prompt: "check",
+      })
+      expect(outcome, JSON.stringify(outcome)).toMatchObject({ kind: "ok" })
+      return slot
+    })
+    await eventually(stub, async (home: Home) => (await timers(home)).length === 1)
+    await delay(at - Date.now() + 50)
+    await runDurableObjectAlarm(stub)
+    await eventually(stub, async (home: Home) => (await rows(home)).length === 1)
+
+    const plain = await runInDurableObject(stub, (home: Home) => run(home, "r1-list", "schedule.list", {}))
+    expect(plain).toMatchObject({ kind: "ok" })
+    expect(JSON.stringify(plain)).not.toContain('"runs"')
+    const running = await runInDurableObject(stub, (home: Home) =>
+      run(home, "r1-list-1", "schedule.list", { outcomes: true }),
+    )
+    expect(running).toMatchObject({ kind: "ok", result: { schedules: [{ runs: [{ outcome: "running" }] }] } })
+
+    await runInDurableObject(stub, async (home: Home) => {
+      const conversation = await home.root()
+      await conversation.submit(
+        { type: "write", requestId: `run-ok-${crypto.randomUUID()}`, entry: { kind: "pi.assistant" } },
+        BACKGROUND_CONTEXT,
+      )
+    })
+    const done = await runInDurableObject(stub, (home: Home) =>
+      run(home, "r1-list-2", "schedule.list", { outcomes: true }),
+    )
+    expect(done).toMatchObject({ result: { schedules: [{ runs: [{ outcome: "done" }] }] } })
+
+    await runInDurableObject(stub, async (home: Home) => {
+      const conversation = await home.root()
+      await conversation.submit(
+        {
+          type: "write",
+          requestId: `run-bad-${crypto.randomUUID()}`,
+          entry: { kind: "xin.error", data: { taskId: 1, reason: "model_error", error: "boom" } },
+        },
+        BACKGROUND_CONTEXT,
+      )
+    })
+    const failed = await runInDurableObject(stub, (home: Home) =>
+      run(home, "r1-list-3", "schedule.list", { outcomes: true }),
+    )
+    expect(failed).toMatchObject({ result: { schedules: [{ runs: [{ outcome: "failed" }] }] } })
+  })
+
+  it("keeps at most six runs on a record", async () => {
+    const kept = await runInDurableObject(fresh(), async (home: Home) => {
+      let current = record({ kind: "this_session", conversationId: (await home.root()).id })
+      for (let index = 0; index < 7; index += 1) {
+        const due = dueOf(current, ANCHOR + index * HOUR + 1)
+        if (due === undefined) throw new Error("expected a due window")
+        current = await sendDue(ports(home), current, due, ANCHOR + index * HOUR)
+      }
+      return current.runs?.length
+    })
+    expect(kept).toBe(6)
+  })
+
   it("replays the send step without a second row", async () => {
     const evidence = await runInDurableObject(fresh(), async (home: Home) => {
       const delivered = record({ kind: "this_session", conversationId: (await home.root()).id })

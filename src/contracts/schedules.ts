@@ -30,6 +30,15 @@ export type ScheduleLastDelivery = {
   readonly targetSessionId: number
 }
 
+export type ScheduleRunOutcome = "done" | "failed" | "running"
+
+export type ScheduleRun = {
+  readonly slot: string
+  readonly deliveredAt: string
+  readonly conversationId: number
+  readonly outcome: ScheduleRunOutcome
+}
+
 export type ScheduleTask = {
   readonly id: string
   readonly title: string
@@ -41,6 +50,7 @@ export type ScheduleTask = {
   readonly nextAt: string | null
   readonly updatedAt: string
   readonly lastDelivery?: ScheduleLastDelivery
+  readonly runs?: ScheduleRun[]
 }
 
 export type ScheduleNotFound = { readonly id: string; readonly code: "schedule_not_found" }
@@ -53,6 +63,7 @@ export type ScheduleListRequest = {
   readonly active?: boolean
   readonly limit?: number
   readonly offset?: number
+  readonly outcomes?: boolean
 }
 
 export type ScheduleListPage = {

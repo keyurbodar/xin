@@ -8,6 +8,13 @@ import { Skullet } from "../ui/skeleton.tsx"
 import { Toggle } from "../extensions/chrome.tsx"
 import { createPaneAction, EmptyState, PanelGhost, ResourceError } from "./ui.tsx"
 
+type ScheduleRun = {
+  readonly slot: string
+  readonly deliveredAt: string
+  readonly conversationId: number
+  readonly outcome: "done" | "failed" | "running"
+}
+
 type Schedule = {
   readonly id: string
   readonly title: string
@@ -19,6 +26,7 @@ type Schedule = {
   readonly nextAt: string | null
   readonly updatedAt: string
   readonly lastDelivery?: { readonly scheduledAt: string; readonly deliveredAt: string }
+  readonly runs?: readonly ScheduleRun[]
 }
 
 function nextRun(value: string | null): string {
@@ -41,9 +49,9 @@ function ruleOf(schedule: Schedule): string {
   return "once"
 }
 
-export function SchedulesTab(): JSX.Element {
+export function SchedulesTab(props: { slug: string }): JSX.Element {
   const [schedules, { refetch }] = createResource(() =>
-    cmd<{ readonly schedules: readonly Schedule[] }>("schedule.list", {}),
+    cmd<{ readonly schedules: readonly Schedule[] }>("schedule.list", { outcomes: true }),
   )
   const action = createPaneAction()
   const toggle = (schedule: Schedule): Promise<void> =>
@@ -100,6 +108,26 @@ export function SchedulesTab(): JSX.Element {
                       <span>next {nextRun(schedule.nextAt)}</span>
                       <Show when={schedule.lastDelivery}>
                         {(last) => <span>· last ran {ago(Date.parse(last().deliveredAt))}</span>}
+                      </Show>
+                      <Show when={schedule.runs && schedule.runs.length > 0}>
+                        <span class="ml-auto flex items-center gap-[3px]">
+                          <For each={schedule.runs}>
+                            {(run) => (
+                              <button
+                                type="button"
+                                aria-label={`Run ${run.deliveredAt}: ${run.outcome}`}
+                                title={`${new Date(run.deliveredAt).toLocaleString()} · ${run.outcome}`}
+                                class="h-2 w-2 shrink-0 rounded-[1px] transition-none hover:opacity-75"
+                                classList={{
+                                  "bg-ok": run.outcome === "done",
+                                  "bg-bad": run.outcome === "failed",
+                                  "bg-line-inner": run.outcome === "running",
+                                }}
+                                onClick={() => navigate(`/p/${props.slug}/run/${run.conversationId}`)}
+                              />
+                            )}
+                          </For>
+                        </span>
                       </Show>
                     </div>
                   </div>

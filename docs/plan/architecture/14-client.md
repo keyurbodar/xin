@@ -92,8 +92,9 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 | Route | Frame | What it is |
 | --- | --- | --- |
 | `#/` | D3 | Home: greeting, the four counts, Needs You, the project grid |
-| `#/p/:slug` | D1, D2, D5, D6 | project chat: transcript, composer, right panel (Threads, Files, Memory, Schedules, Jobs) |
+| `#/p/:slug` | D1, D2, D5, D6 | project chat: transcript, composer, right panel (Threads, Files, Memory, Schedules, Jobs). Memory reads `memory.list` and `memory.suggested`, and drives add, pin, edit, forget and dismiss; Schedules lists with `outcomes: true` and draws the last six runs as dots |
 | `#/p/:slug/files/<path>` | D5 | the file reader: breadcrumb, size and age, Copy and Download, the document, and the project's file list beside it |
+| `#/p/:slug/run/<conversationId>` | D6 | one schedule's delivered run, read-only: the transcript the timer produced, with a breadcrumb back to the project |
 | `#/inbox` | D7 | everything that waits on the owner |
 | `#/extensions` | E1–E7 | Discover, package page, install review, installed, sources, customize |
 | `#/settings/:tab` | S1–S4 | General, Usage, Models, Notifications, Profile, System |

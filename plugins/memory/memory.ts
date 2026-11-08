@@ -1,5 +1,6 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { SqliteExecutor } from "@earendil-works/chord/sqlite"
-import { defineExtension, type Extension } from "@earendil-works/pi-durable"
+import { defineExtension, type ConversationId, type EntryRecord, type Extension } from "@earendil-works/pi-durable"
 import { bool, int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { ListedNote, MemoryService, Note } from "../../src/contracts/memory.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
@@ -13,6 +14,7 @@ import {
   IDLE_MS,
   type MemoryPorts,
   PROFILE_KEY,
+  readKv,
   readNumber,
   readProfile,
   requestPass,
@@ -24,6 +26,12 @@ const RECALL_LIMIT = 20
 const LIST_LIMIT = 100
 const PROFILE_LIMIT = 20_000
 const OWNER_RETIREMENT = 0
+const SUGGEST_KEY = "memory.dismissed"
+const SUGGEST_LIMIT = 2
+const SUGGEST_SCAN = 30
+const SUGGEST_MAX = 300
+const DISMISSED_KEPT = 50
+const RULE = /\b(always|never|don'?t|do not|from now on|make sure|prefer|use )\b/iu
 
 export type MemoryPlugin = {
   readonly service: MemoryService
@@ -48,7 +56,17 @@ export function create(ports: MemoryPorts): MemoryPlugin {
   return {
     service: memory,
     extension: defineExtension({ name: "memory", tasks: [dreamerTask(ports)] }),
-    ops: [forget(ports), list(ports), add(ports), pin(ports), edit(ports), profile(ports), writeProfile(ports)],
+    ops: [
+      forget(ports),
+      list(ports),
+      add(ports),
+      pin(ports),
+      edit(ports),
+      suggested(ports),
+      dismiss(ports),
+      profile(ports),
+      writeProfile(ports),
+    ],
     start: async () => {
       const cursor = (await readNumber(ports.db, CURSOR_KEY)) ?? 0
       const newest = await ports.db.get<{ at: number }>(
@@ -186,6 +204,87 @@ function edit(ports: MemoryPorts): Op {
       return { id: args.id, text }
     },
   })
+}
+
+function suggested(ports: MemoryPorts): Op {
+  return defineOp({
+    name: "memory.suggested",
+    args: obj({ conversationId: int({ minimum: 0 }), scope: opt(str({ pattern: SCOPE_PATTERN })) }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      const message = await lastOwnerMessage(ports, args.conversationId)
+      if (message === undefined) return { suggestions: [] }
+      const scope = args.scope ?? "me"
+      const dismissed = await dismissedOf(ports)
+      const known = await ports.db.all<{ text: string }>("SELECT text FROM notes WHERE retired_by IS NULL LIMIT ?", 500)
+      const suggestions = candidatesOf(message)
+        .filter((candidate) => !dismissed.some((item) => comparable(item) === comparable(candidate)))
+        .filter((candidate) => !known.some((note) => comparable(note.text).includes(comparable(candidate))))
+        .slice(0, SUGGEST_LIMIT)
+        .map((text) => ({ text, scope }))
+      return { suggestions }
+    },
+  })
+}
+
+function dismiss(ports: MemoryPorts): Op {
+  return defineOp({
+    name: "memory.dismiss",
+    args: obj({ text: str({ minLength: 1, maxLength: 2000 }) }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      const text = args.text.trim()
+      const dismissed = await dismissedOf(ports)
+      const next = [text, ...dismissed.filter((item) => item !== text)].slice(0, DISMISSED_KEPT)
+      await writeKv(ports.db, SUGGEST_KEY, JSON.stringify(next))
+      return { dismissed: true }
+    },
+  })
+}
+
+async function lastOwnerMessage(ports: MemoryPorts, conversationId: number): Promise<string | undefined> {
+  const conversation = await ports.harness.conversation(conversationId as ConversationId, BACKGROUND_CONTEXT)
+  if (conversation === undefined) return undefined
+  const page = await conversation.entries({ order: "descending" }, SUGGEST_SCAN, undefined, BACKGROUND_CONTEXT)
+  const entry = page.items.find((item) => (item.model ?? []).some((message) => message.role === "user"))
+  return entry === undefined ? undefined : userText(entry)
+}
+
+function userText(entry: EntryRecord): string {
+  const parts: string[] = []
+  for (const message of entry.model ?? []) {
+    if (message.role !== "user") continue
+    if (typeof message.content === "string") parts.push(message.content)
+    else for (const part of message.content) if (part.type === "text") parts.push(part.text)
+  }
+  return parts.join("\n")
+}
+
+function candidatesOf(message: string): readonly string[] {
+  return message
+    .replace(/<\/?msg\b[^>]*>/gu, " ")
+    .split(/\n+/u)
+    .flatMap((line) => line.split(/(?<=[.!?])\s+/u))
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 8 && sentence.length <= SUGGEST_MAX && RULE.test(sentence))
+}
+
+const comparable = (text: string): string =>
+  text
+    .toLowerCase()
+    .replace(/[.!?]+$/u, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+
+async function dismissedOf(ports: MemoryPorts): Promise<readonly string[]> {
+  const raw = await readKv(ports.db, SUGGEST_KEY)
+  if (raw === undefined) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []
+  } catch {
+    return []
+  }
 }
 
 function list(ports: MemoryPorts): Op {

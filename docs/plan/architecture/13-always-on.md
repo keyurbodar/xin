@@ -64,6 +64,7 @@ The ops lost `conv` and `projectId`: dsh has no existing-conversation target and
 - A delegated caller (`xin.thread` present) is refused with `subagent_session`, as all four dsh tools do.
 - One shared prompt section: `Only create or modify scheduled tasks at the user's explicit request; prior explicit authorization for the running scheduled task remains valid.` This is dsh's sentence, and it is the "start out shy" rule from the always-on article written as a constraint instead of a hope.
 - A self-managed heartbeat needs no new mechanism: a task with target `this_session` and `FREQ=HOURLY;INTERVAL=4` is exactly the article's heartbeat, and the model creates it only when the owner asks.
+- Each delivery appends a run to the record: the slot, the delivery time, the target conversation and the entry id the conversation had just before it (`after`), keeping the last six. `schedule.list` with `outcomes: true` walks each target conversation backwards to that marker and answers `done` when an assistant entry landed, `failed` when a `xin.error` entry landed, and `running` otherwise. The default list skips those reads; the Memory pane's Schedules tab asks for them and draws one dot per run, clickable through to the transcript at `#/p/<slug>/run/<conversationId>`.
 
 ## Goals (`goals`, `tool-goals`, `goal-rounds`, dsh `goal`, `tool-goal`, `goal-round-driver`)
 

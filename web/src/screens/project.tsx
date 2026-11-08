@@ -26,6 +26,7 @@ import { Composer } from "../components/chat/composer.tsx"
 import { ProjectPanel } from "../components/chat/panel.tsx"
 import { BottomSheet } from "../components/shell/sheet.tsx"
 import { FileScreen } from "./file.tsx"
+import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 
 function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
@@ -278,6 +279,11 @@ export function ProjectScreen(): JSX.Element {
       return undefined
     }
   }
+  const runId = (): number | undefined => {
+    if (param(2) !== "run") return undefined
+    const parsed = Number(param(3))
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined
+  }
 
   return (
     <Show
@@ -305,7 +311,14 @@ export function ProjectScreen(): JSX.Element {
       }
     >
       {(resolved) => (
-        <Show when={filePath()} fallback={<ProjectChat project={resolved()} />}>
+        <Show
+          when={filePath()}
+          fallback={
+            <Show when={runId()} fallback={<ProjectChat project={resolved()} />}>
+              {(id) => <RunScreen project={resolved()} conversationId={id()} />}
+            </Show>
+          }
+        >
           {(path) => <FileScreen project={resolved()} path={path()} />}
         </Show>
       )}

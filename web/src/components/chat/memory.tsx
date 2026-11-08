@@ -14,19 +14,33 @@ type ListedNote = {
   readonly pinned: boolean
 }
 
-export function MemoryTab(): JSX.Element {
+type Suggestion = { readonly text: string; readonly scope: string }
+
+export function MemoryTab(props: { conversationId: number; scope: string }): JSX.Element {
   const [notes, { refetch }] = createResource(() => cmd<{ readonly notes: readonly ListedNote[] }>("memory.list", {}))
+  const [suggestions, { refetch: refetchSuggestions }] = createResource(
+    () => props.conversationId,
+    (conversationId) =>
+      cmd<{ readonly suggestions: readonly Suggestion[] }>("memory.suggested", {
+        conversationId,
+        scope: props.scope,
+      }),
+  )
   const action = createPaneAction()
   const [editing, setEditing] = createSignal<number | undefined>()
   const [draft, setDraft] = createSignal("")
   const [adding, setAdding] = createSignal(false)
   const [fresh, setFresh] = createSignal("")
 
+  const reload = async (): Promise<void> => {
+    await Promise.all([refetch(), refetchSuggestions()])
+  }
+
   const mutate = (key: number | "new", op: string, args: Record<string, unknown>): Promise<void> =>
     action.run(key, async () => {
       await cmd(op, args)
       setEditing(undefined)
-      await refetch()
+      await reload()
     })
 
   const forget = (note: ListedNote): Promise<void> => mutate(note.id, "memory.forget", { id: note.id })
@@ -47,12 +61,22 @@ export function MemoryTab(): JSX.Element {
     const text = fresh().trim()
     if (text === "") return
     await action.run("new", async () => {
-      await cmd("memory.add", { text })
+      await cmd("memory.add", { text, scope: props.scope })
       setFresh("")
       setAdding(false)
-      await refetch()
+      await reload()
     })
   }
+  const remember = (suggestion: Suggestion): Promise<void> =>
+    action.run("new", async () => {
+      await cmd("memory.add", { text: suggestion.text, scope: suggestion.scope })
+      await reload()
+    })
+  const dismiss = (suggestion: Suggestion): Promise<void> =>
+    action.run("new", async () => {
+      await cmd("memory.dismiss", { text: suggestion.text })
+      await refetchSuggestions()
+    })
 
   return (
     <Skullet loading={notes.loading} sample={() => <PanelGhost rows={6} />} label="Loading memory">
@@ -104,6 +128,46 @@ export function MemoryTab(): JSX.Element {
       <Show when={action.failed()}>
         {(message) => <div class="border-b border-line px-3 py-2 text-[12px] text-bad">{message()}</div>}
       </Show>
+      <For each={suggestions()?.suggestions ?? []}>
+        {(suggestion) => (
+          <div class="mx-3 mb-3 mt-3 rounded-[4px] border border-accent-line bg-raised p-3">
+            <div class="flex items-center gap-2">
+              <span class="rounded-[2px] border border-accent-line bg-accent-dim px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.06em] text-accent-text">
+                Suggested
+              </span>
+              <span class="text-[11.5px] text-fg-3">from your last message</span>
+            </div>
+            <div class="mt-1.5 text-[13px] leading-[1.5] text-fg">{suggestion.text}</div>
+            <div class="mt-2 flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={action.busy() === "new"}
+                class="rounded-[2px] border border-accent bg-accent px-2 py-1 text-[11.5px] font-medium text-ink transition-none hover:opacity-90 disabled:opacity-50"
+                onClick={() => void remember(suggestion)}
+              >
+                Remember
+              </button>
+              <button
+                type="button"
+                class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 transition-none hover:border-line-strong hover:text-fg"
+                onClick={() => {
+                  setFresh(suggestion.text)
+                  setAdding(true)
+                }}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                class="rounded-[2px] px-2 py-1 text-[11.5px] text-fg-3 transition-none hover:text-fg-2"
+                onClick={() => void dismiss(suggestion)}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+      </For>
       <Show when={notes()}>
         {(data) => (
           <Show
