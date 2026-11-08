@@ -1,0 +1,10 @@
+{
+  "categories": { "correctness": "error", "suspicious": "error" },
+  "rules": {
+    "no-console": ["error", { "allow": ["warn"] }],
+    "typescript/no-explicit-any": "error",
+    "no-unused-vars": ["error", { "varsIgnorePattern": "^_exhaustive$" }],
+    "no-underscore-dangle": ["error", { "allow": ["_exhaustive", "_tag"] }]
+  },
+  "overrides": [{ "files": ["scripts/**"], "rules": { "no-console": "off" } }]
+}

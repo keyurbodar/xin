@@ -1,0 +1,22 @@
+{
+  "name": "xin-plugin-compact",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Manual conversation compaction for the owner.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "compact": {
+        "module": "./index.ts",
+        "title": "Compaction",
+        "description": "Manual conversation compaction for the owner."
+      }
+    },
+    "bundle": [
+      {
+        "id": "compact",
+        "plugin": "compact"
+      }
+    ]
+  }
+}

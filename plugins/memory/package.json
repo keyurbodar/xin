@@ -1,0 +1,21 @@
+{
+  "name": "xin-plugin-memory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Notes with FTS recall and the Dreamer.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "memory": {
+        "module": "./index.ts",
+        "title": "Memory",
+        "description": "Notes with FTS recall and the Dreamer."
+      },
+      "tool-memory": {
+        "module": "./tools.ts",
+        "title": "Memory tools",
+        "description": "The model-facing memory tools. Disable to hide them; the memory service keeps running."
+      }
+    }
+  }
+}

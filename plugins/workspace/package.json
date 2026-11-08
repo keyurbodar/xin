@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Projects and thread documents.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "workspace": {
+        "module": "./index.ts",
+        "title": "Workspace",
+        "description": "Projects and thread documents."
+      }
+    }
+  }
+}

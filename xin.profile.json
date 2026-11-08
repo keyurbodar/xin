@@ -1,0 +1,27 @@
+{
+  "bundles": [
+    "xin-base",
+    "xin-plugin-compact",
+    "xin-plugin-deploy-hook",
+    "xin-plugin-failures",
+    "xin-plugin-files",
+    "xin-plugin-goals",
+    "xin-plugin-guard",
+    "xin-plugin-intake",
+    "xin-plugin-jobs",
+    "xin-plugin-market",
+    "xin-plugin-mcp",
+    "xin-plugin-memory",
+    "xin-plugin-models",
+    "xin-plugin-orchestrator",
+    "xin-plugin-presets",
+    "xin-plugin-push",
+    "xin-plugin-questions",
+    "xin-plugin-schedules",
+    "xin-plugin-skills",
+    "xin-plugin-time",
+    "xin-plugin-watchdog",
+    "xin-plugin-workspace"
+  ],
+  "patch": []
+}

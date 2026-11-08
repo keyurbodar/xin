@@ -1,0 +1,22 @@
+{
+  "name": "xin-plugin-guard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nudges the model out of repeating an identical tool call.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "guard": {
+        "module": "./index.ts",
+        "title": "Loop guard",
+        "description": "Reminds the model when it repeats the same tool call with identical arguments."
+      }
+    },
+    "bundle": [
+      {
+        "id": "guard",
+        "plugin": "guard"
+      }
+    ]
+  }
+}

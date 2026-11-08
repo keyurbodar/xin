@@ -1,0 +1,31 @@
+{
+  "name": "xin-plugin-skills",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Markdown skills loaded on demand.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "skills": {
+        "module": "./index.ts",
+        "title": "Skills",
+        "description": "Markdown skills loaded on demand."
+      },
+      "tool-skills": {
+        "module": "./tools.ts",
+        "title": "Skills tools",
+        "description": "The model-facing skills tools. Disable to hide them; the skills service keeps running."
+      }
+    },
+    "bundle": [
+      {
+        "id": "skills",
+        "plugin": "skills"
+      },
+      {
+        "id": "tool-skills",
+        "plugin": "tool-skills"
+      }
+    ]
+  }
+}

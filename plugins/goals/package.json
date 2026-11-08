@@ -1,0 +1,40 @@
+{
+  "name": "xin-plugin-goals",
+  "version": "0.1.0",
+  "private": true,
+  "description": "One durable goal per conversation, with automatic continuation rounds.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "goals": {
+        "module": "./index.ts",
+        "title": "Goals",
+        "description": "One durable objective per conversation: create, edit, pause, resume, complete, block and clear."
+      },
+      "tool-goals": {
+        "module": "./tools.ts",
+        "title": "Goal tools",
+        "description": "The model-facing goal tools. Disable to hide them; the goals service keeps running."
+      },
+      "goal-rounds": {
+        "module": "./rounds.ts",
+        "title": "Goal rounds",
+        "description": "Continues an active goal with one automatic round each time a run ends."
+      }
+    },
+    "bundle": [
+      {
+        "id": "goals",
+        "plugin": "goals"
+      },
+      {
+        "id": "tool-goals",
+        "plugin": "tool-goals"
+      },
+      {
+        "id": "goal-rounds",
+        "plugin": "goal-rounds"
+      }
+    ]
+  }
+}

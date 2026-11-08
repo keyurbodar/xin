@@ -1,0 +1,1163 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi-variable.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Fraunces";
+  src: url("/fonts/fraunces-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --color-page: #06060c;
+  --color-surface: oklch(18.5% 0.012 285);
+  --color-raised: oklch(19.3% 0.008 286);
+  --color-overlay: oklch(20.7% 0.011 285);
+  --color-elevated: oklch(29.1% 0.009 286);
+  --color-hover: oklch(100% 0 0 / 0.06);
+  --color-selected: oklch(100% 0 0 / 0.1);
+
+  --color-line: oklch(100% 0 0 / 0.07);
+  --color-line-inner: oklch(100% 0 0 / 0.1);
+  --color-line-strong: oklch(100% 0 0 / 0.16);
+
+  --color-fill: oklch(100% 0 0 / 0.05);
+  --color-fill-strong: oklch(100% 0 0 / 0.08);
+
+  --color-fg: oklch(96.4% 0 0);
+  --color-fg-2: oklch(74.1% 0.005 258);
+  --color-fg-3: oklch(64.5% 0.006 275);
+  --color-fg-4: oklch(56% 0.006 286);
+  --color-meta: oklch(66% 0.004 286);
+
+  --color-accent: oklch(96.4% 0 0);
+  --color-ink: #06060c;
+  --color-accent-text: oklch(85.7% 0.07 271.6);
+  --color-accent-dim: oklch(100% 0 0 / 0.08);
+  --color-accent-line: oklch(100% 0 0 / 0.16);
+  --color-illustration: oklch(88% 0.002 285);
+
+  --color-ring-crisp: #000000;
+  --color-ring-soft: #f3f3f30d;
+  --color-ring-solid: #06060c24;
+  --color-hl-top: #ffffff14;
+  --color-hl-primary: #ffffff26;
+
+  --color-ok: oklch(82.8% 0.186 159);
+  --color-ok-bg: oklch(32.7% 0.094 158 / 0.35);
+  --color-warn: oklch(84% 0.172 84);
+  --color-warn-bg: oklch(42.2% 0.116 80 / 0.35);
+  --color-bad: oklch(67% 0.195 19);
+  --color-bad-bg: oklch(33.8% 0.128 24 / 0.4);
+
+  --color-queued: oklch(56% 0.006 286);
+  --color-working: oklch(70% 0.12 255);
+  --color-waiting: #ff5a00;
+  --color-done: oklch(82.8% 0.186 159);
+  --color-failed: oklch(67% 0.195 19);
+  --color-paused: oklch(84% 0.172 84);
+  --color-cancelled: oklch(47.8% 0.007 256);
+
+  --font-sans: Satoshi, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: Fraunces, Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
+
+  --radius-micro: 4px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-pop: 12px;
+  --radius-full: 999px;
+
+  --text-section: 26px;
+  --text-section--line-height: 32px;
+  --text-title: 40px;
+  --text-title--line-height: 44px;
+}
+
+@layer base {
+  :root {
+    --dur-instant: 80ms;
+    --dur-fast: 120ms;
+    --dur-hover: 120ms;
+    --dur-base: 200ms;
+    --dur-pop: 200ms;
+    --dur-exit: 140ms;
+    --dur-slow: 320ms;
+    --dur-deliberate: 450ms;
+    --dur-step: 400ms;
+    --dur-land: 160ms;
+    --ease-standard: cubic-bezier(0.165, 0.84, 0.44, 1);
+    --ease-out: cubic-bezier(0.165, 0.84, 0.44, 1);
+    --ease-enter: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-exit: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-snap: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-pop: cubic-bezier(0.34, 1.3, 0.64, 1);
+    --ease-spring: cubic-bezier(0.3, 1.5, 0.5, 1);
+    --ease-kiko: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --press-scale: 0.975;
+    --press-scale-icon: 0.94;
+    --press-spring: linear(
+      0,
+      0.2459,
+      0.6526,
+      0.9468,
+      1.0764,
+      1.0915,
+      1.0585,
+      1.0219,
+      0.9993,
+      0.9914,
+      0.9921,
+      0.9957,
+      0.9988,
+      1.0004,
+      1
+    );
+    --hl-y: 0.4px;
+    --hl-top: var(--color-hl-top);
+    --edge: inset 0 0 0 1px var(--color-line);
+    --edge-strong: inset 0 0 0 1px var(--color-line-inner);
+    --edge-crisp: inset 0 var(--hl-y) 0 0 var(--hl-top), 0 0 0 0.5px var(--color-ring-crisp);
+    --edge-soft: inset 0 0 0 1px var(--color-ring-soft);
+    --shadow-sm: 0 1px 2px 0 #06060c4d, 0 2px 6px 0 #06060c59;
+    --shadow-pop: 0 0 0 0.5px #f3f3f314, 0 1px 2px #06060c59, 0 4px 8px #06060c73;
+    --shadow-float: 0 0 0 0.5px #f3f3f31a, 0 1px 2px #06060c59, 0 4px 8px #06060c73, 0 16px 32px #06060c8c;
+    --shadow-toggle-thumb: 0 1px 2px #06060c4d;
+    --scrim: rgb(0 0 0 / 50%);
+    --scrim-blur: blur(6px) saturate(0.7);
+    --skullet-base: var(--color-raised);
+    --skullet-highlight: var(--color-hover);
+    --skullet-radius: var(--radius-control);
+    --skullet-animation: group-shimmer;
+    --skullet-speed: slow;
+
+    --sh-keyword: var(--color-accent-text);
+    --sh-string: oklch(84% 0.11 155);
+    --sh-property: oklch(80% 0.09 255);
+    --sh-class: var(--color-fg);
+    --sh-entity: var(--color-fg);
+    --sh-jsxliterals: oklch(84% 0.11 155);
+    --sh-sign: var(--color-fg-3);
+    --sh-comment: var(--color-fg-4);
+    --sh-identifier: oklch(88% 0.004 285);
+    --sh-space: oklch(88% 0.004 285);
+    --sh-break: oklch(88% 0.004 285);
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-page);
+    color: var(--color-fg);
+    font: 400 13.5px/1.5 var(--font-sans);
+    letter-spacing: -0.006em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent-text) 30%, transparent);
+    color: var(--color-fg);
+  }
+
+  :focus-visible {
+    outline: 1.5px solid color-mix(in srgb, var(--color-fg) 32%, transparent);
+    outline-offset: 1px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-fg) 16%, transparent) transparent;
+  }
+
+  button {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+  }
+
+  input,
+  textarea {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+  }
+}
+
+/* C12: a fenced block keeps a numbered gutter, and a diff swaps the number for its sign. */
+@layer components {
+  .code-block {
+    counter-reset: line;
+  }
+
+  .code-block pre {
+    margin: 0;
+    padding: 9px 0;
+    overflow-x: auto;
+    font: 400 13px/1.65 var(--font-mono);
+    color: var(--sh-identifier);
+  }
+
+  .code-block pre.is-wrapped {
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .code-block pre .sh__line {
+    display: block;
+    counter-increment: line;
+    padding-right: 14px;
+  }
+
+  .code-block pre .sh__line::before {
+    content: counter(line);
+    display: inline-block;
+    width: 36px;
+    padding-right: 12px;
+    text-align: right;
+    color: var(--color-line-strong);
+  }
+
+  .code-block pre .sh__line--diff-add {
+    background: var(--color-ok-bg);
+  }
+
+  .code-block pre .sh__line--diff-add::before {
+    content: "+";
+    color: var(--color-ok);
+  }
+
+  .code-block pre .sh__line--diff-remove {
+    background: var(--color-bad-bg);
+  }
+
+  .code-block pre .sh__line--diff-remove::before {
+    content: "−";
+    color: var(--color-bad);
+  }
+
+  .code-block pre .sh__line--diff-hunk,
+  .code-block pre .sh__line--diff-meta {
+    color: var(--color-fg-4);
+  }
+}
+
+@utility type-page {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
+  font-weight: 400;
+  font-variation-settings: "SOFT" 50, "WONK" 0;
+  letter-spacing: -0.02em;
+}
+
+@utility type-section {
+  font-family: var(--font-display);
+  font-size: var(--text-section);
+  line-height: var(--text-section--line-height);
+  font-weight: 400;
+  font-variation-settings: "SOFT" 50, "WONK" 0;
+  letter-spacing: -0.015em;
+}
+
+@utility type-wordmark {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 26px;
+  font-weight: 400;
+  font-variation-settings: "SOFT" 50, "WONK" 0;
+}
+
+@utility label {
+  font: 500 10.5px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-fg-3);
+}
+
+@utility mono-meta {
+  font: 400 11px/1.2 var(--font-mono);
+  color: var(--color-fg-4);
+}
+
+@utility kbd {
+  font: 400 11px/1 var(--font-mono);
+  color: var(--color-fg-3);
+  border: 1px solid var(--color-line-inner);
+  border-radius: var(--radius-micro);
+  padding: 2px 4px;
+}
+
+/* An answer chip beside a waiting row, and the quiet link the frames use for "Open Inbox". */
+@utility chip {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  border: 1px solid var(--color-line-inner);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-fg) 6%, transparent);
+  padding: 0 9px;
+  font-size: 12.5px;
+  color: var(--color-fg);
+}
+
+@utility link {
+  font-size: 13px;
+  color: var(--color-fg-2);
+  text-decoration: underline;
+  text-decoration-color: var(--color-line-strong);
+  text-underline-offset: 3px;
+}
+
+@utility panel {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+@utility float {
+  border: 1px solid var(--color-line-inner);
+  border-radius: var(--radius-pop);
+  background: var(--color-overlay);
+  box-shadow: var(--shadow-pop);
+}
+
+@utility glide-item {
+  position: relative;
+  z-index: 1;
+  cursor: default;
+  user-select: none;
+}
+
+.glide-mark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--color-selected);
+  transition:
+    transform 160ms var(--ease-kiko),
+    width 160ms var(--ease-kiko),
+    height 160ms var(--ease-kiko),
+    opacity 120ms linear;
+}
+
+.glide-mark[data-jump] {
+  transition: none;
+}
+
+/* A working row's title, swept the way the frames sweep it. */
+@utility shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-fg-3) 0%,
+    var(--color-fg-3) 40%,
+    color-mix(in srgb, var(--color-fg) 90%, transparent) 50%,
+    var(--color-fg-3) 60%,
+    var(--color-fg-3) 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.4s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* Atmosphere: a 96px grid in the outer border colour, faded by a radial mask,
+   with a faint grain. Used on surfaces that would otherwise be empty. */
+@utility atmos {
+  position: relative;
+  isolation: isolate;
+}
+
+.atmos::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(to right, var(--color-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-line) 1px, transparent 1px);
+  background-size: 96px 96px;
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 0%, transparent 72%);
+  pointer-events: none;
+}
+
+.atmos::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* Crosshair corners for framed surfaces. */
+@utility crosshair {
+  position: relative;
+}
+
+.crosshair::before,
+.crosshair::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+}
+
+.crosshair::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1px solid var(--color-line-strong);
+  border-left: 1px solid var(--color-line-strong);
+}
+
+.crosshair::after {
+  right: -1px;
+  bottom: -1px;
+  border-right: 1px solid var(--color-line-strong);
+  border-bottom: 1px solid var(--color-line-strong);
+}
+
+/* Feedback starts within 80ms and settles by 140ms: press scales, hover tints.
+   Motion answers a touch or a click, it does not decorate. */
+@layer base {
+  button,
+  a,
+  [role="button"] {
+    transition:
+      color var(--dur-instant) var(--ease-standard),
+      background-color var(--dur-instant) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      opacity var(--dur-instant) var(--ease-standard),
+      transform var(--dur-instant) var(--ease-standard);
+    transition-duration: var(--dur-fast);
+  }
+
+  button:hover,
+  a:hover,
+  [role="button"]:hover {
+    transition-duration: var(--dur-instant);
+  }
+
+  button:not(:disabled):active,
+  [role="button"]:active {
+    transform: scale(0.98);
+  }
+
+  button[data-no-press]:active {
+    transform: none;
+  }
+}
+
+/* A dialog and a full-page surface: fade, and a .98 scale that resolves. 200 enter. */
+@utility enter {
+  animation: enter var(--dur-base) var(--ease-enter) backwards;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A scrim fades in under whatever it dims. */
+@utility fade-in {
+  animation: fade-in var(--dur-base) linear backwards;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* A dialog leaving: 140ms back to .98, on the exit curve. */
+@utility dialog-out {
+  animation: dialog-out var(--dur-fast) var(--ease-exit) forwards;
+}
+
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* A menu or popover drops 4px in 140ms. */
+@utility menu-in {
+  animation: menu-in var(--dur-base) var(--ease-kiko) backwards;
+  transform-origin: var(--menu-origin, top left);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A right sheet slides 24px in from the edge over 320ms, and takes 200ms to leave. */
+@utility slide-right {
+  animation: slide-right var(--dur-slow) var(--ease-standard) backwards;
+}
+
+@keyframes slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility slide-right-out {
+  animation: slide-right-out var(--dur-base) var(--ease-exit) forwards;
+}
+
+@keyframes slide-right-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+/* A bottom sheet arrives on the spring and leaves on the exit curve. */
+@utility sheet-in {
+  animation: sheet-in var(--dur-slow) var(--ease-spring) backwards;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@utility sheet-out {
+  animation: sheet-out var(--dur-base) var(--ease-exit) forwards;
+}
+
+@keyframes sheet-out {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+/* A row that lands: 4px drop, 200ms, staggered 40ms across a fan-out. */
+@utility row-in {
+  animation: row-in var(--dur-base) var(--ease-enter) backwards;
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A report card rises 6px over 320ms. */
+@utility card-in {
+  animation: card-in var(--dur-slow) var(--ease-enter) backwards;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A rejected input shakes once, 4px either side. */
+@utility shake {
+  animation: shake 240ms linear backwards;
+}
+
+@keyframes shake {
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+/* A toggle's knob travels in 140ms, and its track fills with it. */
+@utility knob {
+  transition:
+    left var(--dur-fast) var(--ease-standard),
+    background-color var(--dur-fast) var(--ease-standard);
+}
+
+/* I3: a project's glyph is geometry, not an icon. 1.5 stroke at every size, one solid part. */
+.project-mark {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  overflow: visible;
+  flex: none;
+}
+
+.project-mark .f {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* I3: the tile's corner carries the state, so the glyph itself never changes. */
+@utility breath {
+  animation: breath 1.6s ease-in-out infinite;
+}
+
+@keyframes breath {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@utility pulse {
+  animation: corner-pulse 1.6s infinite;
+}
+
+@keyframes corner-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-waiting) 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-waiting) 0%, transparent);
+  }
+}
+
+/* I4: pictograms. A 64 grid, a 1.5px stroke that stays 1.5px at 88, and one orange detail. */
+.pictogram {
+  overflow: visible;
+  flex: none;
+}
+
+.pictogram .l,
+.pictogram .a,
+.pictogram .k {
+  fill: none;
+  stroke: var(--color-illustration);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pictogram .a {
+  stroke: var(--color-waiting);
+}
+
+.pictogram .k {
+  fill: var(--color-surface);
+}
+
+.pictogram .af {
+  fill: var(--color-waiting);
+}
+
+.pictogram .lf {
+  fill: var(--color-illustration);
+}
+
+.pictogram .dim {
+  stroke: color-mix(in srgb, var(--color-fg) 22%, var(--color-page));
+}
+
+.m-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: m-pop 3.2s infinite;
+}
+
+@keyframes m-pop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.3, 1.5, 0.5, 1);
+  }
+  14%,
+  84% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  94%,
+  100% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+
+.m-bar {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: m-bar 3.6s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+@keyframes m-bar {
+  0% {
+    transform: scaleY(0.15);
+  }
+  20%,
+  84% {
+    transform: scaleY(1);
+  }
+  96%,
+  100% {
+    transform: scaleY(0.15);
+  }
+}
+
+.m-tilt {
+  transform-box: view-box;
+  animation: m-tilt 2.4s ease-in-out infinite;
+}
+
+@keyframes m-tilt {
+  0%,
+  100% {
+    transform: rotate(-9deg);
+  }
+  50% {
+    transform: rotate(9deg);
+  }
+}
+
+.m-slide {
+  animation: m-slide 3.2s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+
+@keyframes m-slide {
+  0%,
+  15%,
+  100% {
+    transform: translate(0, 0);
+  }
+  40%,
+  75% {
+    transform: translate(5px, -3px);
+  }
+}
+
+.m-peek {
+  animation: m-peek 3.2s cubic-bezier(0.3, 1.4, 0.5, 1) infinite;
+}
+
+@keyframes m-peek {
+  0%,
+  15%,
+  92%,
+  100% {
+    transform: translateY(0);
+  }
+  35%,
+  72% {
+    transform: translateY(-7px);
+  }
+}
+
+.m-swing {
+  transform-box: view-box;
+  animation: m-swing 3s ease-in-out infinite;
+}
+
+@keyframes m-swing {
+  0%,
+  100% {
+    transform: rotate(-8deg);
+  }
+  50% {
+    transform: rotate(8deg);
+  }
+}
+
+.m-spin {
+  transform-box: view-box;
+  animation: pictogram-spin 6s linear infinite;
+}
+
+.m-spinf {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pictogram-spin 1.2s linear infinite;
+}
+
+@keyframes pictogram-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.m-fill {
+  stroke-dasharray: 36;
+  animation: m-fill 4.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes m-fill {
+  0% {
+    stroke-dashoffset: 30;
+  }
+  80%,
+  92% {
+    stroke-dashoffset: 6;
+  }
+  100% {
+    stroke-dashoffset: 30;
+  }
+}
+
+.m-lift {
+  animation: m-lift 3s cubic-bezier(0.3, 1.4, 0.5, 1) infinite;
+}
+
+@keyframes m-lift {
+  0%,
+  20%,
+  90%,
+  100% {
+    transform: translateY(0);
+  }
+  40%,
+  70% {
+    transform: translateY(-5px);
+  }
+}
+
+.m-plug {
+  animation: m-plug 3.2s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+
+@keyframes m-plug {
+  0%,
+  10%,
+  92%,
+  100% {
+    transform: translateX(0);
+  }
+  35%,
+  75% {
+    transform: translateX(3.5px);
+  }
+}
+
+.m-led {
+  animation: m-led 3.2s infinite;
+}
+
+@keyframes m-led {
+  0%,
+  34%,
+  80%,
+  100% {
+    fill: transparent;
+  }
+  38%,
+  75% {
+    fill: var(--color-accent);
+  }
+}
+
+.m-ring {
+  transform-box: view-box;
+  animation: m-ring 2.4s ease-in-out infinite;
+}
+
+@keyframes m-ring {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0);
+  }
+  10% {
+    transform: rotate(12deg);
+  }
+  20% {
+    transform: rotate(-10deg);
+  }
+  30% {
+    transform: rotate(6deg);
+  }
+  40% {
+    transform: rotate(-3deg);
+  }
+}
+
+.m-wave {
+  animation: m-wave 2.4s infinite;
+}
+
+@keyframes m-wave {
+  0%,
+  8% {
+    opacity: 0;
+  }
+  18%,
+  45% {
+    opacity: 1;
+  }
+  60%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.m-scan {
+  animation: m-scan 3.6s ease-in-out infinite;
+}
+
+@keyframes m-scan {
+  0%,
+  100% {
+    transform: translate(-3px, -1px);
+  }
+  50% {
+    transform: translate(3px, 2px);
+  }
+}
+
+.m-drift {
+  animation: m-drift 4s ease-in-out infinite;
+}
+
+@keyframes m-drift {
+  0%,
+  100% {
+    transform: translateX(-2px);
+  }
+  50% {
+    transform: translateX(2px);
+  }
+}
+
+.m-draw {
+  stroke-dasharray: 1;
+  animation: m-draw 3.2s ease-out infinite;
+}
+
+@keyframes m-draw {
+  0%,
+  15% {
+    stroke-dashoffset: 1;
+  }
+  40%,
+  88% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 1;
+  }
+}
+
+.m-needle {
+  transform-box: view-box;
+  transform-origin: 32px 44px;
+  animation: m-needle 3.2s cubic-bezier(0.3, 1.3, 0.5, 1) infinite;
+}
+
+@keyframes m-needle {
+  0%,
+  100% {
+    transform: rotate(-80deg);
+  }
+  45%,
+  80% {
+    transform: rotate(0deg);
+  }
+}
+
+.m-key {
+  animation: m-key 3s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+
+@keyframes m-key {
+  0%,
+  15%,
+  90%,
+  100% {
+    transform: translateX(0);
+  }
+  40%,
+  70% {
+    transform: translateX(4px);
+  }
+}
+
+.m-drop {
+  animation: m-drop 2.8s cubic-bezier(0.5, 0, 0.75, 0) infinite;
+}
+
+@keyframes m-drop {
+  0% {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  60% {
+    transform: translateY(3px);
+    opacity: 1;
+  }
+  75%,
+  100% {
+    transform: translateY(3px);
+    opacity: 0;
+  }
+}
+
+/* I1: a card or a button gets the plain arc, a quarter turn every 0.8s. */
+.spinner-arc {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: spinner-arc 0.8s linear infinite;
+}
+
+@keyframes spinner-arc {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+
+  /* A stilled drawing keeps every part it had; I4's own reduced-motion column. */
+  .pictogram .m-pop,
+  .pictogram .m-drop {
+    transform: none;
+    opacity: 1;
+  }
+
+  .pictogram .m-bar {
+    transform: scaleY(1);
+  }
+
+  .pictogram .m-tilt,
+  .pictogram .m-slide,
+  .pictogram .m-peek,
+  .pictogram .m-swing,
+  .pictogram .m-lift,
+  .pictogram .m-plug,
+  .pictogram .m-key,
+  .pictogram .m-scan,
+  .pictogram .m-drift {
+    transform: none;
+  }
+
+  .pictogram .m-draw {
+    stroke-dashoffset: 0;
+  }
+
+  .pictogram .m-fill {
+    stroke-dashoffset: 6;
+  }
+
+  .pictogram .m-wave {
+    opacity: 1;
+  }
+
+  .pictogram .m-led {
+    fill: var(--color-accent);
+  }
+}

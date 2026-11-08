@@ -1,0 +1,21 @@
+{
+  "name": "xin-plugin-schedules",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scheduled tasks: recurring rules that deliver a prompt to a conversation.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "schedules": {
+        "module": "./index.ts",
+        "title": "Schedules",
+        "description": "Scheduled tasks: recurring rules that deliver a prompt to a conversation."
+      },
+      "tool-schedules": {
+        "module": "./tools.ts",
+        "title": "Schedules tools",
+        "description": "The model-facing create, list, view and edit tools for scheduled tasks. Disable to hide them; the schedules service keeps running."
+      }
+    }
+  }
+}

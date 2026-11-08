@@ -1,0 +1,21 @@
+{
+  "name": "xin-plugin-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Coordinator tools and threads.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "orchestrator": {
+        "module": "./index.ts",
+        "title": "Orchestrator",
+        "description": "Coordinator tools and threads."
+      },
+      "tool-orchestrator": {
+        "module": "./tools.ts",
+        "title": "Orchestrator tools",
+        "description": "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running."
+      }
+    }
+  }
+}

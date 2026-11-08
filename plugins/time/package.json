@@ -1,0 +1,25 @@
+{
+  "name": "xin-plugin-time",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tells the model the time, the owner's zone and how long since the last message before each request.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "time": {
+        "module": "./index.ts",
+        "title": "Current time",
+        "description": "A user-role time reading with the owner's zone and the elapsed time before each request, without a tool."
+      }
+    },
+    "bundle": [
+      {
+        "id": "time",
+        "plugin": "time",
+        "config": {
+          "timezone": "UTC"
+        }
+      }
+    ]
+  }
+}

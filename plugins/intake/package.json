@@ -1,0 +1,16 @@
+{
+  "name": "xin-plugin-intake",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Inbound debounce, batch claim and dispatch.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "intake": {
+        "module": "./index.ts",
+        "title": "Intake",
+        "description": "Inbound debounce, batch claim and dispatch."
+      }
+    }
+  }
+}

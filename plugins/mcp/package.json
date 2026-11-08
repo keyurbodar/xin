@@ -1,0 +1,36 @@
+{
+  "name": "xin-plugin-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP servers as deferred tools.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "mcp": {
+        "module": "./index.ts",
+        "title": "MCP",
+        "description": "MCP servers as deferred tools."
+      },
+      "tool-mcp": {
+        "module": "./tools.ts",
+        "title": "MCP tools",
+        "description": "The model-facing mcp tools. Disable to hide them; the mcp service keeps running."
+      },
+      "mcp-server": {
+        "module": "./server.ts",
+        "title": "MCP server",
+        "description": "One MCP server connection carried by a row, for bundles."
+      }
+    },
+    "bundle": [
+      {
+        "id": "mcp",
+        "plugin": "mcp"
+      },
+      {
+        "id": "tool-mcp",
+        "plugin": "tool-mcp"
+      }
+    ]
+  }
+}
