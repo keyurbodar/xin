@@ -44,6 +44,8 @@ type Note = {
   readonly scope: string
   readonly text: string
   readonly at: number
+  readonly source?: string
+  readonly pinned?: boolean
 }
 
 type Schedule = {
@@ -195,23 +197,108 @@ function FilesTab(props: { slug: string }): JSX.Element {
 function MemoryTab(): JSX.Element {
   const [notes, { refetch }] = createResource(() => cmd<{ readonly notes: readonly Note[] }>("memory.list", {}))
   const [busy, setBusy] = createSignal<number | undefined>()
-  const forget = async (note: Note): Promise<void> => {
+  const [editing, setEditing] = createSignal<number | undefined>()
+  const [draft, setDraft] = createSignal("")
+  const [adding, setAdding] = createSignal(false)
+  const [posting, setPosting] = createSignal(false)
+  const [fresh, setFresh] = createSignal("")
+  const [failed, setFailed] = createSignal<string | undefined>()
+
+  const act = async (note: Note, op: string, args: Record<string, unknown>): Promise<void> => {
     setBusy(note.id)
+    setFailed(undefined)
     try {
-      await cmd("memory.forget", { query: note.text })
+      await cmd(op, args)
+      setEditing(undefined)
       await refetch()
-    } catch {
+    } catch (problem) {
+      setFailed(errorMessage(problem))
+    } finally {
       setBusy(undefined)
     }
   }
+
+  const forget = (note: Note): Promise<void> => act(note, "memory.forget", { query: note.text })
+  const pin = (note: Note): Promise<void> => act(note, "memory.pin", { id: note.id, pinned: note.pinned !== true })
+  const save = async (note: Note): Promise<void> => {
+    const text = draft().trim()
+    if (text === "" || text === note.text) {
+      setEditing(undefined)
+      return
+    }
+    await act(note, "memory.edit", { id: note.id, text })
+  }
+  const openEdit = (note: Note): void => {
+    setDraft(note.text)
+    setEditing(note.id)
+  }
+  const add = async (): Promise<void> => {
+    const text = fresh().trim()
+    if (text === "") return
+    setPosting(true)
+    setFailed(undefined)
+    try {
+      await cmd("memory.add", { text })
+      setFresh("")
+      setAdding(false)
+      await refetch()
+    } catch (problem) {
+      setFailed(errorMessage(problem))
+    } finally {
+      setPosting(false)
+    }
+  }
+
   return (
     <Skullet loading={notes.loading} sample={() => <PanelGhost rows={6} />} label="Loading memory">
       <Show when={notes.error} fallback={null}>
         <ResourceError what="memory" error={notes.error} onRetry={() => void refetch()} />
       </Show>
-      <div class="border-b border-line px-3 py-2.5 text-[12px] leading-[1.5] text-fg-3">
-        What the coordinator keeps between chats. Every thread can read it.
+      <div class="flex items-center gap-2 border-b border-line px-3 py-2.5">
+        <span class="flex-1 text-[12px] leading-[1.5] text-fg-3">
+          What the coordinator keeps between chats. Every thread can read it.
+        </span>
+        <button
+          type="button"
+          class="flex shrink-0 items-center gap-1.5 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 transition-none hover:border-line-strong hover:text-fg"
+          onClick={() => setAdding((open) => !open)}
+        >
+          <Icon name="plus" size={13} />
+          Add
+        </button>
       </div>
+      <Show when={adding()}>
+        <div class="flex flex-col gap-2 border-b border-line px-3 py-3">
+          <textarea
+            rows={2}
+            autofocus
+            placeholder="A fact worth keeping across chats"
+            class="w-full resize-none rounded-[3px] border border-line-strong bg-surface px-2 py-1.5 text-[13px] leading-[1.5] text-fg outline-none placeholder:text-fg-4 focus:border-accent-line"
+            value={fresh()}
+            onInput={(event) => setFresh(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setAdding(false)
+              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void add()
+            }}
+          />
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={posting() || fresh().trim() === ""}
+              class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 transition-none hover:border-line-strong hover:text-fg disabled:opacity-50"
+              onClick={() => void add()}
+            >
+              Remember
+            </button>
+            <button type="button" class="link text-[11.5px]" onClick={() => setAdding(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </Show>
+      <Show when={failed()}>
+        {(message) => <div class="border-b border-line px-3 py-2 text-[12px] text-bad">{message()}</div>}
+      </Show>
       <Show when={notes()}>
         {(data) => (
           <Show
@@ -223,23 +310,85 @@ function MemoryTab(): JSX.Element {
                 {(note) => (
                   <div class="group flex items-start gap-2 border-b border-line px-3 py-3">
                     <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-                      <span class="text-[13px] leading-[1.5] text-fg">{note.text}</span>
-                      <span class="flex items-center gap-2 text-[11.5px] text-fg-3">
-                        <span class="rounded-[2px] border border-line-inner px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.06em]">
-                          {note.scope}
+                      <Show
+                        when={editing() === note.id}
+                        fallback={<span class="text-[13px] leading-[1.5] text-fg">{note.text}</span>}
+                      >
+                        <textarea
+                          rows={3}
+                          class="w-full resize-none rounded-[3px] border border-line-strong bg-surface px-2 py-1.5 text-[13px] leading-[1.5] text-fg outline-none focus:border-accent-line"
+                          value={draft()}
+                          onInput={(event) => setDraft(event.currentTarget.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") setEditing(undefined)
+                            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void save(note)
+                          }}
+                        />
+                        <div class="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={busy() === note.id}
+                            class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 transition-none hover:border-line-strong hover:text-fg disabled:opacity-50"
+                            onClick={() => void save(note)}
+                          >
+                            Save
+                          </button>
+                          <button type="button" class="link text-[11.5px]" onClick={() => setEditing(undefined)}>
+                            Cancel
+                          </button>
+                        </div>
+                      </Show>
+                      <span class="flex flex-wrap items-center gap-2 text-[11.5px] text-fg-3">
+                        <span class="flex items-center gap-1">
+                          <Icon name={note.source === "dreamer" ? "brain" : "message"} size={12} class="text-fg-4" />
+                          {note.source === "dreamer" ? "Learned by the coordinator" : "You said"}
                         </span>
+                        <span class="text-fg-4">·</span>
                         {ago(note.at)}
+                        <Show when={note.scope !== "me"}>
+                          <span class="rounded-[2px] border border-line-inner px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.06em]">
+                            {note.scope}
+                          </span>
+                        </Show>
+                        <Show when={note.pinned === true}>
+                          <span class="rounded-[2px] border border-accent-line bg-accent-dim px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.06em] text-accent-text">
+                            Pinned
+                          </span>
+                        </Show>
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      aria-label="Forget this"
-                      disabled={busy() === note.id}
-                      class="mt-0.5 shrink-0 rounded-[2px] p-1 text-fg-4 opacity-0 transition-none hover:bg-hover hover:text-fg-2 group-hover:opacity-100 disabled:opacity-50"
-                      onClick={() => void forget(note)}
-                    >
-                      <Icon name="trash" size={13} />
-                    </button>
+                    <Show when={editing() !== note.id}>
+                      <div class="mt-0.5 flex shrink-0 items-center opacity-0 transition-none group-hover:opacity-100 focus-within:opacity-100">
+                        <button
+                          type="button"
+                          aria-label={note.pinned === true ? "Unpin this" : "Pin this"}
+                          disabled={busy() === note.id}
+                          class="rounded-[2px] p-1 hover:bg-hover disabled:opacity-50"
+                          classList={{ "text-accent-text": note.pinned === true, "text-fg-4 hover:text-fg-2": note.pinned !== true }}
+                          onClick={() => void pin(note)}
+                        >
+                          <Icon name="pin" size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Edit this"
+                          disabled={busy() === note.id}
+                          class="rounded-[2px] p-1 text-fg-4 hover:bg-hover hover:text-fg-2 disabled:opacity-50"
+                          onClick={() => openEdit(note)}
+                        >
+                          <Icon name="pencil" size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Forget this"
+                          disabled={busy() === note.id}
+                          class="rounded-[2px] p-1 text-fg-4 hover:bg-hover hover:text-fg-2 disabled:opacity-50"
+                          onClick={() => void forget(note)}
+                        >
+                          <Icon name="trash" size={13} />
+                        </button>
+                      </div>
+                    </Show>
                   </div>
                 )}
               </For>
@@ -276,6 +425,20 @@ function SchedulesTab(): JSX.Element {
   const [schedules, { refetch }] = createResource(() =>
     cmd<{ readonly schedules: readonly Schedule[] }>("schedule.list", {}),
   )
+  const [busy, setBusy] = createSignal<string | undefined>()
+  const [failed, setFailed] = createSignal<string | undefined>()
+  const toggle = async (schedule: Schedule): Promise<void> => {
+    setBusy(schedule.id)
+    setFailed(undefined)
+    try {
+      await cmd("schedule.edit", { action: "update", id: schedule.id, active: !schedule.active })
+      await refetch()
+    } catch (problem) {
+      setFailed(errorMessage(problem))
+    } finally {
+      setBusy(undefined)
+    }
+  }
   return (
     <Skullet loading={schedules.loading} sample={() => <PanelGhost rows={4} />} label="Loading schedules">
       <Show when={schedules.error} fallback={null}>
@@ -293,6 +456,9 @@ function SchedulesTab(): JSX.Element {
           New
         </button>
       </div>
+      <Show when={failed()}>
+        {(message) => <div class="border-b border-line px-3 py-2 text-[12px] text-bad">{message()}</div>}
+      </Show>
       <Show when={schedules()}>
         {(data) => (
           <Show
@@ -306,7 +472,21 @@ function SchedulesTab(): JSX.Element {
                     <div class="flex items-center gap-2">
                       <StatusGlyph state={schedule.active ? "queued" : "paused"} size={16} />
                       <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{schedule.title}</span>
-                      <span class="mono-meta shrink-0">{schedule.active ? "on" : "paused"}</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={schedule.active}
+                        aria-label={schedule.active ? `Pause ${schedule.title}` : `Resume ${schedule.title}`}
+                        disabled={busy() === schedule.id}
+                        class="relative h-4 w-7 shrink-0 rounded-[2px] transition-none disabled:opacity-50"
+                        classList={{ "bg-fg": schedule.active, "bg-line-strong": !schedule.active }}
+                        onClick={() => void toggle(schedule)}
+                      >
+                        <span
+                          class="absolute top-0.5 h-3 w-3 rounded-[1px] bg-page"
+                          classList={{ "left-3.5": schedule.active, "left-0.5": !schedule.active }}
+                        />
+                      </button>
                     </div>
                     <div class="flex items-center gap-1.5 text-[12px] text-fg-3">
                       <Icon name="refresh" size={12} />

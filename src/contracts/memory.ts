@@ -3,6 +3,8 @@ export type Note = {
   readonly scope: string
   readonly text: string
   readonly at: number
+  readonly source?: string
+  readonly pinned?: boolean
 }
 
 export type NoteDraft = {

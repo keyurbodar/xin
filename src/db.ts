@@ -45,6 +45,19 @@ export const HOST_MIGRATIONS: readonly SqliteMigration[] = [
       "CREATE INDEX file_revisions_sha ON file_revisions (sha256)",
     ],
   },
+  {
+    version: 7,
+    statements: ["ALTER TABLE notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"],
+  },
+  {
+    version: 8,
+    statements: [
+      `CREATE TRIGGER notes_au AFTER UPDATE OF text ON notes BEGIN
+         INSERT INTO notes_fts (notes_fts, rowid, text) VALUES ('delete', old.id, old.text);
+         INSERT INTO notes_fts (rowid, text) VALUES (new.id, new.text);
+       END`,
+    ],
+  },
 ]
 
 export function migrate(db: SqliteDatabase): Promise<void> {

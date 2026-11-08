@@ -157,6 +157,45 @@ describe("memory", () => {
     expect(outcome.stored.map((note) => note.retired_by === null)).toEqual([false, true])
   })
 
+  it("pins a note above the rest and keeps an edited note searchable", async () => {
+    const stub = fresh()
+    const outcome = await runInDurableObject(stub, async (home: Home) => {
+      const at = Date.now()
+      const draft = { source: "remember", originTask: "seed", at }
+      await appendNote(home.db, { ...draft, text: "Runs at dawn", scope: "me" })
+      await appendNote(home.db, { ...draft, text: "Uses oxfmt", scope: "me" })
+      const [first, second] = await notes(home)
+      if (first === undefined || second === undefined) throw new Error("seed notes missing")
+      return {
+        pinned: await run(home, "pin-1", "memory.pin", { id: second.id, pinned: true }),
+        edited: await run(home, "edit-1", "memory.edit", { id: first.id, text: "  Runs at dawn, every day  " }),
+        missing: await run(home, "pin-2", "memory.pin", { id: 9999, pinned: true }),
+        blank: await run(home, "edit-2", "memory.edit", { id: first.id, text: "   " }),
+        added: await run(home, "add-1", "memory.add", { text: "  Prefers short replies  " }),
+        listed: await run(home, "list-1", "memory.list", {}),
+        found: (await searchNotes(home.db, "every day", ["me"], at)).map((note) => note.text),
+        first: first.id,
+      }
+    })
+
+    expect(outcome.pinned).toMatchObject({ kind: "ok", result: { pinned: true } })
+    expect(outcome.edited).toMatchObject({ kind: "ok", result: { text: "Runs at dawn, every day" } })
+    expect(outcome.missing).toMatchObject({ kind: "rejected", code: "bad_args" })
+    expect(outcome.blank).toMatchObject({ kind: "rejected", code: "bad_args" })
+    expect(outcome.added).toMatchObject({ kind: "ok", result: { text: "Prefers short replies", scope: "me" } })
+    expect(outcome.listed).toMatchObject({
+      kind: "ok",
+      result: {
+        notes: [
+          { text: "Uses oxfmt", pinned: true, source: "remember" },
+          { text: "Prefers short replies", pinned: false },
+          { text: "Runs at dawn, every day", pinned: false },
+        ],
+      },
+    })
+    expect(outcome.found).toEqual(["Runs at dawn, every day"])
+  })
+
   it("writes the profile the pane reads, exactly, and clears it with whitespace", async () => {
     const stub = fresh()
     const evidence = await runInDurableObject(stub, async (home: Home) => {

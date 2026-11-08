@@ -1,8 +1,8 @@
 import type { SqliteExecutor } from "@earendil-works/chord/sqlite"
 import { defineExtension, type Extension } from "@earendil-works/pi-durable"
-import { obj, opt, str } from "@earendil-works/pi-schema"
+import { bool, int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { MemoryService, Note } from "../../src/contracts/memory.ts"
-import { defineOp, type Op } from "../../src/ops.ts"
+import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
   appendNote,
   CURSOR_KEY,
@@ -48,7 +48,7 @@ export function create(ports: MemoryPorts): MemoryPlugin {
   return {
     service: memory,
     extension: defineExtension({ name: "memory", tasks: [dreamerTask(ports)] }),
-    ops: [forget(ports), list(ports), profile(ports), writeProfile(ports)],
+    ops: [forget(ports), list(ports), add(ports), pin(ports), edit(ports), profile(ports), writeProfile(ports)],
     start: async () => {
       const cursor = (await readNumber(ports.db, CURSOR_KEY)) ?? 0
       const newest = await ports.db.get<{ at: number }>(
@@ -98,24 +98,99 @@ function forget(ports: MemoryPorts): Op {
   })
 }
 
+type NoteRow = {
+  readonly id: number
+  readonly scope: string
+  readonly text: string
+  readonly at: number
+  readonly source: string
+  readonly pinned: number
+}
+
+const noteOf = (row: NoteRow): Note => ({
+  id: row.id,
+  scope: row.scope,
+  text: row.text,
+  at: row.at,
+  source: row.source,
+  pinned: row.pinned === 1,
+})
+
+function add(ports: MemoryPorts): Op {
+  return defineOp({
+    name: "memory.add",
+    args: obj({ text: str({ minLength: 1, maxLength: 2000 }), scope: opt(str({ pattern: SCOPE_PATTERN })) }),
+    actors: ["owner"],
+    run: async (api, args) => {
+      const text = args.text.trim()
+      if (text === "") throw new OpRejected("bad_args", "a note needs text")
+      const scope = args.scope ?? "me"
+      await appendNote(ports.db, {
+        text,
+        scope,
+        source: "remember",
+        originTask: `owner:${api.commandId}`,
+        at: Date.now(),
+      })
+      return { text, scope }
+    },
+  })
+}
+
+function pin(ports: MemoryPorts): Op {
+  return defineOp({
+    name: "memory.pin",
+    args: obj({ id: int({ minimum: 1 }), pinned: bool() }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      const changed = await ports.db.runCounted(
+        "UPDATE notes SET pinned = ? WHERE id = ? AND retired_by IS NULL",
+        args.pinned ? 1 : 0,
+        args.id,
+      )
+      if (changed === 0) throw new OpRejected("bad_args", `no note ${args.id}`)
+      return { id: args.id, pinned: args.pinned }
+    },
+  })
+}
+
+function edit(ports: MemoryPorts): Op {
+  return defineOp({
+    name: "memory.edit",
+    args: obj({ id: int({ minimum: 1 }), text: str({ minLength: 1, maxLength: 2000 }) }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      const text = args.text.trim()
+      if (text === "") throw new OpRejected("bad_args", "a note needs text")
+      const changed = await ports.db.runCounted(
+        "UPDATE notes SET text = ? WHERE id = ? AND retired_by IS NULL",
+        text,
+        args.id,
+      )
+      if (changed === 0) throw new OpRejected("bad_args", `no note ${args.id}`)
+      return { id: args.id, text }
+    },
+  })
+}
+
 function list(ports: MemoryPorts): Op {
   return defineOp({
     name: "memory.list",
     args: obj({ scope: opt(str({ pattern: SCOPE_PATTERN })) }),
     actors: ["owner"],
     run: async (_api, args) => {
-      const notes =
+      const rows =
         args.scope === undefined
-          ? await ports.db.all<Note>(
-              "SELECT id, scope, text, at FROM notes WHERE retired_by IS NULL ORDER BY id DESC LIMIT ?",
+          ? await ports.db.all<NoteRow>(
+              "SELECT id, scope, text, at, source, pinned FROM notes WHERE retired_by IS NULL ORDER BY pinned DESC, id DESC LIMIT ?",
               LIST_LIMIT,
             )
-          : await ports.db.all<Note>(
-              "SELECT id, scope, text, at FROM notes WHERE retired_by IS NULL AND scope = ? ORDER BY id DESC LIMIT ?",
+          : await ports.db.all<NoteRow>(
+              "SELECT id, scope, text, at, source, pinned FROM notes WHERE retired_by IS NULL AND scope = ? ORDER BY pinned DESC, id DESC LIMIT ?",
               args.scope,
               LIST_LIMIT,
             )
-      return { notes }
+      return { notes: rows.map(noteOf) }
     },
   })
 }
