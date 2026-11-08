@@ -246,7 +246,10 @@ async function lastOwnerMessage(ports: MemoryPorts, conversationId: number): Pro
   const conversation = await ports.harness.conversation(conversationId as ConversationId, BACKGROUND_CONTEXT)
   if (conversation === undefined) return undefined
   const page = await conversation.entries({ order: "descending" }, SUGGEST_SCAN, undefined, BACKGROUND_CONTEXT)
-  const entry = page.items.find((item) => (item.model ?? []).some((message) => message.role === "user"))
+  const entry = page.items.find((item) => {
+    const text = userText(item)
+    return text !== "" && !/<thread\b/iu.test(text)
+  })
   return entry === undefined ? undefined : userText(entry)
 }
 

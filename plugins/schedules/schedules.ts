@@ -5,6 +5,7 @@ import {
   defineDoc,
   defineExtension,
   defineTask,
+  type EntryRecord,
   type Extension,
   type Harness,
   type Task,
@@ -304,13 +305,18 @@ async function lastEntryId(port: SchedulesPort, conversationId: ConversationId):
   return page.items[0]?.id ?? 0
 }
 
-async function runsOf(port: SchedulesPort, record: StoredSchedule): Promise<ScheduleRun[]> {
+export async function runsOf(
+  port: SchedulesPort,
+  record: StoredSchedule,
+  scans: Map<number, readonly EntryRecord[]>,
+): Promise<ScheduleRun[]> {
+  const runs = record.runs ?? []
   return Promise.all(
-    (record.runs ?? []).map(async (run) => ({
+    runs.map(async (run, index) => ({
       slot: iso(run.slot),
       deliveredAt: iso(run.deliveredAt),
       conversationId: run.conversationId,
-      outcome: await outcomeOf(port, run),
+      outcome: await outcomeOf(port, run, runs[index + 1]?.after ?? Number.MAX_SAFE_INTEGER, scans),
     })),
   )
 }
@@ -319,13 +325,33 @@ const ERROR_KIND = "xin.error"
 const ASSISTANT_KIND = "pi.assistant"
 const RUN_SCAN = 100
 
-async function outcomeOf(port: SchedulesPort, run: StoredRun): Promise<ScheduleRunOutcome> {
-  const conversation = await port.harness.conversation(run.conversationId as ConversationId, context)
-  if (conversation === undefined) return "failed"
+async function entriesOf(
+  port: SchedulesPort,
+  conversationId: number,
+  scans: Map<number, readonly EntryRecord[]>,
+): Promise<readonly EntryRecord[] | undefined> {
+  const cached = scans.get(conversationId)
+  if (cached !== undefined) return cached
+  const conversation = await port.harness.conversation(conversationId as ConversationId, context)
+  if (conversation === undefined) return undefined
   const page = await conversation.entries({ order: "descending" }, RUN_SCAN, undefined, context)
+  scans.set(conversationId, page.items)
+  return page.items
+}
+
+async function outcomeOf(
+  port: SchedulesPort,
+  run: StoredRun,
+  until: number,
+  scans: Map<number, readonly EntryRecord[]>,
+): Promise<ScheduleRunOutcome> {
+  const entries = await entriesOf(port, run.conversationId, scans)
+  if (entries === undefined) return "failed"
   let replied = false
-  for (const entry of page.items) {
-    if (entry.id === run.after) return replied ? "done" : "running"
+  for (const entry of entries) {
+    if (entry.id <= run.after) break
+    if (entry.id > until) continue
+    if ((entry.model ?? []).some((message) => message.role === "user")) break
     if (entry.kind === ERROR_KIND) return "failed"
     if (entry.kind === ASSISTANT_KIND) replied = true
   }
@@ -516,9 +542,10 @@ async function listSchedules(port: SchedulesPort, request: ScheduleListRequest):
   })
   const matching = records.filter((record) => matches(record, request.active)).toSorted(compare)
   const page = matching.slice(offset, offset + limit)
+  const scans = new Map<number, readonly EntryRecord[]>()
   const items =
     request.outcomes === true
-      ? await Promise.all(page.map(async (record) => ({ ...taskOf(record), runs: await runsOf(port, record) })))
+      ? await Promise.all(page.map(async (record) => ({ ...taskOf(record), runs: await runsOf(port, record, scans) })))
       : page.map(taskOf)
   return { items, shown: items.length, total: matching.length, limit, offset }
 }

@@ -366,9 +366,21 @@ const WEEKDAY_WORDS: Readonly<Record<string, string>> = {
  */
 export function parseWhenText(text: string, tz: string | undefined, now: number): ParsedWhen | undefined {
   const trimmed = text.trim()
-  if (/^\d{4}-\d{2}-\d{2}/u.test(trimmed)) {
-    const at = Date.parse(trimmed)
-    return Number.isNaN(at) ? undefined : { when: { kind: "at", at }, tz: zoneOf(tz), anchor: now }
+  const stamp = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?(Z|[+-]\d{2}:?\d{2})?$/u.exec(trimmed)
+  if (stamp !== null) {
+    const zone = zoneOf(tz)
+    const year = Number(stamp[1])
+    const month = Number(stamp[2])
+    const day = Number(stamp[3])
+    const hour = stamp[4] === undefined ? 0 : Number(stamp[4])
+    const minute = stamp[5] === undefined ? 0 : Number(stamp[5])
+    const second = stamp[6] === undefined ? 0 : Number(stamp[6])
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) return undefined
+    const at =
+      stamp[7] === undefined
+        ? zonedInstant({ year, month, day, hour, minute }, zone) + second * 1000
+        : Date.parse(trimmed)
+    return Number.isNaN(at) ? undefined : { when: { kind: "at", at }, tz: zone, anchor: now }
   }
   const timed = /^(.*?)(?: at (\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$/u.exec(trimmed.toLowerCase().replace(/\s+/gu, " "))
   if (timed === null) return undefined
@@ -377,8 +389,13 @@ export function parseWhenText(text: string, tz: string | undefined, now: number)
   if (clock === "invalid") return undefined
   const rule = ruleOfWords(body)
   if (rule === undefined) return undefined
-  const parts = [rule, ...(clock === undefined ? [] : [`BYHOUR=${clock.hour}`, `BYMINUTE=${clock.minute}`])]
-  return { when: { kind: "rrule", rrule: parts.join(";") }, tz: zoneOf(tz), anchor: now }
+  const clockParts =
+    clock === undefined
+      ? []
+      : rule.startsWith("FREQ=HOURLY")
+        ? [`BYMINUTE=${clock.minute}`]
+        : [`BYHOUR=${clock.hour}`, `BYMINUTE=${clock.minute}`]
+  return { when: { kind: "rrule", rrule: [rule, ...clockParts].join(";") }, tz: zoneOf(tz), anchor: now }
 }
 
 function clockOf(

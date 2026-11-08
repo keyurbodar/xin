@@ -253,6 +253,33 @@ describe("memory", () => {
     expect(outcome.afterDismiss).toMatchObject({ kind: "ok", result: { suggestions: [] } })
   })
 
+  it("reads the owner's message past a later thread report", async () => {
+    const stub = fresh()
+    const outcome = await runInDurableObject(stub, async (home: Home) => {
+      const root = await home.root()
+      await home.submit("Always sign job posts with the hiring team.", `suggest-own-${crypto.randomUUID()}`)
+      await home.harness.waitForIdle(context)
+      await root.submit(
+        {
+          type: "write",
+          requestId: `report-${crypto.randomUUID()}`,
+          entry: {
+            kind: "pi.user",
+            model: [
+              { role: "user", content: '<thread id="7">\nThe thread delivered.\n</thread>', timestamp: Date.now() },
+            ],
+          },
+        },
+        BACKGROUND_CONTEXT,
+      )
+      return run(home, "suggest-4", "memory.suggested", { conversationId: root.id })
+    })
+    expect(outcome).toMatchObject({
+      kind: "ok",
+      result: { suggestions: [{ text: "Always sign job posts with the hiring team." }] },
+    })
+  })
+
   it("does not suggest a rule the notes already hold", async () => {
     const stub = fresh()
     const outcome = await runInDurableObject(stub, async (home: Home) => {

@@ -6,7 +6,7 @@ import type { Notification } from "../../src/contracts/push.ts"
 import type { CommandId } from "../../src/ids.ts"
 import { eventually, field, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
-import { dueOf, SCHEDULE_TASK, type SchedulesPort, sendDue, slotKey, type StoredSchedule } from "./schedules.ts"
+import { dueOf, runsOf, SCHEDULE_TASK, type SchedulesPort, sendDue, slotKey, type StoredSchedule } from "./schedules.ts"
 
 type Row = {
   readonly kind: string
@@ -181,6 +181,30 @@ describe("schedules", () => {
       run(home, "r1-list-3", "schedule.list", { outcomes: true }),
     )
     expect(failed).toMatchObject({ result: { schedules: [{ runs: [{ outcome: "failed" }] }] } })
+  })
+
+  it("does not let a later run's failure mark an earlier run", async () => {
+    const outcomes = await runInDurableObject(fresh(), async (home: Home) => {
+      const root = await home.root()
+      let current = record({ kind: "this_session", conversationId: root.id })
+      const first = dueOf(current, ANCHOR + 1)
+      if (first === undefined) throw new Error("expected a due window")
+      current = await sendDue(ports(home), current, first, ANCHOR)
+      await root.submit({ type: "write", requestId: "r1-ok", entry: { kind: "pi.assistant" } }, BACKGROUND_CONTEXT)
+      const second = dueOf(current, ANCHOR + HOUR + 1)
+      if (second === undefined) throw new Error("expected a second due window")
+      current = await sendDue(ports(home), current, second, ANCHOR + HOUR)
+      await root.submit(
+        {
+          type: "write",
+          requestId: "r2-bad",
+          entry: { kind: "xin.error", data: { taskId: 2, reason: "model_error", error: "boom" } },
+        },
+        BACKGROUND_CONTEXT,
+      )
+      return (await runsOf(ports(home), current, new Map())).map((entry) => entry.outcome)
+    })
+    expect(outcomes).toEqual(["done", "failed"])
   })
 
   it("keeps at most six runs on a record", async () => {

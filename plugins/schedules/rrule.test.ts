@@ -20,6 +20,11 @@ describe("plain words", () => {
       rrule: "FREQ=WEEKLY;BYDAY=MO,TH;BYHOUR=8;BYMINUTE=0",
     })
     expect(when("2026-12-01T10:00:00Z")).toEqual({ kind: "at", at: Date.parse("2026-12-01T10:00:00Z") })
+    expect(parseWhenText("2026-11-09 09:00", "America/Chicago", now)?.when).toEqual({
+      kind: "at",
+      at: Date.parse("2026-11-09T15:00:00Z"),
+    })
+    expect(when("every 2 hours at 5pm")).toEqual({ kind: "rrule", rrule: "FREQ=HOURLY;INTERVAL=2;BYMINUTE=0" })
     expect(when("do the thing")).toBeUndefined()
   })
 })

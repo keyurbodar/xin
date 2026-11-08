@@ -6,7 +6,7 @@ import { Button } from "../ui/button.tsx"
 
 type Target = "this_session" | "new_once" | "new"
 
-type Parsed = { readonly rrule?: string; readonly at?: string; readonly next: readonly string[] }
+type Parsed = { readonly rrule?: string; readonly at?: string; readonly tz: string; readonly next: readonly string[] }
 
 /** Schedules are normally created by the agent; this is the owner's way in when there is no conversation to ask in. */
 export function CreateSchedule(props: { open: boolean; onClose: () => void; onCreated: () => void }): JSX.Element {
@@ -64,6 +64,7 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
         title: title(),
         prompt: prompt(),
         target: target(),
+        tz: schedule.tz,
         ...(schedule.rrule === undefined ? {} : { rrule: schedule.rrule }),
         ...(schedule.at === undefined ? {} : { at: Date.parse(schedule.at) }),
       })
@@ -80,13 +81,19 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
 
   const summary = (schedule: Parsed): string => {
     if (schedule.rrule !== undefined) return describeRule(schedule.rrule)
-    return schedule.at === undefined ? "once" : new Date(schedule.at).toLocaleString()
+    return schedule.at === undefined
+      ? "once"
+      : new Date(schedule.at).toLocaleString(undefined, { timeZone: schedule.tz })
   }
 
   const preview = (schedule: Parsed): string =>
     schedule.next.length === 0
       ? "no future run"
-      : `next ${schedule.next.map((slot) => new Date(slot).toLocaleDateString(undefined, { day: "numeric", month: "short" })).join(", ")}`
+      : `next ${schedule.next
+          .map((slot) =>
+            new Date(slot).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: schedule.tz }),
+          )
+          .join(", ")}`
 
   return (
     <Show when={props.open}>
