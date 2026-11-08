@@ -1,0 +1,12 @@
+{
+  // The Workers Free plan rejects limits.cpu_ms, so this copy omits it.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xin",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "define": { "import.meta.url": "\"file:///bundle/index.js\"" },
+  "durable_objects": { "bindings": [{ "name": "HOME", "class_name": "Home" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Home"] }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "xin-files" }]
+}

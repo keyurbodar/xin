@@ -2,6 +2,8 @@
 
 This section decides how the first-party web client is built and what it talks to. The client is a SolidJS app in `web/`, a separate package from the Worker so the backend gate never compiles it.
 
+**Hosting.** A deploy serves `web/dist` from the Worker's own origin as static assets, so the client, `/v1`, `/files` and the socket share one origin and no request crosses it. The assets arrive on the deploy command (`wrangler deploy --assets ./web/dist`), not in `wrangler.jsonc`, because the gate's `bundle` step runs on machines where `web/dist` does not exist.
+
 **Design source.** Structure, sizing, density and motion follow kiko's web client (`/home/keyur/kiko/apps/web-solid`); colour and the composition of controls follow `app.lighter.xyz`. The Doop canvas `fTzMMHDuiN` still defines which screens and controls exist, but its Factory palette and square geometry no longer apply. kiko is a reference for composition only: no kiko code, data or copy is imported. The tokens live in `web/src/styles/app.css`; a hex or oklch value exists once, in that block. A rule the screens keep:
 
 - **White is the primary action.** A primary button is `ink` on `fg`, like lighter's connect button. It is never coloured.

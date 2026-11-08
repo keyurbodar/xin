@@ -98,5 +98,5 @@ The host is about 120 lines. Feature code lives in plugins, and the host never b
 | --- | --- |
 | A DO is single-threaded, and storage calls inside one turn of the event loop are atomic | The gateway's claim can't race. We still use `UPDATE…RETURNING` so the claim is one statement that survives a crash. |
 | Eviction or deploy during an LLM stream | pi counts it as a failed attempt and retries. The UI sees the partial text reset. The prompt cache makes the retry cheap. |
-| CPU limit per event (default 30 s) | Set `limits.cpu_ms` to 300000 in wrangler. Streaming JSON parse is light, but compaction plus big tool outputs can spike. |
+| CPU limit per event (default 30 s) | Set `limits.cpu_ms` to 300000 in wrangler. Streaming JSON parse is light, but compaction plus big tool outputs can spike. The Workers Free plan rejects that key, so `wrangler.free.jsonc` is the same config without it and a free-plan deploy uses `wrangler deploy -c wrangler.free.jsonc --assets ./web/dist`. |
 | Subrequest cap per invocation | **Risk to verify in M0.** Long multi-thread work runs inside whichever event woke the DO. Kiko hit this. The test: 10 threads × 30 tool calls on one wake. If it trips, the fix is to slice work across alarm invocations (pi's retry handles the split). |
