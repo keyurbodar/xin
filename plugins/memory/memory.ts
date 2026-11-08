@@ -1,7 +1,7 @@
 import type { SqliteExecutor } from "@earendil-works/chord/sqlite"
 import { defineExtension, type Extension } from "@earendil-works/pi-durable"
 import { bool, int, obj, opt, str } from "@earendil-works/pi-schema"
-import type { MemoryService, Note } from "../../src/contracts/memory.ts"
+import type { ListedNote, MemoryService, Note } from "../../src/contracts/memory.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
   appendNote,
@@ -73,16 +73,29 @@ export function create(ports: MemoryPorts): MemoryPlugin {
 function forget(ports: MemoryPorts): Op {
   return defineOp({
     name: "memory.forget",
-    args: obj({ query: str({ minLength: 1, maxLength: 200 }) }),
+    args: obj({ query: opt(str({ minLength: 1, maxLength: 200 })), id: opt(int({ minimum: 1 })) }),
     actors: ["owner"],
     run: async (_api, args) => {
-      const tokens = tokenize(args.query)
+      if ((args.query === undefined) === (args.id === undefined))
+        throw new OpRejected("bad_args", "give one note id or one query")
+      const { id, query } = args
+      if (id !== undefined) {
+        const retired = await ports.db.runCounted(
+          "UPDATE notes SET retired_by = ? WHERE id = ? AND retired_by IS NULL",
+          OWNER_RETIREMENT,
+          id,
+        )
+        await requestPass(ports, Date.now())
+        return { retired }
+      }
+      if (query === undefined) throw new OpRejected("bad_args", "give one note id or one query")
+      const tokens = tokenize(query)
       const retired =
         tokens.length === 0
           ? await ports.db.runCounted(
               "UPDATE notes SET retired_by = ? WHERE retired_by IS NULL AND instr(lower(text), lower(?)) > 0",
               OWNER_RETIREMENT,
-              args.query,
+              query,
             )
           : await ports.db.runCounted(
               `UPDATE notes SET retired_by = ? WHERE retired_by IS NULL AND id IN (
@@ -107,7 +120,7 @@ type NoteRow = {
   readonly pinned: number
 }
 
-const noteOf = (row: NoteRow): Note => ({
+const noteOf = (row: NoteRow): ListedNote => ({
   id: row.id,
   scope: row.scope,
   text: row.text,
@@ -132,6 +145,7 @@ function add(ports: MemoryPorts): Op {
         originTask: `owner:${api.commandId}`,
         at: Date.now(),
       })
+      await requestPass(ports, Date.now())
       return { text, scope }
     },
   })
@@ -163,11 +177,12 @@ function edit(ports: MemoryPorts): Op {
       const text = args.text.trim()
       if (text === "") throw new OpRejected("bad_args", "a note needs text")
       const changed = await ports.db.runCounted(
-        "UPDATE notes SET text = ? WHERE id = ? AND retired_by IS NULL",
+        "UPDATE notes SET text = ?, dirty = 1 WHERE id = ? AND retired_by IS NULL",
         text,
         args.id,
       )
       if (changed === 0) throw new OpRejected("bad_args", `no note ${args.id}`)
+      await requestPass(ports, Date.now())
       return { id: args.id, text }
     },
   })

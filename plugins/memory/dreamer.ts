@@ -195,12 +195,12 @@ async function runPass(
   const requested = await readKv(ports.db, DUE_KEY)
   const cursor = (await readNumber(ports.db, CURSOR_KEY)) ?? 0
   const notes = await ports.db.all<NoteRow>(
-    "SELECT id, scope, text, at FROM notes WHERE id > ? AND retired_by IS NULL ORDER BY id ASC LIMIT ?",
+    "SELECT id, scope, text, at FROM notes WHERE retired_by IS NULL AND (id > ? OR dirty = 1) ORDER BY id ASC LIMIT ?",
     cursor,
     NOTES_LIMIT,
   )
   const included = withinBudget(notes)
-  const end = included.at(-1)?.id ?? cursor
+  const end = Math.max(cursor, included.at(-1)?.id ?? cursor)
   const transcriptCursor = (await readNumber(ports.db, TRANSCRIPT_CURSOR_KEY)) ?? 0
   const transcripts = await readTranscript(ports.harness, taskId, transcriptCursor, ctx, DREAMER_TASK)
   const model = await chooseModel(ports, runtime, ctx)
@@ -209,7 +209,7 @@ async function runPass(
     await writeKv(ports.db, RETRY_KEY, String(runtime.now() + RETRY_MS))
     return
   }
-  await apply(ports.db, taskId, output, end, transcripts.end, requested)
+  await apply(ports.db, taskId, output, included, end, transcripts.end, requested)
 }
 
 function withinBudget(notes: readonly NoteRow[]): readonly NoteRow[] {
@@ -289,6 +289,7 @@ async function apply(
   db: SqliteDatabase,
   taskId: TaskId,
   output: DreamerOutput,
+  included: readonly NoteRow[],
   end: number,
   transcriptEnd: number,
   requested: string | undefined,
@@ -305,6 +306,11 @@ async function apply(
       })
     for (const id of output.retire)
       await tx.run("UPDATE notes SET retired_by = ? WHERE id = ? AND retired_by IS NULL", taskId, id)
+    if (included.length > 0)
+      await tx.run(
+        `UPDATE notes SET dirty = 0 WHERE id IN (${included.map(() => "?").join(", ")})`,
+        ...included.map((note) => note.id),
+      )
     await writeKv(tx, PROFILE_KEY, output.profile_md)
     await writeKv(tx, CURSOR_KEY, String(end))
     await writeKv(tx, TRANSCRIPT_CURSOR_KEY, String(transcriptEnd))

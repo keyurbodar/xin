@@ -58,6 +58,10 @@ export const HOST_MIGRATIONS: readonly SqliteMigration[] = [
        END`,
     ],
   },
+  {
+    version: 9,
+    statements: ["ALTER TABLE notes ADD COLUMN dirty INTEGER NOT NULL DEFAULT 0"],
+  },
 ]
 
 export function migrate(db: SqliteDatabase): Promise<void> {

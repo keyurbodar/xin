@@ -3,8 +3,12 @@ export type Note = {
   readonly scope: string
   readonly text: string
   readonly at: number
-  readonly source?: string
-  readonly pinned?: boolean
+}
+
+/** What `memory.list` answers: a note plus where it came from and whether the owner pinned it. */
+export type ListedNote = Note & {
+  readonly source: string
+  readonly pinned: boolean
 }
 
 export type NoteDraft = {

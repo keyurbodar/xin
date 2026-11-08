@@ -168,18 +168,19 @@ describe("memory", () => {
       if (first === undefined || second === undefined) throw new Error("seed notes missing")
       return {
         pinned: await run(home, "pin-1", "memory.pin", { id: second.id, pinned: true }),
-        edited: await run(home, "edit-1", "memory.edit", { id: first.id, text: "  Runs at dawn, every day  " }),
+        edited: await run(home, "edit-1", "memory.edit", { id: first.id, text: "  Wakes before six  " }),
         missing: await run(home, "pin-2", "memory.pin", { id: 9999, pinned: true }),
         blank: await run(home, "edit-2", "memory.edit", { id: first.id, text: "   " }),
         added: await run(home, "add-1", "memory.add", { text: "  Prefers short replies  " }),
         listed: await run(home, "list-1", "memory.list", {}),
-        found: (await searchNotes(home.db, "every day", ["me"], at)).map((note) => note.text),
+        found: (await searchNotes(home.db, "wakes", ["me"], at)).map((note) => note.text),
+        stale: await searchNotes(home.db, "dawn", ["me"], at),
         first: first.id,
       }
     })
 
     expect(outcome.pinned).toMatchObject({ kind: "ok", result: { pinned: true } })
-    expect(outcome.edited).toMatchObject({ kind: "ok", result: { text: "Runs at dawn, every day" } })
+    expect(outcome.edited).toMatchObject({ kind: "ok", result: { text: "Wakes before six" } })
     expect(outcome.missing).toMatchObject({ kind: "rejected", code: "bad_args" })
     expect(outcome.blank).toMatchObject({ kind: "rejected", code: "bad_args" })
     expect(outcome.added).toMatchObject({ kind: "ok", result: { text: "Prefers short replies", scope: "me" } })
@@ -189,11 +190,40 @@ describe("memory", () => {
         notes: [
           { text: "Uses oxfmt", pinned: true, source: "remember" },
           { text: "Prefers short replies", pinned: false },
-          { text: "Runs at dawn, every day", pinned: false },
+          { text: "Wakes before six", pinned: false },
         ],
       },
     })
-    expect(outcome.found).toEqual(["Runs at dawn, every day"])
+    expect(outcome.found).toEqual(["Wakes before six"])
+    expect(outcome.stale).toEqual([])
+  })
+
+  it("forgets exactly one note by id, even one longer than a query may be", async () => {
+    const stub = fresh()
+    const outcome = await runInDurableObject(stub, async (home: Home) => {
+      const draft = { source: "remember", originTask: "seed", at: Date.now() }
+      await appendNote(home.db, { ...draft, text: "Prefers short replies", scope: "me" })
+      await appendNote(home.db, { ...draft, text: "Prefers short replies in email", scope: "me" })
+      const long = `Covers the whole hiring loop: ${"detail ".repeat(50)}`
+      await appendNote(home.db, { ...draft, text: long, scope: "me" })
+      const stored = await notes(home)
+      const [first, second, third] = stored
+      if (first === undefined || second === undefined || third === undefined) throw new Error("seed notes missing")
+      return {
+        first: await run(home, "forget-1", "memory.forget", { id: first.id }),
+        long: await run(home, "forget-2", "memory.forget", { id: third.id }),
+        both: await run(home, "forget-3", "memory.forget", { id: second.id, query: "replies" }),
+        neither: await run(home, "forget-4", "memory.forget", {}),
+        retired: (await notes(home)).map((note) => note.retired_by === null),
+        second: second.id,
+      }
+    })
+
+    expect(outcome.first).toMatchObject({ kind: "ok", result: { retired: 1 } })
+    expect(outcome.long).toMatchObject({ kind: "ok", result: { retired: 1 } })
+    expect(outcome.both).toMatchObject({ kind: "rejected", code: "bad_args" })
+    expect(outcome.neither).toMatchObject({ kind: "rejected", code: "bad_args" })
+    expect(outcome.retired).toEqual([false, true, false])
   })
 
   it("writes the profile the pane reads, exactly, and clears it with whitespace", async () => {

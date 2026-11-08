@@ -163,6 +163,30 @@ describe("Dreamer output", () => {
     await eventually(stub, async (home: Home) => (await readNumber(home.db, CURSOR_KEY)) === 7)
   })
 
+  it("re-sends a note the owner edited after the cursor passed it", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, (home: Home) => seed(home))
+    script([dreamJson({ profile_md: "The owner takes the train.", add: [], retire: [] })])
+    await runInDurableObject(stub, (home: Home) => run(home, "d7-edit-1", "memory.forget", { query: "dinosaur" }))
+    await eventually(stub, async (home: Home) => (await readNumber(home.db, CURSOR_KEY)) === 1)
+
+    script([dreamJson({ profile_md: "The owner cycles to work.", add: [], retire: [] })])
+    await runInDurableObject(stub, (home: Home) =>
+      run(home, "d7-edit-2", "memory.edit", { id: 1, text: "The owner now cycles to work" }),
+    )
+    await runInDurableObject(stub, (home: Home) => run(home, "d7-edit-3", "memory.forget", { query: "dinosaur" }))
+    await eventually(stub, async (home: Home) => (await readKv(home.db, PROFILE_KEY)) === "The owner cycles to work.")
+
+    const text = requestText(0)
+    const notes = text.slice(text.indexOf("<notes>"), text.indexOf("</notes>"))
+    expect(notes).toContain("cycles to work")
+    expect(notes).not.toContain("train")
+    const note = await runInDurableObject(stub, (home: Home) =>
+      home.db.get<{ dirty: number }>("SELECT dirty FROM notes WHERE id = 1"),
+    )
+    expect(note?.dirty).toBe(0)
+  })
+
   it("reads conversation transcripts written since the last pass, once", async () => {
     const stub = fresh()
     await runInDurableObject(stub, (home: Home) => chat(home))
