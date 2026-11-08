@@ -56,6 +56,7 @@ type Schedule = {
   readonly active: boolean
   readonly nextAt: string | null
   readonly updatedAt: string
+  readonly lastDelivery?: { readonly scheduledAt: string; readonly deliveredAt: string }
 }
 
 function errorMessage(failure: unknown): string {
@@ -311,7 +312,12 @@ function SchedulesTab(): JSX.Element {
                       <Icon name="refresh" size={12} />
                       <span class="truncate">{ruleOf(schedule)}</span>
                     </div>
-                    <div class="font-mono text-[10.5px] text-fg-4">next {nextRun(schedule.nextAt)}</div>
+                    <div class="flex items-center gap-2 font-mono text-[10.5px] text-fg-4">
+                      <span>next {nextRun(schedule.nextAt)}</span>
+                      <Show when={schedule.lastDelivery}>
+                        {(last) => <span>· last ran {ago(Date.parse(last().deliveredAt))}</span>}
+                      </Show>
+                    </div>
                   </div>
                 )}
               </For>
