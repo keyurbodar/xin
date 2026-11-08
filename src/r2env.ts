@@ -21,6 +21,14 @@ import {
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const CHUNK = 64 * 1024
+const MAX_REVISIONS = 5
+
+export type FileRevision = {
+  readonly sha256: string
+  readonly size: number
+  readonly type: string
+  readonly at: number
+}
 
 export type FileRow = {
   readonly path: string
@@ -132,11 +140,16 @@ export class FileIndex {
   }
 
   async referenced(r2Key: string): Promise<boolean> {
-    const row = await this.db.get<{ n: number }>("SELECT 1 AS n FROM files WHERE r2_key = ? LIMIT 1", r2Key)
+    const row = await this.db.get<{ n: number }>(
+      "SELECT 1 AS n FROM files WHERE r2_key = ? UNION ALL SELECT 1 FROM file_revisions WHERE sha256 = ? LIMIT 1",
+      r2Key,
+      r2Key.slice(r2Key.indexOf("/") + 1),
+    )
     return row !== undefined
   }
 
   async upsert(entry: FileWrite): Promise<FileRow> {
+    const previous = await this.row(entry.path)
     const row = await this.db.get<FileRow>(
       `INSERT INTO files (path, r2_key, size, type, sha256, project, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET r2_key = excluded.r2_key, size = excluded.size, type = excluded.type, sha256 = excluded.sha256, project = excluded.project, updated_at = excluded.updated_at RETURNING ${ROW_COLUMNS}`,
       entry.path,
@@ -148,7 +161,32 @@ export class FileIndex {
       Date.now(),
     )
     if (row === undefined) throw new Error("files upsert returned no row")
+    if (previous !== undefined && previous.sha256 !== entry.sha256) await this.addRevision(previous)
     return row
+  }
+
+  revisions(path: string): Promise<FileRevision[]> {
+    return this.db.all<FileRevision>(
+      "SELECT sha256, size, type, at FROM file_revisions WHERE path = ? ORDER BY at DESC",
+      path,
+    )
+  }
+
+  private async addRevision(row: FileRow): Promise<void> {
+    await this.db.run(
+      "INSERT OR REPLACE INTO file_revisions (path, sha256, size, type, at) VALUES (?, ?, ?, ?, ?)",
+      row.path,
+      row.sha256,
+      row.size,
+      row.type,
+      row.updated_at,
+    )
+    await this.db.run(
+      "DELETE FROM file_revisions WHERE path = ? AND at NOT IN (SELECT at FROM file_revisions WHERE path = ? ORDER BY at DESC LIMIT ?)",
+      row.path,
+      row.path,
+      MAX_REVISIONS,
+    )
   }
 
   async drop(path: string): Promise<boolean> {

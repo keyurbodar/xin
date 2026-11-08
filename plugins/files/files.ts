@@ -147,7 +147,38 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
       const entry = await files.stat(target)
       if (entry === undefined) throw new OpRejected("bad_args", `no file ${target}`)
       const text = PREVIEWABLE.test(entry.type) ? await files.read(target) : undefined
-      return { ...entry, text: text ?? null }
+      const revisions = await index.revisions(target)
+      return { ...entry, text: text ?? null, versions: revisions.length + 1 }
+    },
+  })
+
+  const revision = defineOp({
+    name: "file.revision",
+    args: obj({ path: str({ minLength: 1 }), sha256: str({ minLength: 64, maxLength: 64 }) }),
+    actors: ["owner", "agent", "plugin"],
+    run: async ({ actor }, { path, sha256 }) => {
+      const target = normalizePath("/", path)
+      if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
+      const blocked = scope({ actor, path: target })
+      if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
+      const found = (await index.revisions(target)).find((candidate) => candidate.sha256 === sha256)
+      if (found === undefined) throw new OpRejected("bad_args", `no revision of ${target}`)
+      const object = await deps.env.FILES.get(blobKey(sha256))
+      const text = object === null || !PREVIEWABLE.test(found.type) ? null : await object.text()
+      return { path: target, ...found, text }
+    },
+  })
+
+  const revisions = defineOp({
+    name: "file.revisions",
+    args: obj({ path: str({ minLength: 1 }) }),
+    actors: ["owner", "agent", "plugin"],
+    run: async ({ actor }, { path }) => {
+      const target = normalizePath("/", path)
+      if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
+      const blocked = scope({ actor, path: target })
+      if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
+      return { path: target, revisions: await index.revisions(target) }
     },
   })
 
@@ -207,7 +238,7 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
   return {
     service: files,
     scope: scoped(scope),
-    ops: [list, remove, put, read],
+    ops: [list, remove, put, read, revision, revisions],
     commit,
     start: () =>
       deps.db.run(

@@ -1,4 +1,5 @@
 import { For, Show, createSignal, type JSX } from "solid-js"
+import { takePendingDraft } from "../../lib/draft.ts"
 import { MAX_UPLOAD_BYTES, type UploadedFile } from "../../lib/api.ts"
 import type { ModelInfo, ModelRef } from "../../state/settings.ts"
 import { FileChip } from "../ui/file-chip.tsx"
@@ -111,7 +112,7 @@ export function Composer(props: {
   onStop: () => Promise<void>
   onAttach?: ((file: File, onProgress?: (fraction: number) => void) => Promise<UploadedFile>) | undefined
 }): JSX.Element {
-  const [draft, setDraft] = createSignal("")
+  const [draft, setDraft] = createSignal(takePendingDraft() ?? "")
   const { sending, send } = useSender(props.onSend, () => false)
   const [files, setFiles] = createSignal<readonly UploadedFile[]>([])
   const [pending, setPending] = createSignal<readonly PendingUpload[]>([])

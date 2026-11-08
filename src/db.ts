@@ -38,6 +38,13 @@ export const HOST_MIGRATIONS: readonly SqliteMigration[] = [
       "CREATE TABLE market_history (package TEXT NOT NULL, version TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (package, version))",
     ],
   },
+  {
+    version: 6,
+    statements: [
+      "CREATE TABLE file_revisions (path TEXT NOT NULL, sha256 TEXT NOT NULL, size INTEGER NOT NULL, type TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (path, sha256))",
+      "CREATE INDEX file_revisions_sha ON file_revisions (sha256)",
+    ],
+  },
 ]
 
 export function migrate(db: SqliteDatabase): Promise<void> {

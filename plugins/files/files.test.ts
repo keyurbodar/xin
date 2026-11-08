@@ -3,7 +3,7 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { env } from "cloudflare:workers"
 import { describe, expect, it } from "vitest"
-import { api, owner } from "../../test/support.ts"
+import { api, field, owner } from "../../test/support.ts"
 import { M4_MODEL } from "../../test/plugins/m4.ts"
 import { type Home } from "../../test/worker.ts"
 import { sweep } from "./files.ts"
@@ -193,6 +193,25 @@ describe("files", () => {
 
     const missing = await run("read-2", "file.read", { path: "/projects/m4/nowhere.md" }, { kind: "owner" })
     expect(missing).toMatchObject({ kind: "rejected", code: "bad_args" })
+  })
+
+  it("keeps the version it replaced and hands it back by hash", async () => {
+    const path = `/projects/m4/revision-${crypto.randomUUID()}.md`
+    expect((await put(path, "first pass", { "content-type": "text/markdown" })).status).toBe(200)
+    expect((await put(path, "second pass", { "content-type": "text/markdown" })).status).toBe(200)
+
+    const current = await run("rev-1", "file.read", { path }, { kind: "owner" })
+    expect(current).toMatchObject({ kind: "ok", result: { text: "second pass", versions: 2 } })
+
+    const listed = await run("rev-2", "file.revisions", { path }, { kind: "owner" })
+    const rows = field(listed, "result")
+    const revisions = rows === undefined ? undefined : field(rows, "revisions")
+    const first = Array.isArray(revisions) ? revisions[0] : undefined
+    const sha = typeof first === "object" && first !== null ? field(first, "sha256") : undefined
+    if (typeof sha !== "string") throw new Error("no revision recorded")
+
+    const older = await run("rev-3", "file.revision", { path, sha256: sha }, { kind: "owner" })
+    expect(older).toMatchObject({ kind: "ok", result: { text: "first pass", sha256: sha } })
   })
 
   it("sweeps unreferenced blobs and staging objects past the grace window and keeps referenced ones", async () => {
