@@ -126,7 +126,7 @@ export function Transcript(props: {
       }}
       class="min-h-0 flex-1 overflow-y-auto"
     >
-      <div class="mx-auto flex w-full max-w-[760px] flex-col gap-[18px] px-6 pb-6 pt-7">
+      <div class="mx-auto flex w-full max-w-[720px] flex-col gap-[18px] px-6 pb-6 pt-7">
         <Show when={props.hasOlder}>
           <div class="flex flex-col items-center gap-2 pb-1">
             <button
@@ -198,7 +198,7 @@ export function Transcript(props: {
 
 export function TranscriptSkeleton(): JSX.Element {
   return (
-    <div class="mx-auto flex w-full max-w-[760px] flex-col gap-[18px] px-6 pb-6 pt-7">
+    <div class="mx-auto flex w-full max-w-[720px] flex-col gap-[18px] px-6 pb-6 pt-7">
       <div class="flex justify-end">
         <div class="h-11 w-[340px] rounded-[4px] border border-line-inner bg-hover" />
       </div>

@@ -53,7 +53,7 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
           <div class="mt-6 flex flex-col gap-1.5">
             <span class="text-[12px] font-medium text-fg-2">Owner token</span>
             <div
-              class="flex h-10 items-center gap-2 rounded-[2px] border bg-surface px-3 transition-none focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]"
+              class="flex h-10 items-center gap-2 rounded-[2px] border bg-surface px-3 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]"
               classList={{ "border-bad": error() !== undefined && !busy(), "border-line-inner": error() === undefined || busy() }}
             >
               <input
@@ -73,7 +73,7 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
               <button
                 type="button"
                 onClick={() => setRevealed((shown) => !shown)}
-                class="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-3 transition-none hover:text-fg"
+                class="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-3 hover:text-fg"
               >
                 {revealed() ? "Hide" : "Show"}
               </button>
@@ -91,7 +91,7 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
             type="submit"
             disabled={busy() || value().trim() === ""}
             aria-busy={busy()}
-            class="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[2px] bg-accent text-[14px] font-medium text-ink transition-none enabled:hover:bg-accent disabled:opacity-40"
+            class="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[2px] bg-accent text-[14px] font-medium text-ink enabled:hover:bg-accent disabled:opacity-40"
           >
             {busy() ? (
               <>

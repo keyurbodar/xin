@@ -71,7 +71,7 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
         </span>
         <button
           type="button"
-          class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 transition-none hover:border-line-strong hover:text-fg"
+          class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg"
           onClick={() => navigate("/schedules")}
         >
           New
@@ -117,7 +117,7 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
                                 type="button"
                                 aria-label={`Run ${run.deliveredAt}: ${run.outcome}`}
                                 title={`${new Date(run.deliveredAt).toLocaleString()} · ${run.outcome}`}
-                                class="h-2 w-2 shrink-0 rounded-[1px] transition-none hover:opacity-75"
+                                class="h-2 w-2 shrink-0 rounded-[1px] hover:opacity-75"
                                 classList={{
                                   "bg-ok": run.outcome === "done",
                                   "bg-bad": run.outcome === "failed",

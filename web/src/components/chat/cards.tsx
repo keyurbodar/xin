@@ -58,13 +58,15 @@ export function ThreadRow(props: {
   role: string
   onClick?: () => void
   flush?: boolean
+  index?: number
 }): JSX.Element {
   const state = (): VisualState => (props.thread === undefined ? "queued" : visualState(props.thread.status))
   return (
     <button
       type="button"
       onClick={() => props.onClick?.()}
-      class="flex w-full items-start gap-2.5 bg-raised px-2.5 py-2 text-left transition-none hover:bg-hover disabled:cursor-default"
+      style={{ "animation-delay": `${Math.min(props.index ?? 0, 5) * 40}ms` }}
+      class="row-in flex w-full items-start gap-2.5 bg-raised px-2.5 py-2 text-left hover:bg-hover disabled:cursor-default"
       classList={{
         "border-b border-line last:border-b-0": props.flush === true,
         "border border-accent-line": props.flush !== true && state() === "waiting",
@@ -148,9 +150,10 @@ export function ThreadFan(props: {
           <span class="mono-meta">{tally()}</span>
         </div>
         <For each={rows()}>
-          {(row) => (
+          {(row, index) => (
             <ThreadRow
               flush
+              index={index()}
               thread={row.thread}
               title={row.title}
               role={row.role}
@@ -175,7 +178,7 @@ export function ReportCard(props: { row: BatchRow; onOpenThread: (id: number) =>
   const long = (): boolean => props.row.text.length > 320
 
   return (
-    <div class="max-w-[560px] overflow-hidden rounded-[4px] border border-line-inner bg-raised">
+    <div class="card-in max-w-[560px] overflow-hidden rounded-[4px] border border-line-inner bg-raised">
       <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5">
         <StatusGlyph state={state()} size={16} />
         <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{props.row.title}</span>
@@ -368,7 +371,7 @@ export function OpenQuestionCard(props: {
               type="button"
               disabled={sending()}
               onClick={() => void submit(option)}
-              class="flex items-center gap-2.5 rounded-[2px] border border-line-inner bg-surface px-3 py-2 text-left transition-none hover:border-line-strong hover:bg-hover disabled:opacity-60"
+              class="flex items-center gap-2.5 rounded-[2px] border border-line-inner bg-surface px-3 py-2 text-left hover:border-line-strong hover:bg-hover disabled:opacity-60"
             >
               <span class="w-3 font-mono text-[10px] text-fg-4">{index() + 1}</span>
               <span class="min-w-0 flex-1 text-[13px] text-fg">{option}</span>

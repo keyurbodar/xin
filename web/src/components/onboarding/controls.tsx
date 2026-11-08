@@ -81,7 +81,7 @@ export function TextInput(props: {
   trailing?: JSX.Element
 }): JSX.Element {
   return (
-    <div class="flex h-10 items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-3 transition-none focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]">
+    <div class="flex h-10 items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-3 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]">
       {props.leading}
       <input
         type={props.type ?? "text"}
@@ -121,7 +121,7 @@ export function TextArea(props: {
       rows={props.rows ?? 3}
       spellcheck={false}
       aria-label={props.ariaLabel}
-      class="min-h-[84px] w-full resize-none rounded-[2px] border border-line-inner bg-surface px-3 py-2.5 text-[13.5px] leading-[1.55] text-fg placeholder:text-fg-4 transition-none focus:border-accent focus:shadow-[0_0_0_3px_rgba(255,90,0,0.18)] focus:outline-none"
+      class="min-h-[84px] w-full resize-none rounded-[2px] border border-line-inner bg-surface px-3 py-2.5 text-[13.5px] leading-[1.55] text-fg placeholder:text-fg-4 focus:border-accent focus:shadow-[0_0_0_3px_rgba(255,90,0,0.18)] focus:outline-none"
     />
   )
 }

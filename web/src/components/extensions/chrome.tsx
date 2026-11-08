@@ -70,11 +70,11 @@ export function Toggle(props: {
       aria-label={props.label}
       disabled={props.disabled === true}
       onClick={() => props.onChange(!props.on)}
-      class="relative h-4 w-7 shrink-0 rounded-[2px] transition-none disabled:opacity-40"
+      class="knob relative h-4 w-7 shrink-0 rounded-[2px] disabled:opacity-40"
       classList={{ "bg-fg": props.on, "bg-line-inner": !props.on }}
     >
       <span
-        class="absolute top-0.5 h-3 w-3 rounded-[1px] bg-page"
+        class="knob absolute top-0.5 h-3 w-3 rounded-[1px] bg-page"
         classList={{ "left-3.5": props.on, "left-0.5 bg-fg-3": !props.on }}
       />
     </button>

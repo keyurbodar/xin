@@ -89,7 +89,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
         </span>
         <button
           type="button"
-          class="flex shrink-0 items-center gap-1.5 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 transition-none hover:border-line-strong hover:text-fg"
+          class="flex shrink-0 items-center gap-1.5 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg"
           onClick={() => setAdding((open) => !open)}
         >
           <Icon name="plus" size={13} />
@@ -114,7 +114,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
             <button
               type="button"
               disabled={action.busy() === "new" || fresh().trim() === ""}
-              class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 transition-none hover:border-line-strong hover:text-fg disabled:opacity-50"
+              class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 hover:border-line-strong hover:text-fg disabled:opacity-50"
               onClick={() => void add()}
             >
               Remember
@@ -142,14 +142,14 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
               <button
                 type="button"
                 disabled={action.busy() === "new"}
-                class="rounded-[2px] border border-accent bg-accent px-2 py-1 text-[11.5px] font-medium text-ink transition-none hover:opacity-90 disabled:opacity-50"
+                class="rounded-[2px] border border-accent bg-accent px-2 py-1 text-[11.5px] font-medium text-ink hover:opacity-90 disabled:opacity-50"
                 onClick={() => void remember(suggestion)}
               >
                 Remember
               </button>
               <button
                 type="button"
-                class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 transition-none hover:border-line-strong hover:text-fg"
+                class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 hover:border-line-strong hover:text-fg"
                 onClick={() => {
                   setFresh(suggestion.text)
                   setAdding(true)
@@ -159,7 +159,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
               </button>
               <button
                 type="button"
-                class="rounded-[2px] px-2 py-1 text-[11.5px] text-fg-3 transition-none hover:text-fg-2"
+                class="rounded-[2px] px-2 py-1 text-[11.5px] text-fg-3 hover:text-fg-2"
                 onClick={() => void dismiss(suggestion)}
               >
                 Dismiss
@@ -197,7 +197,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
                           <button
                             type="button"
                             disabled={action.busy() === note.id}
-                            class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 transition-none hover:border-line-strong hover:text-fg disabled:opacity-50"
+                            class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 hover:border-line-strong hover:text-fg disabled:opacity-50"
                             onClick={() => void save(note)}
                           >
                             Save
@@ -227,7 +227,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
                       </span>
                     </div>
                     <Show when={editing() !== note.id}>
-                      <div class="mt-0.5 flex shrink-0 items-center opacity-0 transition-none group-hover:opacity-100 focus-within:opacity-100">
+                      <div class="mt-0.5 flex shrink-0 items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                         <button
                           type="button"
                           aria-label={note.pinned ? "Unpin this" : "Pin this"}

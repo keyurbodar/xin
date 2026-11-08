@@ -128,7 +128,7 @@ export function ProviderStep(): JSX.Element {
                   setChoice(item.id)
                   touch()
                 }}
-                class="flex flex-col gap-1.5 rounded-[2px] border p-3 text-left transition-none"
+                class="flex flex-col gap-1.5 rounded-[2px] border p-3 text-left"
                 classList={{
                   "border-fg bg-selected": choice() === item.id,
                   "border-line-inner bg-surface hover:border-line-strong": choice() !== item.id,
@@ -185,7 +185,7 @@ export function ProviderStep(): JSX.Element {
         </Show>
 
         <Field label="API key" hint="Stored encrypted on this instance. Only the coordinator and threads use it.">
-          <div class="flex h-10 items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-3 transition-none focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]">
+          <div class="flex h-10 items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-3 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]">
             <Icon name="key" size={14} class="shrink-0 text-fg-3" />
             <input
               type="password"
@@ -221,7 +221,7 @@ export function ProviderStep(): JSX.Element {
                 forgetProvider()
                 setFailure(undefined)
               }}
-              class="self-start text-[11.5px] text-fg-3 underline decoration-line-strong underline-offset-2 transition-none hover:text-fg-2"
+              class="self-start text-[11.5px] text-fg-3 underline decoration-line-strong underline-offset-2 hover:text-fg-2"
             >
               Use a different key
             </button>

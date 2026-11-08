@@ -4,7 +4,7 @@ export type ButtonVariant = "primary" | "ghost" | "quiet" | "danger"
 export type ButtonSize = "sm" | "md" | "lg"
 
 const BASE =
-  "inline-flex items-center justify-center whitespace-nowrap rounded-[2px] font-medium transition-none disabled:opacity-40"
+  "inline-flex items-center justify-center whitespace-nowrap rounded-[2px] font-medium disabled:opacity-40"
 
 const SIZES: Readonly<Record<ButtonSize, string>> = {
   sm: "h-7 gap-1.5 px-2.5 text-[12.5px]",

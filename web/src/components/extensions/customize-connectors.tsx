@@ -55,7 +55,7 @@ export function Connectors(): JSX.Element {
                   setSelected(server.name)
                   setAdding(false)
                 }}
-                class="flex w-full items-center gap-2.5 border-b border-line px-3.5 py-3 text-left transition-none hover:bg-hover"
+                class="flex w-full items-center gap-2.5 border-b border-line px-3.5 py-3 text-left hover:bg-hover"
                 classList={{ "bg-hover": selected() === server.name }}
               >
                 <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg-2">

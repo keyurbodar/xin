@@ -63,7 +63,7 @@ export function PackagePage(props: {
       <div class="min-h-0 flex-1 overflow-y-auto">
         <div class="flex flex-col gap-0 px-10 pb-12">
           <div class="flex items-center gap-2 pt-4 text-[12px] text-fg-3">
-            <button type="button" onClick={props.onBack} class="flex items-center gap-1 transition-none hover:text-fg-2">
+            <button type="button" onClick={props.onBack} class="flex items-center gap-1 hover:text-fg-2">
               <Glyph name="chevron-left" size={13} />
               Extensions
             </button>
@@ -141,7 +141,7 @@ export function PackagePage(props: {
                 <button
                   type="button"
                   onClick={() => setTab(entry.id)}
-                  class="flex h-7 items-center gap-1.5 rounded-[2px] px-2.5 text-[13px] transition-none"
+                  class="flex h-7 items-center gap-1.5 rounded-[2px] px-2.5 text-[13px]"
                   classList={{ "bg-selected text-fg": tab() === entry.id, "text-fg-3 hover:text-fg-2": tab() !== entry.id }}
                 >
                   {entry.label}

@@ -2,6 +2,7 @@ import { createSignal, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { cmd } from "../../lib/api.ts"
 import { navigate } from "../../lib/router.ts"
 import { slugify } from "../../lib/slug.ts"
+import { createPresence } from "../shell/presence.ts"
 import { Icon } from "../ui/icon.tsx"
 
 type CreatedProject = {
@@ -10,9 +11,10 @@ type CreatedProject = {
 }
 
 export function NewProjectDialog(props: { open: boolean; onClose: () => void }): JSX.Element {
+  const { mounted, leaving } = createPresence(() => props.open, 140)
   return (
-    <Show when={props.open}>
-      <Dialog onClose={props.onClose} />
+    <Show when={mounted()}>
+      <Dialog closing={leaving()} onClose={props.onClose} />
     </Show>
   )
 }
@@ -28,7 +30,7 @@ function projectOf(value: unknown): CreatedProject | undefined {
 const INPUT =
   "w-full rounded-[2px] border border-line-inner bg-surface px-2.5 text-[13px] text-fg outline-none placeholder:text-fg-4 focus:border-accent-line focus:ring-[3px] focus:ring-accent-dim disabled:opacity-50"
 
-function Dialog(props: { onClose: () => void }): JSX.Element {
+function Dialog(props: { closing: boolean; onClose: () => void }): JSX.Element {
   const [name, setName] = createSignal("")
   const [goal, setGoal] = createSignal("")
   const [message, setMessage] = createSignal("")
@@ -116,7 +118,8 @@ function Dialog(props: { onClose: () => void }): JSX.Element {
 
   return (
     <div
-      class="fixed inset-0 z-50 grid place-items-center bg-black/65 p-4"
+      class="fixed inset-0 z-50 grid place-items-center bg-black/65 p-4 transition-opacity duration-[140ms]"
+      classList={{ "opacity-0": props.closing }}
       onMouseDown={() => {
         if (!busy()) props.onClose()
       }}
@@ -126,7 +129,8 @@ function Dialog(props: { onClose: () => void }): JSX.Element {
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-project-title"
-        class="enter-sheet relative w-[640px] max-w-[calc(100vw-32px)] rounded-[4px] border border-line-inner bg-raised shadow-[0_24px_64px_rgba(0,0,0,0.65)]"
+        class="relative w-[640px] max-w-[calc(100vw-32px)] rounded-[4px] border border-line-inner bg-raised shadow-[0_24px_64px_rgba(0,0,0,0.65)]"
+        classList={{ enter: !props.closing, "dialog-out": props.closing }}
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault()

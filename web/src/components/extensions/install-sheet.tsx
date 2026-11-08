@@ -11,12 +11,18 @@ export function InstallSheet(props: {
   onClose: () => void
 }): JSX.Element {
   const [busy, setBusy] = createSignal(false)
+  const [closing, setClosing] = createSignal(false)
+  const close = (): void => {
+    if (closing()) return
+    setClosing(true)
+    setTimeout(props.onClose, 200)
+  }
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [result, setResult] = createSignal<InstallResult | undefined>(undefined)
 
   onMount(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") props.onClose()
+      if (event.key === "Escape") close()
     }
     window.addEventListener("keydown", onKey)
     onCleanup(() => window.removeEventListener("keydown", onKey))
@@ -39,8 +45,17 @@ export function InstallSheet(props: {
 
   return (
     <div class="fixed inset-0 z-50">
-      <button type="button" aria-label="Close install review" onClick={props.onClose} class="absolute inset-0 bg-black/65" />
-      <section class="enter-sheet absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col border-l border-line-inner bg-raised shadow-2xl">
+      <button
+        type="button"
+        aria-label="Close install review"
+        onClick={close}
+        class="absolute inset-0 bg-black/65 transition-opacity duration-[200ms]"
+        classList={{ "opacity-0": closing() }}
+      />
+      <section
+        class="absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col border-l border-line-inner bg-raised shadow-2xl"
+        classList={{ "slide-right": !closing(), "slide-right-out": closing() }}
+      >
         <header class="flex items-center gap-3 border-b border-line px-5 py-4">
           <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg">
             <Glyph name="package" size={18} />
@@ -56,9 +71,9 @@ export function InstallSheet(props: {
           </div>
           <button
             type="button"
-            onClick={props.onClose}
+            onClick={close}
             aria-label="Close"
-            class="text-fg-3 transition-none hover:text-fg"
+            class="text-fg-3 hover:text-fg"
           >
             <Glyph name="x" size={16} />
           </button>
@@ -175,7 +190,7 @@ export function InstallSheet(props: {
             You can close this while it runs
           </span>
           <span class="ml-auto" />
-          <Button size="sm" variant="quiet" onClick={props.onClose}>{result() === undefined ? "Cancel" : "Close"}</Button>
+          <Button size="sm" variant="quiet" onClick={close}>{result() === undefined ? "Cancel" : "Close"}</Button>
           <Show when={result() === undefined}>
             <Button
               size="sm"

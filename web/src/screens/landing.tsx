@@ -103,10 +103,10 @@ export function LandingScreen(): JSX.Element {
             <Wordmark />
           </button>
           <div class="hidden items-center gap-8 text-[13.5px] text-fg-3 md:flex">
-            <button type="button" class="transition-none hover:text-fg-2" onClick={() => scrollTo("product")}>
+            <button type="button" class="hover:text-fg-2" onClick={() => scrollTo("product")}>
               Product
             </button>
-            <button type="button" class="transition-none hover:text-fg-2" onClick={() => scrollTo("extensions")}>
+            <button type="button" class="hover:text-fg-2" onClick={() => scrollTo("extensions")}>
               Extensions
             </button>
             <span class="text-fg-4">Docs</span>

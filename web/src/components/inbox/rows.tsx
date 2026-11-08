@@ -68,7 +68,7 @@ export function QuestionRow(props: {
                   type="button"
                   disabled={busy()}
                   onClick={() => void answer(option)}
-                  class="chip transition-none hover:border-line-strong hover:bg-selected disabled:opacity-50"
+                  class="chip hover:border-line-strong hover:bg-selected disabled:opacity-50"
                 >
                   {option}
                 </button>
@@ -94,7 +94,7 @@ export function QuestionRow(props: {
           <button
             type="submit"
             disabled={busy()}
-            class="h-8 shrink-0 rounded-[2px] border border-line-inner px-2.5 text-[12px] text-fg-2 transition-none hover:border-line-strong hover:text-fg disabled:opacity-50"
+            class="h-8 shrink-0 rounded-[2px] border border-line-inner px-2.5 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg disabled:opacity-50"
           >
             Answer
           </button>
@@ -149,7 +149,7 @@ export function ThreadRow(props: {
           <button
             type="button"
             onClick={() => navigate(`/p/${props.project.slug}`)}
-            class="chip transition-none hover:border-line-strong hover:bg-selected"
+            class="chip hover:border-line-strong hover:bg-selected"
           >
             Open thread
           </button>
@@ -158,7 +158,7 @@ export function ThreadRow(props: {
               type="button"
               disabled={busy()}
               onClick={() => void retry()}
-              class="chip transition-none hover:border-line-strong hover:bg-selected disabled:opacity-50"
+              class="chip hover:border-line-strong hover:bg-selected disabled:opacity-50"
             >
               {busy() ? "Retrying…" : "Retry"}
             </button>

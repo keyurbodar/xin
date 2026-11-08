@@ -42,7 +42,7 @@ function CodeBlock(props: { code: string; fence: string }): JSX.Element {
             type="button"
             aria-pressed={wrapped()}
             onClick={() => setWrapped((on) => !on)}
-            class="h-6 rounded-[2px] px-1.5 text-[11px] transition-none hover:text-fg"
+            class="h-6 rounded-[2px] px-1.5 text-[11px] hover:text-fg"
           >
             {wrapped() ? "Wrapped" : "Wrap"}
           </button>
@@ -50,7 +50,7 @@ function CodeBlock(props: { code: string; fence: string }): JSX.Element {
             type="button"
             aria-label="Copy code"
             onClick={() => void copy()}
-            class="flex h-6 items-center gap-1.5 rounded-[2px] px-1.5 transition-none hover:text-fg"
+            class="flex h-6 items-center gap-1.5 rounded-[2px] px-1.5 hover:text-fg"
             classList={{ "text-fg": copied() }}
           >
             <Glyph name={copied() ? "check" : "copy"} size={13} />

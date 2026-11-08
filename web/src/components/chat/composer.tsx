@@ -194,7 +194,7 @@ export function Composer(props: {
 
   return (
     <div class="shrink-0 px-6 pb-4 pt-3">
-      <div class="mx-auto w-full max-w-[760px]">
+      <div class="mx-auto w-full max-w-[720px]">
         <div class="overflow-hidden rounded-[4px] border border-line-inner bg-raised focus-within:border-line-strong focus-within:shadow-[0_0_0_1px_#060505,0_0_0_3px_rgba(255,90,0,0.35)]">
           <textarea
             ref={grow.ref}
@@ -269,7 +269,7 @@ export function Composer(props: {
                 <div
                   role="listbox"
                   aria-label="Model"
-                  class="enter absolute bottom-9 left-0 z-30 max-h-[320px] w-[300px] overflow-y-auto rounded-[4px] border border-line-inner bg-surface p-1 shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
+                  class="menu-in absolute bottom-9 left-0 z-30 max-h-[320px] w-[300px] overflow-y-auto rounded-[4px] border border-line-inner bg-surface p-1 shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
                 >
                   <Show
                     when={props.models.length > 0}
@@ -327,7 +327,7 @@ export function Composer(props: {
         </div>
         <Show when={error()}>
           {(message) => (
-            <div class="mt-2 flex items-center gap-2 rounded-[2px] border border-failed/40 bg-bad-bg px-3 py-2 text-[12px] text-bad">
+            <div class="shake mt-2 flex items-center gap-2 rounded-[2px] border border-failed/40 bg-bad-bg px-3 py-2 text-[12px] text-bad">
               <Icon name="x" size={12} />
               <span class="min-w-0 flex-1 truncate">{message()}</span>
               <button

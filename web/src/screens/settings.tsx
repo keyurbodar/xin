@@ -74,7 +74,7 @@ export function SettingsScreen(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => navigate(`/settings/${entry.id}`)}
-                    class="flex h-8 shrink-0 items-center gap-2 rounded-[2px] px-2.5 text-[13px] whitespace-nowrap transition-none"
+                    class="flex h-8 shrink-0 items-center gap-2 rounded-[2px] px-2.5 text-[13px] whitespace-nowrap"
                     classList={{
                       "bg-selected text-fg": tab() === entry.id,
                       "text-fg-2 hover:bg-hover": tab() !== entry.id,

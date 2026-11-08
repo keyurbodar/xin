@@ -10,11 +10,17 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [added, setAdded] = createSignal<string | undefined>(undefined)
+  const [closing, setClosing] = createSignal(false)
+  const close = (): void => {
+    if (closing()) return
+    setClosing(true)
+    setTimeout(props.onClose, 140)
+  }
 
   onMount(() => {
     void packages.reload()
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") props.onClose()
+      if (event.key === "Escape") close()
     }
     window.addEventListener("keydown", onKey)
     onCleanup(() => window.removeEventListener("keydown", onKey))
@@ -43,11 +49,20 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
 
   return (
     <div class="fixed inset-0 z-50 grid place-items-center p-6">
-      <button type="button" aria-label="Close add from URL" onClick={props.onClose} class="absolute inset-0 bg-black/65" />
-      <section class="enter-sheet relative flex w-full max-w-[520px] flex-col rounded-[4px] border border-line-inner bg-raised shadow-2xl">
+      <button
+        type="button"
+        aria-label="Close add from URL"
+        onClick={close}
+        class="absolute inset-0 bg-black/65 transition-opacity duration-[140ms]"
+        classList={{ "opacity-0": closing() }}
+      />
+      <section
+        class="relative flex w-full max-w-[520px] flex-col rounded-[4px] border border-line-inner bg-raised shadow-2xl"
+        classList={{ enter: !closing(), "dialog-out": closing() }}
+      >
         <header class="flex items-center border-b border-line px-4 py-3.5">
           <span class="text-[15px] font-medium text-fg">Add from URL</span>
-          <button type="button" onClick={props.onClose} aria-label="Close" class="ml-auto text-fg-3 hover:text-fg">
+          <button type="button" onClick={close} aria-label="Close" class="ml-auto text-fg-3 hover:text-fg">
             <Glyph name="x" size={16} />
           </button>
         </header>
@@ -119,7 +134,7 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
         <footer class="flex items-center gap-2 border-t border-line px-4 py-3">
           <span class="text-[11.5px] text-fg-3">Builds keep going if you close this</span>
           <span class="ml-auto" />
-          <Button size="sm" variant="quiet" onClick={props.onClose}>Close</Button>
+          <Button size="sm" variant="quiet" onClick={close}>Close</Button>
           <Button
             size="sm"
             variant="primary"

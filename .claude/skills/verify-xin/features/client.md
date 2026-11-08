@@ -16,7 +16,8 @@ The first-party client is a SolidJS app in `web/` that talks to the same contrac
 - `#/welcome` — first provider key, first project, first message, notifications.
 - `#/landing` — public landing page, outside the shell.
 - ⌘K — the command palette over projects, threads, pages and actions.
-- Below 1024px the sidebar becomes a bottom tab bar and the right panel becomes a bottom sheet.
+- Layout follows `DDL0wyMU8c`. At 1280 and up the sidebar is 264 wide with labels and the panel is docked. From 1024 to 1279 the sidebar is a 56px rail and the panel is a non-modal drawer, 400 wide, with a shadow and no scrim. Below 1024 the sidebar becomes a bottom tab bar and the panel becomes a bottom sheet at 76% height on a scrim.
+- Motion follows `lv7gYmXLnV` and `NhJwMUwK2F`. A dialog fades and scales .98 in 200 and leaves in 140; a right sheet and the panel drawer slide 24px in over 320; a menu drops 4px in 140; a fan-out row drops 4px in 200 with a 40ms stagger; a report card rises 6px in 320; a press scales .98 within 80; a toggle knob travels in 140; a rejected input shakes once. All of it collapses under `prefers-reduced-motion`.
 
 ## How to get to it (user POV)
 

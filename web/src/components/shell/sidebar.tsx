@@ -21,7 +21,7 @@ function summary(project: ProjectSummary): string {
   return parts.join(" · ")
 }
 
-export function Sidebar(props: { onSearch: () => void }): JSX.Element {
+export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefined }): JSX.Element {
   onMount(() => {
     void usage.reload()
     void owner.reload()
@@ -37,12 +37,76 @@ export function Sidebar(props: { onSearch: () => void }): JSX.Element {
   const needsYou = (project: ProjectSummary): boolean =>
     project.openRequests > 0 || project.threads.waiting.length > 0 || project.threads.failed.length > 0
 
+  if (props.rail === true)
+    return (
+      <aside class="flex h-full w-14 shrink-0 flex-col items-center gap-0.5 border-r border-line bg-surface py-2">
+        <RailButton icon="search" label="Search" onClick={props.onSearch} />
+        <RailButton icon="home" label="Home" active={route().path === "/"} onClick={() => navigate("/")} />
+        <RailButton
+          icon="inbox"
+          label="Inbox"
+          active={route().parts[0] === "inbox"}
+          count={counts().waiting}
+          onClick={() => navigate("/inbox")}
+        />
+        <RailButton
+          icon="grid"
+          label="Extensions"
+          active={route().parts[0] === "extensions"}
+          onClick={() => navigate("/extensions")}
+        />
+        <div class="my-1.5 h-px w-6 shrink-0 bg-line" />
+        <div class="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto">
+          <For each={activeProjects()}>
+            {(project) => (
+              <button
+                type="button"
+                title={project.name}
+                onClick={() => navigate(`/p/${project.slug}`)}
+                class="relative grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border bg-raised"
+                classList={{
+                  "border-line-strong text-fg": onProject(project.slug),
+                  "border-line-inner text-fg-2 hover:border-line-strong hover:text-fg": !onProject(project.slug),
+                }}
+              >
+                <Icon name={projectIcon(project.slug)} size={16} />
+                <Show when={needsYou(project)}>
+                  <span class="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
+                </Show>
+              </button>
+            )}
+          </For>
+          <button
+            type="button"
+            title="New project"
+            aria-label="New project"
+            onClick={() => navigate("/new")}
+            class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-dashed border-line-inner text-fg-3 hover:border-line-strong hover:text-fg"
+          >
+            <Icon name="plus" size={14} />
+          </button>
+        </div>
+        <RailButton
+          icon="settings"
+          label="Settings"
+          active={route().parts[0] === "settings"}
+          onClick={() => navigate("/settings/general")}
+        />
+        <span
+          title={ownerName()}
+          class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] text-fg-2"
+        >
+          {initial() ?? <Icon name="users" size={13} class="text-fg-3" />}
+        </span>
+      </aside>
+    )
+
   return (
     <aside class="flex h-full w-[264px] shrink-0 flex-col border-r border-line bg-surface p-2">
       <button
         type="button"
         onClick={props.onSearch}
-        class="flex h-9 items-center gap-2.5 rounded-[2px] px-2 text-left transition-none hover:bg-hover"
+        class="flex h-9 items-center gap-2.5 rounded-[2px] px-2 text-left hover:bg-hover"
       >
         <IconBox name="search" />
         <span class="text-[12.5px] text-fg">Search</span>
@@ -70,7 +134,7 @@ export function Sidebar(props: { onSearch: () => void }): JSX.Element {
         <span class="label">Projects</span>
         <button
           type="button"
-          class="ml-auto text-fg-4 transition-none hover:text-fg-2"
+          class="ml-auto text-fg-4 hover:text-fg-2"
           onClick={() => navigate("/new")}
           aria-label="New project"
         >
@@ -84,7 +148,7 @@ export function Sidebar(props: { onSearch: () => void }): JSX.Element {
             <button
               type="button"
               onClick={() => navigate(`/p/${project.slug}`)}
-              class="flex h-10 w-full shrink-0 items-center gap-2.5 rounded-[2px] px-2 text-left transition-none hover:bg-hover"
+              class="flex h-10 w-full shrink-0 items-center gap-2.5 rounded-[2px] px-2 text-left hover:bg-hover"
               classList={{ "bg-selected hover:bg-selected": onProject(project.slug) }}
             >
               <span
@@ -111,7 +175,7 @@ export function Sidebar(props: { onSearch: () => void }): JSX.Element {
         <button
           type="button"
           onClick={() => navigate("/settings/general")}
-          class="flex h-9 w-full items-center gap-2.5 rounded-[2px] px-2 text-left transition-none hover:bg-hover"
+          class="flex h-9 w-full items-center gap-2.5 rounded-[2px] px-2 text-left hover:bg-hover"
         >
           <IconBox name="settings" />
           <span class="text-[12.5px] text-fg-2">Settings</span>
@@ -136,6 +200,33 @@ function IconBox(props: { name: IconName }): JSX.Element {
   )
 }
 
+/** One icon in the 56px rail, with its name in the tooltip and its count as a dot. */
+function RailButton(props: {
+  icon: IconName
+  label: string
+  active?: boolean | undefined
+  count?: number | undefined
+  onClick: () => void
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      title={props.label}
+      aria-label={props.label}
+      onClick={props.onClick}
+      class="relative grid h-9 w-9 shrink-0 place-items-center rounded-[2px] hover:bg-hover"
+      classList={{ "bg-selected": props.active === true }}
+    >
+      <span classList={{ "text-fg": props.active === true, "text-fg-3": props.active !== true }}>
+        <Icon name={props.icon} size={16} />
+      </span>
+      <Show when={(props.count ?? 0) > 0}>
+        <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent" />
+      </Show>
+    </button>
+  )
+}
+
 function NavRow(props: {
   icon: IconName
   label: string
@@ -147,7 +238,7 @@ function NavRow(props: {
     <button
       type="button"
       onClick={props.onClick}
-      class="flex h-9 items-center gap-2.5 rounded-[2px] px-2 text-left transition-none hover:bg-hover"
+      class="flex h-9 items-center gap-2.5 rounded-[2px] px-2 text-left hover:bg-hover"
       classList={{ "bg-selected hover:bg-selected": props.active }}
     >
       <IconBox name={props.icon} />

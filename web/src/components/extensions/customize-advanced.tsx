@@ -41,7 +41,7 @@ export function Advanced(props: { initialRowId?: string | undefined }): JSX.Elem
               <button
                 type="button"
                 onClick={() => setSelected(row.id)}
-                class="flex w-full items-center gap-2.5 border-b border-line px-3.5 py-2.5 text-left transition-none hover:bg-hover"
+                class="flex w-full items-center gap-2.5 border-b border-line px-3.5 py-2.5 text-left hover:bg-hover"
                 classList={{ "bg-hover": selected() === row.id }}
               >
                 <span class="min-w-0 flex-1">

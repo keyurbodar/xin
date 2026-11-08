@@ -102,7 +102,23 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 | `#/signin` | O1 | owner token |
 | `#/welcome` | O2–O5 | first provider key, first project, first message, notifications |
 
-Mobile (M1–M8) is the same surfaces with the sidebar replaced by a sheet and the right panel by a bottom sheet; the breakpoint is 1024px.
+Layout follows the breakpoint table in `DDL0wyMU8c`. At 1280 and up the sidebar is 264 wide with labels and the panel is docked: 400 wide, 440 from 1440. From 1024 to 1279 the sidebar collapses to the 56px rail and the panel is a non-modal drawer, 400 wide with an elevation shadow and no scrim, so the chat stays readable at the left edge. Below 1024 the sidebar becomes the bottom tab bar and the panel becomes a bottom sheet at 76% height, on a 64% scrim, with a grab handle that drags it down to dismiss. The chat column never exceeds 720, and the composer and top bar align to it.
+
+## Motion
+
+Tokens are `--dur-instant|fast|base|slow|deliberate` (80/140/200/320/480) and `--ease-standard|enter|exit|spring` (F4). Exits are always faster than entrances, and spring is only for a surface arriving from an edge on touch.
+
+| Surface | Enter | Exit | Utility |
+| --- | --- | --- | --- |
+| Dialog | 200, opacity and scale .98 to 1, enter curve | 140, exit curve | `enter`, `dialog-out` |
+| Right sheet and panel drawer | 320, 24px from the right plus fade, standard | 200, exit curve | `slide-right`, `slide-right-out` |
+| Bottom sheet | 320 on the spring, 100% from the bottom | 200, exit curve | `sheet-in`, `sheet-out` |
+| Menu and popover | 140, 4px drop, enter curve | unmount | `menu-in` |
+| Fan-out row | 200, 4px drop, 40ms stagger capped at six | unmount | `row-in` |
+| Report card | 320, 6px rise | unmount | `card-in` |
+| Scrim | 200 linear fade | 200 | `fade-in` |
+
+Panel tabs slide their pill over 200 and crossfade the body over 140. Controls answer within 80ms: a press scales .98, a hover tints in 80 and fades out over 140, a toggle knob travels in 140, and a rejected input shakes 4px once over 240. `prefers-reduced-motion` collapses every animation and transition to 1ms.
 
 ## Decisions taken from the review frame's open questions
 

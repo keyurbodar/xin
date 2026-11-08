@@ -38,7 +38,7 @@ export function StepRail(props: { items: readonly RailItem[]; onSelect?: ((index
                 type="button"
                 disabled={item.state === "todo" || props.onSelect === undefined}
                 onClick={() => props.onSelect?.(index())}
-                class="flex items-center gap-1.5 rounded-[2px] text-[12px] transition-none"
+                class="flex items-center gap-1.5 rounded-[2px] text-[12px]"
                 classList={{
                   "cursor-default text-fg-4": item.state === "todo",
                   "text-fg": item.state === "current",

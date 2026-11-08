@@ -139,11 +139,11 @@ export function NotificationsStep(): JSX.Element {
                     aria-checked={notifyNow()[kind.key]}
                     aria-label={kind.title}
                     onClick={() => void setNotifyPrefs({ [kind.key]: !notifyNow()[kind.key] })}
-                    class="relative ml-auto h-4 w-7 shrink-0 rounded-[2px] transition-none"
+                    class="knob relative ml-auto h-4 w-7 shrink-0 rounded-[2px]"
                     classList={{ "bg-fg": notifyNow()[kind.key], "bg-line-inner": !notifyNow()[kind.key] }}
                   >
                     <span
-                      class="absolute top-0.5 h-3 w-3 rounded-[1px] bg-page"
+                      class="knob absolute top-0.5 h-3 w-3 rounded-[1px] bg-page"
                       classList={{ "left-3.5": notifyNow()[kind.key], "left-0.5": !notifyNow()[kind.key] }}
                     />
                   </button>

@@ -119,21 +119,21 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
           <Show when={shown()?.text ?? null}>
             <button
               type="button"
-              class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 transition-none hover:border-line-strong hover:text-fg"
+              class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg"
               onClick={ask}
             >
               Ask about this
             </button>
             <button
               type="button"
-              class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 transition-none hover:border-line-strong hover:text-fg"
+              class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg"
               onClick={() => void copy()}
             >
               {copied() ? "Copied" : "Copy"}
             </button>
             <button
               type="button"
-              class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 transition-none hover:border-line-strong hover:text-fg"
+              class="shrink-0 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg"
               onClick={() => {
                 const text = shown()?.text
                 if (text !== undefined && text !== null) save({ path: props.path, type: shown()?.type ?? "text/plain" }, text)
@@ -188,7 +188,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
                               {(revision) => (
                                 <button
                                   type="button"
-                                  class="flex items-center gap-2 border-b border-line-inner py-2 text-left text-[12px] transition-none hover:text-fg"
+                                  class="flex items-center gap-2 border-b border-line-inner py-2 text-left text-[12px] hover:text-fg"
                                   classList={{ "text-accent-text": viewing() === revision.sha256, "text-fg-3": viewing() !== revision.sha256 }}
                                   onClick={() => setViewing(revision.sha256)}
                                 >
@@ -222,7 +222,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
               {(entry) => (
                 <button
                   type="button"
-                  class="flex w-full items-center gap-2.5 border-b border-line px-3 py-2.5 text-left transition-none hover:bg-hover"
+                  class="flex w-full items-center gap-2.5 border-b border-line px-3 py-2.5 text-left hover:bg-hover"
                   classList={{ "bg-selected": entry.path === props.path }}
                   onClick={() => {
                     setViewing(undefined)

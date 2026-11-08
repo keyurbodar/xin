@@ -1,5 +1,6 @@
-import { createSignal, ErrorBoundary, Match, onCleanup, onMount, Switch, type JSX } from "solid-js"
+import { createSignal, ErrorBoundary, Match, onCleanup, onMount, Show, Switch, type JSX } from "solid-js"
 import { route } from "../../lib/router.ts"
+import { mediaQuery } from "../../lib/media.ts"
 import { Sidebar } from "./sidebar.tsx"
 import { ConnectionBanner } from "./connection-banner.tsx"
 import { TabBar } from "./tabbar.tsx"
@@ -17,6 +18,7 @@ import { owner } from "../../state/settings.ts"
 export function Shell(): JSX.Element {
   const first = () => route().parts[0]
   const [palette, setPalette] = createSignal(false)
+  const full = mediaQuery("(min-width: 1280px)")
 
   onMount(() => {
     void owner.reload()
@@ -33,7 +35,9 @@ export function Shell(): JSX.Element {
   return (
     <div class="flex h-full flex-col overflow-hidden bg-page text-fg lg:flex-row">
       <div class="hidden h-full lg:flex">
-        <Sidebar onSearch={() => setPalette(true)} />
+        <Show when={full()} keyed fallback={<Sidebar rail onSearch={() => setPalette(true)} />}>
+          {(_wide) => <Sidebar onSearch={() => setPalette(true)} />}
+        </Show>
       </div>
       <main class="flex min-h-0 min-w-0 flex-1 flex-col">
         <ConnectionBanner />
@@ -72,11 +76,11 @@ export function Shell(): JSX.Element {
             </Match>
             <Match when={first() === "new"}>
               <HomeScreen />
-              <NewProjectDialog open onClose={() => navigate("/")} />
             </Match>
           </Switch>
         </ErrorBoundary>
       </main>
+      <NewProjectDialog open={first() === "new"} onClose={() => navigate("/")} />
       <TabBar />
       <CommandPalette open={palette()} onClose={() => setPalette(false)} />
     </div>

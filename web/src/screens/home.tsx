@@ -209,7 +209,7 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
           <button
             type="button"
             onClick={() => navigate("/new")}
-            class="hidden min-h-[180px] flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-line-inner text-fg-3 transition-none hover:border-line-strong hover:text-fg-2 sm:flex"
+            class="hidden min-h-[180px] flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-line-inner text-fg-3 hover:border-line-strong hover:text-fg-2 sm:flex"
           >
             <Icon name="plus" size={18} />
             <span class="text-[12.5px]">New project</span>
@@ -285,7 +285,7 @@ function ProjectCard(props: { project: ProjectSummary }): JSX.Element {
     <button
       type="button"
       onClick={() => navigate(`/p/${props.project.slug}`)}
-      class="flex flex-col gap-3 rounded-[4px] border border-line-inner bg-raised p-3.5 text-left transition-none hover:border-line-strong hover:bg-hover"
+      class="flex flex-col gap-3 rounded-[4px] border border-line-inner bg-raised p-3.5 text-left hover:border-line-strong hover:bg-hover"
     >
       <div class="flex items-center gap-2.5">
         <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-surface text-fg-2">

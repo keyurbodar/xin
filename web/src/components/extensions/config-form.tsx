@@ -268,7 +268,7 @@ export function ConfigForm(props: {
           <button
             type="button"
             onClick={() => setMode("form")}
-            class="h-6 rounded-[1px] px-2 text-[11.5px] transition-none"
+            class="h-6 rounded-[1px] px-2 text-[11.5px]"
             classList={{ "bg-selected text-fg": mode() === "form", "text-fg-3": mode() !== "form" }}
           >
             Form
@@ -279,7 +279,7 @@ export function ConfigForm(props: {
               setRaw(JSON.stringify(configOf(fields()), null, 2))
               setMode("raw")
             }}
-            class="h-6 rounded-[1px] px-2 font-mono text-[11px] transition-none"
+            class="h-6 rounded-[1px] px-2 font-mono text-[11px]"
             classList={{ "bg-selected text-fg": mode() === "raw", "text-fg-3": mode() !== "raw" }}
           >
             Raw

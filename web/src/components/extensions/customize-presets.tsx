@@ -51,7 +51,7 @@ export function Prompts(): JSX.Element {
                   setCreating(false)
                   setSelected(prompt.name)
                 }}
-                class="flex w-full items-start gap-2.5 border-b border-line px-3.5 py-2.5 text-left transition-none hover:bg-hover"
+                class="flex w-full items-start gap-2.5 border-b border-line px-3.5 py-2.5 text-left hover:bg-hover"
                 classList={{ "bg-hover": !creating() && selected() === prompt.name }}
               >
                 <span class="mt-0.5 shrink-0 rounded-[2px] border border-line-inner bg-page px-1.5 py-0.5 font-mono text-[11px] text-fg-2">
@@ -270,7 +270,7 @@ export function Presets(): JSX.Element {
               <button
                 type="button"
                 onClick={() => setSelected(preset.id)}
-                class="flex w-full items-start gap-2.5 border-b border-line px-3.5 py-3 text-left transition-none hover:bg-hover"
+                class="flex w-full items-start gap-2.5 border-b border-line px-3.5 py-3 text-left hover:bg-hover"
                 classList={{ "bg-hover": selected() === preset.id }}
               >
                 <Glyph name="layers" size={15} class="mt-0.5 shrink-0 text-fg-3" />

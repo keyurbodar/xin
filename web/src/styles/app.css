@@ -315,47 +315,92 @@
   border-bottom: 1px solid var(--color-line-strong);
 }
 
-/* Entrances: opacity, a small rise, a slight blur, over 160-220ms. */
+/* Feedback starts within 80ms and settles by 140ms: press scales, hover tints.
+   Motion answers a touch or a click, it does not decorate. */
+@layer base {
+  button,
+  a,
+  [role="button"] {
+    transition:
+      color var(--dur-instant) var(--ease-standard),
+      background-color var(--dur-instant) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      opacity var(--dur-instant) var(--ease-standard),
+      transform var(--dur-instant) var(--ease-standard);
+    transition-duration: var(--dur-fast);
+  }
+
+  button:hover,
+  a:hover,
+  [role="button"]:hover {
+    transition-duration: var(--dur-instant);
+  }
+
+  button:not(:disabled):active,
+  [role="button"]:active {
+    transform: scale(0.98);
+  }
+
+  button[data-no-press]:active {
+    transform: none;
+  }
+}
+
+/* A dialog and a full-page surface: fade, and a .98 scale that resolves. 200 enter. */
 @utility enter {
-  animation: enter var(--dur-fast) var(--ease-enter) both;
+  animation: enter var(--dur-base) var(--ease-enter) backwards;
 }
 
 @keyframes enter {
   from {
     opacity: 0;
-    transform: translateY(4px) scale(0.98);
-    filter: blur(2px);
+    transform: scale(0.98);
   }
   to {
     opacity: 1;
     transform: none;
-    filter: none;
   }
 }
 
-@utility enter-sheet {
-  animation: enter-sheet var(--dur-slow) var(--ease-spring) both;
+/* A scrim fades in under whatever it dims. */
+@utility fade-in {
+  animation: fade-in var(--dur-base) linear backwards;
 }
 
-@keyframes enter-sheet {
+@keyframes fade-in {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.985);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 
-@utility pop {
-  animation: pop var(--dur-deliberate) var(--ease-spring) both;
+/* A dialog leaving: 140ms back to .98, on the exit curve. */
+@utility dialog-out {
+  animation: dialog-out var(--dur-fast) var(--ease-exit) forwards;
 }
 
-@keyframes pop {
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* A menu or popover drops 4px in 140ms. */
+@utility menu-in {
+  animation: menu-in var(--dur-fast) var(--ease-enter) backwards;
+}
+
+@keyframes menu-in {
   from {
     opacity: 0;
-    transform: scale(0.6);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -363,13 +408,121 @@
   }
 }
 
-/* Hover-in is instant, hover-out fades, as the system asks. */
-@utility hover-instant {
-  transition: none;
+/* A right sheet slides 24px in from the edge over 320ms, and takes 200ms to leave. */
+@utility slide-right {
+  animation: slide-right var(--dur-slow) var(--ease-standard) backwards;
 }
 
-.hover-instant:hover {
-  transition: none;
+@keyframes slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility slide-right-out {
+  animation: slide-right-out var(--dur-base) var(--ease-exit) forwards;
+}
+
+@keyframes slide-right-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+/* A bottom sheet arrives on the spring and leaves on the exit curve. */
+@utility sheet-in {
+  animation: sheet-in var(--dur-slow) var(--ease-spring) backwards;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@utility sheet-out {
+  animation: sheet-out var(--dur-base) var(--ease-exit) forwards;
+}
+
+@keyframes sheet-out {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+/* A row that lands: 4px drop, 200ms, staggered 40ms across a fan-out. */
+@utility row-in {
+  animation: row-in var(--dur-base) var(--ease-enter) backwards;
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A report card rises 6px over 320ms. */
+@utility card-in {
+  animation: card-in var(--dur-slow) var(--ease-enter) backwards;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A rejected input shakes once, 4px either side. */
+@utility shake {
+  animation: shake 240ms linear backwards;
+}
+
+@keyframes shake {
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+/* A toggle's knob travels in 140ms, and its track fills with it. */
+@utility knob {
+  transition:
+    left var(--dur-fast) var(--ease-standard),
+    background-color var(--dur-fast) var(--ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {

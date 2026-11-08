@@ -82,7 +82,7 @@ export function ExtensionsScreen(): JSX.Element {
           <button
             type="button"
             onClick={() => navigate(tab.to)}
-            class="flex h-7 shrink-0 items-center gap-1.5 rounded-[2px] px-2.5 text-[13px] transition-none"
+            class="flex h-7 shrink-0 items-center gap-1.5 rounded-[2px] px-2.5 text-[13px]"
             classList={{
               "bg-selected text-fg": view() === tab.id || (tab.id === "discover" && view() === "package"),
               "text-fg-3 hover:text-fg-2": view() !== tab.id,
@@ -103,7 +103,7 @@ export function ExtensionsScreen(): JSX.Element {
             type="button"
             aria-label="Sources"
             onClick={() => navigate("/extensions/sources")}
-            class="flex h-7 items-center gap-1.5 rounded-[2px] border px-2 text-[12.5px] font-medium transition-none sm:px-2.5"
+            class="flex h-7 items-center gap-1.5 rounded-[2px] border px-2 text-[12.5px] font-medium sm:px-2.5"
             classList={{
               "border-line bg-surface text-fg": view() === "sources",
               "border-transparent text-fg-2 hover:text-fg": view() !== "sources",
@@ -116,7 +116,7 @@ export function ExtensionsScreen(): JSX.Element {
             type="button"
             aria-label="Add from URL"
             onClick={() => setAddUrl(true)}
-            class="flex h-7 items-center gap-1.5 rounded-[2px] border border-line-inner bg-raised px-2 text-[12.5px] font-medium text-fg transition-none hover:border-line-strong hover:bg-hover sm:px-2.5"
+            class="flex h-7 items-center gap-1.5 rounded-[2px] border border-line-inner bg-raised px-2 text-[12.5px] font-medium text-fg hover:border-line-strong hover:bg-hover sm:px-2.5"
           >
             <Glyph name="upload" size={13} />
             <span class="hidden sm:inline">Add from URL</span>

@@ -52,7 +52,7 @@ export function Skills(): JSX.Element {
                       setSelected(skill.name)
                       setCreating(false)
                     }}
-                    class="flex w-full items-start gap-2.5 border-b border-line px-3.5 py-3 text-left transition-none hover:bg-hover"
+                    class="flex w-full items-start gap-2.5 border-b border-line px-3.5 py-3 text-left hover:bg-hover"
                     classList={{ "bg-hover": selected() === skill.name }}
                   >
                     <Glyph name="book-open" size={15} class="mt-0.5 shrink-0 text-fg-3" />

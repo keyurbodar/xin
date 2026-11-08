@@ -95,7 +95,7 @@ export function ProjectStep(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => applyTemplate(template)}
-                  class="flex items-start gap-2.5 rounded-[2px] border px-3 py-2.5 text-left transition-none"
+                  class="flex items-start gap-2.5 rounded-[2px] border px-3 py-2.5 text-left"
                   classList={{
                     "border-line-strong bg-hover": name() === template.name && goal() === template.goal,
                     "border-line-inner bg-surface hover:border-line-strong hover:bg-hover":

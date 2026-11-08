@@ -119,7 +119,7 @@ export function Discover(props: { onOpen: (name: string) => void; onSources: () 
             <button
               type="button"
               onClick={() => setCategory(name)}
-              class="inline-flex h-7 items-center gap-1.5 rounded-[2px] border px-2.5 text-[12.5px] transition-none"
+              class="inline-flex h-7 items-center gap-1.5 rounded-[2px] border px-2.5 text-[12.5px]"
               classList={{
                 "border-fg bg-fg font-medium text-page": category() === name,
                 "border-line-inner text-fg-2 hover:border-line-strong hover:text-fg": category() !== name,

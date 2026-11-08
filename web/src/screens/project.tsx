@@ -24,7 +24,7 @@ import { ProjectGlyph } from "../components/chat/project-glyph.tsx"
 import { Transcript, TranscriptSkeleton, type PendingMessage } from "../components/chat/transcript.tsx"
 import { Composer } from "../components/chat/composer.tsx"
 import { ProjectPanel } from "../components/chat/panel.tsx"
-import { BottomSheet } from "../components/shell/sheet.tsx"
+import { BottomSheet, RightDrawer } from "../components/shell/sheet.tsx"
 import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
@@ -34,7 +34,8 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
   const snapshot = createConversationView(streams, () => props.project.coordinatorId)
   const [threadId, setThreadId] = createSignal<number | undefined>()
   const [sheetOpen, setSheetOpen] = createSignal(false)
-  const wide = mediaQuery("(min-width: 1280px)")
+  const docked = mediaQuery("(min-width: 1280px)")
+  const overlay = mediaQuery("(min-width: 1024px)")
   const [panelOpen, setPanelOpen] = createSignal(true)
   const [optimistic, setOptimistic] = createSignal<readonly PendingMessage[]>([])
   const [answered, setAnswered] = createSignal<readonly AnsweredView[]>([])
@@ -138,7 +139,12 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
 
   const openThread = (id: number): void => {
     setThreadId(id)
-    setPanelOpen(true)
+    if (docked()) setPanelOpen(true)
+    else setSheetOpen(true)
+  }
+  const togglePanel = (): void => {
+    if (docked()) setPanelOpen((open) => !open)
+    else setSheetOpen(true)
   }
 
   return (
@@ -148,25 +154,15 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
         title={props.project.name}
         subtitle={props.project.goal === undefined ? "" : `· ${props.project.goal}`}
         actions={
-          <>
-            <button
-              type="button"
-              onClick={() => setSheetOpen(true)}
-              aria-label="Open the project panel"
-              class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg min-[1280px]:hidden"
-            >
-              <Icon name="panel" size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setPanelOpen((open) => !open)}
-              aria-label={panelOpen() ? "Hide the panel" : "Show the panel"}
-              class="hidden h-7 w-7 place-items-center rounded-[2px] hover:bg-hover min-[1280px]:grid"
-              classList={{ "bg-selected text-fg": panelOpen(), "text-fg-3": !panelOpen() }}
-            >
-              <Icon name="panel" size={15} />
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={togglePanel}
+            aria-label={docked() && panelOpen() ? "Hide the panel" : "Open the project panel"}
+            class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
+            classList={{ "bg-selected text-fg": docked() && panelOpen() }}
+          >
+            <Icon name="panel" size={15} />
+          </button>
         }
       />
       <div class="flex min-h-0 flex-1">
@@ -224,11 +220,11 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
             }}
           />
         </div>
-        <Show when={wide()}>
+        <Show when={docked() && panelOpen()}>
           <ProjectPanel
             project={props.project}
             streams={streams}
-            open={panelOpen()}
+            open
             thread={thread()}
             requests={projectRequests()}
             answered={answered()}
@@ -238,13 +234,31 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
           />
         </Show>
       </div>
-      <Show when={!wide() && sheetOpen()}>
-        <BottomSheet open onClose={() => setSheetOpen(false)} label="Project panel">
+      <Show when={overlay() && !docked()}>
+        <RightDrawer open={sheetOpen()} onClose={() => setSheetOpen(false)} label="Project panel">
+          <ProjectPanel
+            variant="drawer"
+            project={props.project}
+            streams={streams}
+            open
+            onClose={() => setSheetOpen(false)}
+            thread={thread()}
+            requests={projectRequests()}
+            answered={answered()}
+            onAnswer={answer}
+            onOpenThread={openThread}
+            onCloseThread={() => setThreadId(undefined)}
+          />
+        </RightDrawer>
+      </Show>
+      <Show when={!overlay()}>
+        <BottomSheet open={sheetOpen()} onClose={() => setSheetOpen(false)} label="Project panel">
           <ProjectPanel
             variant="sheet"
             project={props.project}
             streams={streams}
             open
+            onClose={() => setSheetOpen(false)}
             thread={thread()}
             requests={projectRequests()}
             answered={answered()}
@@ -339,7 +353,7 @@ function ProjectSkeleton(): JSX.Element {
         <div class="min-w-0 flex-1">
           <TranscriptSkeleton />
         </div>
-        <div class="hidden w-[360px] border-l border-line bg-surface min-[1280px]:block">
+        <div class="hidden w-[400px] border-l border-line bg-surface min-[1280px]:block min-[1440px]:w-[440px]">
           <div class="flex h-12 items-center gap-3 border-b border-line px-3">
             <For each={["Threads", "Files", "Memory", "Schedules", "Jobs"]}>
               {(label) => <span class="text-[12.5px] text-fg-4">{label}</span>}

@@ -1,4 +1,15 @@
-import { For, Show, Switch, Match, createResource, createSignal, type JSX } from "solid-js"
+import {
+  For,
+  Match,
+  Show,
+  Switch,
+  createEffect,
+  createResource,
+  createSignal,
+  onCleanup,
+  onMount,
+  type JSX,
+} from "solid-js"
 import type { Streams } from "../../lib/api.ts"
 import { cmd } from "../../lib/api.ts"
 import { ago, bytes } from "../../lib/format.ts"
@@ -137,7 +148,7 @@ function FilesTab(props: { slug: string }): JSX.Element {
                   <button
                     type="button"
                     onClick={() => navigate(`/p/${props.slug}/files/${encodeURIComponent(entry.path)}`)}
-                    class="flex items-center gap-2.5 border-b border-line px-3 py-2.5 text-left transition-none hover:bg-hover"
+                    class="flex items-center gap-2.5 border-b border-line px-3 py-2.5 text-left hover:bg-hover"
                   >
                     <Icon name="file" size={15} class="shrink-0 text-fg-3" />
                     <span class="min-w-0 flex-1">
@@ -353,9 +364,28 @@ export function ProjectPanel(props: {
   onAnswer: (request: RequestRow, answer: string) => Promise<void>
   onOpenThread: (id: number) => void
   onCloseThread: () => void
-  variant?: "sidebar" | "sheet" | undefined
+  onClose?: (() => void) | undefined
+  variant?: "sidebar" | "drawer" | "sheet" | undefined
 }): JSX.Element {
   const [tab, setTab] = createSignal<Tab>("threads")
+  const [pill, setPill] = createSignal({ left: 0, width: 0 })
+  let strip: HTMLDivElement | undefined
+  const measure = (): void => {
+    const active = strip?.querySelector<HTMLElement>('[data-tab-active="true"]')
+    if (active === undefined || active === null) return
+    setPill({ left: active.offsetLeft, width: active.offsetWidth })
+  }
+  createEffect(() => {
+    tab()
+    requestAnimationFrame(measure)
+  })
+  onMount(() => {
+    measure()
+    if (strip === undefined) return
+    const observer = new ResizeObserver(measure)
+    observer.observe(strip)
+    onCleanup(() => observer.disconnect())
+  })
   const threadCount = (): number => {
     const groups = props.project.threads
     return (
@@ -370,55 +400,85 @@ export function ProjectPanel(props: {
   return (
     <Show when={props.open}>
       <aside
-        class="w-[360px] shrink-0 flex-col border-l border-line bg-surface"
+        class="flex min-h-0 shrink-0 flex-col bg-surface"
         classList={{
-          "hidden min-[1280px]:flex": props.variant !== "sheet",
-          "flex w-full flex-1 border-l-0": props.variant === "sheet",
+          "w-[400px] border-l border-line min-[1440px]:w-[440px]": props.variant === undefined || props.variant === "sidebar",
+          "w-full": props.variant === "drawer",
+          "w-full flex-1 border-l-0": props.variant === "sheet",
         }}
       >
         <Show
           when={props.thread}
           fallback={
             <>
-              <div class="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-3">
-                <For each={TABS}>
-                  {(entry) => (
+              <div class="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
+                <div
+                  ref={(element) => {
+                    strip = element
+                  }}
+                  class="relative flex flex-1 items-center gap-1 overflow-x-auto"
+                >
+                  <span
+                    aria-hidden="true"
+                    class="absolute top-0 left-0 h-7 rounded-[2px] bg-selected transition-[transform,width] duration-200 ease-[var(--ease-standard)]"
+                    style={{ transform: `translateX(${pill().left}px)`, width: `${pill().width}px` }}
+                  />
+                  <For each={TABS}>
+                    {(entry) => (
+                      <button
+                        type="button"
+                        onClick={() => setTab(entry.id)}
+                        data-tab-active={tab() === entry.id}
+                        class="relative z-10 flex h-7 items-center gap-1.5 whitespace-nowrap rounded-[2px] px-2 text-[12.5px]"
+                        classList={{
+                          "text-fg": tab() === entry.id,
+                          "text-fg-3 hover:text-fg-2": tab() !== entry.id,
+                        }}
+                      >
+                        {entry.label}
+                        <Show when={entry.id === "threads" && threadCount() > 0}>
+                          <span class="font-mono text-[10px] text-fg-4">{threadCount()}</span>
+                        </Show>
+                      </button>
+                    )}
+                  </For>
+                </div>
+                <Show when={props.onClose}>
+                  {(close) => (
                     <button
                       type="button"
-                      onClick={() => setTab(entry.id)}
-                      class="flex h-7 items-center gap-1.5 whitespace-nowrap rounded-[2px] px-2 text-[12.5px] transition-none"
-                      classList={{
-                        "bg-selected text-fg": tab() === entry.id,
-                        "text-fg-3 hover:bg-hover hover:text-fg-2": tab() !== entry.id,
-                      }}
+                      onClick={close()}
+                      aria-label="Close the panel"
+                      class="grid h-7 w-7 shrink-0 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
                     >
-                      {entry.label}
-                      <Show when={entry.id === "threads" && threadCount() > 0}>
-                        <span class="font-mono text-[10px] text-fg-4">{threadCount()}</span>
-                      </Show>
+                      <Icon name="x" size={14} />
                     </button>
                   )}
-                </For>
+                </Show>
               </div>
-              <div class="min-h-0 flex-1 overflow-y-auto">
-                <Switch>
-                  <Match when={tab() === "threads"}>
-                    <ThreadsTab project={props.project} onOpenThread={props.onOpenThread} />
-                  </Match>
-                  <Match when={tab() === "files"}>
-                    <FilesTab slug={props.project.slug} />
-                  </Match>
-                  <Match when={tab() === "memory"}>
-                    <MemoryTab conversationId={props.project.coordinatorId} scope={`project:${props.project.id}`} />
-                  </Match>
-                  <Match when={tab() === "schedules"}>
-                    <SchedulesTab slug={props.project.slug} />
-                  </Match>
-                  <Match when={tab() === "jobs"}>
-                    <JobsTab />
-                  </Match>
-                </Switch>
-              </div>
+              <Show when={tab()} keyed>
+                {(current) => (
+                  <div class="menu-in min-h-0 flex-1 overflow-y-auto">
+                    <Switch>
+                      <Match when={current === "threads"}>
+                        <ThreadsTab project={props.project} onOpenThread={props.onOpenThread} />
+                      </Match>
+                      <Match when={current === "files"}>
+                        <FilesTab slug={props.project.slug} />
+                      </Match>
+                      <Match when={current === "memory"}>
+                        <MemoryTab conversationId={props.project.coordinatorId} scope={`project:${props.project.id}`} />
+                      </Match>
+                      <Match when={current === "schedules"}>
+                        <SchedulesTab slug={props.project.slug} />
+                      </Match>
+                      <Match when={current === "jobs"}>
+                        <JobsTab />
+                      </Match>
+                    </Switch>
+                  </div>
+                )}
+              </Show>
             </>
           }
         >
