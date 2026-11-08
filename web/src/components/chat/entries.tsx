@@ -157,7 +157,7 @@ function QuestionItem(props: {
 export function EntryItemView(props: { item: EntryItem; context: ItemContext }): JSX.Element {
   const glyph = (): JSX.Element => (
     <Show when={props.context.project} fallback={<span class="h-6 w-6 shrink-0" />}>
-      {(project) => <ProjectGlyph slug={project().slug} class="mt-0.5" />}
+      {(project) => <ProjectGlyph slug={project().slug} name={project().name} goal={project().goal} class="mt-0.5" />}
     </Show>
   )
   const fan = (calls: readonly ToolCallView[]): JSX.Element => (

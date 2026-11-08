@@ -61,12 +61,23 @@ export function Button(props: {
   )
 }
 
-export function Spinner(props: { class?: string }): JSX.Element {
+/** I1: the small loader. A faint ring with a quarter arc, one turn every 0.8s, in the current colour. */
+export function Spinner(props: { size?: number; class?: string }): JSX.Element {
+  const size = (): number => props.size ?? 16
   return (
-    <span
-      class={`inline-block h-3.5 w-3.5 animate-spin rounded-full border border-line-inner border-t-fg-2 ${props.class ?? ""}`}
+    <svg
+      width={size()}
+      height={size()}
+      viewBox="0 0 16 16"
+      role="img"
       aria-label="Working"
-    />
+      class={props.class}
+    >
+      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-opacity="0.22" stroke-width="1.6" />
+      <g class="spinner-arc">
+        <path d="M8 2a6 6 0 0 1 6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      </g>
+    </svg>
   )
 }
 

@@ -20,7 +20,7 @@ import { navigate, param } from "../lib/router.ts"
 import { TopBar } from "../components/shell/topbar.tsx"
 import { Icon } from "../components/ui/icon.tsx"
 import { Skullet } from "../components/ui/skeleton.tsx"
-import { ProjectGlyph } from "../components/chat/project-glyph.tsx"
+import { ProjectGlyph, projectState } from "../components/chat/project-glyph.tsx"
 import { Transcript, TranscriptSkeleton, type PendingMessage } from "../components/chat/transcript.tsx"
 import { Composer } from "../components/chat/composer.tsx"
 import { ProjectPanel } from "../components/chat/panel.tsx"
@@ -150,7 +150,7 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
   return (
     <>
       <TopBar
-        leading={<ProjectGlyph slug={props.project.slug} />}
+        leading={<ProjectGlyph slug={props.project.slug} name={props.project.name} goal={props.project.goal} state={projectState(props.project)} />}
         title={props.project.name}
         subtitle={props.project.goal === undefined ? "" : `· ${props.project.goal}`}
         actions={
@@ -309,7 +309,7 @@ export function ProjectScreen(): JSX.Element {
             <Skullet loading={!homeLoaded()} sample={() => <ProjectSkeleton />} label="Loading project">
               <div class="pt-16">
                 <EmptyState
-                  icon="folder"
+                  pictogram="folder"
                   title="Project not found"
                   detail={`No project at #/p/${slug() ?? "…"}.`}
                   action={

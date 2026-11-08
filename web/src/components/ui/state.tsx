@@ -1,25 +1,24 @@
 import { Show, type JSX } from "solid-js"
 import { Button } from "./button.tsx"
-import { Icon, type IconName } from "./icon.tsx"
+import { Icon } from "./icon.tsx"
+import { Pictogram, type PictogramName } from "./pictogram.tsx"
 
 export function EmptyState(props: {
-  icon: IconName
+  pictogram: PictogramName
   title: string
   detail?: string | undefined
   action?: JSX.Element | undefined
 }): JSX.Element {
   return (
-    <div class="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-      <span class="grid h-9 w-9 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-3">
-        <Icon name={props.icon} size={16} />
-      </span>
-      <div class="flex flex-col gap-1">
-        <span class="text-[13px] text-fg-2">{props.title}</span>
-        <Show when={props.detail}>
-          <span class="max-w-[280px] text-[12px] leading-[1.5] text-fg-3">{props.detail}</span>
-        </Show>
-      </div>
-      <Show when={props.action}>{props.action}</Show>
+    <div class="flex flex-col items-center justify-center px-6 py-10 text-center">
+      <Pictogram name={props.pictogram} size={88} />
+      <span class="mt-5 text-[13px] font-medium text-fg-2">{props.title}</span>
+      <Show when={props.detail}>
+        <span class="mt-1.5 max-w-[270px] text-[12.5px] leading-[1.5] text-fg-3">{props.detail}</span>
+      </Show>
+      <Show when={props.action}>
+        <span class="mt-4">{props.action}</span>
+      </Show>
     </div>
   )
 }

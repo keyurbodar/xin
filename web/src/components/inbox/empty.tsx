@@ -1,16 +1,16 @@
 import { For, type JSX } from "solid-js"
 import { navigate } from "../../lib/router.ts"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
+import { Pictogram } from "../ui/pictogram.tsx"
 
 export function EmptyInbox(): JSX.Element {
   return (
-    <div class="flex flex-col items-center gap-2 rounded-[4px] border border-dashed border-line-inner px-6 py-16 text-center">
-      <StatusGlyph state="queued" size={18} />
-      <span class="mt-1 text-[13px] text-fg-2">Nothing waits on you</span>
-      <span class="max-w-[380px] text-[12px] text-fg-3">
+    <div class="flex flex-col items-center rounded-[4px] border border-dashed border-line-inner px-6 py-16 text-center">
+      <Pictogram name="inbox" size={88} />
+      <span class="mt-5 text-[13px] font-medium text-fg-2">Nothing waits on you</span>
+      <span class="mt-1.5 max-w-[380px] text-[12.5px] leading-[1.5] text-fg-3">
         Questions from threads, and threads that failed, land here until you answer them.
       </span>
-      <button type="button" class="link mt-2" onClick={() => navigate("/")}>
+      <button type="button" class="link mt-4" onClick={() => navigate("/")}>
         Back to home
       </button>
     </div>

@@ -1,6 +1,6 @@
 import { createSignal, For, Show, type JSX } from "solid-js"
 import { Icon, type IconName } from "../ui/icon.tsx"
-import { projectIcon } from "../../lib/project-icon.ts"
+import { ProjectMark } from "../chat/project-glyph.tsx"
 import { slugify } from "../../lib/slug.ts"
 import { Field, GhostButton, PrimaryButton, StatusLine, StepHeading, TextArea, TextInput } from "./controls.tsx"
 import {
@@ -169,7 +169,7 @@ export function ProjectStep(): JSX.Element {
           <div class="mt-3 overflow-hidden rounded-[4px] border border-line bg-surface">
             <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-3">
               <span class="grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2">
-                <Icon name={projectIcon(slugify(previewName()))} size={14} />
+                <ProjectMark slug={slugify(previewName())} name={previewName()} size={15} />
               </span>
               <div class="min-w-0 flex-1">
                 <div class="truncate text-[13px] font-medium">{previewName()}</div>

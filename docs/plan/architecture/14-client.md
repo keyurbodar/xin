@@ -104,6 +104,16 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 
 Layout follows the breakpoint table in `DDL0wyMU8c`. At 1280 and up the sidebar is 264 wide with labels and the panel is docked: 400 wide, 440 from 1440. From 1024 to 1279 the sidebar collapses to the 56px rail and the panel is a non-modal drawer, 400 wide with an elevation shadow and no scrim, so the chat stays readable at the left edge. Below 1024 the sidebar becomes the bottom tab bar and the panel becomes a bottom sheet at 76% height, on a 64% scrim, with a grab handle that drags it down to dismiss. The chat column never exceeds 720, and the composer and top bar align to it.
 
+## Identity
+
+Status uses the D Grid family from `I2`. A 3 by 3 grid of cells gives every state its own pattern and its own loop, so shape reads before colour, even at 12px and in greyscale. `components/ui/status-glyph.tsx` draws it wherever a thread, a report or a job shows state.
+
+A project's mark is one of the 24 glyphs from `I3`, in `lib/project-glyphs.ts`. It is chosen from the project's own words, first match wins, and by slug when nothing matches. Picking or shuffling the glyph from New project would need a stored field on the project, which the schema does not have, so the mark stays derived. `components/chat/project-glyph.tsx` draws it on a 24-unit grid with a 1.5 stroke and at most one solid part, and puts the project's state on the tile's corner: a breathing white square while work runs, a pulsing orange square when someone waits on the owner, a red square after a failure. The glyph itself never changes.
+
+Empty states use the pictograms from `I4`, in `components/ui/pictogram.tsx`, at 88px. A 64 grid, a 1.5px stroke that stays 1.5px at any size, one orange detail, and one small loop per drawing. They never sit inside a control.
+
+Small loads use the arc from `I1`: a faint ring with a quarter arc turning once every 0.8s, in the current colour. The construction trace from the same frame is for a cold boot of the whole client. This client paints its shell at once and shows layout-matched skeletons (C11) while data lands, so the trace is never drawn.
+
 ## Motion
 
 Tokens are `--dur-instant|fast|base|slow|deliberate` (80/140/200/320/480) and `--ease-standard|enter|exit|spring` (F4). Exits are always faster than entrances, and spring is only for a surface arriving from an edge on touch.

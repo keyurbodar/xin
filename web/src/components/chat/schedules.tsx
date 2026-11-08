@@ -84,7 +84,7 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
         {(data) => (
           <Show
             when={data().schedules.length > 0}
-            fallback={<EmptyState icon="calendar" title="No schedules" detail="A schedule starts a thread on a timer; its results land in this chat." />}
+            fallback={<EmptyState pictogram="schedules" title="No schedules" detail="A schedule starts a thread on a timer; its results land in this chat." />}
           >
             <div class="flex flex-col">
               <For each={data().schedules}>

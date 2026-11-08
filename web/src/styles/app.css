@@ -21,6 +21,7 @@
   --color-accent-text: #ffa675;
   --color-accent-dim: #210b00;
   --color-accent-line: #5a3a26;
+  --color-illustration: #e8e3de;
 
   --color-ok: #6fae5d;
   --color-ok-bg: #0c150c;
@@ -525,6 +526,442 @@
     background-color var(--dur-fast) var(--ease-standard);
 }
 
+/* I3: a project's glyph is geometry, not an icon. 1.5 stroke at every size, one solid part. */
+.project-mark {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  overflow: visible;
+  flex: none;
+}
+
+.project-mark .f {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* I3: the tile's corner carries the state, so the glyph itself never changes. */
+@utility breath {
+  animation: breath 1.6s ease-in-out infinite;
+}
+
+@keyframes breath {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@utility pulse {
+  animation: corner-pulse 1.6s infinite;
+}
+
+@keyframes corner-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 90, 0, 0.55);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 6px rgba(255, 90, 0, 0);
+  }
+}
+
+/* I4: pictograms. A 64 grid, a 1.5px stroke that stays 1.5px at 88, and one orange detail. */
+.pictogram {
+  overflow: visible;
+  flex: none;
+}
+
+.pictogram .l,
+.pictogram .a,
+.pictogram .k {
+  fill: none;
+  stroke: var(--color-illustration);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pictogram .a {
+  stroke: var(--color-accent);
+}
+
+.pictogram .k {
+  fill: var(--color-surface);
+}
+
+.pictogram .af {
+  fill: var(--color-accent);
+}
+
+.pictogram .lf {
+  fill: var(--color-illustration);
+}
+
+.pictogram .dim {
+  stroke: #3a3431;
+}
+
+.m-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: m-pop 3.2s infinite;
+}
+
+@keyframes m-pop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.3, 1.5, 0.5, 1);
+  }
+  14%,
+  84% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  94%,
+  100% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+
+.m-bar {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: m-bar 3.6s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+@keyframes m-bar {
+  0% {
+    transform: scaleY(0.15);
+  }
+  20%,
+  84% {
+    transform: scaleY(1);
+  }
+  96%,
+  100% {
+    transform: scaleY(0.15);
+  }
+}
+
+.m-tilt {
+  transform-box: view-box;
+  animation: m-tilt 2.4s ease-in-out infinite;
+}
+
+@keyframes m-tilt {
+  0%,
+  100% {
+    transform: rotate(-9deg);
+  }
+  50% {
+    transform: rotate(9deg);
+  }
+}
+
+.m-slide {
+  animation: m-slide 3.2s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+
+@keyframes m-slide {
+  0%,
+  15%,
+  100% {
+    transform: translate(0, 0);
+  }
+  40%,
+  75% {
+    transform: translate(5px, -3px);
+  }
+}
+
+.m-peek {
+  animation: m-peek 3.2s cubic-bezier(0.3, 1.4, 0.5, 1) infinite;
+}
+
+@keyframes m-peek {
+  0%,
+  15%,
+  92%,
+  100% {
+    transform: translateY(0);
+  }
+  35%,
+  72% {
+    transform: translateY(-7px);
+  }
+}
+
+.m-swing {
+  transform-box: view-box;
+  animation: m-swing 3s ease-in-out infinite;
+}
+
+@keyframes m-swing {
+  0%,
+  100% {
+    transform: rotate(-8deg);
+  }
+  50% {
+    transform: rotate(8deg);
+  }
+}
+
+.m-spin {
+  transform-box: view-box;
+  animation: pictogram-spin 6s linear infinite;
+}
+
+.m-spinf {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pictogram-spin 1.2s linear infinite;
+}
+
+@keyframes pictogram-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.m-fill {
+  stroke-dasharray: 36;
+  animation: m-fill 4.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes m-fill {
+  0% {
+    stroke-dashoffset: 30;
+  }
+  80%,
+  92% {
+    stroke-dashoffset: 6;
+  }
+  100% {
+    stroke-dashoffset: 30;
+  }
+}
+
+.m-lift {
+  animation: m-lift 3s cubic-bezier(0.3, 1.4, 0.5, 1) infinite;
+}
+
+@keyframes m-lift {
+  0%,
+  20%,
+  90%,
+  100% {
+    transform: translateY(0);
+  }
+  40%,
+  70% {
+    transform: translateY(-5px);
+  }
+}
+
+.m-plug {
+  animation: m-plug 3.2s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+
+@keyframes m-plug {
+  0%,
+  10%,
+  92%,
+  100% {
+    transform: translateX(0);
+  }
+  35%,
+  75% {
+    transform: translateX(3.5px);
+  }
+}
+
+.m-led {
+  animation: m-led 3.2s infinite;
+}
+
+@keyframes m-led {
+  0%,
+  34%,
+  80%,
+  100% {
+    fill: transparent;
+  }
+  38%,
+  75% {
+    fill: var(--color-accent);
+  }
+}
+
+.m-ring {
+  transform-box: view-box;
+  animation: m-ring 2.4s ease-in-out infinite;
+}
+
+@keyframes m-ring {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0);
+  }
+  10% {
+    transform: rotate(12deg);
+  }
+  20% {
+    transform: rotate(-10deg);
+  }
+  30% {
+    transform: rotate(6deg);
+  }
+  40% {
+    transform: rotate(-3deg);
+  }
+}
+
+.m-wave {
+  animation: m-wave 2.4s infinite;
+}
+
+@keyframes m-wave {
+  0%,
+  8% {
+    opacity: 0;
+  }
+  18%,
+  45% {
+    opacity: 1;
+  }
+  60%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.m-scan {
+  animation: m-scan 3.6s ease-in-out infinite;
+}
+
+@keyframes m-scan {
+  0%,
+  100% {
+    transform: translate(-3px, -1px);
+  }
+  50% {
+    transform: translate(3px, 2px);
+  }
+}
+
+.m-drift {
+  animation: m-drift 4s ease-in-out infinite;
+}
+
+@keyframes m-drift {
+  0%,
+  100% {
+    transform: translateX(-2px);
+  }
+  50% {
+    transform: translateX(2px);
+  }
+}
+
+.m-draw {
+  stroke-dasharray: 1;
+  animation: m-draw 3.2s ease-out infinite;
+}
+
+@keyframes m-draw {
+  0%,
+  15% {
+    stroke-dashoffset: 1;
+  }
+  40%,
+  88% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 1;
+  }
+}
+
+.m-needle {
+  transform-box: view-box;
+  transform-origin: 32px 44px;
+  animation: m-needle 3.2s cubic-bezier(0.3, 1.3, 0.5, 1) infinite;
+}
+
+@keyframes m-needle {
+  0%,
+  100% {
+    transform: rotate(-80deg);
+  }
+  45%,
+  80% {
+    transform: rotate(0deg);
+  }
+}
+
+.m-key {
+  animation: m-key 3s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+
+@keyframes m-key {
+  0%,
+  15%,
+  90%,
+  100% {
+    transform: translateX(0);
+  }
+  40%,
+  70% {
+    transform: translateX(4px);
+  }
+}
+
+.m-drop {
+  animation: m-drop 2.8s cubic-bezier(0.5, 0, 0.75, 0) infinite;
+}
+
+@keyframes m-drop {
+  0% {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  60% {
+    transform: translateY(3px);
+    opacity: 1;
+  }
+  75%,
+  100% {
+    transform: translateY(3px);
+    opacity: 0;
+  }
+}
+
+/* I1: a card or a button gets the plain arc, a quarter turn every 0.8s. */
+.spinner-arc {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: spinner-arc 0.8s linear infinite;
+}
+
+@keyframes spinner-arc {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -532,5 +969,44 @@
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
+  }
+
+  /* A stilled drawing keeps every part it had; I4's own reduced-motion column. */
+  .pictogram .m-pop,
+  .pictogram .m-drop {
+    transform: none;
+    opacity: 1;
+  }
+
+  .pictogram .m-bar {
+    transform: scaleY(1);
+  }
+
+  .pictogram .m-tilt,
+  .pictogram .m-slide,
+  .pictogram .m-peek,
+  .pictogram .m-swing,
+  .pictogram .m-lift,
+  .pictogram .m-plug,
+  .pictogram .m-key,
+  .pictogram .m-scan,
+  .pictogram .m-drift {
+    transform: none;
+  }
+
+  .pictogram .m-draw {
+    stroke-dashoffset: 0;
+  }
+
+  .pictogram .m-fill {
+    stroke-dashoffset: 6;
+  }
+
+  .pictogram .m-wave {
+    opacity: 1;
+  }
+
+  .pictogram .m-led {
+    fill: var(--color-accent);
   }
 }

@@ -13,7 +13,6 @@ import { Icon } from "../ui/icon.tsx"
 import { Markdown } from "./markdown.tsx"
 import { AnsweredQuestionCard } from "./cards.tsx"
 import { EntryList, OwnerBubble, itemsOf, type EntryItem, type ItemContext } from "./entries.tsx"
-import { projectIcon } from "../../lib/project-icon.ts"
 import { ProjectGlyph } from "./project-glyph.tsx"
 
 export type PendingMessage = {
@@ -40,9 +39,7 @@ function CoordinatorMeta(props: { busy?: boolean | undefined }): JSX.Element {
 function Welcome(props: { project: ProjectSummary }): JSX.Element {
   return (
     <div class="flex flex-col items-center justify-center gap-4 py-20 text-center">
-      <span class="grid h-10 w-10 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2">
-        <Icon name={projectIcon(props.project.slug)} size={18} />
-      </span>
+      <ProjectGlyph slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={40} />
       <div class="flex flex-col gap-1.5">
         <span class="text-[15px] font-medium text-fg">Start the conversation</span>
         <span class="max-w-[360px] text-[13px] leading-[1.6] text-fg-3">
@@ -150,7 +147,7 @@ export function Transcript(props: {
         <For each={props.answered}>
           {(item) => (
             <div class="flex gap-3">
-              <ProjectGlyph slug={props.project.slug} class="mt-0.5" />
+              <ProjectGlyph slug={props.project.slug} name={props.project.name} goal={props.project.goal} class="mt-0.5" />
               <div class="min-w-0 flex-1">
                 <AnsweredQuestionCard
                   question={item.question}
@@ -164,7 +161,7 @@ export function Transcript(props: {
 
         <Show when={live().busy}>
           <div class="flex gap-3">
-            <ProjectGlyph slug={props.project.slug} class="mt-0.5" />
+            <ProjectGlyph slug={props.project.slug} name={props.project.name} goal={props.project.goal} class="mt-0.5" />
             <div class="flex min-w-0 flex-1 flex-col gap-3">
               <CoordinatorMeta busy />
               <Show

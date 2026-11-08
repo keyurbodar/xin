@@ -72,7 +72,7 @@ function ThreadsTab(props: { project: ProjectSummary; onOpenThread: (id: number)
   return (
     <div class="flex flex-col pb-6">
       <Show when={groups().waiting.length + groups().working.length + groups().completed.length + groups().failed.length + groups().cancelled.length > 0}
-        fallback={<EmptyState icon="layers" title="No threads yet" detail="Ask the coordinator to start one; it appears here and in the chat." />}
+        fallback={<EmptyState pictogram="threads" title="No threads yet" detail="Ask the coordinator to start one; it appears here and in the chat." />}
       >
         <Show when={groups().waiting.length > 0}>
           <Group label="Waiting on you" count={groups().waiting.length} tint>
@@ -136,7 +136,7 @@ function FilesTab(props: { slug: string }): JSX.Element {
         {(rows) => (
           <Show
             when={rows().length > 0}
-            fallback={<EmptyState icon="file" title="No files yet" detail="Files a thread writes land here under the project folder." />}
+            fallback={<EmptyState pictogram="folder" title="No files yet" detail="Files a thread writes land here under the project folder." />}
           >
             <div class="flex items-center gap-2 border-b border-line px-3 py-2.5">
               <span class="label flex-1">{rows().length} files</span>
@@ -192,7 +192,7 @@ function JobsTab(): JSX.Element {
             when={data().jobs.length > 0}
             fallback={
               <EmptyState
-                icon="clock"
+                pictogram="jobs"
                 title="No jobs"
                 detail="A job runs one long tool call in the background and reports back here."
               />

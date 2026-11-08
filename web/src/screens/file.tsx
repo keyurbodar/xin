@@ -158,13 +158,13 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
 
         <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
           <Skullet loading={content.loading} sample={() => <div class="h-3 w-2/3 rounded-[1px] bg-hover" />} label="Opening file">
-            <Show when={content()} fallback={<EmptyState icon="file" title="File not found" detail="It may have been deleted." />}>
+            <Show when={content()} fallback={<EmptyState pictogram="folder" title="File not found" detail="It may have been deleted." />}>
               {(entry) => (
                 <Show
                   when={shown()?.text ?? null}
                   fallback={
                     <EmptyState
-                      icon="file"
+                      pictogram="files"
                       title={name(entry().path)}
                       detail={`${entry().type} · ${bytes(entry().size)}. No text preview for this type.`}
                     />

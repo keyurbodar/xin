@@ -172,7 +172,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
         {(data) => (
           <Show
             when={data().notes.length > 0}
-            fallback={<EmptyState icon="brain" title="Nothing remembered yet" detail="Facts the coordinator keeps between chats appear here." />}
+            fallback={<EmptyState pictogram="memory" title="Nothing remembered yet" detail="Facts the coordinator keeps between chats appear here." />}
           >
             <div class="flex flex-col">
               <For each={data().notes}>

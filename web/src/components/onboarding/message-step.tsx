@@ -1,6 +1,6 @@
 import { For, Show, type JSX } from "solid-js"
 import { Icon, type IconName } from "../ui/icon.tsx"
-import { projectIcon } from "../../lib/project-icon.ts"
+import { ProjectMark } from "../chat/project-glyph.tsx"
 import { navigate } from "../../lib/router.ts"
 import { GhostButton, PrimaryButton } from "./controls.tsx"
 import { nextStep, onboardingProject, previousStep, projectPath } from "../../state/onboarding.ts"
@@ -37,7 +37,7 @@ export function MessageStep(): JSX.Element {
           <div class="overflow-hidden rounded-[4px] border border-line bg-surface">
             <div class="flex items-center gap-2.5 border-b border-line px-4 py-3">
               <span class="grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2">
-                <Icon name={project() === undefined ? "folder" : projectIcon(project()?.slug ?? "")} size={14} />
+                <ProjectMark slug={project()?.slug ?? ""} name={project()?.name ?? ""} size={15} />
               </span>
               <span class="min-w-0 truncate text-[14px] font-medium">{project()?.name}</span>
               <Show when={project()?.goal !== undefined}>
@@ -48,7 +48,7 @@ export function MessageStep(): JSX.Element {
             <div class="flex flex-col gap-5 px-5 py-5">
               <div class="flex items-start gap-3">
                 <span class="grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2">
-                  <Icon name={project() === undefined ? "folder" : projectIcon(project()?.slug ?? "")} size={14} />
+                  <ProjectMark slug={project()?.slug ?? ""} name={project()?.name ?? ""} size={15} />
                 </span>
                 <div class="flex min-w-0 flex-1 flex-col gap-3">
                   <span class="font-mono text-[10.5px] text-fg-4">Coordinator · just now</span>

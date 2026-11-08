@@ -17,6 +17,7 @@ The first-party client is a SolidJS app in `web/` that talks to the same contrac
 - `#/landing` — public landing page, outside the shell.
 - ⌘K — the command palette over projects, threads, pages and actions.
 - Layout follows `DDL0wyMU8c`. At 1280 and up the sidebar is 264 wide with labels and the panel is docked. From 1024 to 1279 the sidebar is a 56px rail and the panel is a non-modal drawer, 400 wide, with a shadow and no scrim. Below 1024 the sidebar becomes a bottom tab bar and the panel becomes a bottom sheet at 76% height on a scrim.
+- Identity follows `I2`–`I4`. Status is the D Grid from `I2` (`components/ui/status-glyph.tsx`). A project's mark is one of the 24 glyphs from `I3` (`lib/project-glyphs.ts`, picked from the project's words) and its tile corner carries the state. Empty states use the 16 pictograms from `I4` at 88px (`components/ui/pictogram.tsx`). Small loads use the `I1` arc (`Spinner`, 0.8s a turn).
 - Motion follows `lv7gYmXLnV` and `NhJwMUwK2F`. A dialog fades and scales .98 in 200 and leaves in 140; a right sheet and the panel drawer slide 24px in over 320; a menu drops 4px in 140; a fan-out row drops 4px in 200 with a 40ms stagger; a report card rises 6px in 320; a press scales .98 within 80; a toggle knob travels in 140; a rejected input shakes once. All of it collapses under `prefers-reduced-motion`.
 
 ## How to get to it (user POV)

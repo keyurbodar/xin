@@ -3,14 +3,12 @@ import { Button } from "../ui/button.tsx"
 
 export function Spinner(props: { tone?: "dark" | "light" }): JSX.Element {
   return (
-    <span
-      class="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-[1.5px]"
-      classList={{
-        "border-ink/25 border-t-ink": props.tone !== "light",
-        "border-line-inner border-t-fg-2": props.tone === "light",
-      }}
-      aria-hidden="true"
-    />
+    <svg width={14} height={14} viewBox="0 0 16 16" aria-hidden="true" class={props.tone === "light" ? "text-fg-2" : "text-ink"}>
+      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-opacity="0.22" stroke-width="1.6" />
+      <g class="spinner-arc">
+        <path d="M8 2a6 6 0 0 1 6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      </g>
+    </svg>
   )
 }
 

@@ -2,7 +2,8 @@ import { For, onMount, Show, type JSX } from "solid-js"
 import { activeProjects, counts, type ProjectSummary } from "../../state/home.ts"
 import { navigate, route } from "../../lib/router.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
-import { projectIcon } from "../../lib/project-icon.ts"
+import { projectGlyph, PROJECT_GLYPHS } from "../../lib/project-glyphs.ts"
+import { Corner, projectState } from "../chat/project-glyph.tsx"
 import { money } from "../../lib/format.ts"
 import { usage, owner, ownerName } from "../../state/settings.ts"
 
@@ -69,10 +70,15 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
                   "border-line-inner text-fg-2 hover:border-line-strong hover:text-fg": !onProject(project.slug),
                 }}
               >
-                <Icon name={projectIcon(project.slug)} size={16} />
-                <Show when={needsYou(project)}>
-                  <span class="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
-                </Show>
+                <svg
+                  viewBox="0 0 24 24"
+                  width={20}
+                  height={20}
+                  class="project-mark"
+                  aria-hidden="true"
+                  innerHTML={PROJECT_GLYPHS[projectGlyph(project.slug, project.name, project.goal ?? "")]}
+                />
+                <Corner state={projectState(project)} />
               </button>
             )}
           </For>
@@ -152,10 +158,18 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
               classList={{ "bg-selected hover:bg-selected": onProject(project.slug) }}
             >
               <span
-                class="grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised"
+                class="relative grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised"
                 classList={{ "text-fg": onProject(project.slug), "text-fg-2": !onProject(project.slug) }}
               >
-                <Icon name={projectIcon(project.slug)} size={14} />
+                <svg
+                  viewBox="0 0 24 24"
+                  width={15}
+                  height={15}
+                  class="project-mark"
+                  aria-hidden="true"
+                  innerHTML={PROJECT_GLYPHS[projectGlyph(project.slug, project.name, project.goal ?? "")]}
+                />
+                <Corner state={projectState(project)} />
               </span>
               <span
                 class="min-w-0 flex-1 truncate text-[12.5px]"

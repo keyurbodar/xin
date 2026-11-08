@@ -243,7 +243,7 @@ export function Composer(props: {
                 class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-2 hover:bg-hover hover:text-fg disabled:opacity-50"
               >
                 <Show when={uploading()} fallback={<Icon name="paperclip" size={14} />}>
-                  <Spinner class="border-fg-4/40 border-t-fg-2" />
+                  <Spinner class="text-fg-3" />
                 </Show>
               </button>
               <input
@@ -320,7 +320,7 @@ export function Composer(props: {
               }}
             >
               <Show when={sending()} fallback={<Icon name="arrow-up" size={16} />}>
-                <Spinner class="border-ink/30 border-t-ink" />
+                <Spinner class="text-ink" />
               </Show>
             </button>
           </div>
@@ -466,7 +466,7 @@ export function SteerComposer(props: {
             }}
           >
             <Show when={sending()} fallback={<Icon name="arrow-up" size={14} />}>
-              <Spinner class="border-ink/30 border-t-ink" />
+              <Spinner class="text-ink" />
             </Show>
           </button>
         </div>

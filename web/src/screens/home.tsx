@@ -17,7 +17,7 @@ import { Morph } from "../components/ui/morph.tsx"
 import { Skullet } from "../components/ui/skeleton.tsx"
 import { Icon } from "../components/ui/icon.tsx"
 import { navigate } from "../lib/router.ts"
-import { projectIcon } from "../lib/project-icon.ts"
+import { Corner, ProjectMark, projectState } from "../components/chat/project-glyph.tsx"
 import { usage } from "../state/settings.ts"
 import { TopBar, TopButton } from "../components/shell/topbar.tsx"
 
@@ -288,8 +288,9 @@ function ProjectCard(props: { project: ProjectSummary }): JSX.Element {
       class="flex flex-col gap-3 rounded-[4px] border border-line-inner bg-raised p-3.5 text-left hover:border-line-strong hover:bg-hover"
     >
       <div class="flex items-center gap-2.5">
-        <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-surface text-fg-2">
-          <Icon name={projectIcon(props.project.slug)} size={16} />
+        <span class="relative grid h-8 w-8 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-surface text-fg-2">
+          <ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={18} />
+          <Corner state={projectState(props.project)} />
         </span>
         <span class="min-w-0">
           <span class="block truncate text-[14px] font-medium">{props.project.name}</span>
