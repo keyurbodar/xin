@@ -340,6 +340,85 @@ export function parseRuleText(text: string, fallbackTz: string | undefined, now:
   }
 }
 
+const WEEKDAY_WORDS: Readonly<Record<string, string>> = {
+  monday: "MO",
+  mon: "MO",
+  tuesday: "TU",
+  tue: "TU",
+  tues: "TU",
+  wednesday: "WE",
+  wed: "WE",
+  thursday: "TH",
+  thu: "TH",
+  thurs: "TH",
+  friday: "FR",
+  fri: "FR",
+  saturday: "SA",
+  sat: "SA",
+  sunday: "SU",
+  sun: "SU",
+}
+
+/**
+ * Parse plain English: "every friday at 4pm", "weekdays at 9", "every 2 hours", "daily at 07:30",
+ * "monthly", or an ISO date and time for one delivery. Undefined when the words are not one of
+ * those shapes, so the caller can fall back to RRULE text.
+ */
+export function parseWhenText(text: string, tz: string | undefined, now: number): ParsedWhen | undefined {
+  const trimmed = text.trim()
+  if (/^\d{4}-\d{2}-\d{2}/u.test(trimmed)) {
+    const at = Date.parse(trimmed)
+    return Number.isNaN(at) ? undefined : { when: { kind: "at", at }, tz: zoneOf(tz), anchor: now }
+  }
+  const timed = /^(.*?)(?: at (\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$/u.exec(trimmed.toLowerCase().replace(/\s+/gu, " "))
+  if (timed === null) return undefined
+  const body = (timed[1] ?? "").trim()
+  const clock = timed[2] === undefined ? undefined : clockOf(timed[2], timed[3], timed[4])
+  if (clock === "invalid") return undefined
+  const rule = ruleOfWords(body)
+  if (rule === undefined) return undefined
+  const parts = [rule, ...(clock === undefined ? [] : [`BYHOUR=${clock.hour}`, `BYMINUTE=${clock.minute}`])]
+  return { when: { kind: "rrule", rrule: parts.join(";") }, tz: zoneOf(tz), anchor: now }
+}
+
+function clockOf(
+  hourText: string,
+  minuteText: string | undefined,
+  meridiem: string | undefined,
+): { readonly hour: number; readonly minute: number } | "invalid" {
+  const hour = Number(hourText)
+  const minute = minuteText === undefined ? 0 : Number(minuteText)
+  if (!Number.isSafeInteger(hour) || minute < 0 || minute > 59) return "invalid"
+  if (meridiem === "am" || meridiem === "pm") {
+    if (hour < 1 || hour > 12) return "invalid"
+    const base = hour % 12
+    return { hour: meridiem === "pm" ? base + 12 : base, minute }
+  }
+  return hour > 23 ? "invalid" : { hour, minute }
+}
+
+function ruleOfWords(body: string): string | undefined {
+  const counted = /^every (\d{1,3}) (hour|day|week)s?$/u.exec(body)
+  if (counted !== null) {
+    const count = Number(counted[1])
+    if (!Number.isSafeInteger(count) || count < 1) return undefined
+    const freq = counted[2] === "hour" ? "HOURLY" : counted[2] === "day" ? "DAILY" : "WEEKLY"
+    return `FREQ=${freq};INTERVAL=${count}`
+  }
+  if (body === "hourly" || body === "every hour") return "FREQ=HOURLY"
+  if (body === "daily" || body === "every day") return "FREQ=DAILY"
+  if (body === "weekly" || body === "every week") return "FREQ=WEEKLY"
+  if (body === "monthly" || body === "every month") return "FREQ=MONTHLY"
+  if (body === "weekdays" || body === "every weekday" || body === "on weekdays")
+    return "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+  const days = /^every (?:on )?(.+)$/u.exec(body)
+  if (days === null) return undefined
+  const names = (days[1] ?? "").split(/,? and |,\s*| /u).filter((name) => name !== "")
+  const codes = names.map((name) => WEEKDAY_WORDS[name])
+  if (codes.length === 0 || codes.some((code) => code === undefined)) return undefined
+  return `FREQ=WEEKLY;BYDAY=${codes.join(",")}`
+}
+
 function startOf(line: string): { readonly at: number; readonly tz: string } {
   const match = START.exec(line)
   if (match === null) throw new RuleError("DTSTART must be DTSTART:... or DTSTART;TZID=Zone:...")

@@ -1,8 +1,28 @@
 import { describe, expect, it } from "vitest"
-import { parseRule, RuleError, slotsOf } from "./rrule.ts"
+import { parseRule, parseWhenText, RuleError, slotsOf } from "./rrule.ts"
 
 const iso = (ms: number): string => new Date(ms).toISOString()
 const slots = (rrule: string, tz: string, anchor: number) => slotsOf({ kind: "rrule", rrule }, tz, anchor)
+
+describe("plain words", () => {
+  it("turns common phrases into rules and rejects the rest", () => {
+    const now = Date.parse("2026-11-08T09:00:00Z")
+    const when = (text: string) => parseWhenText(text, "UTC", now)?.when
+    expect(when("every friday at 4pm")).toEqual({ kind: "rrule", rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0" })
+    expect(when("weekdays at 9:30")).toEqual({
+      kind: "rrule",
+      rrule: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=30",
+    })
+    expect(when("every 2 hours")).toEqual({ kind: "rrule", rrule: "FREQ=HOURLY;INTERVAL=2" })
+    expect(when("daily")).toEqual({ kind: "rrule", rrule: "FREQ=DAILY" })
+    expect(when("every monday and thursday at 8")).toEqual({
+      kind: "rrule",
+      rrule: "FREQ=WEEKLY;BYDAY=MO,TH;BYHOUR=8;BYMINUTE=0",
+    })
+    expect(when("2026-12-01T10:00:00Z")).toEqual({ kind: "at", at: Date.parse("2026-12-01T10:00:00Z") })
+    expect(when("do the thing")).toBeUndefined()
+  })
+})
 
 describe("rrule next slot", () => {
   it("keeps a daily wall time across a spring-forward change", () => {

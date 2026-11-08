@@ -110,6 +110,23 @@ describe("schedules", () => {
     await eventually(stub, async (home: Home) => (await timers(home)).length === 0)
   })
 
+  it("parses plain words and answers the next three runs", async () => {
+    const outcome = await runInDurableObject(fresh(), (home: Home) =>
+      run(home, "p1-parse", "schedule.parse", { text: "every friday at 4pm", tz: "UTC" }),
+    )
+    expect(outcome).toMatchObject({
+      kind: "ok",
+      result: { rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0", tz: "UTC" },
+    })
+    const result = field(outcome, "result")
+    const next = field(result, "next")
+    expect(Array.isArray(next) ? next.length : 0).toBe(3)
+    const unclear = await runInDurableObject(fresh(), (home: Home) =>
+      run(home, "p1-parse-bad", "schedule.parse", { text: "whenever", tz: "UTC" }),
+    )
+    expect(unclear).toMatchObject({ kind: "rejected", code: "bad_args" })
+  })
+
   it("keeps six runs and resolves each run's outcome only when asked", async () => {
     const stub = fresh()
     const at = await runInDurableObject(stub, async (home: Home) => {

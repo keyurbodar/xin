@@ -5,6 +5,7 @@ A schedule is a record in one `xin.schedules` session document, plus a pi timer 
 ## Sub-features
 
 - Ops: `schedule.create` (`id?`, exactly one of `rrule` or `at`, `tz`, `title`, `prompt`, `target?`), `schedule.list` (`active?`, `limit`, `offset`, `outcomes?`), `schedule.view`, `schedule.edit` (`action` `update` or `delete`, with `expectedUpdatedAt`), `schedule.cancel`.
+- `schedule.parse` (`text`, `tz?`) reads plain words ("every friday at 4pm", "weekdays at 9", "every 2 hours", "daily", a weekday list, an ISO date), falls back to RRULE text, and answers `{rrule|at, tz, next: [3 ISO slots]}`.
 - Each delivery appends a run to the record: slot, delivery time, target conversation, and the entry id the conversation had just before the run (last six kept). `schedule.list` with `outcomes: true` resolves each run to `done` (an assistant entry after the marker), `failed` (a `xin.error` entry after it), or `running`; the default list skips those reads.
 - Targets: `this_session` (the conversation that created it), `new_once` (one ownerless conversation created at the first delivery and reused), `new` (a new conversation per delivery). There is no existing-conversation or project target; dsh has none.
 - Agent tools: `schedule_create`, `schedule_list`, `schedule_view`, `schedule_edit`. `schedule_edit` pauses with `active:false` and resumes with `active:true`; resume needs a future occurrence. Results are canonical JSON; an unknown id answers `schedule_not_found` and a stale `expectedUpdatedAt` answers `schedule_conflict`, both as results rather than errors.
@@ -29,6 +30,7 @@ $S call POST /v1/cmd "{\"id\":\"c1\",\"op\":\"schedule.create\",\"args\":{\"id\"
 $S call POST /v1/cmd '{"id":"c2","op":"schedule.create","args":{"id":"weekly","title":"Week review","prompt":"weekly review","rrule":"RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0","target":"this_session"}}'
 $S call POST /v1/cmd '{"id":"l1","op":"schedule.list","args":{"active":true}}'          # nextAt is ISO in the task
 $S call POST /v1/cmd '{"id":"l2","op":"schedule.list","args":{"outcomes":true}}'        # runs:[{slot,deliveredAt,conversationId,outcome}]
+$S call POST /v1/cmd '{"id":"pp","op":"schedule.parse","args":{"text":"every friday at 4pm","tz":"Europe/London"}}'
 $S call POST /v1/cmd '{"id":"v1","op":"schedule.view","args":{"id":"weekly"}}'          # updatedAt feeds expectedUpdatedAt
 $S call POST /v1/cmd '{"id":"e1","op":"schedule.edit","args":{"id":"weekly","action":"update","active":false,"expectedUpdatedAt":"<updatedAt>"}}'
 $S call POST /v1/cmd '{"id":"e2","op":"schedule.edit","args":{"id":"weekly","action":"update","active":true,"expectedUpdatedAt":"2020-01-01T00:00:00.000Z"}}'  # schedule_conflict

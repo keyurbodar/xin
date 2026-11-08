@@ -47,6 +47,7 @@ import {
   type Occurrence,
   type ParsedWhen,
   parseRuleText,
+  parseWhenText,
   RuleError,
   slotsOf,
   type When,
@@ -160,7 +161,14 @@ export function schedulesExtension(port: SchedulesPort): Extension {
 
 export function scheduleOps(service: SchedulesService): readonly Op[] {
   const root = rootConversation()
-  return [createOp(service, root), cancelOp(service), listOp(service), viewOp(service), editOp(service, root)]
+  return [
+    createOp(service, root),
+    cancelOp(service),
+    listOp(service),
+    viewOp(service),
+    editOp(service, root),
+    parseOp(),
+  ]
 }
 
 export function scheduleTask(port: SchedulesPort): Task<TimerInput, ScheduleState, null, object> {
@@ -770,6 +778,41 @@ function editOp(service: SchedulesService, root: RootConversation): Op {
     args: ScheduleEditArgsSchema,
     actors: ["owner", "agent"],
     run: async (api, args) => guardOp(async () => service.edit(editRequest(args), await root(api), Date.now())),
+  })
+}
+
+const PARSE_ARGS = obj({ text: str({ minLength: 1, maxLength: 512 }), tz: opt(str({ minLength: 1, maxLength: 64 })) })
+
+function parseOp(): Op {
+  return defineOp({
+    name: "schedule.parse",
+    args: PARSE_ARGS,
+    actors: ["owner", "agent"],
+    run: async (_api, args) => {
+      try {
+        const now = Date.now()
+        const parsed = parseWhenText(args.text, args.tz, now) ?? parseRuleText(args.text, args.tz, now)
+        const slots = slotsOf(parsed.when, parsed.tz, parsed.anchor)
+        const next: string[] = []
+        let last = now - 1
+        let index = 0
+        while (next.length < 3) {
+          const slot = slots.next(last, index)
+          if (slot === undefined) break
+          next.push(iso(slot.slot))
+          last = slot.slot
+          index = slot.index + 1
+        }
+        return {
+          ...(parsed.when.kind === "at" ? { at: iso(parsed.when.at) } : { rrule: parsed.when.rrule }),
+          tz: parsed.tz,
+          next,
+        }
+      } catch (error) {
+        if (error instanceof RuleError) throw new OpRejected("bad_args", error.message)
+        throw error
+      }
+    },
   })
 }
 
