@@ -182,8 +182,10 @@ function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "")
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true
   if (/^\d+$/.test(host) || /^0x[0-9a-f]+$/i.test(host)) return true
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) && host.split(".").some((part) => part.length > 1 && part.startsWith("0")))
-    return true
+  if (/^\d+(\.\d+)*\.?$/.test(host)) {
+    const parts = host.replace(/\.$/, "").split(".")
+    if (parts.length !== 4 || parts.some((part) => part.length > 1 && part.startsWith("0"))) return true
+  }
   if (isPrivateIpv4(host)) return true
   if (!host.includes(":")) return false
   return (

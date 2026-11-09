@@ -63,6 +63,8 @@ describe("web parsing", () => {
       "http://169.254.169.254/latest/meta-data",
       "http://2130706433/",
       "http://0177.0.0.1/",
+      "http://127.1/",
+      "http://127.0.0.1./",
       "http://example.com:8080/",
       "file:///etc/passwd",
       "http://user:pass@example.com/",
