@@ -24,12 +24,23 @@ function hang(options: SimpleStreamOptions | undefined): Promise<AssistantMessag
   })
 }
 
-function delegate(index: number, clientRequestId: string, task = `do task ${index}`): AssistantMessage {
+function delegate(
+  index: number,
+  clientRequestId: string,
+  task = `do task ${index}`,
+  project?: string,
+): AssistantMessage {
   return fauxAssistantMessage(
     [
       fauxToolCall(
         "delegate_task",
-        { task, title: `Thread ${index}`, mode: "async", clientRequestId },
+        {
+          task,
+          title: `Thread ${index}`,
+          mode: "async",
+          clientRequestId,
+          ...(project === undefined ? {} : { project }),
+        },
         { id: `delegate-${index}-${clientRequestId}` },
       ),
     ],
@@ -59,6 +70,11 @@ const step: FauxResponseStep = async (context, options) => {
       return fauxAssistantMessage("provider exploded", { stopReason: "error", errorMessage: "provider exploded" })
     if (brief.includes("think"))
       return fauxAssistantMessage([fauxThinking("soft drops kiss the earth"), fauxText(`thread answer: ${brief}`)])
+    if (brief.includes("artifact") && !messages.some((message) => message.role === "toolResult"))
+      return fauxAssistantMessage(
+        [fauxToolCall("artifact", { action: "write", title: "Note", markdown: "# Note" }, { id: "artifact-write" })],
+        { stopReason: "toolUse" },
+      )
     return fauxAssistantMessage(`thread answer: ${brief}`)
   }
   const prompt = lastOwnerText(messages)
@@ -96,6 +112,26 @@ const step: FauxResponseStep = async (context, options) => {
   }
   if (prompt.includes("delegate thinking")) {
     const call = delegate(1, "thinking-1", "think about it").content[0]
+    return fauxAssistantMessage(call === undefined ? [] : [call], { stopReason: "toolUse" })
+  }
+  if (prompt.includes("puck create")) {
+    return fauxAssistantMessage(
+      [
+        fauxToolCall(
+          "thread_create",
+          { title: "Puck thread", task: "puck task", project: "alpha" },
+          { id: "puck-create-1" },
+        ),
+      ],
+      { stopReason: "toolUse" },
+    )
+  }
+  if (prompt.includes("puck delegate")) {
+    const call = delegate(1, "puck-1", "puck task", "alpha").content[0]
+    return fauxAssistantMessage(call === undefined ? [] : [call], { stopReason: "toolUse" })
+  }
+  if (prompt.includes("delegate elsewhere")) {
+    const call = delegate(1, "elsewhere-1", "wrong project", "beta").content[0]
     return fauxAssistantMessage(call === undefined ? [] : [call], { stopReason: "toolUse" })
   }
   if (prompt.includes("delegate one")) {

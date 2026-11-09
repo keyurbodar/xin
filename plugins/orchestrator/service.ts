@@ -4,22 +4,24 @@ import type { Models } from "@earendil-works/pi-ai"
 import type {
   ConversationId,
   ConversationHandle,
-  DocumentReader,
   EntryId,
   Harness,
   ModelRef,
   Registry,
   Submission,
-  ToolRegistration,
   Tx,
 } from "@earendil-works/pi-durable"
 import type {
   Caller,
   CallerProject,
   CapabilitiesOutcome,
+  CreateThreadOutcome,
+  CreateThreadRequest,
   DelegateOutcome,
   DelegateRequest,
+  ListedThread,
   ListOutcome,
+  PuckProject,
   ReadOutcome,
   ReporterInput,
   SendMode,
@@ -35,10 +37,11 @@ import type {
 import type { CommandId, ProjectId } from "../../src/ids.ts"
 import { entryText, detailOf, textOf } from "../../src/transcript.ts"
 import { resolveModel as resolveRoleModel, type ModelsService } from "../../src/contracts/models.ts"
-import { projectInScope, ThreadDoc, threadInScope, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
+import { ThreadDoc, defaultSpaceOf, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
+import { canUseThread, projectByRef, scopeOf, type Scope } from "../../src/contracts/scope.ts"
 import { WorkspaceDoc, type ProjectState } from "../../src/contracts/workspace.ts"
 import type { Actor, Command, Outcome } from "../../src/ops.ts"
-import type { Threads } from "./threads.ts"
+import { childTools, type Threads } from "./threads.ts"
 
 export type ServiceDeps = {
   readonly harness: Harness
@@ -50,12 +53,6 @@ export type ServiceDeps = {
 
 const context = BACKGROUND_CONTEXT
 const DEFAULT_WAIT_MS = 8_000
-const CHILD_TOOLS = ["delegate_task", "task_cancel", "thread_send"] as const
-
-type ProjectThreads = {
-  readonly project: CallerProject
-  readonly threads: readonly ThreadSummary[]
-}
 
 const projectOf = (projectId: string, project: ProjectState): CallerProject => ({
   projectId,
@@ -105,36 +102,54 @@ const submitBrief = (
     ? Promise.resolve(undefined)
     : conversation.submit({ type: "input", content: brief, requestId }, callContext)
 
-const coordinator = async (
-  read: DocumentReader,
-  conversationId: ConversationId,
-): Promise<CallerProject | undefined> => {
-  const workspace = await read.snapshot(WorkspaceDoc, context)
-  if (workspace === undefined) return undefined
-  for (const [projectId, project] of Object.entries(workspace.projects)) {
-    if (project.coordinatorId === conversationId) return projectOf(projectId, project)
+const liveCount = async (harness: Harness, threadIds: readonly number[]): Promise<number> => {
+  let live = 0
+  for (const id of threadIds) {
+    const doc = await harness.snapshot(ThreadDoc, id as ConversationId, context)
+    if (doc !== undefined && (doc.status === "working" || doc.status === "waiting")) live += 1
   }
-  return undefined
-}
-
-const threadsOf = async (read: DocumentReader, conversationId: ConversationId): Promise<ProjectThreads | undefined> => {
-  const scope = await projectInScope(read, conversationId)
-  if (scope === undefined) return undefined
-  const found: ThreadSummary[] = []
-  for (const id of scope.project.threadIds) {
-    const doc = await read.snapshot(ThreadDoc, id as ConversationId, context)
-    if (doc !== undefined) found.push(summaryOf(id, doc))
-  }
-  return { project: projectOf(scope.projectId, scope.project), threads: found }
+  return live
 }
 
 const threadOf = async (
-  read: DocumentReader,
-  conversationId: ConversationId,
+  harness: Harness,
+  callerId: ConversationId,
   threadId: number,
 ): Promise<ThreadSummary | undefined> => {
-  const scope = await threadInScope(read, conversationId, threadId)
-  return scope === undefined ? undefined : summaryOf(threadId, scope.doc)
+  if (!(await canUseThread(harness, callerId, threadId))) return undefined
+  const doc = await harness.snapshot(ThreadDoc, threadId as ConversationId, context)
+  return doc === undefined ? undefined : summaryOf(threadId, doc)
+}
+
+type ProjectChoice =
+  | { readonly projectId: string; readonly project: ProjectState; readonly spaceId: string }
+  | { readonly kind: "rejected"; readonly reason: string }
+
+const projectFor = async (
+  harness: Harness,
+  scope: Extract<Scope, { kind: "puck" | "space" }>,
+  requested: string | undefined,
+): Promise<ProjectChoice> => {
+  if (scope.kind === "space") {
+    if (scope.project === undefined)
+      return { kind: "rejected", reason: `Space ${scope.spaceId} has no project to run a thread in.` }
+    if (scope.space.archived) return { kind: "rejected", reason: `Space ${scope.spaceId} is archived.` }
+    if (requested !== undefined && requested !== scope.projectId && requested !== scope.project.slug)
+      return {
+        kind: "rejected",
+        reason: `delegate_task can only start threads in this conversation's own project (${scope.project.slug}).`,
+      }
+    return { projectId: scope.projectId, project: scope.project, spaceId: scope.spaceId }
+  }
+  if (requested === undefined)
+    return { kind: "rejected", reason: "Puck must name a project (its slug or id) to start a thread." }
+  const resolved = await projectByRef(harness, requested)
+  if (resolved === undefined) return { kind: "rejected", reason: `No project "${requested}".` }
+  const workspace = await harness.snapshot(WorkspaceDoc, context)
+  const spaceId = workspace === undefined ? undefined : defaultSpaceOf(workspace, resolved.projectId)
+  if (spaceId === undefined || workspace?.spaces[spaceId]?.archived === true)
+    return { kind: "rejected", reason: `Project "${requested}" has no live space to run a thread in.` }
+  return { projectId: resolved.projectId, project: resolved.project, spaceId }
 }
 
 export function threadService(deps: ServiceDeps, threads: Threads): ThreadsService {
@@ -212,31 +227,27 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
     }
   }
 
-  const childRemovals = (): readonly ToolRegistration[] => {
-    const registered = new Map(
-      deps.registry
-        .snapshot()
-        .tools()
-        .map(({ tool }) => [tool.name, tool]),
-    )
-    return CHILD_TOOLS.flatMap((name) => {
-      const tool = registered.get(name)
-      return tool === undefined ? [] : [tool]
-    })
-  }
-
   const delegate = async (caller: Caller, request: DelegateRequest, callContext: Context): Promise<DelegateOutcome> => {
     const harness = deps.harness
-    const found = await coordinator(harness, caller.conversationId)
-    if (found === undefined) return { kind: "not_coordinator" }
+    const scope = await scopeOf(harness, caller.conversationId)
+    if (scope === undefined || scope.kind === "thread") return { kind: "not_coordinator" }
+    const found = await projectFor(harness, scope, request.project)
+    if ("kind" in found) return found
     const role: ThreadRole = request.role ?? "thread"
-    const model = await resolveModel(caller.conversationId, role, found, request.model, callContext)
+    const model = await resolveModel(
+      caller.conversationId,
+      role,
+      projectOf(found.projectId, found.project),
+      request.model,
+      callContext,
+    )
     if (model.kind === "none") return { kind: "no_model", reason: model.reason }
     const requestId = `delegate:${caller.conversationId}:${request.clientRequestId}`
     const created = await harness.commit(
       (tx: Tx) =>
         threads.createThread(tx, {
           projectId: found.projectId as ProjectId,
+          spaceId: found.spaceId,
           parentId: caller.conversationId,
           title: request.title,
           role,
@@ -244,7 +255,7 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
           model: model.model,
           clientRequestId: request.clientRequestId,
           requestId,
-          removeTools: childRemovals(),
+          removeTools: childTools(deps.registry),
         }),
       callContext,
     )
@@ -317,33 +328,90 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
   }
 
   const list = async (caller: Caller, filter: ThreadFilter): Promise<ListOutcome> => {
-    const scope = await threadsOf(deps.harness, caller.conversationId)
+    const scope = await scopeOf(deps.harness, caller.conversationId)
     if (scope === undefined) return { kind: "not_in_project" }
-    if (filter.projectId !== undefined && filter.projectId !== scope.project.projectId)
+    if (scope.kind === "puck") {
+      const workspace = await deps.harness.snapshot(WorkspaceDoc, context)
+      if (workspace === undefined) return { kind: "all", threads: [] }
+      const found: ListedThread[] = []
+      for (const space of Object.values(workspace.spaces)) {
+        if (space.archived) continue
+        const project = workspace.projects[space.projectId]
+        if (project === undefined || project.archived) continue
+        if (filter.projectId !== undefined && filter.projectId !== space.projectId && filter.projectId !== project.slug)
+          continue
+        for (const id of space.threadIds) {
+          const doc = await deps.harness.snapshot(ThreadDoc, id as ConversationId, context)
+          if (doc === undefined || doc.archived === true) continue
+          if (filter.status !== undefined && doc.status !== filter.status) continue
+          found.push({ ...summaryOf(id, doc), projectId: space.projectId })
+        }
+      }
+      return { kind: "all", threads: found }
+    }
+    if (
+      filter.projectId !== undefined &&
+      filter.projectId !== scope.projectId &&
+      filter.projectId !== scope.project?.slug
+    )
       return { kind: "no_project", projectId: filter.projectId }
-    const matching =
-      filter.status === undefined ? scope.threads : scope.threads.filter((thread) => thread.status === filter.status)
-    return { kind: "threads", projectId: scope.project.projectId, threads: matching }
+    const matching: ThreadSummary[] = []
+    for (const id of scope.space.threadIds) {
+      const doc = await deps.harness.snapshot(ThreadDoc, id as ConversationId, context)
+      if (doc === undefined || doc.archived === true) continue
+      if (filter.status !== undefined && doc.status !== filter.status) continue
+      matching.push(summaryOf(id, doc))
+    }
+    return { kind: "threads", projectId: scope.projectId, threads: matching }
   }
 
   const capabilities = async (caller: Caller, callContext: Context): Promise<CapabilitiesOutcome> => {
     const conversation = await deps.harness.conversation(caller.conversationId, callContext)
     const agent = conversation === undefined ? undefined : await conversation.agent(callContext)
     const listed = (await models().getAvailable()).slice(0, 10).map((model) => `${model.provider}/${model.id}`)
-    const found = await coordinator(deps.harness, caller.conversationId)
-    const scope = found === undefined ? undefined : await threadsOf(deps.harness, caller.conversationId)
-    const live = (scope?.threads ?? []).filter(
-      (thread) => thread.status === "working" || thread.status === "waiting",
-    ).length
+    const scope = await scopeOf(deps.harness, caller.conversationId)
+    const workspace = scope?.kind === "puck" ? await deps.harness.snapshot(WorkspaceDoc, context) : undefined
+    const projects: PuckProject[] = []
+    if (workspace !== undefined) {
+      for (const [id, project] of Object.entries(workspace.projects)) {
+        if (project.archived) continue
+        const threadIds = Object.values(workspace.spaces)
+          .filter((space) => space.projectId === id && !space.archived)
+          .flatMap((space) => space.threadIds)
+        projects.push({
+          id,
+          slug: project.slug,
+          name: project.name,
+          live: await liveCount(deps.harness, threadIds),
+        })
+      }
+    }
+    const live = scope?.kind === "space" ? await liveCount(deps.harness, scope.space.threadIds) : undefined
+    const project =
+      scope?.kind === "space" && scope.project !== undefined && live !== undefined
+        ? { name: scope.project.name, threadLimit: scope.project.settings.threadLimit, live }
+        : undefined
     return {
       ...(agent?.model === undefined ? {} : { model: agent.model }),
       models: listed,
-      ...(found === undefined ? {} : { project: { name: found.name, threadLimit: found.threadLimit, live } }),
+      ...(project === undefined ? {} : { project }),
+      ...(workspace === undefined ? {} : { puck: { projects } }),
     }
+  }
+
+  const create = async (caller: Caller, request: CreateThreadRequest): Promise<CreateThreadOutcome> => {
+    const outcome = await deps.run(
+      { id: commandId(`thread.create:${caller.taskId}`), op: "thread.create", args: request },
+      { kind: "agent", conversationId: caller.conversationId },
+    )
+    return outcome.kind === "ok"
+      ? { kind: "ok", result: outcome.result }
+      : { kind: "rejected", message: outcome.message }
   }
 
   return {
     delegate,
+    create,
     status,
     stop,
     send,

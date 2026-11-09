@@ -1,8 +1,8 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { defineDoc, type ConversationId, type DocumentReader } from "@earendil-works/pi-durable"
-import { compile, int, num, obj, oneOf, opt, str, type Static } from "@earendil-works/pi-schema"
+import { bool, compile, int, num, obj, oneOf, opt, str, type Static } from "@earendil-works/pi-schema"
 import type { ProjectId, ThreadId } from "../ids.ts"
-import { WorkspaceDoc, type ProjectState } from "./workspace.ts"
+import { WorkspaceDoc, type ProjectState, type SpaceState, type WorkspaceState } from "./workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -17,6 +17,8 @@ export type ThreadStatus = (typeof STATUSES)[number]
 
 const ThreadSchema = obj({
   projectId: str(),
+  spaceId: opt(str()),
+  archived: opt(bool()),
   parentId: opt(int({ minimum: 0 })),
   anchorTaskId: opt(str()),
   title: str(),
@@ -46,6 +48,8 @@ export const ThreadDoc = defineDoc<ThreadDocState>({
 
 type ThreadFields = {
   readonly projectId: string
+  readonly spaceId?: string
+  readonly archived?: boolean
   readonly parentId?: number
   readonly anchorTaskId?: string
   readonly title: string
@@ -68,6 +72,8 @@ export type ThreadState =
 function threadFields(value: ThreadDocState): ThreadFields {
   return {
     projectId: value.projectId,
+    ...(value.spaceId === undefined ? {} : { spaceId: value.spaceId }),
+    ...(value.archived === undefined ? {} : { archived: value.archived }),
     title: value.title,
     role: value.role,
     ...(value.parentId === undefined ? {} : { parentId: value.parentId }),
@@ -125,6 +131,8 @@ export function transition(status: ThreadStatus, event: ThreadEvent): Transition
 
 export type NewThread = {
   readonly projectId: ProjectId
+  readonly spaceId?: string
+  readonly archived?: boolean
   readonly threadId: ThreadId
   readonly title: string
   readonly role?: ThreadRole
@@ -139,27 +147,55 @@ export type NewThread = {
   readonly clientRequestId?: string
 }
 
-export type ThreadScope = {
+export type SpaceScope = {
+  readonly spaceId: string
+  readonly space: SpaceState
   readonly projectId: string
-  readonly project: ProjectState
-  readonly doc: ThreadDocState
+  readonly project?: ProjectState
 }
 
+export type ThreadScope = SpaceScope & { readonly doc: ThreadDocState }
+
 export type ProjectScope = { readonly projectId: string; readonly project: ProjectState }
+
+export function defaultSpaceOf(workspace: WorkspaceState, projectId: string): string | undefined {
+  for (const [spaceId, space] of Object.entries(workspace.spaces)) {
+    if (space.projectId === projectId && !space.archived) return spaceId
+  }
+  for (const [spaceId, space] of Object.entries(workspace.spaces)) {
+    if (space.projectId === projectId) return spaceId
+  }
+  return undefined
+}
+
+function scopeOfSpace(workspace: WorkspaceState, spaceId: string, space: SpaceState): SpaceScope {
+  const project = workspace.projects[space.projectId]
+  return project === undefined
+    ? { spaceId, space, projectId: space.projectId }
+    : { spaceId, space, projectId: space.projectId, project }
+}
+
+export async function spaceInScope(read: DocumentReader, callerId: ConversationId): Promise<SpaceScope | undefined> {
+  const workspace = await read.snapshot(WorkspaceDoc, context)
+  if (workspace === undefined) return undefined
+  for (const [spaceId, space] of Object.entries(workspace.spaces)) {
+    if (space.coordinatorId === callerId) return scopeOfSpace(workspace, spaceId, space)
+  }
+  const own = await read.snapshot(ThreadDoc, callerId, context)
+  if (own === undefined) return undefined
+  const spaceId = own.spaceId ?? defaultSpaceOf(workspace, own.projectId)
+  if (spaceId === undefined) return undefined
+  const space = workspace.spaces[spaceId]
+  return space === undefined ? undefined : scopeOfSpace(workspace, spaceId, space)
+}
 
 export async function projectInScope(
   read: DocumentReader,
   callerId: ConversationId,
 ): Promise<ProjectScope | undefined> {
-  const workspace = await read.snapshot(WorkspaceDoc, context)
-  if (workspace === undefined) return undefined
-  for (const [projectId, project] of Object.entries(workspace.projects)) {
-    if (project.coordinatorId === callerId) return { projectId, project }
-  }
-  const own = await read.snapshot(ThreadDoc, callerId, context)
-  if (own === undefined) return undefined
-  const project = workspace.projects[own.projectId]
-  return project === undefined ? undefined : { projectId: own.projectId, project }
+  const scope = await spaceInScope(read, callerId)
+  if (scope === undefined || scope.projectId === undefined || scope.project === undefined) return undefined
+  return { projectId: scope.projectId, project: scope.project }
 }
 
 export async function threadInScope(
@@ -167,9 +203,19 @@ export async function threadInScope(
   callerId: ConversationId,
   threadId: number,
 ): Promise<ThreadScope | undefined> {
-  const scope = await projectInScope(read, callerId)
+  const scope = await spaceInScope(read, callerId)
   if (scope === undefined) return undefined
-  if (!scope.project.threadIds.includes(threadId)) return undefined
+  if (!scope.space.threadIds.includes(threadId)) return undefined
   const doc = await read.snapshot(ThreadDoc, threadId as ConversationId, context)
-  return doc === undefined ? undefined : { ...scope, doc }
+  if (doc === undefined) return undefined
+  if (doc.projectId === scope.projectId) return { ...scope, doc }
+  const workspace = await read.snapshot(WorkspaceDoc, context)
+  const project = workspace?.projects[doc.projectId]
+  return {
+    spaceId: scope.spaceId,
+    space: scope.space,
+    projectId: doc.projectId,
+    ...(project === undefined ? {} : { project }),
+    doc,
+  }
 }

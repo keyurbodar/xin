@@ -1,8 +1,16 @@
 import { runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { ConversationId, Harness, Tx } from "@earendil-works/pi-durable"
+import { createModels } from "@earendil-works/pi-ai/models"
+import {
+  createRegistry,
+  defineDoc,
+  Harness,
+  MemoryStorage,
+  type ConversationId,
+  type Tx,
+} from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
-import { respond } from "../../test/plugins/m8.ts"
+import { respond, M8_MODEL } from "../../test/plugins/m8.ts"
 import { cmd, connect, fresh, owner, recordOffers, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import type { ProjectId, ThreadId } from "../../src/ids.ts"
@@ -46,10 +54,16 @@ const addThread = async (tx: Tx, thread: NewThread): Promise<void> => {
   const workspace = await tx.doc(WorkspaceDoc)
   const project = workspace.projects[thread.projectId]
   if (project === undefined) throw new Error(`no project ${thread.projectId}`)
+  const spaceId = Object.entries(workspace.spaces).find(
+    ([, space]) => space.projectId === thread.projectId && !space.archived,
+  )?.[0]
+  const space = spaceId === undefined ? undefined : workspace.spaces[spaceId]
+  if (spaceId === undefined || space === undefined) throw new Error(`no space for ${thread.projectId}`)
   const doc = await tx.doc(ThreadDoc, thread.threadId)
   const now = Date.now()
   Object.assign(doc, {
     projectId: thread.projectId,
+    spaceId,
     title: thread.title,
     role: "thread",
     status: thread.status ?? "working",
@@ -57,7 +71,7 @@ const addThread = async (tx: Tx, thread: NewThread): Promise<void> => {
     beatAt: now,
     deadlineAt: now + project.settings.deadlineMs,
   })
-  if (!project.threadIds.includes(thread.threadId)) project.threadIds.push(thread.threadId)
+  if (!space.threadIds.includes(thread.threadId)) space.threadIds.push(thread.threadId)
 }
 
 const projectOf = async (harness: Harness, threadId: ThreadId): Promise<string | undefined> =>
@@ -74,7 +88,7 @@ describe("workspace", () => {
     )
     const first = await cmd(stub, "atomic-1", "project.create", { slug: "atomic", name: "Atomic" })
     expect(first.ok).toBe(true)
-    const project = first.result as { id: string; coordinatorId: number }
+    const project = first.result as { id: string; coordinatorId: number; spaceId: string }
 
     const after = await runInDurableObject(stub, async (home: Home) => {
       const workspace = await home.harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
@@ -89,6 +103,10 @@ describe("workspace", () => {
     expect(after.conversation).toBe(project.coordinatorId)
     expect(after.workspace?.projects[project.id]).toMatchObject({
       slug: "atomic",
+      archived: false,
+    })
+    expect(after.workspace?.spaces[project.spaceId]).toMatchObject({
+      projectId: project.id,
       coordinatorId: project.coordinatorId,
       threadIds: [],
       archived: false,
@@ -213,7 +231,7 @@ describe("workspace", () => {
     const stub = fresh()
     const created = await cmd(stub, "archive-1", "project.create", { slug: "archived", name: "Archived" })
     expect(created.ok).toBe(true)
-    const project = created.result as { id: string; coordinatorId: number }
+    const project = created.result as { id: string; coordinatorId: number; spaceId: string }
 
     const threadId = await runInDurableObject(stub, async (home: Home) => {
       const id = await conversation(home)
@@ -238,6 +256,137 @@ describe("workspace", () => {
     const stored = await runInDurableObject(stub, (home: Home) =>
       home.harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT),
     )
-    expect(stored?.projects[project.id]?.threadIds).toEqual([threadId])
+    expect(stored?.spaces[project.spaceId]?.threadIds).toEqual([threadId])
+  })
+
+  it("migrates a v1 project into one project and one space", () => {
+    const migrate = WorkspaceDoc.definition.migrate
+    if (migrate === undefined) throw new Error("xin.workspace has no migration")
+    const legacy = {
+      projects: {
+        prj_a: {
+          slug: "alpha",
+          name: "Alpha",
+          goal: "ship it",
+          preset: "full",
+          coordinatorId: 7,
+          threadIds: [3, 4],
+          settings: { threadLimit: 8, deadlineMs: 1_000 },
+          archived: false,
+        },
+      },
+    }
+    expect(migrate(legacy, 1)).toEqual({
+      projects: {
+        prj_a: {
+          slug: "alpha",
+          name: "Alpha",
+          preset: "full",
+          settings: { threadLimit: 8, deadlineMs: 1_000 },
+          archived: false,
+        },
+      },
+      spaces: {
+        spc_a: {
+          name: "Alpha",
+          goal: "ship it",
+          projectId: "prj_a",
+          coordinatorId: 7,
+          threadIds: [3, 4],
+          archived: false,
+        },
+      },
+    })
+
+    const migrated = migrate(legacy, 1)
+    const restored = Object.fromEntries(
+      Object.entries(migrated.projects).map(([id, project]) => {
+        const space = Object.values(migrated.spaces).find((entry) => entry.projectId === id)
+        if (space === undefined) throw new Error(`no space for ${id}`)
+        return [
+          id,
+          {
+            ...project,
+            ...(space.goal === undefined ? {} : { goal: space.goal }),
+            coordinatorId: space.coordinatorId,
+            threadIds: space.threadIds,
+          },
+        ]
+      }),
+    )
+    expect(restored).toEqual(legacy.projects)
+  })
+
+  it("renders the space and its goal into the prompt", async () => {
+    const stub = fresh()
+    const created = await cmd(stub, "space-goal-1", "project.create", {
+      slug: "goal-space",
+      name: "Goal Space",
+      goal: "ship the thing",
+    })
+    expect(created.ok, JSON.stringify(created)).toBe(true)
+    const project = created.result as { coordinatorId: number }
+    const offers = recordOffers()
+    respond([offers.step("ok")])
+    await runInDurableObject(stub, async (home: Home) => {
+      const coordinator = await home.harness.conversation(project.coordinatorId as ConversationId, BACKGROUND_CONTEXT)
+      if (coordinator === undefined) throw new Error("no coordinator conversation")
+      await coordinator.configure({ model: M8_MODEL }, BACKGROUND_CONTEXT)
+      await coordinator.submit({ type: "input", content: "hi", requestId: "space-goal-turn-1" }, BACKGROUND_CONTEXT)
+      await coordinator.waitForIdle(BACKGROUND_CONTEXT)
+    })
+    expect(offers.latest().system).toContain("<space>")
+    expect(offers.latest().system).toContain("space: Goal Space")
+    expect(offers.latest().system).toContain("project: Goal Space (goal-space)")
+    expect(offers.latest().system).toContain("goal: ship the thing")
+  })
+
+  it("migrates a stored v1 document when pi reads it", async () => {
+    type LegacyProject = {
+      slug: string
+      name: string
+      goal?: string
+      coordinatorId: number
+      threadIds: number[]
+      settings: { threadLimit: number; deadlineMs: number }
+      archived: boolean
+    }
+    const LegacyWorkspace = defineDoc<{ projects: Record<string, LegacyProject> }>({
+      kind: "xin.workspace",
+      version: 1,
+      scope: "session",
+      initial: () => ({ projects: {} }),
+      checkpointWhen: () => false,
+    })
+    const harness = await Harness.open(
+      new MemoryStorage(),
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    )
+    try {
+      await harness.commit(async (tx) => {
+        const doc = await tx.doc(LegacyWorkspace)
+        doc.projects.prj_a = {
+          slug: "alpha",
+          name: "Alpha",
+          goal: "ship it",
+          coordinatorId: 7,
+          threadIds: [3, 4],
+          settings: { threadLimit: 8, deadlineMs: 1_000 },
+          archived: false,
+        }
+      }, BACKGROUND_CONTEXT)
+      const migrated = await harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
+      expect(migrated?.projects.prj_a).toMatchObject({ slug: "alpha", name: "Alpha" })
+      expect(migrated?.spaces.spc_a).toMatchObject({
+        name: "Alpha",
+        goal: "ship it",
+        projectId: "prj_a",
+        coordinatorId: 7,
+        threadIds: [3, 4],
+      })
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT)
+    }
   })
 })

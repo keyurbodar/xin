@@ -12,7 +12,7 @@ import {
   RequestsDoc,
   type RespondOutcome,
 } from "../../src/contracts/questions.ts"
-import { projectInScope, ThreadDoc, threadInScope, transition } from "../../src/contracts/threaddoc.ts"
+import { spaceInScope, ThreadDoc, threadInScope, transition } from "../../src/contracts/threaddoc.ts"
 import type { ThreadsService } from "../../src/contracts/threads.ts"
 import type { WatchdogService } from "../../src/contracts/watchdog.ts"
 import { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../../src/contracts/workspace.ts"
@@ -83,9 +83,9 @@ export function createQuestions(port: QuestionsPort): QuestionsService {
     },
 
     async open(conversationId: ConversationId): Promise<OpenOutcome> {
-      const scope = await projectInScope(port.harness, conversationId)
+      const scope = await spaceInScope(port.harness, conversationId)
       if (scope === undefined) return { kind: "not_in_project" }
-      return { kind: "open", questions: await openRequests(port.harness, scope.project.threadIds) }
+      return { kind: "open", questions: await openRequests(port.harness, scope.space.threadIds) }
     },
 
     async respond(api, threadId, requestId, reply): Promise<RespondOutcome> {
@@ -155,14 +155,20 @@ export async function homeRequests(harness: Harness, limit: number): Promise<Jso
 
 async function pendingRequests(harness: Harness, limit: number, projectId?: string): Promise<PendingRequest[]> {
   const workspace = await harness.snapshot(WorkspaceDoc, context)
-  const projects = Object.entries(workspace?.projects ?? {}).filter(
-    ([id, project]) => !project.archived && (projectId === undefined || projectId === id),
-  )
-  const perProject = await Promise.all(
-    projects.map(async ([id, project]) =>
-      (
+  if (workspace === undefined) return []
+  const spaces = Object.entries(workspace.spaces).filter(([, space]) => {
+    if (space.archived) return false
+    const project = workspace.projects[space.projectId]
+    if (project === undefined || project.archived) return false
+    return projectId === undefined || projectId === space.projectId || projectId === project.slug
+  })
+  const perSpace = await Promise.all(
+    spaces.map(async ([, space]) => {
+      const project = workspace.projects[space.projectId]
+      if (project === undefined) return []
+      return (
         await Promise.all(
-          project.threadIds.map(async (conversationId): Promise<PendingRequest[]> => {
+          space.threadIds.map(async (conversationId): Promise<PendingRequest[]> => {
             const [requests, thread] = await Promise.all([
               harness.snapshot(RequestsDoc, conversationId as ConversationId, context),
               harness.snapshot(ThreadDoc, conversationId as ConversationId, context),
@@ -171,7 +177,7 @@ async function pendingRequests(harness: Harness, limit: number, projectId?: stri
             return Object.entries(requests.open).map(([requestId, request]) => ({
               id: requestId,
               conversationId,
-              projectId: id,
+              projectId: space.projectId,
               projectName: project.name,
               ...(thread === undefined ? {} : { threadTitle: thread.title }),
               question: request.question,
@@ -180,10 +186,10 @@ async function pendingRequests(harness: Harness, limit: number, projectId?: stri
             }))
           }),
         )
-      ).flat(),
-    ),
+      ).flat()
+    }),
   )
-  return perProject
+  return perSpace
     .flat()
     .toSorted(
       (left, right) =>

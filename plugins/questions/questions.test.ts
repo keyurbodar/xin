@@ -7,7 +7,7 @@ import { cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { RequestsDoc } from "../../src/contracts/questions.ts"
-import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
 import { homeRequests } from "./questions.ts"
 
@@ -55,7 +55,7 @@ async function fireUsers(stub: Stub): Promise<void> {
 
 const threads = async (home: Home, projectId: string): Promise<ThreadRow[]> => {
   const workspace = await home.harness.snapshot(WorkspaceDoc, context)
-  const ids = workspace?.projects[projectId]?.threadIds ?? []
+  const ids = threadIdsOfProject(workspace, projectId)
   const found: ThreadRow[] = []
   for (const id of ids) {
     const doc = await home.harness.snapshot(ThreadDoc, id as ConversationId, context)

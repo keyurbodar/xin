@@ -11,8 +11,10 @@ The coordinator gets this tool surface. Threads get a narrower version (no `dele
 | Tool | Input | Implementation on pi |
 | --- | --- | --- |
 | `capabilities` | - | current model, short model list, thread limits, plugin row states |
-| `delegate_task` | `{task, title, role?, target?:{model}, mode:"async"\|"wait", timeoutMs≤8000, clientRequestId}` | one commit: background Anchor task + task-owned child conv + `xin.thread` doc + workspace threadIds. Then submit the brief with requestId `delegate:…`. In `wait` mode, wait on the child's submission with a deadline |
+| `delegate_task` | `{task, title, role?, project?, target?:{model}, mode:"async"\|"wait", timeoutMs≤8000, clientRequestId}` | one commit: background Anchor task + task-owned child conv + `xin.thread` doc + the space's threadIds. A space runs in its own project; Puck names one. Then submit the brief with requestId `delegate:…`. In `wait` mode, wait on the child's submission with a deadline |
 | `task_status` | `{threadId}` | reads `xin.thread` + last assistant text |
+| `thread_create` | `{title, task, role?, project?, spaceId?}` | starts a thread directly for the owner or Puck, in the named project's default space or a named space; a space coordinator uses `delegate_task` instead |
+| `artifact` | `{action:"list"\|"read"\|"write"\|"delete", threadId?, id?, title?, markdown?, expectedRevision?}` | a thread reads and writes its own `xin.artifacts` document; a Space or Puck passes `threadId`; a save with a stale `expectedRevision` returns the current revision and text to merge |
 | `task_cancel` | `{threadId?, jobId?, reason?}` (exactly one id) | `conversation.abort({background:true})` on the child, status → cancelled; a `jobId` aborts that job task |
 | `thread_send` | `{threadId, text, mode:"steer"\|"queue"}` | child `submit` with that `whenBusy`. On a resolved thread it starts a new run in the same conversation |
 | `thread_read` | `{threadId, after?}` | entries after a cursor, text only, bounded at 4k tokens |
@@ -56,7 +58,7 @@ stateDiagram-v2
 - **Re-opening** a resolved thread with `thread_send` starts run N+1 in the same conversation, sets status back to `working`, bumps `xin.thread.run`, and creates a new Reporter with key `report:th:N+1`. The Reporter's brief and both direct submits use one request key, `thread-send:th:sendKey`, so a replay after a crash places the input once.
 - **`thread.stop` only aborts** the thread's run, in the background. The Reporter is the single writer of a terminal status; the stop op never writes `cancelled` itself, so it cannot race the Reporter.
 - **`thread_read`** advances its cursor only past entries it returned. When one entry alone exceeds the bound, it returns a trimmed excerpt of that entry and advances past it, so the next read does not skip it.
-- **Scoping**: every thread tool and both thread ops resolve the caller's project first — the caller's project when it is that project's coordinator, or the project named by the caller's own `xin.thread` — and accept a thread only when it is listed in that project. A thread with another project's id reads as absent.
+- **Scoping**: every thread tool and both thread ops resolve the caller's space first — the space whose coordinator is the caller, or the space named by the caller's own `xin.thread` — and accept a thread only when it is listed in that space. A thread with another space's id reads as absent.
 - **Limits** (from owner settings, never hidden): live threads per project and per owner. Over the limit, `delegate_task` returns `limit_reached` with the list of live threads, and the coordinator tells you.
 
 You steering a thread directly in the UI = `op thread.send(steer)`. Same path the coordinator's `thread_send` uses.

@@ -28,7 +28,8 @@ The op set:
 
 ```text
 ops: message.send · message.withdraw · conv.configure(model, thinking) · conv.stop
-     project.create/update/archive · thread.send(mode) · thread.stop · thread.rename
+     project.create/update/archive · space.create/update/archive · thread.create · thread.archive · thread.send(mode) · thread.stop · thread.rename
+     puck.create/rename/archive · puck.list · artifact.list/read/write/delete
      request.respond · file.put/read/revision/revisions/delete · memory.add/forget/pin/edit/dismiss · plugin.enable/configure · credential.set
 reads (owner): history.page(conversationId, before?, limit?) · request.list(limit?, projectId?) · job.list(limit?)
                usage.summary · usage.cap · usage.cap.set(usd?, clear?) · usage.alert · usage.alert.set(usd)

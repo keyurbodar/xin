@@ -8,7 +8,7 @@ import { answeringModels, LIVE_PROVIDER, liveEnabled, liveModels, type LiveModel
 import { fresh } from "../test/support.ts"
 import type { Home } from "../test/worker.ts"
 import { ThreadDoc } from "./contracts/threaddoc.ts"
-import { WorkspaceDoc } from "./contracts/workspace.ts"
+import { threadIdsOfProject, WorkspaceDoc } from "./contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -47,7 +47,7 @@ async function threadsOf(stub: Stub, projectId: string): Promise<readonly { id: 
   return runInDurableObject(stub, async (home: Home) => {
     const workspace = await home.harness.snapshot(WorkspaceDoc, context)
     const found: { id: number; status: string }[] = []
-    for (const id of workspace?.projects[projectId]?.threadIds ?? []) {
+    for (const id of threadIdsOfProject(workspace, projectId)) {
       const doc = await home.harness.snapshot(ThreadDoc, id as ConversationId, context)
       if (doc !== undefined) found.push({ id, status: doc.status })
     }

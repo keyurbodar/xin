@@ -2,7 +2,7 @@
 
 Design v2, 6 November 2026.
 
-Xin is a personal agent: a Cloudflare Worker in front of one Home Durable Object per owner, with file bytes in R2. It is built on pi-durable, pi-ai and pi-mcp 1.5.0, and exposes a Claude-Projects-style coordinator plus threads. The client is web-only. Xin works with files only and executes no code. No model is hard-coded: the catalog, the credentials and the per-conversation choice all come from the user's configuration at run time.
+Xin is a personal agent: a Cloudflare Worker in front of one Home Durable Object per owner, with file bytes in R2. It is built on pi-durable, pi-ai and pi-mcp 1.5.0, and exposes Projects, Spaces, Puck and threads. The client is web-only. Xin works with files only and executes no code. No model is hard-coded: the catalog, the credentials and the per-conversation choice all come from the user's configuration at run time.
 
 ## Key invariants
 

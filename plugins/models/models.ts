@@ -268,18 +268,23 @@ async function alertSpend(
     await notify(notification).catch((failure: unknown) => console.warn("models: spend alert failed", failure))
 }
 
-/** Spend per project, from each coordinator and thread's own `pi.usage` document. */
+/** Spend per project, from each space coordinator and thread's own `pi.usage` document. */
 async function projectSpend(harness: Harness): Promise<ProjectSpend[]> {
   const workspace = await harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
   if (workspace === undefined || !parseWorkspace.check(workspace)) return []
+  const conversations = new Map<string, ConversationId[]>()
+  for (const space of Object.values(workspace.spaces)) {
+    const listed = conversations.get(space.projectId) ?? []
+    listed.push(space.coordinatorId as ConversationId)
+    for (const threadId of space.threadIds) listed.push(threadId as ConversationId)
+    conversations.set(space.projectId, listed)
+  }
   const projects = await Promise.all(
     Object.entries(workspace.projects).map(async ([id, project]) => {
-      const conversations: ConversationId[] = [
-        project.coordinatorId as ConversationId,
-        ...project.threadIds.map((threadId) => threadId as ConversationId),
-      ]
       const ledgers = await Promise.all(
-        conversations.map((conversation) => harness.snapshot(UsageDoc, conversation, BACKGROUND_CONTEXT)),
+        (conversations.get(id) ?? []).map((conversation) =>
+          harness.snapshot(UsageDoc, conversation, BACKGROUND_CONTEXT),
+        ),
       )
       const total = ledgers
         .flatMap((ledger) => (ledger === undefined ? [] : [ledgerTotal(ledger)]))

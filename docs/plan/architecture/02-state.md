@@ -9,9 +9,11 @@ Read with: [01 Host](./01-host.md) for the storage adapter and operation queue, 
 | Name | Kind | Shape | Why here |
 | --- | --- | --- | --- |
 | `pi_*` | pi tables | conversations, entries, tasks, docs | owned by pi-durable, never touched directly |
-| `xin.workspace` | pi doc, scope session | `{projects: {id: {slug,name,goal,coordinatorId,threadIds[],settings}}}` | project + thread creation commit together with the child conversation |
-| `xin.thread` | pi doc, scope conversation | `{projectId,parentId,anchorTaskId,title,role,status,run,statusLine,beatAt,deadlineAt,result?,clientRequestId}` | status flips in the same commit as the entry that caused it; `run` is the current report ordinal |
+| `xin.workspace` | pi doc, scope session | `{projects: {id: {slug,name,preset,settings,archived}}, spaces: {id: {name,goal,projectId,coordinatorId,threadIds[],archived}}}` | a project is the environment and a space is its directed chat; v1 stored the space on the project and migrates to one space per project |
+| `xin.thread` | pi doc, scope conversation | `{projectId,spaceId?,parentId,anchorTaskId,title,role,status,run,statusLine,beatAt,deadlineAt,result?,clientRequestId}` | status flips in the same commit as the entry that caused it; `run` is the current report ordinal |
 | `xin.requests` | pi doc, scope conversation (thread) | `{open: {id:{kind,question,options?,at}}, answered: {...}}` | question and the turn that asked it are one commit |
+| `xin.puck` | pi doc, scope session | `{conversations: {conversationId: {title,archived,createdAt,commandId?}}}` | Puck's conversations; the root conversation is the default and is not listed |
+| `xin.artifacts` | pi doc, scope conversation (thread) | `{items: {id: {title,markdown,revision,createdAt,updatedAt}}}` | a thread's documents; one doc per thread keeps the read and the write atomic with its transcript |
 | `xin.jobs` | pi doc, scope session | `{jobs: {id: {tool,title,startedAt,deadlineAt,parentId,detached?,result?}}, calls: {toolTaskId: jobId}}` | a job is a pi task with no conversation; the doc is what the Overview and the watchdog read, and `calls` makes a replayed wrapper reuse its job |
 | `inbound` | host | `id, target, kind(user\|report\|question\|job), command_id UNIQUE, body JSON, client_ts, first_at, fire_at, status, batch_id` | must be claimed *before* pi sees it |
 | `receipts` | host | `command_id PK, result JSON, at` (pruned at 24 h) | duplicate commands return the first result (t3 receipts) |

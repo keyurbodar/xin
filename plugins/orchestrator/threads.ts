@@ -7,13 +7,14 @@ import {
   type DocumentReader,
   type Harness,
   type ModelRef,
+  type Registry,
   type Task,
   type TaskRuntime,
   type ToolRegistration,
   type Tx,
   type Wake,
 } from "@earendil-works/pi-durable"
-import { int, obj, opt, str } from "@earendil-works/pi-schema"
+import { bool, int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
   SendModeSchema,
@@ -26,7 +27,8 @@ import type { ProjectId } from "../../src/ids.ts"
 import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
   ThreadDoc,
-  threadInScope,
+  defaultSpaceOf,
+  RoleSchema,
   threadState,
   transition,
   type NewThread,
@@ -35,6 +37,7 @@ import {
   type ThreadState,
   type ThreadStatus,
 } from "../../src/contracts/threaddoc.ts"
+import { canUseThread, projectByRef, scopeOf } from "../../src/contracts/scope.ts"
 import { detailOf, textOf } from "../../src/transcript.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
@@ -45,6 +48,8 @@ export const REPORTER_KIND = "xin.reporter"
 
 export type CreateThreadArgs = {
   readonly projectId: ProjectId
+  readonly spaceId?: string
+  readonly archived?: boolean
   readonly parentId: ConversationId
   readonly title: string
   readonly role: ThreadRole
@@ -84,8 +89,24 @@ type ReporterCheckpoint =
 export type ReporterTask = Task<ReporterInput, ReporterCheckpoint, null, object>
 export type AnchorTask = Task<null, { readonly phase: "done" }, null, object>
 
+export const CHILD_TOOLS = ["delegate_task", "thread_create", "task_cancel", "thread_send"] as const
+
+export function childTools(registry: Registry): readonly ToolRegistration[] {
+  const registered = new Map(
+    registry
+      .snapshot()
+      .tools()
+      .map(({ tool }) => [tool.name, tool]),
+  )
+  return CHILD_TOOLS.flatMap((name) => {
+    const tool = registered.get(name)
+    return tool === undefined ? [] : [tool]
+  })
+}
+
 export type ThreadDeps = {
   readonly harness: Harness
+  readonly registry: Registry
   arm(wake?: Wake): Promise<void>
   readonly intake: IntakeService
   readonly watchdog: WatchdogService
@@ -209,8 +230,8 @@ async function projectIdOf(read: DocumentReader, threadId: number, run: Context)
   const thread = await read.snapshot(ThreadDoc, threadId as ConversationId, run)
   if (thread !== undefined) return thread.projectId
   const workspace = await read.snapshot(WorkspaceDoc, run)
-  for (const [projectId, project] of Object.entries(workspace?.projects ?? {})) {
-    if (project.threadIds.includes(threadId)) return projectId
+  for (const space of Object.values(workspace?.spaces ?? {})) {
+    if (space.threadIds.includes(threadId)) return space.projectId
   }
   return undefined
 }
@@ -230,6 +251,10 @@ async function addThread(tx: Tx, thread: NewThread): Promise<ThreadState> {
   const workspace = await tx.doc(WorkspaceDoc)
   const project = workspace.projects[thread.projectId]
   if (project === undefined) throw new OpRejected("bad_args", `no project ${thread.projectId}`)
+  const spaceId = thread.spaceId ?? defaultSpaceOf(workspace, thread.projectId)
+  const space = spaceId === undefined ? undefined : workspace.spaces[spaceId]
+  if (spaceId === undefined || space === undefined)
+    throw new OpRejected("bad_args", `project ${thread.projectId} has no space`)
   const status = thread.status ?? "working"
   if ((status === "completed" || status === "failed") && thread.result === undefined)
     throw new OpRejected("bad_args", `a ${status} thread needs a result`)
@@ -238,6 +263,8 @@ async function addThread(tx: Tx, thread: NewThread): Promise<ThreadState> {
   const doc = await tx.doc(ThreadDoc, thread.threadId)
   const value: ThreadDocState = {
     projectId: thread.projectId,
+    spaceId,
+    ...(thread.archived === true ? { archived: true } : {}),
     title: thread.title,
     role: thread.role ?? "thread",
     status,
@@ -251,7 +278,7 @@ async function addThread(tx: Tx, thread: NewThread): Promise<ThreadState> {
     ...(thread.clientRequestId === undefined ? {} : { clientRequestId: thread.clientRequestId }),
   }
   Object.assign(doc, value)
-  if (!project.threadIds.includes(thread.threadId)) project.threadIds.push(thread.threadId)
+  if (!space.threadIds.includes(thread.threadId)) space.threadIds.push(thread.threadId)
   const state = threadState(value)
   if (state === undefined) throw new Error(`thread ${thread.threadId} does not satisfy xin.thread`)
   return state
@@ -311,6 +338,7 @@ async function sendToThread(
     thread.run = run
     thread.status = "working"
     delete thread.result
+    delete thread.archived
     thread.beatAt = now
     thread.deadlineAt = now + project.settings.deadlineMs
     await deps.watchdog.ensure(tx, parentId)
@@ -414,9 +442,9 @@ const stopThread = defineOp({
   },
 })
 
-async function denied(actor: Actor, read: DocumentReader, threadId: number): Promise<boolean> {
+async function denied(actor: Actor, harness: Harness, threadId: number): Promise<boolean> {
   if (actor.kind !== "agent") return false
-  return (await threadInScope(read, actor.conversationId, threadId)) === undefined
+  return !(await canUseThread(harness, actor.conversationId, threadId))
 }
 
 export function lifecycle(deps: ThreadDeps): Threads {
@@ -434,8 +462,15 @@ export function lifecycle(deps: ThreadDeps): Threads {
     const workspace = await tx.doc(WorkspaceDoc)
     const project = workspace.projects[args.projectId]
     if (project === undefined) return { kind: "rejected", reason: `no project ${args.projectId}` }
+    const spaceId = args.spaceId ?? defaultSpaceOf(workspace, args.projectId)
+    const space = spaceId === undefined ? undefined : workspace.spaces[spaceId]
+    if (spaceId === undefined || space === undefined || space.archived)
+      return { kind: "rejected", reason: `project ${args.projectId} has no live space` }
     const docs: { readonly id: number; readonly doc: Draft<ThreadDocState> }[] = []
-    for (const id of project.threadIds) docs.push({ id, doc: await tx.doc(ThreadDoc, id as ConversationId) })
+    for (const listedSpace of Object.values(workspace.spaces)) {
+      if (listedSpace.projectId !== args.projectId) continue
+      for (const id of listedSpace.threadIds) docs.push({ id, doc: await tx.doc(ThreadDoc, id as ConversationId) })
+    }
     const existing = docs.find(
       ({ doc }) => doc.clientRequestId === args.clientRequestId && doc.parentId === args.parentId,
     )
@@ -462,6 +497,7 @@ export function lifecycle(deps: ThreadDeps): Threads {
     })
     await addThread(tx, {
       projectId: args.projectId,
+      spaceId,
       threadId: child.id,
       title: args.title,
       role: args.role,
@@ -481,5 +517,99 @@ export function lifecycle(deps: ThreadDeps): Threads {
     return { kind: "created", threadId: child.id, title: args.title }
   }
 
-  return { anchor: Anchor, reporter, report, createThread, ops: [sendThreadOp(send), stopThread] }
+  const archiveThread = defineOp({
+    name: "thread.archive",
+    args: obj({ threadId: int({ minimum: 0 }), archived: opt(bool()) }),
+    actors: ["owner", "agent"],
+    run: async (api, args) => {
+      if (await denied(api.actor, api.harness, args.threadId))
+        throw new OpRejected("bad_args", `no thread ${args.threadId}`)
+      const threadId = args.threadId as ConversationId
+      return api.harness.commit(async (tx) => {
+        const thread = await tx.doc(ThreadDoc, threadId)
+        const archived = args.archived ?? true
+        if (archived) thread.archived = true
+        else delete thread.archived
+        return { threadId: args.threadId, archived }
+      }, context)
+    },
+  })
+
+  const createThreadOp = defineOp({
+    name: "thread.create",
+    args: obj({
+      title: str({ minLength: 1, maxLength: 200 }),
+      task: str({ minLength: 1 }),
+      role: opt(RoleSchema),
+      project: opt(str({ minLength: 1 })),
+      spaceId: opt(str({ minLength: 1 })),
+    }),
+    actors: ["owner", "agent"],
+    run: async (api, args) => {
+      const callerId = api.actor.kind === "agent" ? api.actor.conversationId : undefined
+      const scope = callerId === undefined ? undefined : await scopeOf(api.harness, callerId)
+      if (api.actor.kind === "agent" && (scope === undefined || scope.kind !== "puck"))
+        throw new OpRejected("forbidden", "only the owner or Puck can create a thread directly")
+      const workspace = await api.harness.snapshot(WorkspaceDoc, context)
+      if (workspace === undefined) throw new OpRejected("bad_args", "no workspace")
+      const projectId =
+        args.project === undefined ? undefined : (await projectByRef(api.harness, args.project))?.projectId
+      if (args.project !== undefined && projectId === undefined)
+        throw new OpRejected("bad_args", `no project "${args.project}"`)
+      const spaceId = args.spaceId ?? (projectId === undefined ? undefined : defaultSpaceOf(workspace, projectId))
+      if (spaceId === undefined) throw new OpRejected("bad_args", "thread.create needs a project or spaceId")
+      const space = workspace.spaces[spaceId]
+      if (space === undefined || space.archived) throw new OpRejected("bad_args", `no live space ${spaceId}`)
+      if (projectId !== undefined && projectId !== space.projectId)
+        throw new OpRejected("bad_args", `space ${spaceId} is not in project ${projectId}`)
+      const project = workspace.projects[space.projectId]
+      if (project === undefined || project.archived)
+        throw new OpRejected("bad_args", `no live project ${space.projectId}`)
+      const parentId =
+        scope?.kind === "puck" && callerId !== undefined ? callerId : (space.coordinatorId as ConversationId)
+      const parent = await api.harness.conversation(parentId, context)
+      const model = parent === undefined ? undefined : (await parent.agent(context)).model
+      if (model === undefined) throw new OpRejected("bad_args", "the target space has no model; pick one first")
+      const requestId = `thread-create:${api.commandId}`
+      const created = await api.harness.commit(
+        (tx) =>
+          createThread(tx, {
+            projectId: space.projectId as ProjectId,
+            spaceId,
+            parentId,
+            title: args.title,
+            role: args.role ?? "thread",
+            task: args.task,
+            model,
+            clientRequestId: requestId,
+            requestId,
+            removeTools: childTools(deps.registry),
+          }),
+        context,
+      )
+      switch (created.kind) {
+        case "created":
+        case "existing":
+          return {
+            threadId: created.threadId,
+            title: created.title,
+            projectId: space.projectId,
+            spaceId,
+            ...(created.kind === "existing" ? { replayed: true } : {}),
+          }
+        case "rejected":
+          throw new OpRejected("bad_args", created.reason)
+        case "limit":
+          throw new OpRejected("busy", `limit_reached: ${created.live.length} live threads of ${created.limit}`)
+      }
+    },
+  })
+
+  return {
+    anchor: Anchor,
+    reporter,
+    report,
+    createThread,
+    ops: [sendThreadOp(send), stopThread, archiveThread, createThreadOp],
+  }
 }

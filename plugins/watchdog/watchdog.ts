@@ -163,8 +163,8 @@ async function threadsOf(ports: WatchdogPorts): Promise<LiveThread[]> {
   const workspace = await harness.snapshot(WorkspaceDoc, context)
   if (workspace === undefined) return []
   const found: LiveThread[] = []
-  for (const project of Object.values(workspace.projects)) {
-    for (const id of project.threadIds) {
+  for (const space of Object.values(workspace.spaces)) {
+    for (const id of space.threadIds) {
       const conversationId = id as ConversationId
       const doc = await harness.snapshot(ThreadDoc, conversationId, context)
       if (doc !== undefined) found.push({ id: conversationId, doc })
