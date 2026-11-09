@@ -68,23 +68,31 @@ webSocketMessage / fetch:
   ops.run(cmd) → ack
 
 alarm():
+  fired()                          // the runtime cleared the alarm it ran
   arm({...wake(), active:true})
   harness.resume()
   gateway.fireDue(now)
+  arm(harness.wake())
 ```
 
-`arm()` folds every deadline into one alarm:
+`arm()` folds every deadline into one alarm, and writes it only when it has to move:
 
 ```text
 arm(wake):
-  hb  = wake.active ? now+60s
+  hb  = wake.active ? beat : none        // beat is now+60s, fixed for this active stretch
   pi  = wake.at
-  deb = min(inbound.fire_at)
+  deb = min(inbound.fire_at)             // each timer's due()
   at  = min(hb, pi, deb)
-  at ? setAlarm(at)
-     : deleteAlarm()
-  failed write → ctx.abort()   // restart, re-arm
+  at = none ? (armed ? deleteAlarm() : nothing)
+            : (armed <= at while live || armed == at ? nothing : setAlarm(at))
+  failed write → ctx.abort()             // restart, re-arm
 ```
+
+Three rules keep the write count down without delaying work:
+
+- **Arms coalesce.** A call that arrives while one is running joins the next round, and the round uses the latest wake, so a burst of wake changes costs one round of `due()` reads, not one per call.
+- **The heartbeat is fixed, not sliding.** It is `now+60s` when an active stretch starts and stays put until the runtime consumes the alarm, so repeated arms compare equal and write nothing.
+- **An alarm at or before every deadline is already good enough.** While work is live, an alarm within the minute covers a later deadline; when nothing is live, the alarm moves to the exact next due or is deleted. `fired()`, called first in `alarm()`, marks the consumed alarm unset so the next arm always writes one.
 
 `onWake` fires whenever pi's next-needed time changes (a sleep is created, work starts or ends), and it calls `arm()` again. The 60 s heartbeat runs only while `wake.active`: an eviction mid-run is noticed within 60 s and `resume()` continues from the last checkpoint. The only non-pi timer is the debounce (`inbound.fire_at`), folded into the same `min()`.
 

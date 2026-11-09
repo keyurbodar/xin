@@ -7,8 +7,8 @@ import { eventually, fresh } from "../test/support.ts"
 import { FAUX_MODEL, type Home } from "../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
-const MESSAGE_ROW_BOUND = 60
-const DELEGATE_ROW_BOUND = 250
+const MESSAGE_ROW_BOUND = 55
+const DELEGATE_ROW_BOUND = 235
 
 type Stub = ReturnType<typeof fresh>
 type Ack = { readonly ok: boolean; readonly result?: unknown }

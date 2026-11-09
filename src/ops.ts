@@ -28,6 +28,7 @@ export type Op = {
 export type Command = { readonly id: CommandId; readonly op: string; readonly args: unknown }
 
 const RECEIPT_TTL_MS = 24 * 60 * 60_000
+const RECEIPT_SWEEP_MS = 60 * 60_000
 
 export class OpRejected extends Error {
   constructor(
@@ -78,6 +79,7 @@ export type CommandDeps = {
 
 export class Commands {
   readonly #inflight = new Map<CommandId, Promise<Outcome>>()
+  #sweptAt = 0
 
   constructor(private readonly deps: CommandDeps) {}
 
@@ -111,7 +113,10 @@ export class Commands {
       JSON.stringify(outcome),
       now,
     )
-    await this.deps.db.run("DELETE FROM receipts WHERE at < ?", now - RECEIPT_TTL_MS)
+    if (now - this.#sweptAt >= RECEIPT_SWEEP_MS) {
+      this.#sweptAt = now
+      await this.deps.db.run("DELETE FROM receipts WHERE at < ?", now - RECEIPT_TTL_MS)
+    }
     return outcome
   }
 

@@ -110,7 +110,9 @@ export async function enqueue(db: SqliteDatabase, draft: InboundDraft, now = Dat
     fireAt,
   )
   if (inserted.length === 0) return false
-  await db.run("UPDATE inbound SET fire_at = ? WHERE target = ? AND status = 'pending'", fireAt, draft.target)
+  // The row just inserted already carries `fireAt`; only earlier pending rows of this target need moving.
+  if (pending?.first !== null && pending?.first !== undefined)
+    await db.run("UPDATE inbound SET fire_at = ? WHERE target = ? AND status = 'pending'", fireAt, draft.target)
   return true
 }
 
@@ -259,7 +261,8 @@ async function dispatch(host: IntakeHost, target: number, now: number): Promise<
 
 async function persist(host: IntakeHost, batch: IntakeBatch): Promise<void> {
   for (const row of batch.rows) {
-    await host.db.run("UPDATE inbound SET body = ? WHERE id = ?", JSON.stringify(contentOfRow(row)), row.id)
+    const body = JSON.stringify(contentOfRow(row))
+    if (body !== row.stored) await host.db.run("UPDATE inbound SET body = ? WHERE id = ?", body, row.id)
   }
   const kept = new Set(batch.rows.map((row) => row.id))
   const stored = await host.db.all<{ id: number }>(
@@ -417,6 +420,7 @@ function batchRowOf(row: InboundRow): IntakeBatchRow {
         commandId: row.command_id,
         text: body.text,
         attachments: body.attachments,
+        stored: row.body,
       }
     : {
         id: row.id,
@@ -427,6 +431,7 @@ function batchRowOf(row: InboundRow): IntakeBatchRow {
         title: body.title,
         status: body.status,
         text: body.text,
+        stored: row.body,
       }
 }
 

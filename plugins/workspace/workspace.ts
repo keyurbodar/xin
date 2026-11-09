@@ -324,9 +324,16 @@ export function create(port: WorkspacePort): WorkspaceFeature {
     run: async () => ({ projects: projectSummaries(projection) }),
   })
 
+  // The prompt asks for the owner's instructions on every model request, and they change only through `owner.set`.
+  let instructions: string | undefined
+  const readInstructions = async (): Promise<string> => {
+    instructions ??= (await port.kv.get<string>(OWNER_INSTRUCTIONS)) ?? ""
+    return instructions
+  }
+
   const owner = async (): Promise<OwnerSettings> => ({
     name: (await port.kv.get<string>(OWNER_NAME)) ?? "",
-    instructions: (await port.kv.get<string>(OWNER_INSTRUCTIONS)) ?? "",
+    instructions: await readInstructions(),
   })
 
   const readOwner = defineOp({
@@ -342,7 +349,10 @@ export function create(port: WorkspacePort): WorkspaceFeature {
     actors: ["owner"],
     run: async (_api, args) => {
       if (args.name !== undefined) await port.kv.put(OWNER_NAME, args.name.trim())
-      if (args.instructions !== undefined) await port.kv.put(OWNER_INSTRUCTIONS, args.instructions.trim())
+      if (args.instructions !== undefined) {
+        await port.kv.put(OWNER_INSTRUCTIONS, args.instructions.trim())
+        instructions = args.instructions.trim()
+      }
       return owner()
     },
   })
@@ -350,7 +360,7 @@ export function create(port: WorkspacePort): WorkspaceFeature {
   return {
     ops: [createProject, updateProject, archiveProject, renameThread, readWorkspace, readOwner, setOwner],
     instructions: async () => {
-      const text = (await port.kv.get<string>(OWNER_INSTRUCTIONS)) ?? ""
+      const text = await readInstructions()
       return text.trim() === "" ? undefined : text
     },
     async start() {

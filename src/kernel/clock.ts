@@ -8,10 +8,27 @@ export type Timer = {
   fire(now: number): Promise<void>
 }
 
+type Batch = { wake: Wake | undefined; waiters: (() => void)[] }
+
+/**
+ * One alarm for every deadline: the heartbeat while work is live, pi's next wake, and each timer's due time.
+ *
+ * Arms coalesce: a call that arrives while one is running joins the next round, so a burst of wake changes costs one
+ * round, not one per call. The alarm is written only when it must move: an earlier alarm already covers a later
+ * deadline, and while work is live the heartbeat keeps it within a minute anyway. `fired()` marks the alarm the
+ * runtime consumed, so the next arm knows it has to set a new one.
+ */
 export class Clock extends Service {
   static readonly inject = ["host"]
 
   readonly timers = new Set<Timer>()
+
+  /** The alarm this process last wrote, `null` for none, `undefined` until the first read. */
+  #armed: number | null | undefined = undefined
+  /** The heartbeat of the current active stretch: fixed, so repeated arms do not keep pushing it back. */
+  #beat: number | undefined
+  #next: Batch | undefined
+  #running = false
 
   constructor(ctx: Context) {
     super(ctx, "clock")
@@ -26,18 +43,80 @@ export class Clock extends Service {
     }, "clock.timer")
   }
 
-  async arm(wake?: Wake): Promise<void> {
-    const harness = this.ctx.get("harness")
-    const current = wake ?? (harness === undefined ? { active: true } : { ...harness.wake(), active: true })
-    const heartbeat = current.active ? Date.now() + HEARTBEAT_MS : undefined
-    const owned = harness === undefined ? [] : await Promise.all([...this.timers].map((timer) => timer.due()))
-    const due = [heartbeat, current.at, ...owned].filter((at): at is number => at !== undefined)
-    const storage = this.ctx.host.state.storage
-    if (due.length === 0) await storage.deleteAlarm()
-    else await storage.setAlarm(Math.min(...due))
+  /**
+   * The runtime ran the alarm and cleared it: the next arm writes a new one and starts a fresh heartbeat.
+   *
+   * `arm` and `fired` are properties, not methods: the plugin layer hands out a proxy of this service whose methods run
+   * with that proxy as `this`, and a private field cannot be read through it.
+   */
+  readonly fired = (): void => {
+    this.#armed = null
+    this.#beat = undefined
+  }
+
+  readonly arm = (wake?: Wake): Promise<void> => {
+    const settled = Promise.withResolvers<void>()
+    const queued = this.#next
+    if (queued !== undefined) {
+      if (wake !== undefined) queued.wake = wake
+      queued.waiters.push(settled.resolve)
+      return settled.promise
+    }
+    this.#next = { wake, waiters: [settled.resolve] }
+    if (!this.#running) {
+      this.#running = true
+      void this.#drain()
+    }
+    return settled.promise
   }
 
   async fire(now: number): Promise<void> {
     for (const timer of Array.from(this.timers)) await timer.fire(now)
+  }
+
+  async #drain(): Promise<void> {
+    try {
+      for (;;) {
+        const batch = this.#next
+        if (batch === undefined) break
+        this.#next = undefined
+        try {
+          await this.#apply(batch.wake)
+        } catch {
+          this.ctx.host.abort("alarm write failed")
+        }
+        for (const resolve of batch.waiters) resolve()
+      }
+    } finally {
+      this.#running = false
+      if (this.#next !== undefined) {
+        this.#running = true
+        void this.#drain()
+      }
+    }
+  }
+
+  async #apply(wake: Wake | undefined): Promise<void> {
+    const harness = this.ctx.get("harness")
+    const current = wake ?? (harness === undefined ? { active: true } : { ...harness.wake(), active: true })
+    if (current.active) this.#beat ??= Date.now() + HEARTBEAT_MS
+    else this.#beat = undefined
+    const heartbeat = this.#beat
+    const owned = harness === undefined ? [] : await Promise.all([...this.timers].map((timer) => timer.due()))
+    const due = [heartbeat, current.at, ...owned].filter((at): at is number => at !== undefined)
+    const at = due.length === 0 ? null : Math.min(...due)
+    const storage = this.ctx.host.state.storage
+    if (this.#armed === undefined) this.#armed = await storage.getAlarm()
+    if (at === null) {
+      if (this.#armed !== null) {
+        await storage.deleteAlarm()
+        this.#armed = null
+      }
+      return
+    }
+    const covered = this.#armed !== null && (this.#armed === at || (current.active && this.#armed <= at))
+    if (covered) return
+    await storage.setAlarm(at)
+    this.#armed = at
   }
 }

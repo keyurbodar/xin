@@ -75,6 +75,7 @@ const USAGE_ALERT_DAY = "usage.alerted.day"
 const USAGE_ALERT_USD = "usage.alert"
 const DEFAULT_DAILY_ALERT = 8
 const ALERT_SHARE = 0.8
+const USAGE_FLUSH_MS = 60_000
 
 type Total = { readonly spend: number; readonly tokens: number }
 
@@ -460,6 +461,7 @@ export type ModelsParts = {
   readonly ops: readonly Op[]
   models(): Models
   flush(): Promise<UsageState>
+  flushDue(): Promise<void>
   start(): Promise<void>
 }
 
@@ -694,10 +696,18 @@ const commandId = (value: string): CommandId => value as CommandId
 export function create(deps: ModelsPort): ModelsParts {
   const { db, harness, run } = deps
   const recordUsage = usageRecorder(db, harness)
+  let flushedAt = 0
   const flush = async (): Promise<UsageState> => {
+    flushedAt = Date.now()
     const ledger = await recordUsage()
     await alertSpend(db, deps.notify, deps.alertsOn ?? (async () => true))
     return ledger
+  }
+  // The alarm wakes for many reasons; the ledger only needs to move once a minute, and a full pass reads every
+  // conversation's usage.
+  const flushDue = async (): Promise<void> => {
+    if (Date.now() - flushedAt < USAGE_FLUSH_MS) return
+    await flush()
   }
   const registry = createRegistry(deps)
   const store = registry.store
@@ -935,9 +945,13 @@ export function create(deps: ModelsPort): ModelsParts {
     ops,
     models: () => registry.models,
     flush,
+    flushDue,
     start: async () => {
       await registry.sync()
       await seedUsage(db, harness)
+      // A fresh process records nothing until the ledger has had time to move; the first alarm after boot is usually
+      // an eviction recovery, not new spend, and a full pass reads every conversation.
+      flushedAt = Date.now()
     },
   }
 }
