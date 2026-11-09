@@ -1,55 +1,143 @@
-# Orb fleet hosts
+# Orb provider hosts
 
-Machine-readable fleet state for the local agent and Puck. Update the table and
-`Last verified` whenever a host is migrated, capped, or drained.
+Self-hosted Amp orb providers. One Instabox sandbox per account. Each provider
+runs `amp orb provider` as a systemd service and spawns one Docker container per thread.
+
+## Fleet state
 
 | provider | hostname | ram | /data free | cap tiny/small/big | migrated | notes |
 |---|---|---|---:|---|---|---|
-| dof-live | dof | 8 GiB | 4.8 GiB | 3/2/1 | yes | 4 containers; cooling until 2026-11-09 10:58 UTC |
-| xin-b2-live | xin-b2 | 8 GiB | unknown | 3/2/1 | no | cooling until 2026-11-09 10:15 UTC; also runs Amp runner `xin-b2` |
-| xin-b3-orbs | xin-b3 | 8 GiB | 5.2 GiB | 3/2/1 | yes | cooling until 2026-11-09 11:32 UTC |
-| host-4 | host-4 | 8 GiB | 9.6 GiB | 3/2/1 | yes | default provider; empty |
-| host-5 | host-5 | 8 GiB | 16 GiB | 3/2/1 | yes | empty |
-| host-6 | host-6 | 8 GiB | 16 GiB | 3/2/1 | yes | empty |
-| host-7 | host-7 | 8 GiB | 16 GiB | 3/2/1 | yes | empty |
-| vm14 | vm14 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots |
-| vm20 | vm20 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots |
+| `dof-live` | dof | 8 GiB | 4.8 GiB | 3/2/1 | yes | 4 containers; cooling until 2026-11-09 10:58 UTC |
+| `xin-b2-live` | xin-b2 | 8 GiB | unknown | 3/2/1 | no | cooling until 2026-11-09 10:15 UTC; also runs runner `xin-b2` |
+| `xin-b3-orbs` | xin-b3 | 8 GiB | 5.2 GiB | 3/2/1 | yes | 1 container; cooling until 2026-11-09 11:32 UTC |
+| `host-4` | host-4 | 8 GiB | 9.6 GiB | 3/2/1 | yes | default provider; empty |
+| `host-5` | host-5 | 8 GiB | 16 GiB | 3/2/1 | yes | empty |
+| `host-6` | host-6 | 8 GiB | 16 GiB | 3/2/1 | yes | empty |
+| `host-7` | host-7 | 8 GiB | 16 GiB | 3/2/1 | yes | empty |
+| `vm14` | vm14 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots |
+| `vm20` | vm20 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots |
 
-Last verified: 2026-11-09T09:42Z
+Last verified: 2026-11-09T09:43Z
 
-## Capacity model
+## Accounts
 
-All reachable hosts are 4 vCPU / 8 GiB RAM / 20 GiB `/data`. Admission is by
-budget, not container count:
+| Provider | Instabox host | Account |
+|---|---|---|
+| `dof-live` | dof | chiranaibase@gmail.com |
+| `xin-b2-live` | xin-b2 | meroailabs@gmail.com |
+| `xin-b3-orbs` | xin-b3 | mirairesearchcollective@gmail.com |
+| `host-4` | host-4 | keyurbodar16@gmail.com |
+| `host-5` | host-5 | keyur.bodar18@gmail.com |
+| `host-6` | host-6 | keyur.bodar19@gmail.com |
+| `host-7` | host-7 | keyurbodar8@gmail.com |
 
-- CPU: sum of existing container CPU limits + request ≤ `nproc` (4)
-- RAM: sum of existing container memory limits + request ≤ host RAM − 1 GiB
-- disk: free on `/` or `/data`, whichever is lower, ≥ 4 GiB
-- absolute cap: 4 containers
+Each reachable host is 4 vCPU / 8 GiB / 20 GiB `/data`.
 
-Per-host caps are therefore:
+## Disk layout and guardrails
 
-| type | CPU | RAM | /dev/shm | fits |
-|---|---:|---:|---:|---:|
-| tiny | 1 | 2 GiB | 512 MiB | 3 |
-| small | 2 | 3 GiB | 1 GiB | 2 |
-| big | 3 | 5 GiB | 1 GiB | 1 |
-
-`big` is 5 GiB, not 12 GiB: these are 8 GiB hosts, so a 12 GiB orb cannot run.
-A thread's type is fixed at creation.
-
-## Disk layout
+Docker 29 uses the containerd snapshotter. `data-root` alone is not enough:
+images and container layers live under containerd's root. On every reachable host:
 
 - containerd root: `/data/containerd`
 - Docker data root: `/data/docker`
-- root filesystem stays near 4.7 GiB used (32%)
-- snapshots on pause are disabled; `delete` removes the container and snapshot
-- janitor timer every 30 minutes prunes build cache and dangling images
+- root filesystem stays around 4.7 GiB used (32%) instead of filling to 100%
 
-## Pending
+`dispatch.sh` now enforces, for **new** containers only:
 
-- Register `tiny`, `small`, `big` on each provider in Settings → Orbs; until
-  then `ORB_TYPE` is unset and dispatch uses `small` (2 CPU / 3 GiB).
-- Apply the budget dispatch to `dof`, `xin-b3`, `xin-b2` after their cooldowns.
-- `vm14` / `vm20`: grant SSH and update, or drain and remove.
-- `dof-live` holds 4 containers; new spawns are refused until threads are deleted.
+- `MAX_ORBS=4` — absolute cap on `amp-*` containers
+- `MIN_FREE_GIB=6` — minimum free space on `/` or `/data`, whichever is lower
+- CPU budget: sum of existing container CPU limits + request ≤ `nproc`
+- memory budget: sum of existing container memory limits + request ≤ host RAM − 1 GiB
+
+Resuming an existing paused orb is always allowed. Spawns are refused with a log
+line when a budget is exhausted. Snapshots on pause are disabled; `delete` removes
+the container and any snapshot image.
+
+### Orb types
+
+Dispatch reads `ORB_TYPE` and sizes the container from the matching
+`ORB_TYPE_<NAME>_{CPUS,MEMORY,SHM}` variables. Defaults installed on each host:
+
+| Type | CPU | RAM | `/dev/shm` | Fits per 4c/8g host |
+|---|---:|---:|---:|---:|
+| `tiny` | 1 | 2 GiB | 512 MiB | 3 |
+| `small` | 2 | 3 GiB | 1 GiB | 2 |
+| `big` | 3 | 5 GiB | 1 GiB | 1 |
+
+The names must also be registered on each provider in **Settings → Orbs → Orb
+types**; Amp passes the chosen name as `ORB_TYPE`. Without registered types,
+`ORB_TYPE` is unset and dispatch uses `small` (2 CPU / 3 GiB).
+
+A 2 GiB × 6 promise does not fit 8 GiB of RAM. Three tiny orbs (6 GiB) is the
+real limit on these hosts; a fourth would be 8 GiB and is refused. `big` is
+5 GiB, not 12 GiB, because these hosts have 8 GiB.
+
+Dispatch also mounts shared caches when present:
+
+- `/data/pnpm-store` → `/data/pnpm-store`, with `npm_config_store_dir` and `PNPM_STORE_DIR`
+- `/data/npm-cache` → `/root/.npm`, with `npm_config_cache`
+- `/data/ms-playwright` → read-only, only when the directory is non-empty
+
+`orb-janitor.timer` runs every 30 minutes on all Instabox hosts and prunes build
+cache and dangling images. It does not delete running or paused orbs.
+
+The default provider is now `host-4` (it was `dof-live`, which has four paused
+orbs and is at its two-container limit).
+
+## Applied 2026-11-09
+
+- `dof` and `xin-b3`: containerd moved to `/data/containerd`; root disk dropped
+  from 100% / 96% to 32%. Orphan `snap-*` images removed. Janitor installed.
+- `host-4` … `host-7`: containerd on `/data/containerd`; janitor installed.
+- `host-4` … `host-7`: budget-based dispatch with `ORB_TYPE` sizing.
+- `dof`, `xin-b3`, `xin-b2`: cooling down; apply `update-dispatch-budget.sh`
+  when they wake.
+- `vm14`, `vm20`: no SSH access from here; still run the old dispatch.
+- Orb types still need to be registered in **Settings → Orbs** before threads
+  can choose them.
+
+Capacity: 9 providers. `vm14`/`vm20` sizing unknown. The seven Instabox hosts
+give roughly 18 `small` or 27 `tiny` orbs, before disk and cooldown limits.
+`dof` is already at four containers and refuses new spawns.
+
+## New-host setup (host-4 … host-7)
+
+Installed by `install-provider-on-host.sh`:
+
+- Docker data root moved to `/data/docker` (20 GiB persistent disk).
+- Amp CLI copied to `/usr/local/bin/amp`.
+- `/opt/orbs/dispatch.sh` — spawn/pause/delete with Docker.
+- `/etc/amp-orb-provider.env` — provider token, `ORB_CPUS=2`, `ORB_MEMORY=3g`, `ORB_SHM=1g` (root-only).
+- `amp-orb-provider.service` — systemd, enabled at boot, runs as root.
+- `orb-janitor.timer` — every 30 minutes, prunes build cache and dangling images, logs disk use.
+
+Provider tokens were created with `amp orb provider create <name>` and written to
+each host's env file. Do not copy one host's env file to another; each token is unique.
+
+## Keepalive
+
+The `amp-orb-keepalive` Cloudflare Worker (account `d4ac696abb45fe4276d9974c3ceaf774`,
+cron `*/9 * * * *`) renews activity leases so the free-plan sandboxes do not
+suspend after 30 minutes idle. Secrets `INSTABOX_API_KEY` through
+`INSTABOX_API_KEY_7` cover all seven accounts.
+
+Check the log:
+
+```bash
+cd cf-worker
+npx wrangler kv key get log --namespace-id 6c43d7d61df04506a3351694287b0d6a --remote | tail -c 2000
+```
+
+## Verify a provider
+
+```bash
+amp -ox "echo hello" --executor orb --orb-provider host-4
+```
+
+Then delete the test thread so its container is removed.
+
+## Disk rule
+
+Each host has 20 GiB. The orb image is several GiB unpacked; each thread adds
+0.5–2 GiB; `docker commit` snapshots add more. Keep the janitor installed, or
+remove the `docker commit` line from `dispatch.sh` to stop snapshot growth.
