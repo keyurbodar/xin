@@ -8,16 +8,16 @@ runs `amp orb provider` as a systemd service and spawns one Docker container per
 | provider | hostname | ram | /data free | cap tiny/small/big | migrated | notes |
 |---|---|---|---:|---|---|---|
 | `dof-live` | dof | 8 GiB | 7.5 GiB | 3/2/1 | yes | fresh containerd store after metadata corruption; 0 containers; recovered workspaces at `/var/tmp/dof-recovered` |
-| `xin-b2-live` | xin-b2 | 8 GiB | 7 GiB | 3/2/1 | yes | 1 paused container for archived thread `Intake queue rewrite`; also runs runner `xin-b2` |
-| `xin-b3-orbs` | xin-b3 | 8 GiB | 5 GiB | 3/2/1 | yes | 1 paused container for archived thread `Kiko Durable Objects study`; below 6 GiB spawn threshold until that thread is deleted |
+| `xin-b2-live` | xin-b2 | 8 GiB | 8 GiB | 3/2/1 | yes | 0 containers; also runs runner `xin-b2` |
+| `xin-b3-orbs` | xin-b3 | 8 GiB | 8 GiB | 3/2/1 | yes | 0 containers; back above the 6 GiB spawn threshold |
 | `host-4` | host-4 | 8 GiB | 9 GiB | 3/2/1 | yes | default provider; empty |
 | `host-5` | host-5 | 8 GiB | 15 GiB | 3/2/1 | yes | empty |
 | `host-6` | host-6 | 8 GiB | 15 GiB | 3/2/1 | yes | empty |
 | `host-7` | host-7 | 8 GiB | 15 GiB | 3/2/1 | yes | empty |
-| `vm14` | vm14 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots; hosts the live `Merge branches into one` thread |
+| `vm14` | vm14 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots; 0 threads, orphaned snapshot may remain |
 | `vm20` | vm20 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots |
 
-Last verified: 2026-11-09T12:15Z
+Last verified: 2026-11-09T12:22Z
 
 ## Accounts
 
@@ -81,8 +81,8 @@ Dispatch also mounts shared caches when present:
 `orb-janitor.timer` runs every 30 minutes on all Instabox hosts and prunes build
 cache and dangling images. It does not delete running or paused orbs.
 
-The default provider is now `host-4` (it was `dof-live`, which has four paused
-orbs and refuses new spawns).
+The default provider is now `host-4` (it was `dof-live`, which now has zero
+containers after the store rebuild).
 
 ## Applied 2026-11-09
 
@@ -93,6 +93,9 @@ orbs and refuses new spawns).
 - `dof`, `xin-b3`, `xin-b2`: cooling down; apply `update-dispatch-budget.sh`
   when they wake.
 - `vm14`, `vm20`: no SSH access from here; still run the old dispatch.
+- Deleted archived threads `Intake queue rewrite` and `Kiko Durable Objects
+  study`; their containers were removed. All seven Instabox hosts now hold zero
+  containers and sit above the 6 GiB threshold.
 - Orb types still need to be registered in **Settings → Orbs** before threads
   can choose them.
 
@@ -117,9 +120,8 @@ snapshot only helps if the container itself is lost.
 hosts on 2026-11-09T12:15Z.
 
 Capacity: 9 providers. `vm14`/`vm20` sizing unknown. The seven Instabox hosts
-are 14 `small` or 21 `tiny` at the ceiling. Six are above the 6 GiB spawn
-threshold (all but `xin-b3`). Because `xin-b2` already holds one paused
-container, today's usable figure is **11 `small` or 17 `tiny`**.
+are **14 `small` or 21 `tiny`**, and all seven are now above the 6 GiB spawn
+threshold with zero containers on every host.
 
 ## New-host setup (host-4 … host-7)
 
