@@ -3,7 +3,7 @@
 **Date:** 2026-11-09
 **Tree:** `a5d4716` (this checkout is shallow; the history available here is one commit)
 **Scope:** backend and agentic behaviour only. The web client is out of scope.
-**Method:** read the source, contracts, migrations, tests and `docs/plan/`. The current-state pass was code-only; the follow-up isolation fix and the web slice installed dependencies and ran the repo gate. `fmt`, `lint`, `types`, `test` and `bundle` all pass. The full test run is 64 files passed, 1 skipped; 439 tests passed, 15 skipped. Statements about behaviour cite the code that implements it. Where the spec and code disagree, the disagreement is called out in [Spec vs code](#spec-vs-code).
+**Method:** read the source, contracts, migrations, tests and `docs/plan/`. The current-state pass was code-only; the follow-up isolation fix and the web slice installed dependencies and ran the repo gate. `fmt`, `lint`, `types`, `test` and `bundle` all pass. The full test run is 64 files passed, 1 skipped; 440 tests passed, 15 skipped. Statements about behaviour cite the code that implements it. Where the spec and code disagree, the disagreement is called out in [Spec vs code](#spec-vs-code).
 
 Status legend:
 
