@@ -443,7 +443,7 @@ describe("mcp servers", () => {
       await cmd(stub, "mcp-resources-add", "mcp.add", { name: "docs", url: "https://mcp.test/mcp" }),
     ).toMatchObject({
       ok: true,
-      result: { name: "docs", url: "https://mcp.test/mcp", tools: 2, resources: 2, prompts: 1 },
+      result: { name: "docs", url: "https://mcp.test/mcp", tools: 2, resources: 1, templates: 1, prompts: 1 },
     })
     expect(await installedTools(stub)).toEqual([
       "mcp__docs__echo",

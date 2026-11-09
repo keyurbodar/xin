@@ -62,6 +62,7 @@ const ServerSchema = obj({
   resources: opt(bool()),
   prompts: opt(bool()),
   resourceCount: opt(int({ minimum: 0 })),
+  templateCount: opt(int({ minimum: 0 })),
   promptCount: opt(int({ minimum: 0 })),
   error: opt(str()),
 })
@@ -241,7 +242,7 @@ const summarize = (name: string, server: StoredServer) => ({
   name,
   url: displayUrl(server.url),
   tools: server.tools.length,
-  ...(server.resources === true ? { resources: server.resourceCount ?? 0 } : {}),
+  ...(server.resources === true ? { resources: server.resourceCount ?? 0, templates: server.templateCount ?? 0 } : {}),
   ...(server.prompts === true ? { prompts: server.promptCount ?? 0 } : {}),
   ...(server.error === undefined ? {} : { error: server.error }),
 })
@@ -257,6 +258,7 @@ type Connection = {
   readonly resources: boolean
   readonly prompts: boolean
   readonly resourceCount: number
+  readonly templateCount: number
   readonly promptCount: number
   readonly error: string | undefined
 }
@@ -304,6 +306,7 @@ type Inspection = {
   readonly resources: boolean
   readonly prompts: boolean
   readonly resourceCount: number
+  readonly templateCount: number
   readonly promptCount: number
 }
 
@@ -320,7 +323,8 @@ async function inspectServer(client: McpClient): Promise<Inspection> {
     tools,
     resources,
     prompts,
-    resourceCount: listedResources.length + templates.length,
+    resourceCount: listedResources.length,
+    templateCount: templates.length,
     promptCount: listedPrompts.length,
   }
 }
@@ -558,7 +562,7 @@ export function create(ports: McpPorts): McpModule {
         tools: listed,
         resources: fetched.resources,
         prompts: fetched.prompts,
-        ...(fetched.resources ? { resourceCount: fetched.resourceCount } : {}),
+        ...(fetched.resources ? { resourceCount: fetched.resourceCount, templateCount: fetched.templateCount } : {}),
         ...(fetched.prompts ? { promptCount: fetched.promptCount } : {}),
       }
     } catch (error) {
@@ -613,6 +617,7 @@ export function create(ports: McpPorts): McpModule {
       resources: inspection?.resources === true,
       prompts: inspection?.prompts === true,
       resourceCount: inspection?.resourceCount ?? 0,
+      templateCount: inspection?.templateCount ?? 0,
       promptCount: inspection?.promptCount ?? 0,
       error,
     }
@@ -685,7 +690,7 @@ export function create(ports: McpPorts): McpModule {
                 name: value.name,
                 url: displayUrl(value.url),
                 tools: value.tools.length,
-                ...(value.resources ? { resources: value.resourceCount } : {}),
+                ...(value.resources ? { resources: value.resourceCount, templates: value.templateCount } : {}),
                 ...(value.prompts ? { prompts: value.promptCount } : {}),
                 ...(value.error === undefined ? {} : { error: value.error }),
                 source,
