@@ -34,15 +34,15 @@ function CodeBlock(props: { code: string; fence: string }): JSX.Element {
   }
 
   return (
-    <div class="code-block overflow-hidden rounded-[12px] border border-line bg-fill">
-      <div class="flex h-8 items-center gap-3 border-b border-line bg-fill px-3 font-mono text-[11px] text-fg-3">
+    <div class="code-block overflow-hidden rounded-[4px] border border-line-inner bg-surface">
+      <div class="flex h-8 items-center gap-3 border-b border-line px-3 font-mono text-[11px] text-fg-3">
         <span>{fenceLabel(props.fence)}</span>
         <span class="ml-auto flex items-center gap-1">
           <button
             type="button"
             aria-pressed={wrapped()}
             onClick={() => setWrapped((on) => !on)}
-            class="h-6 rounded-[8px] px-1.5 text-[11px] hover:text-fg"
+            class="h-6 rounded-[2px] px-1.5 text-[11px] hover:text-fg"
           >
             {wrapped() ? "Wrapped" : "Wrap"}
           </button>
@@ -50,7 +50,7 @@ function CodeBlock(props: { code: string; fence: string }): JSX.Element {
             type="button"
             aria-label="Copy code"
             onClick={() => void copy()}
-            class="flex h-6 items-center gap-1.5 rounded-[8px] px-1.5 hover:text-fg"
+            class="flex h-6 items-center gap-1.5 rounded-[2px] px-1.5 hover:text-fg"
             classList={{ "text-fg": copied() }}
           >
             <Glyph name={copied() ? "check" : "copy"} size={13} />
@@ -121,7 +121,7 @@ function inline(text: string): JSX.Element[] {
         flush()
         const code = text.slice(index + 1, close)
         parts.push(
-          <code class="rounded-[4px] bg-fill px-1 py-0.5 font-mono text-[12.5px] text-fg-2">
+          <code class="rounded-[2px] border border-line-inner bg-hover px-1 py-0.5 font-mono text-[12.5px] text-fg-2">
             {code}
           </code>,
         )
@@ -153,12 +153,12 @@ function isTableDelimiter(line: string): boolean {
 function TableBlock(props: { header: readonly string[]; rows: readonly (readonly string[])[] }): JSX.Element {
   return (
     <div class="overflow-x-auto">
-      <table class="w-max min-w-full border-collapse text-[13.5px] leading-[1.5]">
+      <table class="w-max min-w-full border-collapse text-[13px] leading-[1.5]">
         <thead>
           <tr>
             <For each={props.header}>
               {(cell) => (
-                <th class="label border-b border-line px-2 py-1.5 text-left whitespace-nowrap">
+                <th class="border-b border-line px-2 py-1.5 text-left text-[11px] font-normal tracking-wide whitespace-nowrap text-fg-3 uppercase">
                   {inline(cell)}
                 </th>
               )}
@@ -170,7 +170,7 @@ function TableBlock(props: { header: readonly string[]; rows: readonly (readonly
             {(row) => (
               <tr>
                 <For each={row}>
-                  {(cell) => <td class="border-b border-line px-2 py-1.5 align-top text-fg-2">{inline(cell)}</td>}
+                  {(cell) => <td class="border-b border-line-inner px-2 py-1.5 align-top text-fg-2">{inline(cell)}</td>}
                 </For>
               </tr>
             )}
@@ -192,12 +192,7 @@ function isBlockStart(line: string): boolean {
   )
 }
 
-export function Markdown(props: {
-  text: string
-  muted?: boolean
-  size?: "body" | "card" | "small"
-}): JSX.Element {
-  const scale = (): "body" | "card" | "small" => props.size ?? "body"
+export function Markdown(props: { text: string; small?: boolean; muted?: boolean }): JSX.Element {
   const blocks = (): JSX.Element[] => {
     const lines = props.text.replaceAll("\r\n", "\n").split("\n")
     const output: JSX.Element[] = []
@@ -292,11 +287,10 @@ export function Markdown(props: {
 
   return (
     <div
-      class="flex flex-col gap-2.5 [overflow-wrap:anywhere]"
+      class="flex flex-col gap-2.5 leading-[1.6] [overflow-wrap:anywhere]"
       classList={{
-        "text-[15px] leading-[24px]": scale() === "body",
-        "text-[14px] leading-[22px]": scale() === "card",
-        "text-[13.5px] leading-[1.6]": scale() === "small",
+        "text-[14px]": props.small !== true,
+        "text-[13px]": props.small === true,
         "text-fg": props.muted !== true,
         "text-fg-2": props.muted === true,
       }}

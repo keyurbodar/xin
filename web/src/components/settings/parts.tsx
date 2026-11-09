@@ -1,30 +1,29 @@
 import { For, Show, type JSX } from "solid-js"
-import { FIELD } from "../ui/field.ts"
 
 export function Group(props: { title: string; detail?: string | undefined; children: JSX.Element }): JSX.Element {
   return (
-    <section class="flex flex-col gap-2.5">
-      <div class="flex items-baseline gap-2 px-0.5">
-        <span class="text-[13.5px] font-medium text-fg">{props.title}</span>
+    <section class="flex flex-col gap-2">
+      <div class="flex items-baseline gap-2">
+        <span class="label">{props.title}</span>
         <Show when={props.detail}>
           {(detail) => <span class="text-[11.5px] text-fg-3">{detail()}</span>}
         </Show>
       </div>
-      <div class="panel px-4">{props.children}</div>
+      <div class="flex flex-col">{props.children}</div>
     </section>
   )
 }
 
 export function Row(props: { title: string; detail?: string | undefined; children: JSX.Element }): JSX.Element {
   return (
-    <div class="flex flex-col gap-2.5 border-b border-line py-3 last:border-0 sm:flex-row sm:items-center sm:gap-6">
-      <div class="min-w-0 flex-1">
-        <span class="block text-[14px] leading-5 font-medium text-fg">{props.title}</span>
+    <div class="grid grid-cols-[240px_minmax(0,1fr)] items-start gap-6 border-b border-line py-3.5 last:border-0">
+      <div class="min-w-0">
+        <span class="block text-[12.5px] font-medium text-fg">{props.title}</span>
         <Show when={props.detail}>
-          {(detail) => <span class="mt-0.5 block max-w-xl text-[12.5px] leading-relaxed text-fg-3">{detail()}</span>}
+          {(detail) => <span class="mt-0.5 block text-[11.5px] leading-snug text-fg-3">{detail()}</span>}
         </Show>
       </div>
-      <div class="settings-control flex min-w-0 flex-wrap items-center gap-2 sm:min-w-[320px] sm:max-w-[60%] sm:justify-end">{props.children}</div>
+      <div class="min-w-0">{props.children}</div>
     </div>
   )
 }
@@ -56,7 +55,7 @@ export function SelectField(props: {
       disabled={props.disabled === true}
       aria-label={props.ariaLabel}
       onChange={(event) => props.onChange(event.currentTarget.value)}
-      class={FIELD}
+      class="h-8 rounded-[2px] border border-line-inner bg-page px-2 text-[12.5px] text-fg focus:border-line-strong focus:outline-none disabled:opacity-40"
       style={{ width: props.width ?? "260px" }}
     >
       <option value="">{props.placeholder ?? "Catalog default"}</option>

@@ -3,8 +3,11 @@ import {
   Match,
   Show,
   Switch,
+  createEffect,
   createResource,
   createSignal,
+  onCleanup,
+  onMount,
   type JSX,
 } from "solid-js"
 import type { Streams } from "../../lib/api.ts"
@@ -21,7 +24,6 @@ import {
   type Snapshot,
 } from "../../state/conversation.ts"
 import { Icon } from "../ui/icon.tsx"
-import { Segmented } from "../ui/segmented.tsx"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
 import { Skullet } from "../ui/skeleton.tsx"
 import { EmptyState, PanelGhost, ResourceError } from "./ui.tsx"
@@ -55,7 +57,7 @@ function Group(props: { label: string; count: number; tint?: boolean; children: 
     <section>
       <div class="flex items-center gap-1.5 px-3 pb-1 pt-3.5">
         <Icon name="chevron-down" size={12} class="text-fg-4" />
-        <span class="label" classList={{ "text-waiting": props.tint === true }}>
+        <span class="label" classList={{ "text-accent-text": props.tint === true }}>
           {props.label}
         </span>
         <span class="mono-meta">{props.count}</span>
@@ -75,35 +77,35 @@ function ThreadsTab(props: { project: ProjectSummary; onOpenThread: (id: number)
         <Show when={groups().waiting.length > 0}>
           <Group label="Waiting on you" count={groups().waiting.length} tint>
             <For each={groups().waiting}>
-              {(thread) => <ThreadRow flush density="panel" thread={thread} title={thread.title} role={thread.role ?? "thread"} onClick={() => props.onOpenThread(thread.id)} />}
+              {(thread) => <ThreadRow flush thread={thread} title={thread.title} role={thread.role ?? "thread"} onClick={() => props.onOpenThread(thread.id)} />}
             </For>
           </Group>
         </Show>
         <Show when={groups().working.length > 0}>
           <Group label="Working" count={groups().working.length}>
             <For each={groups().working}>
-              {(thread) => <ThreadRow flush density="panel" thread={thread} title={thread.title} role={thread.role ?? "thread"} onClick={() => props.onOpenThread(thread.id)} />}
+              {(thread) => <ThreadRow flush thread={thread} title={thread.title} role={thread.role ?? "thread"} onClick={() => props.onOpenThread(thread.id)} />}
             </For>
           </Group>
         </Show>
         <Show when={groups().completed.length > 0}>
           <Group label="Done" count={groups().completed.length}>
             <For each={groups().completed}>
-              {(thread) => <ThreadRow flush density="panel" thread={thread} title={thread.title} role={thread.role ?? "thread"} onClick={() => props.onOpenThread(thread.id)} />}
+              {(thread) => <ThreadRow flush thread={thread} title={thread.title} role={thread.role ?? "thread"} onClick={() => props.onOpenThread(thread.id)} />}
             </For>
           </Group>
         </Show>
         <Show when={groups().failed.length > 0}>
           <Group label="Failed" count={groups().failed.length}>
             <For each={groups().failed}>
-              {(thread) => <ThreadRow flush density="panel" thread={thread} title={thread.title} role={thread.role ?? "thread"} onClick={() => props.onOpenThread(thread.id)} />}
+              {(thread) => <ThreadRow flush thread={thread} title={thread.title} role={thread.role ?? "thread"} onClick={() => props.onOpenThread(thread.id)} />}
             </For>
           </Group>
         </Show>
         <Show when={groups().cancelled.length > 0}>
           <Group label="Cancelled" count={groups().cancelled.length}>
             <For each={groups().cancelled}>
-              {(thread) => <ThreadRow flush density="panel" thread={thread} title={thread.title} role={thread.role ?? "thread"} onClick={() => props.onOpenThread(thread.id)} />}
+              {(thread) => <ThreadRow flush thread={thread} title={thread.title} role={thread.role ?? "thread"} onClick={() => props.onOpenThread(thread.id)} />}
             </For>
           </Group>
         </Show>
@@ -138,19 +140,19 @@ function FilesTab(props: { slug: string }): JSX.Element {
           >
             <div class="flex items-center gap-2 border-b border-line px-3 py-2.5">
               <span class="label flex-1">{rows().length} files</span>
-              <span class="truncate font-mono text-[11px] text-fg-4">{root()}</span>
+              <span class="truncate font-mono text-[10.5px] text-fg-4">{root()}</span>
             </div>
-            <div class="flex flex-col px-1 pb-2">
+            <div class="flex flex-col">
               <For each={rows().toSorted((left, right) => right.updated_at - left.updated_at)}>
                 {(entry) => (
                   <button
                     type="button"
                     onClick={() => navigate(`/p/${props.slug}/files/${encodeURIComponent(entry.path)}`)}
-                    class="flex min-h-[50px] items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left hover:bg-fill-strong"
+                    class="flex items-center gap-2.5 border-b border-line px-3 py-2.5 text-left hover:bg-hover"
                   >
                     <Icon name="file" size={15} class="shrink-0 text-fg-3" />
                     <span class="min-w-0 flex-1">
-                      <span class="block truncate text-[13.5px] text-fg">{name(entry.path)}</span>
+                      <span class="block truncate text-[13px] text-fg">{name(entry.path)}</span>
                       <span class="block truncate text-[11.5px] text-fg-3">
                         {folder(entry.path)} · {ago(entry.updated_at)}
                       </span>
@@ -196,22 +198,22 @@ function JobsTab(): JSX.Element {
               />
             }
           >
-            <div class="flex flex-col px-1 pb-2">
+            <div class="flex flex-col">
               <For each={data().jobs}>
                 {(job) => (
-                  <div class="flex flex-col gap-1.5 rounded-[8px] px-2.5 py-3">
+                  <div class="flex flex-col gap-1.5 border-b border-line px-3 py-3">
                     <div class="flex items-center gap-2">
                       <StatusGlyph state={job.state === "running" ? "working" : job.state === "failed" ? "failed" : "done"} size={16} />
-                      <span class="min-w-0 flex-1 truncate text-[13.5px] font-medium text-fg">{job.title}</span>
+                      <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{job.title}</span>
                       <span class="mono-meta shrink-0">{job.state}</span>
                     </div>
-                    <div class="flex items-center gap-1.5 text-[12.5px] text-fg-3">
+                    <div class="flex items-center gap-1.5 text-[12px] text-fg-3">
                       <Icon name="clock" size={12} />
                       <span class="truncate">{job.tool}</span>
-                      <span class="ml-auto shrink-0 font-mono text-[11px] text-fg-4">{ago(job.startedAt)}</span>
+                      <span class="ml-auto shrink-0 font-mono text-[10.5px] text-fg-4">{ago(job.startedAt)}</span>
                     </div>
                     <Show when={job.result}>
-                      {(text) => <p class="line-clamp-3 text-[12.5px] leading-[1.55] text-fg-2">{text()}</p>}
+                      {(text) => <p class="line-clamp-3 text-[12px] leading-[1.55] text-fg-2">{text()}</p>}
                     </Show>
                   </div>
                 )}
@@ -262,7 +264,7 @@ function ThreadBody(props: {
       </For>
       <EntryList items={itemsOf(props.snapshot.entries)} context={context} />
       <Show when={live().busy}>
-        <div class="text-[13px] text-fg-3">
+        <div class="text-[12.5px] text-fg-3">
           <span class="shimmer">Working…</span>
         </div>
       </Show>
@@ -294,29 +296,29 @@ function ThreadDetail(props: {
           type="button"
           onClick={() => props.onBack()}
           aria-label="Back to panel"
-          class="grid h-8 w-8 place-items-center rounded-[8px] text-fg-3 hover:bg-hover hover:text-fg"
+          class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
         >
           <Icon name="chevron-left" size={16} />
         </button>
         <StatusGlyph state={state()} size={16} />
-        <span class="min-w-0 flex-1 truncate text-[14px] font-medium text-fg">{props.thread.title}</span>
+        <span class="min-w-0 flex-1 truncate text-[13.5px] font-medium text-fg">{props.thread.title}</span>
         <button
           type="button"
           onClick={() => props.onBack()}
           aria-label="Close thread"
-          class="grid h-8 w-8 place-items-center rounded-[8px] text-fg-3 hover:bg-hover hover:text-fg"
+          class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
         >
           <Icon name="x" size={15} />
         </button>
       </div>
       <div
-        class="flex items-center gap-2 border-b border-line px-3 py-2 text-[12.5px]"
+        class="flex items-center gap-2 border-b border-line px-3 py-2 text-[12px]"
         style={{ color: STATE_COLOR[state()] }}
       >
         <span class="min-w-0 flex-1 truncate">
           {props.thread.statusLine ?? STATE_WORD[state()]}
         </span>
-        <span class="shrink-0 font-mono text-[11px] text-fg-4">{ago(props.thread.beatAt)}</span>
+        <span class="shrink-0 font-mono text-[10.5px] text-fg-4">{ago(props.thread.beatAt)}</span>
       </div>
       <div class="min-h-0 flex-1 overflow-y-auto">
         <Skullet loading={snapshot() === undefined} sample={() => <PanelGhost rows={6} />} label="Loading thread">
@@ -366,6 +368,24 @@ export function ProjectPanel(props: {
   variant?: "sidebar" | "drawer" | "sheet" | undefined
 }): JSX.Element {
   const [tab, setTab] = createSignal<Tab>("threads")
+  const [pill, setPill] = createSignal({ left: 0, width: 0 })
+  let strip: HTMLDivElement | undefined
+  const measure = (): void => {
+    const active = strip?.querySelector<HTMLElement>('[data-tab-active="true"]')
+    if (active === undefined || active === null) return
+    setPill({ left: active.offsetLeft, width: active.offsetWidth })
+  }
+  createEffect(() => {
+    tab()
+    requestAnimationFrame(measure)
+  })
+  onMount(() => {
+    measure()
+    if (strip === undefined) return
+    const observer = new ResizeObserver(measure)
+    observer.observe(strip)
+    onCleanup(() => observer.disconnect())
+  })
   const threadCount = (): number => {
     const groups = props.project.threads
     return (
@@ -376,17 +396,6 @@ export function ProjectPanel(props: {
       groups.cancelled.length
     )
   }
-  const tabItems = TABS.map((entry) => ({
-    id: entry.id,
-    label: (
-      <>
-        {entry.label}
-        <Show when={entry.id === "threads" && threadCount() > 0}>
-          <span class="font-mono text-[10px] text-fg-4">{threadCount()}</span>
-        </Show>
-      </>
-    ),
-  }))
 
   const docked = (): boolean => props.variant === undefined || props.variant === "sidebar"
 
@@ -406,20 +415,44 @@ export function ProjectPanel(props: {
           fallback={
             <>
               <div class="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
-                <Segmented
-                  label="Project panel views"
-                  class="min-w-0 flex-1 overflow-x-auto"
-                  items={tabItems}
-                  value={tab()}
-                  onChange={setTab}
-                />
+                <div
+                  ref={(element) => {
+                    strip = element
+                  }}
+                  class="relative flex flex-1 items-center gap-1 overflow-x-auto"
+                >
+                  <span
+                    aria-hidden="true"
+                    class="absolute top-0 left-0 h-7 rounded-[2px] bg-selected transition-[transform,width] duration-200 ease-[var(--ease-standard)]"
+                    style={{ transform: `translateX(${pill().left}px)`, width: `${pill().width}px` }}
+                  />
+                  <For each={TABS}>
+                    {(entry) => (
+                      <button
+                        type="button"
+                        onClick={() => setTab(entry.id)}
+                        data-tab-active={tab() === entry.id}
+                        class="relative z-10 flex h-7 items-center gap-1.5 whitespace-nowrap rounded-[2px] px-2 text-[12.5px]"
+                        classList={{
+                          "text-fg": tab() === entry.id,
+                          "text-fg-3 hover:text-fg-2": tab() !== entry.id,
+                        }}
+                      >
+                        {entry.label}
+                        <Show when={entry.id === "threads" && threadCount() > 0}>
+                          <span class="font-mono text-[10px] text-fg-4">{threadCount()}</span>
+                        </Show>
+                      </button>
+                    )}
+                  </For>
+                </div>
                 <Show when={props.onClose}>
                   {(close) => (
                     <button
                       type="button"
                       onClick={close()}
                       aria-label="Close the panel"
-                      class="grid h-8 w-8 shrink-0 place-items-center rounded-[8px] text-fg-3 hover:bg-hover hover:text-fg"
+                      class="grid h-7 w-7 shrink-0 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
                     >
                       <Icon name="x" size={14} />
                     </button>

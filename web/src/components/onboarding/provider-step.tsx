@@ -1,6 +1,5 @@
 import { createSignal, For, Show, type JSX } from "solid-js"
 import { Icon } from "../ui/icon.tsx"
-import { FIELD, FIELD_ROW } from "../ui/field.ts"
 import { navigate } from "../../lib/router.ts"
 import { Field, GhostButton, PrimaryButton, Spinner, StatusLine, StepHeading, TextInput } from "./controls.tsx"
 import {
@@ -129,13 +128,13 @@ export function ProviderStep(): JSX.Element {
                   setChoice(item.id)
                   touch()
                 }}
-                class="flex flex-col gap-1.5 rounded-[12px] border p-3 text-left"
+                class="flex flex-col gap-1.5 rounded-[2px] border p-3 text-left"
                 classList={{
-                  "border-line-strong bg-hover": choice() === item.id,
+                  "border-fg bg-selected": choice() === item.id,
                   "border-line-inner bg-surface hover:border-line-strong": choice() !== item.id,
                 }}
               >
-                <span class="text-[13.5px] font-medium">{item.name}</span>
+                <span class="text-[13px] font-medium">{item.name}</span>
                 <span class="text-[11.5px] leading-[1.4] text-fg-3">{item.detail}</span>
               </button>
             )}
@@ -177,7 +176,7 @@ export function ProviderStep(): JSX.Element {
                   touch()
                 }}
                 aria-label="API"
-                class={FIELD}
+                class="h-10 w-full rounded-[2px] border border-line-inner bg-surface px-2.5 text-[13px] text-fg focus:border-accent focus:outline-none"
               >
                 <For each={APIS}>{(entry) => <option value={entry.id}>{entry.label}</option>}</For>
               </select>
@@ -186,7 +185,7 @@ export function ProviderStep(): JSX.Element {
         </Show>
 
         <Field label="API key" hint="Stored encrypted on this instance. Only the coordinator and threads use it.">
-          <div class={`${FIELD_ROW} w-full`}>
+          <div class="flex h-10 items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-3 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]">
             <Icon name="key" size={14} class="shrink-0 text-fg-3" />
             <input
               type="password"
@@ -222,7 +221,7 @@ export function ProviderStep(): JSX.Element {
                 forgetProvider()
                 setFailure(undefined)
               }}
-              class="self-start text-[11.5px] text-accent-text underline decoration-line-strong underline-offset-2 hover:text-fg"
+              class="self-start text-[11.5px] text-fg-3 underline decoration-line-strong underline-offset-2 hover:text-fg-2"
             >
               Use a different key
             </button>
@@ -231,7 +230,7 @@ export function ProviderStep(): JSX.Element {
 
         <StatusLine tone={failure() === undefined ? "ok" : "error"} text={failure() ?? savedLine()} />
 
-        <div class="overflow-hidden rounded-[12px] border border-line">
+        <div class="overflow-hidden rounded-[2px] border border-line">
           <div class="flex h-8 items-center gap-2 border-b border-line bg-raised px-3">
             <span class="label flex-1">From the catalog</span>
             <span class="font-mono text-[11px] text-fg-3">{catalogStatus()}</span>
@@ -239,17 +238,17 @@ export function ProviderStep(): JSX.Element {
           <Show
             when={models().length > 0}
             fallback={
-              <div class="px-3 py-3 text-[12.5px] text-fg-3">
+              <div class="px-3 py-3 text-[12px] text-fg-3">
                 {saved() === undefined ? "Models appear here once the key works." : "No models are listed for this provider yet."}
               </div>
             }
           >
             <For each={visible()}>
               {(model) => (
-                <div class="flex h-9 items-center gap-2.5 border-b border-line px-3 text-[13px] last:border-0">
-                  <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
+                <div class="flex h-9 items-center gap-2.5 border-b border-line px-3 text-[12.5px] last:border-0">
+                  <span class="h-1.5 w-1.5 shrink-0 rounded-[1px] bg-ok" />
                   <span class="min-w-0 flex-1 truncate font-medium">{model.name}</span>
-                  <span class="shrink-0 font-mono text-[11px] text-fg-4">{contextLabel(model.contextWindow)}</span>
+                  <span class="shrink-0 font-mono text-[10.5px] text-fg-4">{contextLabel(model.contextWindow)}</span>
                   <Show when={model.reasoning}>
                     <span class="shrink-0 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-3">reasoning</span>
                   </Show>
@@ -257,7 +256,7 @@ export function ProviderStep(): JSX.Element {
               )}
             </For>
             <Show when={hidden() > 0}>
-              <div class="flex h-8 items-center px-3 font-mono text-[11px] text-fg-4">+{hidden()} more</div>
+              <div class="flex h-8 items-center px-3 font-mono text-[10.5px] text-fg-4">+{hidden()} more</div>
             </Show>
           </Show>
         </div>

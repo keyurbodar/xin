@@ -50,9 +50,9 @@ export function InboxScreen(): JSX.Element {
           </Show>
 
           <Show when={inboxSource() === "error"}>
-            <div class="flex items-center gap-3 rounded-[12px] border border-bad/40 bg-bad-bg px-3.5 py-3 text-[13px] text-fg-2">
+            <div class="flex items-center gap-3 rounded-[4px] border border-bad/40 bg-bad-bg px-3.5 py-3 text-[12.5px] text-fg-2">
               <span class="min-w-0 flex-1">{inboxFailure() ?? "The inbox could not load."}</span>
-              <button type="button" class="inline-flex h-[26px] shrink-0 items-center rounded-[6px] border border-line-inner bg-fill px-2.5 text-[12.5px] text-fg hover:bg-selected" onClick={() => void refreshRequests()}>
+              <button type="button" class="chip shrink-0" onClick={() => void refreshRequests()}>
                 Try again
               </button>
             </div>
@@ -63,7 +63,7 @@ export function InboxScreen(): JSX.Element {
           </Show>
 
           <Show when={hasQuestions()}>
-            <p class="text-[12.5px] text-fg-3">
+            <p class="text-[12px] text-fg-3">
               Answering resumes the thread right away. The coordinator sees your answer too.
             </p>
           </Show>
@@ -77,7 +77,7 @@ export function InboxScreen(): JSX.Element {
                     <span class="text-[11.5px] text-fg-3">{group.items.length}</span>
                   </div>
                 </Show>
-                <div class="flex flex-col gap-2">
+                <div class="flex flex-col overflow-hidden rounded-[4px] border border-line bg-surface">
                   <For each={group.items}>
                     {(item) =>
                       item.kind === "question" ? (

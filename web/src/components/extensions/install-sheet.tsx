@@ -49,20 +49,20 @@ export function InstallSheet(props: {
         type="button"
         aria-label="Close install review"
         onClick={close}
-        class="absolute inset-0 bg-[var(--scrim)] backdrop-blur-[6px] backdrop-saturate-[0.7] transition-opacity duration-[200ms]"
+        class="absolute inset-0 bg-black/65 transition-opacity duration-[200ms]"
         classList={{ "opacity-0": closing() }}
       />
       <section
-        class="absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col border-l border-line-inner bg-raised shadow-[var(--shadow-float)]"
+        class="absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col border-l border-line-inner bg-raised shadow-2xl"
         classList={{ "slide-right": !closing(), "slide-right-out": closing() }}
       >
         <header class="flex items-center gap-3 border-b border-line px-5 py-4">
-          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-hover text-fg">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg">
             <Glyph name="package" size={18} />
           </span>
           <div class="min-w-0 flex-1">
             <h2 class="truncate text-[15px] font-medium text-fg">Install {props.title}</h2>
-            <span class="block truncate text-[12.5px] text-fg-3">
+            <span class="block truncate text-[12px] text-fg-3">
               v{version()}
               <Show when={props.author}>
                 {(author) => <span> · {author()}</span>}
@@ -94,13 +94,13 @@ export function InstallSheet(props: {
                   when={props.detail.rows.length > 0}
                   fallback={<Note>This package mounts no rows of its own; it only records the package.</Note>}
                 >
-                  <div class="overflow-hidden rounded-[12px] border border-line">
+                  <div class="overflow-hidden rounded-[4px] border border-line">
                     <For each={props.detail.rows}>
                       {(row) => (
                         <div class="flex items-center gap-2.5 border-b border-line px-3 py-2.5 last:border-0">
                           <Glyph name="layers" size={14} class="shrink-0 text-fg-2" />
                           <div class="min-w-0 flex-1">
-                            <code class="block truncate font-mono text-[12.5px] text-fg">{row.id}</code>
+                            <code class="block truncate font-mono text-[12px] text-fg">{row.id}</code>
                             <span class="block truncate text-[11.5px] text-fg-3">{row.plugin}</span>
                           </div>
                           <Chip>{row.disabled ? "Starts off" : "Starts on"}</Chip>
@@ -114,12 +114,12 @@ export function InstallSheet(props: {
               <Show when={props.detail.requires.length > 0}>
                 <section>
                   <span class="label mb-2 block">Also records</span>
-                  <div class="overflow-hidden rounded-[12px] border border-line">
+                  <div class="overflow-hidden rounded-[4px] border border-line">
                     <For each={props.detail.requires}>
                       {(spec) => (
                         <div class="flex items-center gap-2 border-b border-line px-3 py-2 last:border-0">
                           <Glyph name="package" size={13} class="text-fg-3" />
-                          <code class="font-mono text-[12.5px] text-fg-2">{spec}</code>
+                          <code class="font-mono text-[12px] text-fg-2">{spec}</code>
                         </div>
                       )}
                     </For>
@@ -129,7 +129,7 @@ export function InstallSheet(props: {
 
               <section>
                 <span class="label mb-2 block">After install</span>
-                <div class="overflow-hidden rounded-[12px] border border-line bg-surface px-3 py-2.5">
+                <div class="overflow-hidden rounded-[4px] border border-line bg-page px-3 py-2.5">
                   <Line text="Fetch" detail={`${props.name}@${version()}`} />
                   <Line text="Mount" detail={`${props.detail.rows.length} rows, composed by the loader`} />
                   <Line text="Configure" detail="row settings live in Customize" />
@@ -159,7 +159,7 @@ export function InstallSheet(props: {
                     >
                       <Chip tone="ok">Applied</Chip>
                     </Show>
-                    <span class="text-[13.5px] text-fg">{installed().package}</span>
+                    <span class="text-[13px] text-fg">{installed().package}</span>
                   </div>
                   <Show when={installed().application === "pending"}>
                     <Note>
@@ -167,11 +167,11 @@ export function InstallSheet(props: {
                     </Note>
                   </Show>
                   <Show when={installed().rows.length > 0}>
-                    <div class="overflow-hidden rounded-[12px] border border-line">
+                    <div class="overflow-hidden rounded-[4px] border border-line">
                       <For each={installed().rows}>
                         {(row) => (
                           <div class="flex items-center gap-2 border-b border-line px-3 py-2 last:border-0">
-                            <code class="font-mono text-[12.5px] text-fg">{row.id}</code>
+                            <code class="font-mono text-[12px] text-fg">{row.id}</code>
                             <span class="min-w-0 flex-1 truncate text-[11.5px] text-bad">{row.error ?? ""}</span>
                           </div>
                         )}
@@ -211,7 +211,7 @@ export function InstallSheet(props: {
 function Step(props: { n: string; label: string; state: "active" | "pending" | "done" }): JSX.Element {
   return (
     <span
-      class="flex flex-1 items-center gap-1.5 border-b-2 py-2.5 text-[12.5px]"
+      class="flex flex-1 items-center gap-1.5 border-b-2 py-2.5 text-[12px]"
       classList={{
         "border-fg text-fg": props.state === "active",
         "border-transparent text-fg-2": props.state === "done",
@@ -219,9 +219,9 @@ function Step(props: { n: string; label: string; state: "active" | "pending" | "
       }}
     >
       <span
-        class="inline-flex h-4 w-4 items-center justify-center rounded-full border font-mono text-[11px]"
+        class="inline-flex h-4 w-4 items-center justify-center rounded-[2px] border font-mono text-[10.5px]"
         classList={{
-          "border-fg bg-fg text-ink": props.state === "done",
+          "border-fg bg-fg text-page": props.state === "done",
           "border-line-inner": props.state !== "done",
         }}
       >

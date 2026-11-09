@@ -98,7 +98,7 @@ function Frame(props: {
 
   return (
     <div
-      class="fixed inset-0 z-50 grid place-items-center bg-[var(--scrim)] p-4 backdrop-blur-[6px] backdrop-saturate-[0.7] transition-opacity duration-[200ms]"
+      class="fixed inset-0 z-50 grid place-items-center bg-black/65 p-4 transition-opacity duration-[140ms]"
       classList={{ "opacity-0": props.closing }}
       onMouseDown={() => {
         if (!props.busy) props.onClose()
@@ -109,7 +109,7 @@ function Frame(props: {
         role="dialog"
         aria-modal="true"
         aria-label={props.title}
-        class={`relative max-h-[calc(100vh-32px)] ${props.width} max-w-[calc(100vw-32px)] overflow-y-auto rounded-[20px] border border-line bg-overlay shadow-[var(--shadow-float)]`}
+        class={`relative max-h-[calc(100vh-32px)] ${props.width} max-w-[calc(100vw-32px)] overflow-y-auto rounded-[4px] border border-line-inner bg-raised shadow-[0_24px_64px_rgba(0,0,0,0.65)]`}
         classList={{ enter: !props.closing, "dialog-out": props.closing }}
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
@@ -117,23 +117,23 @@ function Frame(props: {
           props.onSubmit?.()
         }}
       >
-        <div class="flex items-center border-b border-line px-6 py-4">
-          <h2 class="text-[16px] font-semibold tracking-[-0.01em]">{props.title}</h2>
+        <div class="flex items-center border-b border-line px-5 py-3.5">
+          <h2 class="text-[15px] font-medium">{props.title}</h2>
           <button
             type="button"
             onClick={props.onClose}
             aria-label="Close"
             disabled={props.busy}
-            class="ml-auto grid h-7 w-7 place-items-center rounded-[8px] text-fg-3 hover:bg-fill-strong hover:text-fg disabled:opacity-50"
+            class="ml-auto grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg disabled:opacity-50"
           >
             <Icon name="x" size={14} />
           </button>
         </div>
 
-        <div class="flex flex-col gap-5 px-6 py-5">{props.children}</div>
+        <div class="flex flex-col gap-4 px-5 py-4">{props.children}</div>
 
         <Show when={props.footer}>
-          {(footer) => <div class="flex items-center gap-2 border-t border-line px-6 py-4">{footer()}</div>}
+          {(footer) => <div class="flex items-center gap-2 border-t border-line px-5 py-3">{footer()}</div>}
         </Show>
       </form>
     </div>
@@ -149,9 +149,9 @@ export function Field(props: {
   return (
     <label class="flex flex-col gap-1.5">
       <span class="flex items-baseline gap-1.5">
-        <span class="text-[12.5px] font-medium text-fg-2">{props.label}</span>
+        <span class="text-[12px] font-medium text-fg-2">{props.label}</span>
         <Show when={props.optional === true}>
-          <span class="text-[12.5px] text-fg-4">optional</span>
+          <span class="text-[12px] text-fg-4">optional</span>
         </Show>
       </span>
       {props.children}
@@ -161,3 +161,6 @@ export function Field(props: {
     </label>
   )
 }
+
+export const FIELD_INPUT =
+  "w-full rounded-[2px] border border-line-inner bg-surface px-2.5 text-[13px] text-fg outline-none placeholder:text-fg-4 focus:border-accent-line focus:ring-[3px] focus:ring-accent-dim disabled:opacity-50"

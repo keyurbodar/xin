@@ -23,6 +23,7 @@ import {
   SystemNotice,
   ThreadFan,
 } from "./cards.tsx"
+import { ProjectGlyph } from "./project-glyph.tsx"
 
 export type EntryItem =
   | { readonly kind: "owner"; readonly text: string; readonly attachments: readonly Attachment[] }
@@ -111,8 +112,8 @@ export function OwnerBubble(props: {
       </Show>
       <Show when={props.text !== ""}>
         <div
-          class="rounded-[18px] bg-fill text-[15px] leading-[24px] text-fg"
-          classList={{ "max-w-[520px] px-4 py-3": props.density === "chat", "max-w-[280px] px-3 py-2.5": props.density === "panel" }}
+          class="rounded-[4px] border border-line-inner bg-hover py-2.5 text-[13.5px] leading-[1.6] text-fg"
+          classList={{ "max-w-[520px] px-3.5": props.density === "chat", "max-w-[280px] px-3": props.density === "panel" }}
         >
           <span class="whitespace-pre-wrap [overflow-wrap:anywhere]">{props.text}</span>
         </div>
@@ -154,6 +155,11 @@ function QuestionItem(props: {
 
 /** One item of a transcript, shared by the project chat and a thread's own body. */
 export function EntryItemView(props: { item: EntryItem; context: ItemContext }): JSX.Element {
+  const glyph = (): JSX.Element => (
+    <Show when={props.context.project} fallback={<span class="h-6 w-6 shrink-0" />}>
+      {(project) => <ProjectGlyph slug={project().slug} name={project().name} goal={project().goal} class="mt-0.5" />}
+    </Show>
+  )
   const fan = (calls: readonly ToolCallView[]): JSX.Element => (
     <ThreadFan
       calls={calls}
@@ -169,35 +175,50 @@ export function EntryItemView(props: { item: EntryItem; context: ItemContext }):
       return <OwnerBubble text={item.text} attachments={item.attachments} density={props.context.density} />
     case "assistant":
       return (
-        <div class="flex min-w-0 flex-col gap-3">
-          <Show when={item.text !== ""}>
-            <Markdown size={props.context.density === "panel" ? "small" : "body"} text={item.text} />
-          </Show>
-          <Show when={item.calls.length > 0}>{fan(item.calls)}</Show>
+        <div class="flex gap-3">
+          {glyph()}
+          <div class="flex min-w-0 flex-1 flex-col gap-3">
+            <Show when={props.context.density === "chat"}>
+              <div class="font-mono text-[11px] leading-none text-fg-4">Coordinator</div>
+            </Show>
+            <Show when={item.text !== ""}>
+              <Markdown small={props.context.density === "panel"} text={item.text} />
+            </Show>
+            <Show when={item.calls.length > 0}>{fan(item.calls)}</Show>
+          </div>
         </div>
       )
     case "report":
       return (
-        <div class="min-w-0">
-          <ReportCard row={item.row} onOpenThread={props.context.onOpenThread} />
+        <div class="flex gap-3">
+          {glyph()}
+          <div class="min-w-0 flex-1">
+            <ReportCard row={item.row} onOpenThread={props.context.onOpenThread} />
+          </div>
         </div>
       )
     case "question":
       return (
-        <div class="min-w-0">
-          <QuestionItem
-            row={item.row}
-            threads={props.context.threads}
-            requests={props.context.requests}
-            onOpenThread={props.context.onOpenThread}
-            onAnswer={props.context.onAnswer}
-          />
+        <div class="flex gap-3">
+          {glyph()}
+          <div class="min-w-0 flex-1">
+            <QuestionItem
+              row={item.row}
+              threads={props.context.threads}
+              requests={props.context.requests}
+              onOpenThread={props.context.onOpenThread}
+              onAnswer={props.context.onAnswer}
+            />
+          </div>
         </div>
       )
     case "job":
       return (
-        <div class="min-w-0">
-          <JobCard row={item.row} onOpenThread={props.context.onOpenThread} />
+        <div class="flex gap-3">
+          {glyph()}
+          <div class="min-w-0 flex-1">
+            <JobCard row={item.row} onOpenThread={props.context.onOpenThread} />
+          </div>
         </div>
       )
     case "failure":

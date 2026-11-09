@@ -1,5 +1,4 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
-import { ANSWER_CHIP } from "../components/ui/state.tsx"
 import {
   activeProjects,
   counts,
@@ -33,9 +32,7 @@ export function HomeScreen(): JSX.Element {
             <span class="hidden sm:flex">
               <TopButton icon={<Icon name="calendar" size={14} />} label="Schedules" onClick={() => navigate("/schedules")} />
             </span>
-            <span class="hidden sm:block">
-              <TopButton icon={<Icon name="plus" size={14} />} label="New project" primary shortcut="N" onClick={() => navigate("/new")} />
-            </span>
+            <TopButton icon={<Icon name="plus" size={14} />} label="New project" primary shortcut="N" onClick={() => navigate("/new")} />
           </>
         }
       />
@@ -134,11 +131,11 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
     <div class="flex min-h-full flex-col gap-7 px-4 pb-32 pt-5 sm:px-10 sm:pb-12 sm:pt-7">
       <div>
         <div class="label mb-2.5">{longDate()}</div>
-        <h1 class="type-page">{greeting()}.</h1>
+        <h1 class="text-[32px] font-light leading-[1.1] tracking-[-0.03em]">{greeting()}.</h1>
       </div>
 
-      <div class="hidden overflow-hidden rounded-[12px] border border-line bg-surface sm:flex">
-        <Cell label="Waiting on you" value={numbers().waiting} tone="waiting" />
+      <div class="hidden overflow-hidden rounded-[4px] border border-line bg-surface sm:flex">
+        <Cell label="Waiting on you" value={numbers().waiting} tone="accent" />
         <Cell label="Working now" value={numbers().working} tone="working" />
         <Cell label="Finished overnight" value={numbers().finished} />
         <Cell label="Failed" value={numbers().failed} />
@@ -148,20 +145,20 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
       <Show when={rows().length > 0}>
         <section>
           <div class="mb-2.5 flex items-baseline gap-2.5">
-            <span class="label text-waiting">Needs you</span>
-            <span class="text-[12.5px] text-fg-3">Threads are paused until you answer</span>
+            <span class="label text-accent-text">Needs you</span>
+            <span class="text-[12px] text-fg-3">Threads are paused until you answer</span>
             <button type="button" class="ml-auto link" onClick={() => navigate("/inbox")}>
               Open Inbox
             </button>
           </div>
-          <div class="flex flex-col overflow-hidden rounded-[12px] border border-waiting/40">
+          <div class="flex flex-col overflow-hidden rounded-[4px] border border-accent-line">
             <For each={rows()}>
               {(row) => (
-                <div class="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 border-b border-line bg-surface px-3.5 py-2.5 last:border-0 sm:flex sm:gap-3">
+                <div class="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 border-b border-line bg-raised px-3.5 py-2.5 last:border-0 sm:flex sm:gap-3">
                   <StatusGlyph state={row.state} size={16} />
                   <span class="min-w-0 flex-1 text-left">
-                    <span class="block truncate text-[13.5px] font-medium">{row.title}</span>
-                    <span class="block truncate text-[12.5px] text-fg-3">
+                    <span class="block truncate text-[13px] font-medium">{row.title}</span>
+                    <span class="block truncate text-[12px] text-fg-3">
                       {row.detail} · {ago(row.at)}
                     </span>
                   </span>
@@ -170,7 +167,7 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
                       {(option) => (
                         <button
                           type="button"
-                          class={ANSWER_CHIP}
+                          class="chip hover:border-line-strong hover:bg-selected"
                           disabled={busy() === row.id}
                           onClick={() => void answer(row, option)}
                         >
@@ -179,13 +176,13 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
                       )}
                     </For>
                     <Show when={row.threadId !== undefined}>
-                      <button type="button" class={ANSWER_CHIP} onClick={() => void retry(row)}>
+                      <button type="button" class="chip hover:border-line-strong" onClick={() => void retry(row)}>
                         Retry
                       </button>
                     </Show>
                     <button
                       type="button"
-                      class={ANSWER_CHIP}
+                      class="chip hover:border-line-strong"
                       onClick={() => (row.question === undefined ? navigate("/inbox") : openProject(row.question.projectId))}
                     >
                       {row.question === undefined ? "Open thread" : "Open project"}
@@ -196,7 +193,7 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
             </For>
           </div>
           <Show when={problem()}>
-            {(message) => <p class="mt-2 text-[12.5px] text-bad">{message()}</p>}
+            {(message) => <p class="mt-2 text-[12px] text-bad">{message()}</p>}
           </Show>
         </section>
       </Show>
@@ -204,7 +201,7 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
       <section>
         <div class="mb-2.5 flex items-baseline gap-2.5">
           <span class="label">Projects</span>
-          <span class="text-[12.5px] text-fg-3">{activeProjects().length}</span>
+          <span class="text-[12px] text-fg-3">{activeProjects().length}</span>
           <span class="ml-auto link">Sort: recent activity</span>
         </div>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -212,10 +209,10 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
           <button
             type="button"
             onClick={() => navigate("/new")}
-            class="hidden min-h-[141px] flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed border-line text-fg-3 hover:bg-hover hover:text-fg-2 sm:flex"
+            class="hidden min-h-[180px] flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-line-inner text-fg-3 hover:border-line-strong hover:text-fg-2 sm:flex"
           >
             <Icon name="plus" size={18} />
-            <span class="text-[13px]">New project</span>
+            <span class="text-[12.5px]">New project</span>
           </button>
         </div>
       </section>
@@ -224,7 +221,7 @@ function HomeBody(props: { loaded: boolean }): JSX.Element {
         <button
           type="button"
           onClick={() => navigate("/new")}
-          class="flex h-11 w-full items-center justify-center gap-2 rounded-[8px] bg-accent text-[15px] font-medium text-ink"
+          class="flex h-11 w-full items-center justify-center gap-2 rounded-[2px] bg-accent text-[14px] font-medium text-ink"
         >
           <Icon name="plus" size={16} />
           New project
@@ -240,17 +237,17 @@ function spend(): number {
   return state.value.today
 }
 
-function Cell(props: { label: string; value?: number; text?: string; tone?: "waiting" | "working"; mono?: boolean }): JSX.Element {
+function Cell(props: { label: string; value?: number; text?: string; tone?: "accent" | "working"; mono?: boolean }): JSX.Element {
   return (
     <div class="flex-1 border-r border-line px-4 py-3.5 last:border-r-0">
       <span class="label">{props.label}</span>
       <span
-        class="mt-1.5 block font-normal tracking-[-0.02em]"
+        class="mt-1.5 block font-light tracking-[-0.02em]"
         classList={{
           "text-[26px]": true,
-          "text-waiting": props.tone === "waiting" && (props.value ?? 0) > 0,
-          "text-working": props.tone === "working" && (props.value ?? 0) > 0,
-          "font-mono": props.mono === true,
+          "text-accent-text": props.tone === "accent" && (props.value ?? 0) > 0,
+          "text-[#a9cbff]": props.tone === "working" && (props.value ?? 0) > 0,
+          "font-mono text-[22px]": props.mono === true,
         }}
       >
         <Show when={props.text === undefined} fallback={props.text}>
@@ -288,23 +285,23 @@ function ProjectCard(props: { project: ProjectSummary }): JSX.Element {
     <button
       type="button"
       onClick={() => navigate(`/p/${props.project.slug}`)}
-      class="flex flex-col gap-3 rounded-[12px] border border-line bg-surface p-3.5 text-left hover:bg-hover"
+      class="flex flex-col gap-3 rounded-[4px] border border-line-inner bg-raised p-3.5 text-left hover:border-line-strong hover:bg-hover"
     >
       <div class="flex items-center gap-2.5">
-        <span class="relative grid h-8 w-8 shrink-0 place-items-center rounded-[8px] bg-fill text-fg-2">
+        <span class="relative grid h-8 w-8 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-surface text-fg-2">
           <ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={18} />
           <Corner state={projectState(props.project)} />
         </span>
         <span class="min-w-0">
-          <span class="block truncate text-[13.5px] font-medium">{props.project.name}</span>
-          <span class="block truncate text-[12.5px] text-fg-3">{props.project.goal ?? "No goal yet"}</span>
+          <span class="block truncate text-[14px] font-medium">{props.project.name}</span>
+          <span class="block truncate text-[12px] text-fg-3">{props.project.goal ?? "No goal yet"}</span>
         </span>
       </div>
 
       <div class="flex flex-col gap-1.5">
         <For each={threads()}>
           {(row) => (
-            <div class="flex items-center gap-2 text-[13px] text-fg-2">
+            <div class="flex items-center gap-2 text-[12.5px] text-fg-2">
               <StatusGlyph state={row.state} size={16} />
               <span class="min-w-0 flex-1 truncate" classList={{ shimmer: row.state === "working" }}>
                 {row.thread.title}
@@ -314,7 +311,7 @@ function ProjectCard(props: { project: ProjectSummary }): JSX.Element {
           )}
         </For>
         <Show when={threads().length === 0}>
-          <div class="text-[13px] text-fg-3">No threads yet</div>
+          <div class="text-[12.5px] text-fg-3">No threads yet</div>
         </Show>
       </div>
 
