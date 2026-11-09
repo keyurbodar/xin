@@ -114,4 +114,44 @@ describe("orchestrator tool row", () => {
     expect(report).toContain("orchestrator (active)")
     expect(report).toContain("tool-orchestrator (active)")
   }, 20_000)
+
+  it("does not offer a delegated thread its siblings or the coordinator's thread tools", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "child-tools")
+    await chooseModel(stub, project.coordinatorId)
+    const offers = recordOffers()
+
+    await turn(stub, project.coordinatorId, "delegate now", [
+      offers.wrap(() =>
+        fauxAssistantMessage(
+          [
+            fauxToolCall("delegate_task", {
+              task: "child work",
+              title: "Child",
+              mode: "async",
+              clientRequestId: "child-tools-1",
+            }),
+          ],
+          { stopReason: "toolUse" },
+        ),
+      ),
+      offers.step("delegated"),
+      offers.step("child answer"),
+    ])
+
+    const child = offers.seen.find((offer) => offer.system.includes("You are a thread"))
+    expect(child).toBeDefined()
+    for (const name of [
+      "delegate_task",
+      "task_cancel",
+      "thread_send",
+      "thread_read",
+      "thread_list",
+      "task_status",
+      "pending_request",
+    ])
+      expect(child?.tools, name).not.toContain(name)
+    expect(child?.tools).toContain("remember")
+    expect(child?.tools).toContain("ask_user")
+  }, 20_000)
 })

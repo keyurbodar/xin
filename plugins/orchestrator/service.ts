@@ -50,7 +50,15 @@ export type ServiceDeps = {
 
 const context = BACKGROUND_CONTEXT
 const DEFAULT_WAIT_MS = 8_000
-const CHILD_TOOLS = ["delegate_task", "task_cancel", "thread_send"] as const
+const CHILD_TOOLS = [
+  "delegate_task",
+  "task_cancel",
+  "thread_send",
+  "thread_read",
+  "thread_list",
+  "task_status",
+  "pending_request",
+] as const
 
 type ProjectThreads = {
   readonly project: CallerProject

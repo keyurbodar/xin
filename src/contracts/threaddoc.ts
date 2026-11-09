@@ -167,6 +167,8 @@ export async function threadInScope(
   callerId: ConversationId,
   threadId: number,
 ): Promise<ThreadScope | undefined> {
+  const own = await read.snapshot(ThreadDoc, callerId, context)
+  if (own !== undefined && threadId !== callerId) return undefined
   const scope = await projectInScope(read, callerId)
   if (scope === undefined) return undefined
   if (!scope.project.threadIds.includes(threadId)) return undefined
