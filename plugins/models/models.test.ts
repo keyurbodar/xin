@@ -1,11 +1,13 @@
 import { runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { Conversation, EntryRecord } from "@earendil-works/pi-durable"
+import type { Conversation, ConversationId, EntryRecord } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 // @ts-expect-error Vite inlines ?raw imports at bundle time
 import source from "./models.ts?raw"
 import { resolveModel } from "../../src/contracts/models.ts"
-import { api, cmd as call, fresh, owner } from "../../test/support.ts"
+import type { CommandId } from "../../src/ids.ts"
+import type { Actor } from "../../src/ops.ts"
+import { addThreads, api, cmd as call, fresh, owner } from "../../test/support.ts"
 import { WIDE_MODEL } from "../../test/plugins/m3.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 
@@ -383,6 +385,36 @@ describe("models", () => {
       globalThis.fetch = original
       await cmd("custom-3", "credential.delete", { provider: "endpoint" })
     }
+  })
+
+  it("confines an agent's model changes to itself or its own project's threads", async () => {
+    const stub = fresh()
+    const created = await call(stub, "scope-project", "project.create", { slug: "scope", name: "Scope" })
+    expect(created.ok, JSON.stringify(created)).toBe(true)
+    const project = created.result as { id: string; coordinatorId: number }
+    const [alpha, beta] = await addThreads(stub, project.id, ["alpha", "beta"])
+    if (alpha === undefined || beta === undefined) throw new Error("no threads")
+    const coordinator: Actor = { kind: "agent", conversationId: project.coordinatorId as ConversationId }
+    const child: Actor = { kind: "agent", conversationId: alpha.id }
+    const run = (id: string, conv: number, actor: Actor) =>
+      runInDurableObject(stub, (home: Home) =>
+        home.commands.run({ id: id as CommandId, op: "conv.configure", args: { conv, model: WIDE_MODEL } }, actor),
+      )
+
+    expect(await run("scope-self", alpha.id, child)).toMatchObject({ kind: "ok" })
+    expect(await run("scope-sibling", beta.id, child)).toMatchObject({ kind: "rejected", code: "forbidden" })
+    expect(await run("scope-parent", project.coordinatorId, child)).toMatchObject({
+      kind: "rejected",
+      code: "forbidden",
+    })
+    expect(await run("scope-coordinator", beta.id, coordinator)).toMatchObject({ kind: "ok" })
+
+    const other = await call(stub, "scope-other", "project.create", { slug: "other", name: "Other" })
+    const stranger: Actor = {
+      kind: "agent",
+      conversationId: (other.result as { coordinatorId: number }).coordinatorId as ConversationId,
+    }
+    expect(await run("scope-stranger", beta.id, stranger)).toMatchObject({ kind: "rejected", code: "forbidden" })
   })
 
   it("rejects an unknown model and keeps owner defaults", async () => {
