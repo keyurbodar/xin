@@ -39,6 +39,7 @@ function liveBindings(): Record<string, string> {
 }
 
 const live = process.env.XIN_LIVE === "1"
+const load = process.env.XIN_LOAD === "1"
 
 export default defineConfig({
   plugins: [
@@ -50,5 +51,9 @@ export default defineConfig({
       },
     }),
   ],
-  test: { include: ["src/**/*.test.ts", "plugins/**/*.test.ts", "test/**/*.test.ts"], maxWorkers, retry: 0 },
+  test: {
+    include: load ? ["test/**/*.bench.ts"] : ["src/**/*.test.ts", "plugins/**/*.test.ts", "test/**/*.test.ts"],
+    maxWorkers,
+    retry: 0,
+  },
 })
