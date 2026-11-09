@@ -79,20 +79,17 @@ alarm():
 
 ```text
 arm(wake):
-  hb  = wake.active ? beat : none        // beat is now+60s, fixed for this active stretch
   pi  = wake.at
-  deb = min(inbound.fire_at)             // each timer's due()
-  at  = min(hb, pi, deb)
-  at = none ? (armed ? deleteAlarm() : nothing)
-            : (armed <= at while live || armed == at ? nothing : setAlarm(at))
+  due = min(pi, ...timer.due())          // the next deadline, if any
+  due = none ? (wake.active ? keep : deleteAlarm())
+             : (armed == due ? keep : setAlarm(due))
   failed write → ctx.abort()             // restart, re-arm
 ```
 
 Three rules keep the write count down without delaying work:
 
 - **Arms coalesce.** A call that arrives while one is running joins the next round, and the round uses the latest wake, so a burst of wake changes costs one round of `due()` reads, not one per call.
-- **The heartbeat is fixed, not sliding.** It is `now+60s` when an active stretch starts and stays put until the runtime consumes the alarm, so repeated arms compare equal and write nothing.
-- **An alarm at or before every deadline is already good enough.** While work is live, an alarm within the minute covers a later deadline; when nothing is live, the alarm moves to the exact next due or is deleted. `fired()`, called first in `alarm()`, marks the consumed alarm unset so the next arm always writes one.
+- **One deadline, one row.** The alarm is written only when the earliest deadline moves, and deleted when an idle home has none. There is no fixed heartbeat: a run in progress holds the alarm it started with, and an eviction during one is recovered by the turn's own retry, not by a periodic wake. `fired()`, called first in `alarm()`, marks the consumed alarm unset so the next arm writes one.
 
 `onWake` fires whenever pi's next-needed time changes (a sleep is created, work starts or ends), and it calls `arm()` again. The 60 s heartbeat runs only while `wake.active`: an eviction mid-run is noticed within 60 s and `resume()` continues from the last checkpoint. The only non-pi timer is the debounce (`inbound.fire_at`), folded into the same `min()`.
 

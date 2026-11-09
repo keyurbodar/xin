@@ -28,7 +28,7 @@ Read with: [01 Host](./01-host.md) for the alarm and Harness recovery paths, [03
 | Thread, 20 tool steps | ~3 per step + beats ≈ 80–120 |
 | One owner message → one reply (`src/cost.test.ts`) | 41 measured, bound 55 |
 | One delegate → thread → report → coordinator reply (`src/cost.test.ts`) | 181 measured, bound 235 |
-| One message in a 100-thread home, half with two tool calls (`test/load.bench.ts`) | 26 written, 39 read, 62 statements |
+| One message in a 100-thread home, half with two tool calls (`test/load.bench.ts`) | 26 written, 36 read, 56 statements |
 | One cold message after eviction, in that home | 24 written, 410 read, 105 statements |
 | One idle alarm in that home | 2 written, 7 read, 15 statements |
 | Idle hour | 0 (no alarm armed) |
@@ -43,7 +43,7 @@ A journal alone replays forever, so every `CHECKPOINT_ROWS` (256) journal rows t
 
 **What that costs in durability.** Writes are durable at a flush, not at a commit. An eviction during a turn loses that turn's unflushed commits; the harness retries the attempt it was in and the client's retry carries the same request id, so the turn runs again rather than being lost — but it can run again, tool calls included, and any tokens it spent are spent twice. Configuration and a finished turn are durable at once. The state also lives in the object's memory, so a home's whole history has to fit in the 128 MB an object gets; the checkpoint is the recovery path, not an off-heap store.
 
-**Where the 26 rows go.** The intake row and its two status updates are 14, the command receipt 3, the alarm 4, the journal row 3 (including its truncation), and a preset row 0.3. Everything pi writes is inside the journal row. The hottest reads are point lookups: the intake queue by target and batch, receipts by command id, kv by key, and the journal by sequence; the only scan left is the hourly receipt sweep, which is bounded by the index on its age.
+**Where the 26 rows go.** The intake row and its two status updates are 14, the command receipt 3, the alarm 4, the journal row 3.4 (including its truncation), and a preset row 0.3. Everything pi writes is inside the journal row. The hottest reads are point lookups: the intake queue by target and batch, receipts by command id, kv by key, and the journal by sequence; the only scan left is the hourly receipt sweep, which is bounded by the index on its age.
 
 A heavy day (300 messages, 40 threads) writes about 8k rows, under 1¢ on the paid plan and 8% of a free-plan day. That is why Xin drops kiko's row-budget machinery: a budget mechanism would police a number the agent's own commits set, and at personal scale the meter that still matters most is LLM tokens. The levers are batching (§5), brief-only children (§8), stable sections first (persona → profile → project instructions → skills index), live state as entries and never as changing sections, and the per-message overhead counted above. `src/cost.test.ts` holds the upper bounds so a regression shows up, and `test/load.bench.ts` holds the 100-thread ones.
 
