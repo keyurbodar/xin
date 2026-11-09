@@ -14,7 +14,7 @@ export function FileChip(props: {
   const failed = (): boolean => props.error !== undefined
   return (
     <span
-      class="relative inline-flex h-[26px] max-w-[240px] items-center gap-1.5 overflow-hidden rounded-[6px] border py-1 pl-2 text-[12.5px]"
+      class="relative inline-flex h-[26px] max-w-[240px] items-center gap-1.5 overflow-hidden rounded-[2px] border py-1 pl-2 text-[12px]"
       classList={{
         "border-bad/60 pr-1 text-bad": failed(),
         "border-line-inner pr-1 text-fg-2": !failed() && props.onRemove !== undefined,
@@ -43,7 +43,7 @@ export function FileChip(props: {
             type="button"
             onClick={remove()}
             aria-label={`Remove ${props.name}`}
-            class="grid h-4 w-4 shrink-0 place-items-center rounded-full text-fg-4 hover:bg-selected hover:text-fg"
+            class="grid h-4 w-4 shrink-0 place-items-center rounded-[2px] text-fg-4 hover:bg-selected hover:text-fg"
           >
             <Icon name="x" size={10} />
           </button>
@@ -51,7 +51,7 @@ export function FileChip(props: {
       </Show>
       <Show when={props.progress !== undefined && props.progress < 1}>
         <span
-          class="absolute bottom-0 left-0 h-[1.5px] bg-accent-text"
+          class="absolute bottom-0 left-0 h-[1.5px] bg-accent"
           style={{ width: `${Math.round((props.progress ?? 0) * 100)}%` }}
         />
       </Show>

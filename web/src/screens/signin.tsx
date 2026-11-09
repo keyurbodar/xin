@@ -1,7 +1,6 @@
 import { createSignal, onMount, type JSX } from "solid-js"
 import { setToken, verifyToken } from "../lib/auth.ts"
 import { OnboardingTopBar, type RailItem } from "../components/onboarding/chrome.tsx"
-import { FIELD_ROW } from "../components/ui/field.ts"
 
 const STEPS: readonly RailItem[] = [
   { label: "Sign in", state: "current" },
@@ -43,22 +42,19 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
   return (
     <div class="flex h-full flex-col bg-page text-fg">
       <OnboardingTopBar items={STEPS} />
-      <div class="atmos flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pb-16 pt-[22vh]">
-        <form
-          onSubmit={submit}
-          class="enter w-full max-w-[560px] rounded-[20px] border border-line-inner bg-raised p-6 shadow-[var(--shadow-float)] sm:p-8"
-        >
+      <div class="atmos flex min-h-0 flex-1 justify-center overflow-y-auto px-6 pb-16 pt-[22vh]">
+        <form onSubmit={submit} class="enter w-full max-w-[440px]">
           <div class="label">Owner access</div>
-          <h1 class="type-section mt-3">Sign in to your workspace</h1>
-          <p class="mt-3 text-[13.5px] leading-[1.6] text-fg-3">
+          <h1 class="mt-3 text-[28px] font-light leading-[1.15] tracking-[-0.03em]">Sign in to your workspace</h1>
+          <p class="mt-3 text-[13px] leading-[1.6] text-fg-3">
             This instance belongs to one owner. Paste the owner token from your deploy output to unlock it.
           </p>
 
           <div class="mt-6 flex flex-col gap-1.5">
-            <span class="text-[12.5px] font-medium text-fg-2">Owner token</span>
+            <span class="text-[12px] font-medium text-fg-2">Owner token</span>
             <div
-              class={`${FIELD_ROW} w-full`}
-              classList={{ "border-bad focus-within:border-bad": error() !== undefined && !busy() }}
+              class="flex h-10 items-center gap-2 rounded-[2px] border bg-surface px-3 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]"
+              classList={{ "border-bad": error() !== undefined && !busy(), "border-line-inner": error() === undefined || busy() }}
             >
               <input
                 type={revealed() ? "text" : "password"}
@@ -82,12 +78,12 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
                 {revealed() ? "Hide" : "Show"}
               </button>
             </div>
-            <span class="text-[12.5px] leading-[1.5] text-fg-3">
+            <span class="text-[12px] leading-[1.5] text-fg-3">
               The token stays in this browser. Rotate it any time under Settings, Profile + token.
             </span>
           </div>
 
-          <p class="mt-2 min-h-4 text-[12.5px] leading-4 text-bad" role="alert">
+          <p class="mt-2 min-h-4 text-[12px] leading-4 text-bad" role="alert">
             {error() ?? ""}
           </p>
 
@@ -95,7 +91,7 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
             type="submit"
             disabled={busy() || value().trim() === ""}
             aria-busy={busy()}
-            class="mt-3 inline-flex h-8 w-full items-center justify-center gap-2 rounded-[8px] bg-accent text-[13.5px] font-medium text-ink enabled:hover:bg-accent disabled:opacity-40"
+            class="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[2px] bg-accent text-[14px] font-medium text-ink enabled:hover:bg-accent disabled:opacity-40"
           >
             {busy() ? (
               <>

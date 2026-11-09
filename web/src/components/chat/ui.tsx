@@ -10,7 +10,7 @@ export function errorMessage(failure: unknown): string {
 export function ResourceError(props: { what: string; error: unknown; onRetry: () => void }): JSX.Element {
   return (
     <div class="flex flex-col gap-2 border-b border-line px-3 py-4">
-      <span class="text-[13px] text-fg-2">Couldn’t load {props.what}.</span>
+      <span class="text-[12.5px] text-fg-2">Couldn’t load {props.what}.</span>
       <span class="font-mono text-[11px] text-bad">{errorMessage(props.error)}</span>
       <button type="button" class="link self-start" onClick={() => props.onRetry()}>
         Retry
@@ -87,12 +87,12 @@ export function PanelGhost(props: { rows: number }): JSX.Element {
     <div class="flex flex-col">
       {Array.from({ length: props.rows }, (_, index) => (
         <div class="flex h-11 items-center gap-2.5 border-b border-line px-3">
-          <span class="h-4 w-4 shrink-0 rounded-[8px] border border-line-inner bg-raised" />
+          <span class="h-4 w-4 shrink-0 rounded-[2px] border border-line-inner bg-raised" />
           <span class="flex min-w-0 flex-1 flex-col gap-1.5">
-            <span class="h-2.5 rounded-[4px] bg-hover" style={{ width: `${54 + (index % 3) * 12}%` }} />
-            <span class="h-2 rounded-[4px] bg-hover" style={{ width: `${28 + (index % 4) * 8}%` }} />
+            <span class="h-2.5 rounded-[1px] bg-hover" style={{ width: `${54 + (index % 3) * 12}%` }} />
+            <span class="h-2 rounded-[1px] bg-hover" style={{ width: `${28 + (index % 4) * 8}%` }} />
           </span>
-          <span class="h-2 w-6 rounded-[4px] bg-hover" />
+          <span class="h-2 w-6 rounded-[1px] bg-hover" />
         </div>
       ))}
     </div>

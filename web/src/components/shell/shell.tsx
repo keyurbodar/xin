@@ -44,14 +44,14 @@ export function Shell(): JSX.Element {
         <ErrorBoundary
           fallback={(error: unknown, reset) => (
             <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-              <span class="text-[13.5px] text-fg-2">This screen stopped</span>
+              <span class="text-[13px] text-fg-2">This screen stopped</span>
               <span class="max-w-[420px] font-mono text-[11.5px] text-fg-3">
                 {error instanceof Error ? error.message : String(error)}
               </span>
               <button
                 type="button"
                 onClick={() => reset()}
-                class="rounded-[8px] border border-line-inner px-2.5 py-1 text-[12.5px] text-fg-2 hover:border-line-strong hover:bg-hover"
+                class="rounded-[2px] border border-line-inner px-2.5 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:bg-hover"
               >
                 Try again
               </button>

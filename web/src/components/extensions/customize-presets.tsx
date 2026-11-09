@@ -2,7 +2,6 @@ import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { deletePrompt, errorMessage, presets, prompts, putPrompt, type PresetRow, type Prompt } from "../../state/extensions.ts"
 import { Button, Chip, Empty, Failure, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
-import { FIELD, FIELD_ROW } from "../ui/field.ts"
 
 export function Prompts(): JSX.Element {
   const [selected, setSelected] = createSignal<string | undefined>(undefined)
@@ -24,7 +23,7 @@ export function Prompts(): JSX.Element {
       <div class="flex w-[380px] shrink-0 flex-col border-r border-line">
         <div class="flex items-center gap-2 border-b border-line px-3.5 py-3">
           <span class="label">Prompts</span>
-          <span class="text-[12.5px] text-fg-3">{list().length}</span>
+          <span class="text-[12px] text-fg-3">{list().length}</span>
           <span class="ml-auto" />
           <Button size="sm" variant="quiet" onClick={() => setCreating(true)}>
             <Glyph name="plus" size={13} />
@@ -55,11 +54,11 @@ export function Prompts(): JSX.Element {
                 class="flex w-full items-start gap-2.5 border-b border-line px-3.5 py-2.5 text-left hover:bg-hover"
                 classList={{ "bg-hover": !creating() && selected() === prompt.name }}
               >
-                <span class="mt-0.5 shrink-0 rounded-[6px] border border-line-inner bg-fill px-1.5 py-0.5 font-mono text-[11px] text-fg-2">
+                <span class="mt-0.5 shrink-0 rounded-[2px] border border-line-inner bg-page px-1.5 py-0.5 font-mono text-[11px] text-fg-2">
                   /{prompt.name}
                 </span>
                 <span class="min-w-0 flex-1">
-                  <span class="block truncate text-[13px] text-fg">{prompt.description ?? prompt.name}</span>
+                  <span class="block truncate text-[12.5px] text-fg">{prompt.description ?? prompt.name}</span>
                   <span class="line-clamp-1 block text-[11.5px] text-fg-3">{prompt.text}</span>
                 </span>
               </button>
@@ -163,7 +162,7 @@ function PromptEditor(props: {
           <span class="block truncate text-[16px] font-medium text-fg">
             {props.prompt === undefined ? "New prompt" : `/${props.prompt.name}`}
           </span>
-          <span class="block text-[12.5px] text-fg-3">A slash command in every chat</span>
+          <span class="block text-[12px] text-fg-3">A slash command in every chat</span>
         </div>
         <Show when={props.prompt}>
           <Show
@@ -189,15 +188,15 @@ function PromptEditor(props: {
           </Show>
           <label class="flex flex-col gap-1.5">
             <span class="label">Name</span>
-            <div class={`${FIELD_ROW} w-full`}>
-              <span class="font-mono text-[12.5px] text-fg-3">/</span>
+            <div class="flex h-8 items-center gap-1.5 rounded-[2px] border border-line-inner bg-page px-2.5">
+              <span class="font-mono text-[12px] text-fg-3">/</span>
               <input
                 value={name()}
                 onInput={(event) => setName(event.currentTarget.value.toLowerCase())}
                 disabled={props.prompt !== undefined}
                 placeholder="weekly"
                 spellcheck={false}
-                class="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-fg outline-none placeholder:text-fg-4 disabled:opacity-60"
+                class="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-fg outline-none placeholder:text-fg-4 disabled:opacity-60"
               />
             </div>
             <span class="text-[11.5px] text-fg-3">Lowercase letters, digits and dashes. A name cannot be renamed; make a new prompt instead.</span>
@@ -208,7 +207,7 @@ function PromptEditor(props: {
               value={description()}
               onInput={(event) => setDescription(event.currentTarget.value)}
               placeholder="Summarise the week across threads"
-              class={FIELD}
+              class="h-8 rounded-[2px] border border-line-inner bg-page px-2.5 text-[12.5px] text-fg outline-none placeholder:text-fg-4"
             />
           </label>
           <label class="flex flex-col gap-1.5">
@@ -221,7 +220,7 @@ function PromptEditor(props: {
                 maxLength={8_000}
                 spellcheck={false}
                 placeholder="Summarise this week across every thread in the project. Group by outcome, then list what still waits."
-                class="w-full resize-y bg-transparent px-3.5 py-3 font-mono text-[12.5px] leading-relaxed text-fg outline-none placeholder:text-fg-4"
+                class="w-full resize-y bg-transparent px-3.5 py-3 font-mono text-[12px] leading-relaxed text-fg outline-none placeholder:text-fg-4"
               />
             </Panel>
           </label>
@@ -277,7 +276,7 @@ export function Presets(): JSX.Element {
                 <Glyph name="layers" size={15} class="mt-0.5 shrink-0 text-fg-3" />
                 <span class="min-w-0 flex-1">
                   <span class="flex items-center gap-1.5">
-                    <span class="truncate text-[13px] font-medium text-fg">{preset.name}</span>
+                    <span class="truncate text-[12.5px] font-medium text-fg">{preset.name}</span>
                     <Show when={preset.isDefault}>
                       <Chip>Default</Chip>
                     </Show>
@@ -309,7 +308,7 @@ export function Presets(): JSX.Element {
           {(preset) => (
             <>
               <header class="flex items-center gap-3 border-b border-line px-6 py-4">
-                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-hover text-fg">
+                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg">
                   <Glyph name="layers" size={18} />
                 </span>
                 <div class="min-w-0 flex-1">
@@ -323,7 +322,7 @@ export function Presets(): JSX.Element {
               <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                 <div class="flex max-w-[520px] flex-col gap-4">
                   <Show when={preset().description}>
-                    {(description) => <p class="text-[13.5px] leading-relaxed text-fg-2">{description()}</p>}
+                    {(description) => <p class="text-[13px] leading-relaxed text-fg-2">{description()}</p>}
                   </Show>
                   <Panel>
                     <div class="border-b border-line px-3.5 py-2.5">
@@ -332,7 +331,7 @@ export function Presets(): JSX.Element {
                     <div class="px-3.5 py-3">
                       <Show
                         when={preset().tools !== "all"}
-                        fallback={<span class="text-[13px] text-fg-2">Every tool row.</span>}
+                        fallback={<span class="text-[12.5px] text-fg-2">Every tool row.</span>}
                       >
                         <div class="flex flex-wrap gap-1.5">
                           <For each={toolsOf(preset())}>

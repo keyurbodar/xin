@@ -11,9 +11,8 @@ import {
   skippedMarket,
   unskipMarketVersion,
 } from "../../state/extensions.ts"
-import { Button, Empty, Failure, Note, Panel, Pending, Toggle } from "./chrome.tsx"
+import { Button, Empty, Failure, MONO_INPUT, Note, Panel, Pending, Toggle } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
-import { FIELD } from "../ui/field.ts"
 
 function indexesOf(config: Readonly<Record<string, unknown>>): readonly string[] {
   const value = config["indexes"]
@@ -130,7 +129,7 @@ export function Sources(): JSX.Element {
         <div>
           <span class="label">Extensions › Sources</span>
           <h2 class="mt-1.5 text-[18px] font-medium tracking-[-0.02em]">Where extensions come from</h2>
-          <p class="mt-1.5 max-w-[560px] text-[13px] leading-relaxed text-fg-3">
+          <p class="mt-1.5 max-w-[560px] text-[12.5px] leading-relaxed text-fg-3">
             Discover searches every index URL that is on. Each index is one https document in the market format; packages from
             a URL or git build stay off until you enable them.
           </p>
@@ -142,7 +141,7 @@ export function Sources(): JSX.Element {
 
         <Show when={note()}>
           {(message) => (
-            <div class="flex items-center gap-2 rounded-[12px] border border-ok/30 bg-ok-bg px-3.5 py-2.5 text-[13px] text-fg-2">
+            <div class="flex items-center gap-2 rounded-[4px] border border-ok/30 bg-ok-bg px-3.5 py-2.5 text-[12.5px] text-fg-2">
               <Glyph name="check" size={13} class="text-ok" />
               {message()}
             </div>
@@ -167,7 +166,7 @@ export function Sources(): JSX.Element {
                 <section class="flex flex-col gap-2.5">
                   <div class="flex items-center gap-2">
                     <span class="label">Indexes</span>
-                    <span class="text-[12.5px] text-fg-3">
+                    <span class="text-[12px] text-fg-3">
                       {indexes().length} {indexes().length === 1 ? "source" : "sources"}
                     </span>
                   </div>
@@ -175,7 +174,7 @@ export function Sources(): JSX.Element {
                     <Show
                       when={indexes().length > 0}
                       fallback={
-                        <div class="px-3.5 py-3 text-[13px] text-fg-3">
+                        <div class="px-3.5 py-3 text-[12.5px] text-fg-3">
                           No index is configured. Discover has nothing to read until you add one.
                         </div>
                       }
@@ -183,7 +182,7 @@ export function Sources(): JSX.Element {
                       <For each={indexes()}>
                         {(url) => (
                           <div class="flex items-center gap-3 border-b border-line px-3.5 py-2.5 last:border-0">
-                            <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] border border-line-inner bg-hover text-fg-2">
+                            <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg-2">
                               <Glyph name="globe" size={15} />
                             </span>
                             <div class="min-w-0 flex-1">
@@ -208,7 +207,7 @@ export function Sources(): JSX.Element {
                         placeholder="https://index.example/v1"
                         spellcheck={false}
                         aria-label="Add index URL"
-                        class={`${FIELD} min-w-0 flex-1`}
+                        class={`${MONO_INPUT} h-7 border-transparent bg-transparent px-0 focus:border-transparent`}
                       />
                       <Button
                         size="sm"
@@ -243,7 +242,7 @@ export function Sources(): JSX.Element {
             <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5">
               <Glyph name="refresh" size={14} class="shrink-0 text-fg-2" />
               <div class="min-w-0 flex-1">
-                <span class="block text-[13px] text-fg">Auto-update</span>
+                <span class="block text-[12.5px] text-fg">Auto-update</span>
                 <span class="block text-[11.5px] leading-snug text-fg-3">
                   Patch versions apply when indexes refresh; a minor or major version asks here first.
                 </span>
@@ -263,7 +262,7 @@ export function Sources(): JSX.Element {
           <section class="flex flex-col gap-2.5">
             <div class="flex items-center gap-2">
               <span class="label">Skipped versions</span>
-              <span class="text-[12.5px] text-fg-3">Updates you told this build to ignore</span>
+              <span class="text-[12px] text-fg-3">Updates you told this build to ignore</span>
             </div>
             <Panel>
               <For each={skipped()}>
@@ -287,12 +286,12 @@ export function Sources(): JSX.Element {
         <section class="flex flex-col gap-2.5">
           <div class="flex items-center gap-2">
             <span class="label">Compiled packages</span>
-            <span class="text-[12.5px] text-fg-3">In the deployed image; not removable</span>
+            <span class="text-[12px] text-fg-3">In the deployed image; not removable</span>
           </div>
           <Panel>
             <Show
               when={installed().length > 0}
-              fallback={<div class="px-3.5 py-3 text-[13px] text-fg-3">No package metadata in this build.</div>}
+              fallback={<div class="px-3.5 py-3 text-[12.5px] text-fg-3">No package metadata in this build.</div>}
             >
               <For each={installed()}>
                 {(entry) => (
@@ -316,10 +315,10 @@ function PolicyRow(props: { icon: "shield" | "refresh" | "user"; title: string; 
     <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5 last:border-0">
       <Glyph name={props.icon} size={14} class="shrink-0 text-fg-2" />
       <div class="min-w-0 flex-1">
-        <span class="block text-[13px] text-fg">{props.title}</span>
+        <span class="block text-[12.5px] text-fg">{props.title}</span>
         <span class="block text-[11.5px] leading-snug text-fg-3">{props.detail}</span>
       </div>
-      <span class="inline-flex h-[26px] shrink-0 items-center rounded-[6px] border border-line-inner bg-fill px-2 font-mono text-[10.5px] uppercase tracking-[0.06em] text-fg-2">
+      <span class="shrink-0 rounded-[2px] border border-line-inner px-1.5 py-0.5 font-mono text-[10.5px] text-fg-2">
         {props.value}
       </span>
     </div>

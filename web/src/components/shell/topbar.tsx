@@ -3,11 +3,11 @@ import { Button } from "../ui/button.tsx"
 
 export function TopBar(props: { title: string; subtitle?: string; leading?: JSX.Element; actions?: JSX.Element }): JSX.Element {
   return (
-    <header class="flex h-13 shrink-0 items-center gap-2.5 border-b border-line px-4">
+    <header class="flex h-12 shrink-0 items-center gap-2.5 border-b border-line px-4">
       <Show when={props.leading}>{props.leading}</Show>
-      <h1 class="truncate text-[15px] font-medium text-fg">{props.title}</h1>
+      <h1 class="truncate text-[14px] font-medium text-fg">{props.title}</h1>
       <Show when={props.subtitle}>
-        <span class="hidden truncate text-[12.5px] text-fg-3 sm:inline">{props.subtitle}</span>
+        <span class="truncate text-[12px] text-fg-3">{props.subtitle}</span>
       </Show>
       <div class="ml-auto flex items-center gap-2">{props.actions}</div>
     </header>

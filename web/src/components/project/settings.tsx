@@ -1,8 +1,7 @@
 import { createSignal, Show, type JSX } from "solid-js"
 import { cmd } from "../../lib/api.ts"
 import type { ProjectSummary } from "../../state/home.ts"
-import { Dialog, Field, resetOnOpen } from "../ui/dialog.tsx"
-import { FIELD, FIELD_AREA } from "../ui/field.ts"
+import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
 
 /** The settings the New project dialog promises: the same name and goal, and archiving the project. */
 export function ProjectSettings(props: {
@@ -88,18 +87,18 @@ function Body(props: {
                 type="button"
                 disabled={busy()}
                 onClick={() => setConfirming(true)}
-                class="h-8 rounded-[8px] px-2 text-[13px] text-fg-3 hover:text-bad disabled:opacity-50"
+                class="h-8 rounded-[2px] px-2 text-[12.5px] text-fg-3 hover:text-bad disabled:opacity-50"
               >
                 Archive project
               </button>
             }
           >
-            <span class="text-[12.5px] text-fg-3">Archive {props.project.name}?</span>
+            <span class="text-[12px] text-fg-3">Archive {props.project.name}?</span>
             <button
               type="button"
               disabled={busy()}
               onClick={() => void archive()}
-              class="h-8 rounded-[8px] bg-bad-bg px-3 text-[13px] font-medium text-bad hover:bg-bad/[0.18] disabled:opacity-50"
+              class="h-8 rounded-[2px] border border-bad/40 bg-bad-bg px-3 text-[12.5px] font-medium text-bad hover:border-bad disabled:opacity-50"
             >
               Archive
             </button>
@@ -107,7 +106,7 @@ function Body(props: {
               type="button"
               disabled={busy()}
               onClick={() => setConfirming(false)}
-              class="h-8 rounded-[8px] px-2 text-[13px] text-fg-2 hover:text-fg disabled:opacity-50"
+              class="h-8 rounded-[2px] px-2 text-[12.5px] text-fg-2 hover:text-fg disabled:opacity-50"
             >
               Keep
             </button>
@@ -118,14 +117,14 @@ function Body(props: {
               type="button"
               disabled={busy()}
               onClick={props.onClose}
-              class="h-8 rounded-[8px] px-3 text-[13px] text-fg-2 hover:text-fg disabled:opacity-50"
+              class="h-8 rounded-[2px] px-3 text-[12.5px] text-fg-2 hover:text-fg disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={busy() || !dirty() || name().trim() === ""}
-              class="h-8 rounded-[8px] bg-accent px-3 text-[13px] font-medium text-ink disabled:opacity-40"
+              class="h-8 rounded-[2px] bg-accent px-3 text-[12.5px] font-medium text-ink disabled:opacity-40"
             >
               {busy() ? "Saving…" : "Save"}
             </button>
@@ -136,7 +135,7 @@ function Body(props: {
       <Field label="Name" hint="Shown in the sidebar and in push notifications">
         <input
           autofocus
-          class={FIELD}
+          class={`${FIELD_INPUT} h-[34px]`}
           value={name()}
           maxlength={200}
           disabled={busy()}
@@ -146,7 +145,7 @@ function Body(props: {
 
       <Field label="Goal" optional hint="The coordinator reads this on every turn.">
         <textarea
-          class={`${FIELD_AREA} min-h-[76px] resize-none`}
+          class={`${FIELD_INPUT} min-h-[76px] resize-y py-2`}
           value={goal()}
           disabled={busy()}
           placeholder="What should this project get done?"
@@ -155,7 +154,7 @@ function Body(props: {
       </Field>
 
       <Show when={failure()}>
-        {(text) => <div class="text-[12.5px] text-bad">{text()}</div>}
+        {(text) => <div class="text-[12px] text-bad">{text()}</div>}
       </Show>
     </Dialog>
   )

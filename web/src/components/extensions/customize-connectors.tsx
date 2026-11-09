@@ -1,7 +1,6 @@
 import { createResource, createSignal, For, Show, type JSX } from "solid-js"
 import { addServer, errorMessage, isRecord, readMcpTools, removeServer, servers, type McpServer } from "../../state/extensions.ts"
-import { Button, Empty, Failure, Note, Panel, Pending, failureOf } from "./chrome.tsx"
-import { MONO_AREA, MONO_FIELD } from "../ui/field.ts"
+import { Button, Empty, Failure, MONO_INPUT, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
 
 export function Connectors(): JSX.Element {
@@ -59,14 +58,14 @@ export function Connectors(): JSX.Element {
                 class="flex w-full items-center gap-2.5 border-b border-line px-3.5 py-3 text-left hover:bg-hover"
                 classList={{ "bg-hover": selected() === server.name }}
               >
-                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-hover text-fg-2">
+                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg-2">
                   <Glyph name="plug" size={15} />
                 </span>
                 <span class="min-w-0 flex-1">
-                  <span class="block truncate text-[13px] font-medium text-fg">{server.name}</span>
+                  <span class="block truncate text-[12.5px] font-medium text-fg">{server.name}</span>
                   <span class="flex items-center gap-1.5 text-[11.5px] text-fg-3">
                     <span
-                      class="h-1.5 w-1.5 rounded-full"
+                      class="h-1.5 w-1.5 rounded-[1px]"
                       classList={{ "bg-ok": server.error === undefined, "bg-bad": server.error !== undefined }}
                     />
                     {server.error ?? `${server.tools} ${server.tools === 1 ? "tool" : "tools"}`}
@@ -126,12 +125,12 @@ function ConnectorDetail(props: { server: McpServer; onRemoved: () => void }): J
   return (
     <>
       <header class="flex items-center gap-3 border-b border-line px-6 py-4">
-        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-hover text-fg">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg">
           <Glyph name="plug" size={18} />
         </span>
         <div class="min-w-0 flex-1">
           <span class="block truncate text-[16px] font-medium text-fg">{props.server.name}</span>
-          <span class="block truncate text-[12.5px] text-fg-3">
+          <span class="block truncate text-[12px] text-fg-3">
             MCP · {props.server.tools} tools
             <Show when={props.server.source}>
               {(source) => <span> · contributed by {source()}</span>}
@@ -154,15 +153,15 @@ function ConnectorDetail(props: { server: McpServer; onRemoved: () => void }): J
             {(message) => <Failure message={`The server answered with: ${message()}`} />}
           </Show>
           <Panel>
-            <div class="flex items-center justify-between border-b border-line px-3.5 py-2.5 text-[13px]">
+            <div class="flex items-center justify-between border-b border-line px-3.5 py-2.5 text-[12.5px]">
               <span class="text-fg-3">Endpoint</span>
-              <span class="font-mono text-[12.5px] text-fg-2">{props.server.url}</span>
+              <span class="font-mono text-[12px] text-fg-2">{props.server.url}</span>
             </div>
-            <div class="flex items-center justify-between border-b border-line px-3.5 py-2.5 text-[13px]">
+            <div class="flex items-center justify-between border-b border-line px-3.5 py-2.5 text-[12.5px]">
               <span class="text-fg-3">Tools</span>
-              <span class="font-mono text-[12.5px] text-fg-2">{props.server.tools}</span>
+              <span class="font-mono text-[12px] text-fg-2">{props.server.tools}</span>
             </div>
-            <div class="flex items-center justify-between px-3.5 py-2.5 text-[13px]">
+            <div class="flex items-center justify-between px-3.5 py-2.5 text-[12.5px]">
               <span class="text-fg-3">Headers</span>
               <span class="text-[11.5px] text-fg-3">{props.server.source === undefined ? "Sealed, never shown" : "Supplied by a row"}</span>
             </div>
@@ -260,43 +259,43 @@ function AddServer(props: { onAdded: (name: string) => void; onCancel: () => voi
       <header class="flex items-center gap-3 border-b border-line px-6 py-4">
         <div class="min-w-0 flex-1">
           <span class="block text-[16px] font-medium text-fg">Add MCP server</span>
-          <span class="block text-[12.5px] text-fg-3">Streamable HTTP over https</span>
+          <span class="block text-[12px] text-fg-3">Streamable HTTP over https</span>
         </div>
       </header>
       <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <div class="flex max-w-[520px] flex-col gap-4">
           <label class="flex flex-col gap-1.5">
-            <span class="text-[12.5px] font-medium text-fg-2">Name</span>
+            <span class="text-[12px] font-medium text-fg-2">Name</span>
             <input
               value={name()}
               onInput={(event) => setName(event.currentTarget.value)}
               placeholder="ats-sync"
               spellcheck={false}
-              class={MONO_FIELD}
+              class={MONO_INPUT}
               classList={{ "border-bad/50": name() !== "" && !validName() }}
             />
             <span class="text-[11.5px] text-fg-3">Lowercase, hyphen separated. This is the tool prefix.</span>
           </label>
           <label class="flex flex-col gap-1.5">
-            <span class="text-[12.5px] font-medium text-fg-2">Endpoint</span>
+            <span class="text-[12px] font-medium text-fg-2">Endpoint</span>
             <input
               value={url()}
               onInput={(event) => setUrl(event.currentTarget.value)}
               placeholder="https://mcp.example.com/mcp"
               spellcheck={false}
-              class={MONO_FIELD}
+              class={MONO_INPUT}
               classList={{ "border-bad/50": url() !== "" && !validUrl() }}
             />
             <span class="text-[11.5px] text-fg-3">Must be https. Credentials belong in headers, not the URL.</span>
           </label>
           <label class="flex flex-col gap-1.5">
-            <span class="text-[12.5px] font-medium text-fg-2">Headers</span>
+            <span class="text-[12px] font-medium text-fg-2">Headers</span>
             <textarea
               value={headers()}
               onInput={(event) => setHeaders(event.currentTarget.value)}
               placeholder={'{"Authorization": "Bearer …"}'}
               spellcheck={false}
-              class={`${MONO_AREA} min-h-[72px] resize-y`}
+              class={`${MONO_INPUT} h-auto min-h-[72px] resize-y py-2 leading-relaxed`}
             />
             <span class="text-[11.5px] text-fg-3">Optional JSON object. Stored sealed; models never see it.</span>
           </label>

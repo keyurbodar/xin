@@ -9,11 +9,9 @@ import {
   type ModelsList,
   type ProviderSummary,
 } from "../../state/settings.ts"
-import { Button, Failure, Note, Pending, failureOf } from "../extensions/chrome.tsx"
+import { Button, Chip, Failure, INPUT, MONO_INPUT, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { Group } from "./parts.tsx"
-import { FIELD, MONO_FIELD } from "../ui/field.ts"
-import { Icon } from "../ui/icon.tsx"
 
 const APIS: readonly { readonly value: string; readonly label: string }[] = [
   { value: "openai-completions", label: "OpenAI completions" },
@@ -47,19 +45,19 @@ export function Models(): JSX.Element {
           <Pending label="Reading providers" />
         </Show>
         <Show when={models.state().kind === "ready"}>
-          <div class="flex flex-col gap-2 pb-3">
-            <div class="divide-y divide-line">
+          <div class="flex flex-col gap-2">
+            <Panel>
               <Show
                 when={providers(list()).length > 0}
                 fallback={
-                  <div class="py-3 text-[13px] text-fg-3">
+                  <div class="px-3.5 py-3 text-[12.5px] text-fg-3">
                     No provider has a key yet. Add one to see its models.
                   </div>
                 }
               >
                 <For each={providers(list())}>{(provider) => <ProviderRow provider={provider} />}</For>
               </Show>
-            </div>
+            </Panel>
             <div class="flex items-center gap-2">
               <Button size="sm" onClick={() => setAdding((open) => !open)}>
                 <Glyph name="plus" size={14} />
@@ -77,8 +75,8 @@ export function Models(): JSX.Element {
       </Group>
 
       <Group title="Catalog" detail="The list comes from your providers; nothing is hard-coded">
-        <div class="py-1">
-          <div class="grid grid-cols-[minmax(0,1fr)_120px_100px_80px_90px] gap-2 border-b border-line py-2">
+        <Panel>
+          <div class="grid grid-cols-[minmax(0,1fr)_120px_100px_80px_90px] gap-2 border-b border-line px-3.5 py-2">
             <span class="label">Model</span>
             <span class="label">Provider</span>
             <span class="label">Context</span>
@@ -87,11 +85,11 @@ export function Models(): JSX.Element {
           </div>
           <Show
             when={list().models.length > 0}
-            fallback={<div class="py-3 text-[13px] text-fg-3">The catalog is empty.</div>}
+            fallback={<div class="px-3.5 py-3 text-[12.5px] text-fg-3">The catalog is empty.</div>}
           >
             <For each={list().models}>{(model) => <CatalogRow model={model} />}</For>
           </Show>
-        </div>
+        </Panel>
       </Group>
 
       <Note>Per-role defaults are set in General. A project or thread can override them when it switches model.</Note>
@@ -135,15 +133,15 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
   }
 
   return (
-    <div class="-mx-2 rounded-[8px] px-2 py-3 transition-colors hover:bg-hover">
+    <div class="border-b border-line px-3.5 py-3 last:border-0">
       <div class="flex items-center gap-3">
-        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] border border-line-inner bg-raised font-mono text-[12.5px] uppercase text-fg-2">
+        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover font-mono text-[12px] uppercase text-fg-2">
           {props.provider.id.slice(0, 1)}
         </span>
         <div class="min-w-0 flex-1">
-          <span class="block truncate font-mono text-[12.5px] font-medium text-fg">{props.provider.id}</span>
+          <span class="block truncate text-[12.5px] font-medium text-fg">{props.provider.id}</span>
           <span class="flex items-center gap-1.5 text-[11.5px] text-fg-3">
-            <span class="h-1.5 w-1.5 rounded-[4px] bg-ok" />
+            <span class="h-1.5 w-1.5 rounded-[1px] bg-ok" />
             Connected · {props.provider.models.length} {props.provider.models.length === 1 ? "model" : "models"}
           </span>
         </div>
@@ -171,7 +169,7 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
             placeholder={`New ${props.provider.id} API key`}
             autocomplete="off"
             spellcheck={false}
-            class={MONO_FIELD}
+            class={MONO_INPUT}
             aria-label={`${props.provider.id} API key`}
           />
           <Button size="sm" variant="primary" disabled={busy() || key().trim() === ""} onClick={() => void save()}>{busy() ? "Saving" : "Save key"}</Button>
@@ -179,8 +177,8 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
       </Show>
 
       <Show when={confirming()}>
-        <div class="mt-2.5 flex items-center gap-2 rounded-[8px] border border-bad/30 bg-bad-bg px-3 py-2">
-          <span class="min-w-0 flex-1 text-[12.5px] text-fg-2">
+        <div class="mt-2.5 flex items-center gap-2 rounded-[4px] border border-bad/30 bg-bad-bg px-3 py-2">
+          <span class="min-w-0 flex-1 text-[12px] text-fg-2">
             Removing the key hides {props.provider.id}'s models from every picker.
           </span>
           <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
@@ -229,29 +227,29 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
   }
 
   return (
-    <div class="mb-3 flex flex-col gap-3 rounded-[8px] border border-line bg-raised p-3">
+    <div class="flex flex-col gap-3 rounded-[4px] border border-line bg-surface p-3.5">
       <div class="grid grid-cols-[180px_minmax(0,1fr)] items-center gap-3">
-        <span class="text-[13.5px] text-fg-2">Provider id</span>
+        <span class="text-[12.5px] text-fg-2">Provider id</span>
         <input
           value={id()}
           onInput={(event) => setId(event.currentTarget.value)}
           placeholder="openai"
           spellcheck={false}
-          class={MONO_FIELD}
+          class={MONO_INPUT}
           aria-label="Provider id"
         />
-        <span class="text-[13.5px] text-fg-2">API key</span>
+        <span class="text-[12.5px] text-fg-2">API key</span>
         <input
           type="password"
           value={key()}
           onInput={(event) => setKey(event.currentTarget.value)}
           autocomplete="off"
           spellcheck={false}
-          class={MONO_FIELD}
+          class={MONO_INPUT}
           aria-label="API key"
         />
       </div>
-      <label class="flex items-center gap-2 text-[13.5px] text-fg-2">
+      <label class="flex items-center gap-2 text-[12.5px] text-fg-2">
         <input
           type="checkbox"
           checked={custom()}
@@ -262,20 +260,20 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
       </label>
       <Show when={custom()}>
         <div class="grid grid-cols-[180px_minmax(0,1fr)] items-center gap-3">
-          <span class="text-[13.5px] text-fg-2">Base URL</span>
+          <span class="text-[12.5px] text-fg-2">Base URL</span>
           <input
             value={baseUrl()}
             onInput={(event) => setBaseUrl(event.currentTarget.value)}
             placeholder="https://api.example.com/v1"
             spellcheck={false}
-            class={MONO_FIELD}
+            class={MONO_INPUT}
             aria-label="Base URL"
           />
-          <span class="text-[13.5px] text-fg-2">API</span>
+          <span class="text-[12.5px] text-fg-2">API</span>
           <select
             value={api()}
             onChange={(event) => setApi(event.currentTarget.value)}
-            class={`${FIELD} max-w-[260px]`}
+            class={`${INPUT} max-w-[260px]`}
             aria-label="API shape"
           >
             <For each={APIS}>{(entry) => <option value={entry.value}>{entry.label}</option>}</For>
@@ -297,27 +295,17 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
 
 function CatalogRow(props: { model: ModelInfo }): JSX.Element {
   return (
-    <div class="grid grid-cols-[minmax(0,1fr)_120px_100px_80px_90px] items-center gap-2 border-b border-line py-2 text-[13.5px] last:border-0">
+    <div class="grid grid-cols-[minmax(0,1fr)_120px_100px_80px_90px] items-center gap-2 border-b border-line px-3.5 py-2 text-[12.5px] last:border-0">
       <span class="min-w-0">
         <span class="block truncate text-fg">{props.model.name}</span>
-        <span class="block truncate font-mono text-[11px] text-fg-4">{props.model.modelId}</span>
+        <span class="block truncate font-mono text-[10.5px] text-fg-4">{props.model.modelId}</span>
       </span>
-      <span class="truncate text-[11.5px] text-fg-3">{props.model.provider}</span>
-      <span class="font-mono text-[11.5px] text-fg-2 tabular-nums">
+      <span class="truncate text-[11.5px] text-fg-2">{props.model.provider}</span>
+      <span class="font-mono text-[11.5px] text-fg-2">
         {props.model.contextWindow === 0 ? "—" : `${Math.round(props.model.contextWindow / 1000)}k`}
       </span>
-      <Flag on={props.model.vision} />
-      <Flag on={props.model.reasoning} />
+      <Chip tone={props.model.vision ? "ok" : "default"}>{props.model.vision ? "Yes" : "No"}</Chip>
+      <Chip>{props.model.reasoning ? "Yes" : "No"}</Chip>
     </div>
-  )
-}
-
-function Flag(props: { on: boolean }): JSX.Element {
-  return (
-    <Show when={props.on} fallback={<span class="text-fg-4" aria-hidden="true">—</span>}>
-      <span class="text-fg-2" title="Yes">
-        <Icon name="check" size={13} />
-      </span>
-    </Show>
   )
 }

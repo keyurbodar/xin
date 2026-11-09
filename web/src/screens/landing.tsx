@@ -88,7 +88,7 @@ const QUESTIONS: readonly { readonly question: string; readonly answer: string }
   },
 ]
 
-const DISPLAY = "font-display font-normal leading-[1.06] tracking-[-0.03em]"
+const DISPLAY = "font-light leading-[1.08] tracking-[-0.04em]"
 
 export function LandingScreen(): JSX.Element {
   const scrollTo = (id: string): void => {
@@ -102,7 +102,7 @@ export function LandingScreen(): JSX.Element {
           <button type="button" onClick={() => scrollTo("top")} aria-label="Top">
             <Wordmark />
           </button>
-          <div class="hidden items-center gap-8 text-[14px] text-fg-3 md:flex">
+          <div class="hidden items-center gap-8 text-[13.5px] text-fg-3 md:flex">
             <button type="button" class="hover:text-fg-2" onClick={() => scrollTo("product")}>
               Product
             </button>
@@ -126,7 +126,7 @@ export function LandingScreen(): JSX.Element {
       <main id="top">
         <section class="atmos relative overflow-hidden pb-16 pt-16 md:pt-24">
           <div class="mx-auto max-w-[1200px] px-5 text-center md:px-10">
-            <span class="inline-flex h-[26px] items-center gap-2 rounded-[6px] border border-line-inner bg-surface px-3 text-[12.5px] text-fg-2">
+            <span class="inline-flex h-7 items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-3 text-[12.5px] text-fg-2">
               <StatusGlyph state="working" size={14} />
               Threads keep running after you close the tab
             </span>
@@ -156,15 +156,15 @@ export function LandingScreen(): JSX.Element {
             <h2 class={`mt-3 max-w-[640px] text-[34px] md:text-[44px] ${DISPLAY}`}>
               Ask once. It splits, works, and reports back.
             </h2>
-            <div class="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-[12px] border border-line bg-line md:mt-12 md:grid-cols-3">
+            <div class="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-[4px] border border-line bg-line md:mt-12 md:grid-cols-3">
               <div class="flex min-h-[300px] flex-col gap-3 bg-surface p-7">
                 <span class="label">01</span>
                 <b class="text-[18px] font-medium">Start a project</b>
-                <p class="text-[14px] leading-[1.6] text-fg-3">
+                <p class="text-[13.5px] leading-[1.6] text-fg-3">
                   Give it a name and a goal. Drop in files, connect your tools, and pick a model from any provider you
                   have a key for.
                 </p>
-                <div class="mt-auto rounded-[12px] border border-line-inner bg-raised p-3 text-[13.5px]">
+                <div class="mt-auto rounded-[2px] border border-line-inner bg-raised p-3 text-[13px]">
                   <span class="label">Goal</span>
                   <div class="mt-1.5 text-fg-2">
                     Hire two account execs and a support lead before March.
@@ -174,14 +174,14 @@ export function LandingScreen(): JSX.Element {
               <div class="flex min-h-[300px] flex-col gap-3 bg-surface p-7">
                 <span class="label">02</span>
                 <b class="text-[18px] font-medium">The coordinator fans out</b>
-                <p class="text-[14px] leading-[1.6] text-fg-3">
+                <p class="text-[13.5px] leading-[1.6] text-fg-3">
                   It answers directly when it can. When the job is bigger, it starts threads that each take one part,
                   and they run side by side.
                 </p>
                 <div class="mt-auto flex flex-col gap-1.5">
                   <For each={THREADS}>
                     {(thread) => (
-                      <div class="flex h-[30px] items-center gap-2 rounded-[8px] border border-line-inner bg-raised px-2.5 text-[13px]">
+                      <div class="flex h-[30px] items-center gap-2 rounded-[2px] border border-line-inner bg-raised px-2.5 text-[12.5px]">
                         <StatusGlyph state={thread.state} size={14} />
                         <span class="truncate">{thread.title}</span>
                       </div>
@@ -192,19 +192,19 @@ export function LandingScreen(): JSX.Element {
               <div class="flex min-h-[300px] flex-col gap-3 bg-surface p-7">
                 <span class="label">03</span>
                 <b class="text-[18px] font-medium">Answer, steer, or just read</b>
-                <p class="text-[14px] leading-[1.6] text-fg-3">
+                <p class="text-[13.5px] leading-[1.6] text-fg-3">
                   Threads ask when they need you, in the chat or by push. Steer one mid-run. Reports land in the chat,
                   files land in the library.
                 </p>
-                <div class="mt-auto rounded-[12px] border border-line-inner bg-raised p-3 text-[13.5px]">
-                  <div class="flex items-center gap-2 text-fg">
+                <div class="mt-auto rounded-[2px] border border-accent-line bg-accent-dim p-3 text-[13px]">
+                  <div class="flex items-center gap-2 text-accent-text">
                     <StatusGlyph state="waiting" size={14} />
                     Choose a payroll vendor
                   </div>
                   <div class="mt-2.5 flex gap-1.5">
                     <For each={["Gusto", "Rippling", "Deel"]}>
                       {(vendor) => (
-                        <span class="inline-flex h-[26px] items-center rounded-[6px] border border-line-inner bg-hover px-2 text-[12px] text-fg">
+                        <span class="rounded-[2px] border border-line-inner bg-hover px-2 py-1 text-[12px] text-fg">
                           {vendor}
                         </span>
                       )}
@@ -223,12 +223,12 @@ export function LandingScreen(): JSX.Element {
             <div class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 md:mt-12 lg:grid-cols-3">
               <For each={FEATURES}>
                 {(feature) => (
-                  <div class="flex flex-col gap-2.5 rounded-[12px] border border-line bg-surface p-6">
-                    <span class="grid h-9 w-9 place-items-center rounded-[8px] border border-line-inner bg-raised text-fg-2">
+                  <div class="flex flex-col gap-2.5 rounded-[4px] border border-line bg-surface p-6">
+                    <span class="grid h-9 w-9 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2">
                       <Icon name={feature.icon} size={16} />
                     </span>
                     <b class="text-[15px] font-medium">{feature.title}</b>
-                    <p class="text-[14px] leading-[1.6] text-fg-3">{feature.detail}</p>
+                    <p class="text-[13.5px] leading-[1.6] text-fg-3">{feature.detail}</p>
                   </div>
                 )}
               </For>
@@ -255,15 +255,15 @@ export function LandingScreen(): JSX.Element {
               <div class="flex flex-col gap-2.5">
                 <For each={PACKAGES}>
                   {(pack) => (
-                    <div class="flex items-center gap-3 rounded-[12px] border border-line bg-surface p-3.5">
-                      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-raised text-fg-2">
+                    <div class="flex items-center gap-3 rounded-[4px] border border-line bg-surface p-3.5">
+                      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2">
                         <Icon name={pack.icon} size={16} />
                       </span>
                       <div class="min-w-0 flex-1">
-                        <b class="block text-[14px] font-medium">{pack.name}</b>
-                        <div class="truncate text-[13px] text-fg-3">{pack.detail}</div>
+                        <b class="block text-[13.5px] font-medium">{pack.name}</b>
+                        <div class="truncate text-[12.5px] text-fg-3">{pack.detail}</div>
                       </div>
-                      <span class="inline-flex h-[26px] shrink-0 items-center rounded-[6px] border border-line-inner bg-fill px-2 font-mono text-[10.5px] uppercase tracking-[0.06em] text-fg-3">
+                      <span class="shrink-0 rounded-[2px] border border-line-inner px-1.5 py-1 font-mono text-[10.5px] text-fg-2">
                         {pack.kind}
                       </span>
                     </div>
@@ -275,19 +275,19 @@ export function LandingScreen(): JSX.Element {
 
           <section class="pt-24 md:pt-28">
             <div class="grid grid-cols-1 items-center gap-14 lg:grid-cols-2 lg:gap-16">
-              <div class="mx-auto w-[300px] max-w-full rounded-[36px] border border-line-strong bg-page p-2.5 shadow-[var(--shadow-float)]">
+              <div class="mx-auto w-[300px] max-w-full rounded-[36px] border border-line-strong bg-page p-2.5 shadow-[0_40px_120px_rgba(0,0,0,0.7)]">
                 <div class="relative h-[600px] overflow-hidden rounded-[28px] bg-page">
-                  <div class="flex justify-between px-5 py-4 text-[13.5px] font-semibold">
+                  <div class="flex justify-between px-5 py-4 text-[13px] font-semibold">
                     <span>9:41</span>
                     <span class="tracking-[0.15em]">•••</span>
                   </div>
                   <div class="mt-10 text-center text-[64px] font-extralight tracking-[-0.04em]">9:41</div>
-                  <div class="text-center text-[15px] text-fg-2">Friday, November 7</div>
-                  <div class="mx-3 mt-16 flex items-start gap-2.5 rounded-[12px] border border-line bg-raised p-2.5">
-                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[8px] border border-line-inner bg-raised text-fg-2">
+                  <div class="text-center text-[14px] text-fg-2">Friday, November 7</div>
+                  <div class="mx-3 mt-16 flex items-start gap-2.5 rounded-[14px] bg-selected p-2.5">
+                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[7px] border border-line-inner bg-raised text-fg-2">
                       <Icon name="inbox" size={15} />
                     </span>
-                    <div class="min-w-0 flex-1 text-[13.5px]">
+                    <div class="min-w-0 flex-1 text-[13px]">
                       <div class="flex items-baseline justify-between gap-2">
                         <b class="truncate font-semibold">Onboarding</b>
                         <span class="shrink-0 text-[11px] text-fg-3">now</span>
@@ -296,8 +296,8 @@ export function LandingScreen(): JSX.Element {
                       <div class="truncate text-fg-3">Gusto · Rippling · Deel</div>
                     </div>
                   </div>
-                  <div class="mx-3 mt-4 flex items-center gap-2 rounded-[12px] border border-line bg-raised p-2.5 text-[13.5px] text-fg-2">
-                    <span class="h-1.5 w-1.5 rounded-full bg-waiting" />
+                  <div class="mx-3 mt-4 flex items-center gap-2 rounded-[14px] bg-selected p-2.5 text-[13px] text-fg-2">
+                    <span class="h-1.5 w-1.5 rounded-full bg-accent" />
                     Waiting on you · 1 question
                   </div>
                 </div>
@@ -322,14 +322,14 @@ export function LandingScreen(): JSX.Element {
                 {(entry) => (
                   <div class="flex flex-col gap-2 border-b border-line py-5 md:flex-row md:gap-6">
                     <b class="w-full shrink-0 text-[15px] font-medium md:w-[380px]">{entry.question}</b>
-                    <p class="text-[14px] leading-[1.6] text-fg-3">{entry.answer}</p>
+                    <p class="text-[13.5px] leading-[1.6] text-fg-3">{entry.answer}</p>
                   </div>
                 )}
               </For>
             </div>
           </section>
 
-          <section class="atmos relative mt-24 overflow-hidden rounded-[20px] border border-line-inner bg-surface px-6 py-14 text-center md:mt-28 md:px-10 md:py-[72px]">
+          <section class="atmos relative mt-24 overflow-hidden rounded-[4px] border border-line-inner bg-surface px-6 py-14 text-center md:mt-28 md:px-10 md:py-[72px]">
             <div class="relative">
               <h2 class={`text-[36px] md:text-[48px] ${DISPLAY}`}>Give your next project a coordinator.</h2>
               <p class="mt-3.5 text-[16px] text-fg-2">Bring a model key. Your first project takes about a minute.</p>
@@ -344,7 +344,7 @@ export function LandingScreen(): JSX.Element {
             </div>
           </section>
 
-          <footer class="mt-24 grid grid-cols-1 gap-6 border-t border-line py-10 text-[13.5px] text-fg-3 md:grid-cols-[2fr_repeat(3,1fr)] md:pb-14">
+          <footer class="mt-24 grid grid-cols-1 gap-6 border-t border-line py-10 text-[13px] text-fg-3 md:grid-cols-[2fr_repeat(3,1fr)] md:pb-14">
             <div>
               <Wordmark />
               <p class="mt-2.5 max-w-[280px] leading-[1.6]">
@@ -363,21 +363,21 @@ export function LandingScreen(): JSX.Element {
 
 function DemoShot(): JSX.Element {
   return (
-    <div class="relative mx-auto mt-14 flex h-[560px] max-w-[1120px] overflow-hidden rounded-[12px] border border-line-inner bg-page text-left text-[13.5px] shadow-[var(--shadow-float)]">
+    <div class="relative mx-auto mt-14 flex h-[560px] max-w-[1120px] overflow-hidden rounded-[4px] border border-line-inner bg-page text-left text-[13px] shadow-[0_40px_120px_rgba(0,0,0,0.7)]">
       <aside class="hidden w-[200px] shrink-0 border-r border-line bg-surface p-2.5 lg:block">
         <div class="label px-1.5 pb-2 pt-1.5">Projects</div>
         <For each={PROJECTS}>
           {(project) => (
             <div
-              class="flex h-[34px] items-center gap-2 rounded-[8px] px-1.5 text-[13px]"
+              class="flex h-[34px] items-center gap-2 rounded-[2px] px-1.5 text-[12.5px]"
               classList={{ "bg-selected text-fg": project.name === "Q4 pipeline", "text-fg-2": project.name !== "Q4 pipeline" }}
             >
-              <span class="relative grid h-[22px] w-[22px] shrink-0 place-items-center rounded-[8px] border border-line-inner bg-raised text-fg-2">
+              <span class="relative grid h-[22px] w-[22px] shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2">
                 <Icon name={project.icon} size={12} />
                 <Show when={project.dot !== "none"}>
                   <span
-                    class="absolute -right-[3px] -top-[3px] h-1.5 w-1.5 rounded-full shadow-[0_0_0_2px_var(--color-surface)]"
-                    classList={{ "bg-working": project.dot === "working", "bg-waiting": project.dot === "waiting" }}
+                    class="absolute -right-[3px] -top-[3px] h-1.5 w-1.5 rounded-[1px] shadow-[0_0_0_2px_var(--color-surface)]"
+                    classList={{ "bg-working": project.dot === "working", "bg-accent": project.dot === "waiting" }}
                   />
                 </Show>
               </span>
@@ -388,17 +388,17 @@ function DemoShot(): JSX.Element {
       </aside>
 
       <div class="flex min-w-0 flex-1 flex-col gap-4 px-5 py-6 md:px-7">
-        <div class="ml-auto max-w-[400px] rounded-[12px] border border-line-inner bg-hover px-3 py-2 leading-[1.55]">
+        <div class="ml-auto max-w-[400px] rounded-[4px] border border-line-inner bg-hover px-3 py-2 leading-[1.55]">
           Which deals slipped since Oct 28? Draft nudges for the owners.
         </div>
         <div class="leading-[1.6] text-fg">On it. I’ve started four threads.</div>
-        <div class="overflow-hidden rounded-[8px] border border-line-inner">
+        <div class="overflow-hidden rounded-[2px] border border-line-inner">
           <For each={THREADS}>
             {(thread) => (
               <div class="flex h-8 items-center gap-2 border-b border-line bg-raised px-2.5 last:border-0">
                 <StatusGlyph state={thread.state} size={14} />
                 <b class="truncate font-medium">{thread.title}</b>
-                <span class="min-w-0 flex-1 truncate text-[12.5px] text-fg-3" classList={{ shimmer: thread.state === "working" }}>
+                <span class="min-w-0 flex-1 truncate text-[12px] text-fg-3" classList={{ shimmer: thread.state === "working" }}>
                   {thread.line}
                 </span>
                 <span class="shrink-0 font-mono text-[11px] text-fg-4">{thread.elapsed}</span>
@@ -406,7 +406,7 @@ function DemoShot(): JSX.Element {
             )}
           </For>
         </div>
-        <div class="rounded-[12px] border border-line-inner bg-raised p-3">
+        <div class="rounded-[4px] border border-line-inner bg-raised p-3">
           <div class="flex items-center gap-2">
             <StatusGlyph state="done" size={14} />
             <b class="flex-1 font-medium">Find deals that slipped</b>
@@ -419,7 +419,7 @@ function DemoShot(): JSX.Element {
       </div>
 
       <aside class="hidden w-[320px] shrink-0 border-l border-line bg-surface lg:block">
-        <div class="flex h-11 items-end gap-4 border-b border-line px-3.5 text-[13px] font-medium text-fg-3">
+        <div class="flex h-11 items-end gap-4 border-b border-line px-3.5 text-[12.5px] font-medium text-fg-3">
           <span class="flex h-9 items-center text-fg shadow-[inset_0_-1px_var(--color-fg)]">Threads</span>
           <span class="flex h-9 items-center">Files</span>
           <span class="flex h-9 items-center">Memory</span>
@@ -457,7 +457,7 @@ function DemoShot(): JSX.Element {
         </div>
       </aside>
 
-      <span class="absolute right-4 top-4 font-mono text-[11px] text-fg-4">live</span>
+      <span class="absolute right-4 top-4 font-mono text-[10.5px] text-fg-4">live</span>
     </div>
   )
 }

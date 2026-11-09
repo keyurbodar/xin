@@ -76,7 +76,7 @@ export function SchedulesScreen(): JSX.Element {
 
 function ScheduleRows(props: { items: readonly Schedule[]; onChanged?: (() => void) | undefined }): JSX.Element {
   return (
-    <div class="flex flex-col gap-2">
+    <div class="flex flex-col overflow-hidden rounded-[4px] border border-line">
       <For each={props.items}>{(item) => <ScheduleRow item={item} onChanged={props.onChanged} />}</For>
     </div>
   )
@@ -100,24 +100,23 @@ function ScheduleRow(props: { item: Schedule; onChanged?: (() => void) | undefin
   }
 
   return (
-    <div class="flex items-center gap-3 rounded-[12px] border border-line bg-surface px-3.5 py-3 hover:bg-hover">
-      <span
-        class="h-1.5 w-1.5 shrink-0 rounded-full"
-        classList={{ "bg-ok": props.item.active, "bg-warn": !props.item.active }}
-      />
+    <div class="flex items-center gap-3 border-b border-line bg-raised px-3.5 py-3 last:border-0">
+      <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-surface text-fg-2">
+        <Icon name="clock" size={16} />
+      </span>
       <span class="min-w-0 flex-1">
         <span class="flex items-baseline gap-2">
-          <span class="truncate text-[13.5px] font-medium">{props.item.title}</span>
+          <span class="truncate text-[13px] font-medium">{props.item.title}</span>
           <Show when={!props.item.active}>
             <span class="label text-warn">Paused</span>
           </Show>
         </span>
-        <span class="mt-0.5 block truncate text-[11.5px] text-fg-3">
+        <span class="mt-0.5 block truncate text-[12px] text-fg-3">
           {props.item.rrule === undefined ? when(props.item.at) : describeRule(props.item.rrule)} ·{" "}
           {TARGET_WORD[props.item.target]} · next {when(props.item.nextAt)}
         </span>
         <Show when={error() !== undefined}>
-          <span class="mt-0.5 block text-[11.5px] text-bad">{error()}</span>
+          <span class="mt-0.5 block text-[12px] text-bad">{error()}</span>
         </Show>
       </span>
       <span class="mono-meta shrink-0">{ago(Date.parse(props.item.updatedAt))}</span>
@@ -125,7 +124,7 @@ function ScheduleRow(props: { item: Schedule; onChanged?: (() => void) | undefin
         type="button"
         disabled={busy()}
         onClick={() => void edit({ action: "update", active: !props.item.active })}
-        class="h-8 shrink-0 rounded-[8px] border border-line-inner bg-fill px-2.5 text-[12.5px] text-fg-2 hover:bg-selected hover:text-fg disabled:opacity-50"
+        class="h-7 shrink-0 rounded-[2px] border border-line-inner px-2.5 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg disabled:opacity-50"
       >
         {props.item.active ? "Pause" : "Resume"}
       </button>
@@ -133,7 +132,7 @@ function ScheduleRow(props: { item: Schedule; onChanged?: (() => void) | undefin
         type="button"
         disabled={busy()}
         onClick={() => void edit({ action: "delete" })}
-        class="grid h-8 w-8 shrink-0 place-items-center rounded-[8px] text-fg-3 hover:bg-fill-strong hover:text-fg disabled:opacity-50"
+        class="grid h-7 w-7 shrink-0 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg disabled:opacity-50"
         aria-label={`Delete ${props.item.title}`}
       >
         <Icon name="trash" size={14} />

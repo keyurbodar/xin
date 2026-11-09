@@ -25,13 +25,13 @@ function Tab(props: { icon: IconName; label: string; active: boolean; dot?: bool
     <button
       type="button"
       onClick={props.onClick}
-      class="flex flex-1 flex-col items-center gap-0.5 pt-1 text-[11px]"
+      class="flex flex-1 flex-col items-center gap-0.5 pt-1 text-[10.5px]"
       classList={{ "text-fg": props.active, "text-fg-3": !props.active }}
     >
       <span class="relative">
         <Icon name={props.icon} size={18} />
         <Show when={props.dot === true}>
-          <span class="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-[4px] bg-waiting" />
+          <span class="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-[1px] bg-accent" />
         </Show>
       </span>
       {props.label}
