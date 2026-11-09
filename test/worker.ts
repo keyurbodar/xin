@@ -77,6 +77,9 @@ const TEST_CATALOG: Catalog = {
     },
   },
   orphan: testPlugin("orphan", {}, ["nothing-provides-this"]),
+  "k-requires": testPlugin("k-requires", {}, ["ops"], { requires: ["time@^0.1.0"] }),
+  "k-future": testPlugin("k-future", {}, ["ops"], { api: 2 }),
+  "k-needs-missing": testPlugin("k-needs-missing", {}, ["ops"], { requires: ["absent@^1"] }),
   ...m2.catalog,
   ...fakefiles.catalog,
   ...intakebatch.catalog,
@@ -97,7 +100,10 @@ const TEST_CATALOG: Catalog = {
 }
 
 const TEST_ROWS = [
-  ...["test", "broken", "orphan", "m2", "m6"].map((id) => ({ id, name: `cordis:${id}` })),
+  ...["test", "broken", "orphan", "m2", "m6", "k-requires", "k-future", "k-needs-missing"].map((id) => ({
+    id,
+    name: `cordis:${id}`,
+  })),
   ...m8.rows,
   ...piext.rows,
   ...intakebatch.rows,

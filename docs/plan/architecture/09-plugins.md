@@ -1,190 +1,342 @@
-# 15 · Plugins: everything is a plugin
+# 15 · Plugins: one model, three scopes
 
-This section decides that Xin's plugin layer is the one deepseek-harness (dsh) uses: Cordis contexts, services, typed events and reversible effects, composed from a tree of loader rows. There is no privileged core. The kernel services, pi-durable itself and every feature are rows that a patch can configure, disable or replace.
+Xin's plugin layer is the one deepseek-harness (dsh) uses: Cordis contexts, services, typed events and reversible effects, composed from a tree of loader rows. There is no privileged core. The kernel services, pi-durable itself and every feature are rows that a patch can configure, disable or replace.
 
-Read with: [01 Host](./01-host.md) for the alarm loop the `clock` service owns, [03 Commands and wire](./03-commands-and-wire.md) for the `ops` and `wire` services, [05 Models](./05-models.md) for the `models` seam.
+This section adds the one thing dsh leaves implicit and Xin makes a first-class word: **a plugin is mounted at a scope**. A plugin can apply to the whole Home, to one project, or to one thread, and the composition of a scope is resolved by inheritance. That is what makes a personal agent feel configurable without a settings maze: the same plugin can be on everywhere and off in one project, with no second mechanism.
 
-## Stack
+A plugin is **trusted code that just runs**. Installing the build is the only trust decision. There are no permission grants, no approval prompts and no sandbox; those were designed, then cut (see [Dropped for simplicity](#dropped-for-simplicity)).
 
-| Package | Version | Role |
+Read with: [01 Host](./01-host.md) for the alarm loop the `clock` service owns, [03 Commands and wire](./03-commands-and-wire.md) for the `ops` and `wire` services, [05 Models](./05-models.md) for the `models` seam, [12 Market](./12-market.md) for installs.
+
+**Status.** Slices 1 and 2 of this design are implemented in this build: the manifest, catalog generation, `plugin.doctor`, mount-time API and requirement checks, presets as plugin sets, and per-scope preset selection for Home, projects and threads. Per-scope host-row mounting is not built; no plugin needs it yet.
+
+## The model in two sentences
+
+- **For a plugin author:** a plugin is one module that declares what it is in `package.json` and registers capabilities as effects on the context it is given.
+- **For a person:** a plugin adds an ability; a preset is a named set of plugins; you can give a preset to the whole Home, a project, or a thread. There is nothing to approve: installing it is the decision.
+
+Everything else is engine.
+
+## Vocabulary budget
+
+The design goal is the smallest vocabulary that still covers every case dsh covers. Three words are for the person, three are for the author (two of them shared), and six are internal and never appear in the UI or in author documentation.
+
+| Word | Who says it | Means | dsh equivalent |
+| --- | --- | --- | --- |
+| **Plugin** | author, user | one module plus its manifest; the thing you install and turn on | plugin entry / package |
+| **Preset** | user | a named set of plugins | agent preset |
+| **Scope** | user | where a preset applies: Home, a project, or a thread | profile + agent scope |
+| **Capability** | author | one typed extension point a plugin registers on (tool, hook, op, timer, …) | service + event |
+| **Manifest** | author | the `xin.plugins.<name>` declaration in `package.json` | `dsh` field, `engines.dsh` |
+
+| Internal word | What it is | Why it stays internal |
 | --- | --- | --- |
-| `@deepseek-ai/cordis` | 4.1.0 | Context, Service, plugin registry, fibers, events, effects |
-| `@deepseek-ai/cordis-plugin-loader` | 1.1.0 | the entry tree: rows, groups, isolates, update, disable |
-| `@deepseek-ai/schemastery` | 3.19.0 | plugin `Config` schemas, serialisable for settings forms |
+| row | one mounted instance of a plugin with its config | ids are an implementation detail; the UI groups by plugin |
+| bundle | the ordered rows a package ships | a package with one plugin needs no second word |
+| layer, patch | how rows compose from build, profile and owner edits | only `plugin.tree` needs them |
+| catalog | the plugins compiled into this build | "what is in this build" is enough |
+| isolate realm | a service scope inside Cordis | a scope is a place, not a realm |
+| loader | Cordis' row tree | engine |
 
-The loader runs in workerd unchanged. It needs one build define, `import.meta.url = "file:///bundle/index.js"`, because it calls `createRequire(import.meta.url)` when constructed. `XinLoader` sets `internal = undefined`, and every row's `name` is a `cordis:<catalog name>` builtin. Nothing is imported at run time. pi-schema stays the schema for tool parameters, op args and wire frames. schemastery is only for plugin config.
+dsh asks a user to hold profile, bundle, patch, row, preset, isolate, plugin, market index, version exemption, platform and approval: eleven. Xin keeps dsh's engine and reduces the public set to five by giving three of those words a default that needs no decision (one Home, one bundle per package, one trust decision per build) and by dropping approvals and exemptions entirely.
 
-## Model
+## What a plugin can hook into
 
-```mermaid
-flowchart TB
-  DO["Home DO constructor<br/>blockConcurrencyWhile"] --> ROOT["root Context<br/>host facts: state, env"]
-  ROOT --> L["XinLoader<br/>builtins = CATALOG"]
-  L --> ROWS["composed rows<br/>bundles, profile patch, owner patch"]
-  ROWS --> K["kernel rows<br/>db, pi, ops, http, wire, clock, secrets, plugins, packages, system"]
-  ROWS --> F["feature rows<br/>models, files, intake, memory, push, skills, mcp,<br/>workspace, schedules, orchestrator, jobs, questions, watchdog, failures"]
-  K -->|"pi row init"| OPEN["Harness.open<br/>provides ctx.harness"]
-  OPEN --> F
-  L -->|"loader.await()"| RES["harness.resume()"]
+A capability is a typed registration on a kernel service. The closed set below is the whole extension surface; a new capability means a new service plus a typed event, never a new mechanism.
+
+**Agent** — per conversation, installed in the pi registry and selected by the conversation's agent:
+
+| Capability | Registration | What it does |
+| --- | --- | --- |
+| tool | `defineTool` in an extension named `tool-*` | model-facing action |
+| prompt | `section(key, render)` | a system-prompt section |
+| hook | `hook(GenerationTask \| ToolTask, handlers)` | intercept a request, a tool call, a run's end |
+| wrap | `wrapTool` / `wrapSection` | decorate another tool or section by name |
+| task | `defineTask` | durable background work, resolved by name |
+| doc | `defineDoc` | typed conversation or session state committed with the transcript |
+| extension | `ctx.pi.install(extension)` | the bundle the six above travel in |
+
+**Host** — per Home:
+
+| Capability | Registration | What it does |
+| --- | --- | --- |
+| service | `ctx.provide(key, value)` | a seam other plugins inject |
+| op | `ctx.ops.define(op)` | an owner or agent command with a receipt |
+| route | `ctx.http.route("GET /path", handler)` | an HTTP endpoint in the Home |
+| wire | `ctx.wire.home(part, fn)` | a part of the home snapshot |
+| event | `ctx.on(name, fn)` / `ctx.emit(name, …)` | a typed event, with a declared dispatch mode |
+| timer | `ctx.clock.timer({ due, fire })` | work on the single DO alarm |
+| migration | `ctx.db.applySqliteMigrations(owner, steps)` | the plugin's own tables, append-only |
+| secret | `ctx.secrets.get(ref)` | a named credential, sealed with the KEK |
+| files | `ctx.files` | the file index and R2 bytes |
+| config | `export const Config = Schema.object({…})` | a validated, serialisable configuration |
+
+**Integration** — the seams that connect Xin to the outside:
+
+| Capability | Registration | What it does |
+| --- | --- | --- |
+| MCP server | `mcp-server` row | tools from a remote MCP server |
+| model provider | `ctx.pi.models(fn)` / host providers | model catalog and credentials |
+| deployer | `ctx.deployer` | how `system.update` ships a build |
+
+**Human** — the two things a plugin may ask a person for, below.
+
+**Contributions without an extension.** A plugin can contribute a slash-command prompt with `ctx.prompts.contribute(prompt, rowId(ctx))` and a skill with `ctx.skills.contribute(skill, rowId(ctx))`. The row is the source, exactly as it is for an extension, and a preset keeps or drops it by the plugin that owns the row. `prompt.list { conversation }` filters prompts for that conversation, and `tool-skills` filters the skills section and the `skill` tool the same way. A stored owner prompt or skill always survives, because the owner made it.
+
+Rules:
+
+- Every registration is an effect. Disposing a row or reconfiguring it unwinds exactly what it added, in reverse order.
+- Boot order comes from `inject`, not from list order. A row waits for its services and unloads when one goes away.
+- A helper takes a narrow port (`{ db, arm }`), never the whole context. Only the row module that declares `inject` reads `ctx.<service>`; `bun scripts/boundaries.ts` enforces it.
+- Policy hooks are waterfalls and must call `next()`; a listener that returns an outcome decides it. Order between independent listeners is not a contract.
+
+### pi-durable is the agent seam
+
+Xin does not reimplement the agent loop. pi-durable's **extension** is the unit the registry installs; Xin's **plugin** is the unit the owner installs. One plugin may install several extensions (a service row and a `tool-*` row), and an extension may come from a plugin with no host surface at all.
+
+| pi surface | What a plugin does with it | Rule |
+| --- | --- | --- |
+| extension | `ctx.pi.install(defineExtension({ name, tools, sections, hooks, wraps, tasks }))` | named `tool-*` when it carries tools |
+| tool | `defineTool({ name, description, parameters, execute, replay })` | `replay: "safe"` only when the call is idempotent |
+| section | `section(key, render)` | stable text first; live state as entries, not sections |
+| hook | `hook(GenerationTask, …)`, `hook(ToolTask, …)` | generation: `beforeRequest`, `beforeProviderRequest`, `afterResponse`, `onYield`, `afterTools`, `afterRun`; tools: `beforeTool`, `afterTool` |
+| task | `defineTask` | durable background work: use a pi task when it must survive a restart, a `clock` timer when it only needs to run |
+| doc | `defineDoc` | typed state committed with the transcript, at conversation or session scope |
+| selection | `conversation.configure({ extensions })` | the seam scopes use: install once, select per conversation |
+
+What this buys: a plugin's background work is durable and replay-safe for free, a hook reads committed state through `api.snapshot()`, and scoping becomes a selection rather than a second registry. It also means a plugin never needs to know how the loop works to add a tool, a prompt section or a guard.
+
+## Declaration: the manifest
+
+A package declares its plugins in `package.json`. Everything is optional; a plugin that declares nothing runs at Home.
+
+```json
+{
+  "name": "xin-plugin-weather",
+  "version": "1.2.0",
+  "xin": {
+    "plugins": {
+      "weather": {
+        "module": "./index.ts",
+        "title": "Weather",
+        "description": "Forecasts and alerts for the owner's places.",
+        "api": 1,
+        "requires": ["models@^0.1"]
+      }
+    },
+    "bundle": [{ "id": "weather", "plugin": "weather" }]
+  }
+}
 ```
 
-- **A plugin is a Cordis plugin.** It is a module with `name`, `inject`, `Config` and `apply(ctx, config)`, or a `Service` subclass. It needs only the services named in `inject`, never a concrete module.
-- **Every registration is an effect.** Extensions, tools, ops, routes, timers, home snapshot parts and listeners return a disposer. Disposing or reconfiguring a plugin unwinds exactly what it added.
-- **Boot order comes from `inject`.** It does not come from list order. A row stays pending until its services exist, and it unloads when one goes away.
-- **The `pi` row owns the Harness.** Its init opens the Harness, provides `harness`, and closes it on dispose. Rows that need the Harness name `harness` in `inject`, so they start after it and restart with it. Scheduling stays off until `Home` calls `harness.resume()` after `loader.await()`, so a resumed task finds its definition installed. A row's startup work runs in its own `apply`. A failure fails only that row, and the row's disposers (commit observers included) run when it is disabled.
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `api` | `1` | the plugin API version the module is written against |
+| `requires` | `[]` | other plugins it needs, `name` or `name@range` |
 
-## Kernel services (seams)
+`bun scripts/xin.ts plugin generate` parses and validates every manifest and writes it into `src/catalog.gen.ts`. A bad manifest fails the build, not boot. The running Worker never reads `package.json`; the catalog is the single source at run time.
 
-Each service is a row in `xin-base`. A different row can provide the same key in its place.
+The two fields earn their place:
+
+- `api` is the only hard compatibility axis for in-process code. Semver of the package is for distribution; the API version is the contract.
+- `requires` catches the common failure of a plugin that calls a service another plugin provides.
+
+`scopes` joins the manifest with per-scope host mounting (slice 4). The agent surface is scoped today by presets, which need no declaration from the plugin.
+
+There is deliberately no `permissions` field. A plugin is trusted code; asking a person to tick capabilities before it can work was ceremony with no enforcement behind it, so it is gone.
+
+## Discovery
+
+Three questions, three surfaces:
+
+| Question | Surface | Answers |
+| --- | --- | --- |
+| What can I install? | `market.search` / `market.entry` | the build's own packages plus any configured index: package, version, `engines.xin`, code or bundle, install spec |
+| What is in this build? | `plugin.catalog` | every plugin with title, description, manifest, config schema, source package@version |
+| What is running, and is it healthy? | `plugin.list`, `plugin.doctor`, `plugin.tree` | row state, issues, and the composition that produced them |
+
+`plugin.doctor` is the one place that explains a plugin. Each row reports its manifest, package, version and `issues`:
+
+| Issue | Meaning | Action |
+| --- | --- | --- |
+| `api` | the module wants a plugin API this build does not support | update the plugin or the build |
+| `require` | a required plugin is absent or outside the range | install it, or change the requirement |
+| `failed` | the row threw while starting | read the error, fix config or code |
+| `missing` | the row names code this build does not have | install the package and rebuild |
+
+`ok` is true when no row has an issue. The mount-time checks (`api`, `require`) fail only that row: it appears in `plugin.list` with a `failed` state and its reason, the rest of the Home keeps running, and a required row that fails still puts Home in `boot_failed`.
+
+The next slice adds the inverse check: an inventory of what each active row actually registered, compared with its declaration, so "declares tools but added none" is visible.
+
+## Versioning
+
+Four axes, each with one rule:
+
+| Axis | Field | Rule | On mismatch |
+| --- | --- | --- | --- |
+| Plugin API | `xin.plugins.*.api` | equality with `PLUGIN_API` (1) | row `failed`, doctor explains |
+| Package | `version` | semver; the market reads `engines.xin` | the market hides or marks it |
+| Requirements | `requires` | semver range against the build's plugin version | row `failed`, doctor explains |
+| Config and data | `Config`, own migrations | schemastery validates on write; SQL migrations are append-only | a write is rejected; a migration is applied once |
+
+Composition is **not pinned**. A scope records a preset id, not versions, and each apply resolves the current build's plugins (as dsh recovers a session with the current definition of its recorded preset). An update therefore takes effect on the next apply; a conversation already running keeps its extension selection until then. `plugin.doctor` reports drift: a preset that names a plugin this build no longer has.
+
+An update whose `api` matches applies live through Cordis disposal; one that needs a new API needs a build and `system.update`. Rollback is the same operation in reverse: reinstall the previous version (a deploy for code, `bundle.put` for a bundle). No separate rollback store and no version exemptions: a plugin either fits this build or it does not.
+
+## Scopes
+
+**Implemented for the agent surface.** A scope is a node in a tree: Home → project → thread. Each node selects one preset, and a preset names the plugins whose capabilities its conversations get.
+
+| Scope | Set by | Applies to |
+| --- | --- | --- |
+| Home | the `presets` row's `default` | the root chat and every project without a preset |
+| project | `project.create { preset }` or `project.update { preset }` | the coordinator and its threads |
+| thread | `preset.select { conversation, preset }` | that thread |
+| root chat | `preset.select { conversation, preset }` | the root chat |
+
+**Resolution.** A conversation's own selection, else its project's preset, else Home's default. A thread with no selection follows its project, so changing the project's preset reaches threads that never overrode it. An unknown preset id falls back to the default, never fails a run. `project.update { preset }` clears an explicit selection on the coordinator, so the project setting wins unless the owner selected a preset on that conversation directly.
+
+**What a scope changes.** The conversation's pi extension selection. Every installed extension is attributed to the plugin row that installed it, and the selected preset keeps the extensions of the plugins it names; `"all"` keeps everything. That covers tools, prompt sections, hooks, wraps and tasks, because they all travel in an extension. A preset that names `tool-memory` keeps memory's tools; a preset that names `time` keeps the time section.
+
+The same rule covers plugin-contributed prompts and skills. A contributed prompt appears in `prompt.list { conversation }` only while its plugin is in the conversation's preset; a contributed skill appears in the skills section and the `skill` tool only under the same condition. The source is the row that contributed it, so one rule serves extensions, prompts and skills.
+
+**What a scope does not change yet.** Host rows: services, ops, routes, timers and SQL migrations stay at Home. Per-scope mounting would need a child Cordis context and service isolation, and no plugin needs it today. A project-scoped timer is the first use case that would justify it; until then a preset filters the agent surface, not the host surface.
+
+**Presets.** A preset is `{ id, name?, description?, order?, plugins }`, where `plugins` is `"all"` or plugin names. Definitions are read live: editing a preset changes every scope that uses it on the next apply, and `plugins/changed` triggers that apply. `preset.select` only works while the conversation has no turns, as before; `project.update` works at any time and takes effect on the next turn.
+
+**The breaking change.** `tools` is gone. A preset row that still declares `tools` fails validation and its row reports `failed`; the fix is to rename the field to `plugins`. A `tools` list maps one-to-one when its names are `tool-*`, which is what the shipped presets use.
+
+**Lifecycle.** A Home restart rebuilds the scope maps from `WorkspaceDoc` and the `presets` table, so a crash converges. A new thread resolves its project's current preset. Archiving a project does not dispose anything, because nothing is mounted per project yet.
+
+## Trust: a plugin just runs
+
+**Trust tiers.** `core` rows are required and cannot be removed. `build` rows come from packages in `xin.profile.json`; installing the build is the trust decision. `runtime` rows come from a bundle or an owner patch at run time. Third-party *code* always arrives through a build; a bundle can mount only plugins that are already compiled.
+
+**What is not there.** No permission grants, no capability declarations, no per-call approval, no sandbox, no capability list to click through. A plugin runs with the same JavaScript access as the kernel, because it is the same isolate. This is dsh's model and the honest one for a personal agent: the boundary is what you install, not what you tick.
+
+**What a person sees.** A plugin is on or off, with a title, a one-line description and the tools it adds. Turning it on is one action. There is nothing to approve before it works.
+
+**Remote code.** An MCP server is the free plan's isolation story for code that runs elsewhere: the code executes in its author's host, and Xin holds only a connection. A bundle mounts live but references compiled plugins.
+
+**The paid path, if it is ever needed.** Cloudflare's Worker Loader gives a real isolate behind the same services over RPC. It is not planned: no concrete use case requires it today. If a public plugin directory with unknown authors appears, that is the trigger, and the manifest would gain a field then. Nothing in this design depends on it.
+
+## What a plugin may ask for
+
+Two things, both existing agent surfaces, neither an approval:
+
+| Kind | Asked at | The user sees | The plugin gets |
+| --- | --- | --- | --- |
+| config | install, settings | a form built from `Config`, with working defaults | validated values |
+| question | during a run | a question with optional choices | text or a choice, durable across restarts |
+
+Rules:
+
+- **No approval seam.** The kernel does not prompt before a plugin acts. A plugin that wants a human decision asks a question or uses its own tool; it cannot make the product ask "allow?" on its behalf.
+- **Defaults first.** `Config` has defaults, so a plugin does useful work with no setup. Configuring is optional, not a gate.
+- **Credentials are config.** A plugin that needs a key names the reference and reads it with `ctx.secrets.get`; the owner sets it once with `secret.set`. There is no per-use prompt and no credential dialog owned by the plugin.
+- **One surface.** A question is the existing `ask_user` path: it lands in the thread, is durable, and an answer starts the next run. A plugin does not render UI or own a socket.
+- **Fail closed, quietly.** A missing credential yields `undefined`; the plugin decides whether to report that as a normal tool error. Nothing hangs waiting for a person who is not there.
+
+## UX: the concept budget
+
+The question is not how many features the plugin system has, but how many words a person must hold. The answer is three public words, two verbs, four states.
+
+**Author path, three steps.**
+
+1. Write `apply(ctx, config)` and register capabilities.
+2. Add one manifest entry to `package.json`.
+3. Run `bun scripts/xin.ts plugin add <spec> --enable`, then deploy.
+
+No profile, no layer, no patch, no bundle unless the package ships more than one plugin. A plugin with no manifest still works.
+
+**User path, three verbs.**
+
+1. **Install** a plugin (from the market or a package).
+2. **Choose a preset** for Home, a project, or a thread.
+3. **Turn a plugin on or off** in that preset.
+
+Nothing is granted, approved or configured before a plugin works.
+
+**Four states, one action each.** On (nothing), off (turn on), incompatible (update it or the build), broken (open doctor). No fifth state and no error code in the main surface.
+
+**Progressive disclosure.** `plugin.tree`, `plugin.catalog` and the full issue list are the "why is this broken?" path. The main surface shows a plugin, what it adds in one line, and where it applies.
+
+**Moves that keep it small.**
+
+- One word for the thing, one for a set, one for where. "Plugin", "preset", "scope".
+- The engine is hidden: rows, bundles, layers and patches appear only in `plugin.tree`.
+- Defaults that need no decision: one Home, one bundle per package, api 1, home scope, working config.
+- A hard API contract instead of version exemptions: a plugin either fits this build or it does not.
+- No platform declarations and no per-client plugin lists until there is a second client.
+- No permissions, approvals or sandbox until a concrete use case demands one.
+
+**What we deliberately do not expose:** profiles (one Home), layer precedence, isolate realms, version exemptions, HMR toggles, platform gates, permission grants.
+
+## Dropped for simplicity
+
+Designed, then cut because each added a concept or a click without buying a real outcome:
+
+| Dropped | Why |
+| --- | --- |
+| **Permission grants and consent cards** (`net`, `secrets`, `files`, `schedule`, `agent`; `plugin.grant` / `plugin.revoke`) | in-process code cannot be confined by a declaration, so the grant was an audit form, not a boundary; the build is the real trust decision |
+| **Per-call approvals** (dsh `user-approval`, `tools/pre-execute`) | every prompt interrupts a run; a plugin that needs a decision can ask a question, and the owner's own agent does not need a permission slip |
+| **Version exemptions** (dsh `compatibility.json`) | an `api` mismatch is a code problem; granting an exception would only produce a crash later |
+| **Platform declarations** | one client, one host; nothing to declare |
+| **A sandbox / Worker Loader** | no concrete use case today; MCP covers code that runs elsewhere, and the build covers code that runs here |
+| **A `provides` registry and capability inventory in the manifest** | `inject` already resolves services and fails a row that cannot get one; an inventory is diagnostics, not a gate, and arrives with `plugin.doctor`'s next slice |
+| **A config wizard at install** | `Config` defaults make a plugin work with no setup; settings remain optional |
+
+The `net` permission check named in M8 belonged to the pre-P5 host adapter, which no longer exists; there is no permission check in the plugin layer today.
+
+## Rows, bundles and layers (engine)
+
+A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disabled?, group?, isolate? }`. A bundle is an ordered list of rows. Layers apply to an empty list:
+
+1. The bundles named in `xin.profile.json`, in order, then the runtime bundles ([12 Market](./12-market.md)).
+2. That file's `patch`. It is build time and checked in.
+3. The owner patch. It is run time, stored in `kv` key `plugins.patch`, and recomputed as the minimal departure from the lower layers.
+
+The last write wins per row. A patch replaces each named field whole, config included, with no deep merge. An unknown id is reported and skipped.
+
+`XinLoader.commit` stores the owner patch so it records only what the owner changed. Adding a row is a local bundle, as dsh adds rows through a bundle.
+
+**Failure.** A failed `required` row puts Home in `boot_failed`; any other failed row is reported with its error and the rest keep running; a row whose plugin left the build is `missing` and is not mounted.
+
+**Kernel services (seams).** Each service is a row in `xin-base`; a different row can provide the same key.
 
 | Key | Row | Surface |
 | --- | --- | --- |
-| `host` | root facts, not a row | `state: DurableObjectState`, `env: Env`, `abort(reason)` |
-| `db` | `db` | `SqliteDatabase` plus `applySqliteMigrations(owner, steps)`. Host steps stay in the append-only `HOST_MIGRATIONS`, and a plugin's own tables use its own migration list, tracked in the table `migrations_<owner>` |
-| `pi` | `pi` | `registry`, `install(extension)` (effect), `models(fn)` and `env(fn)` providers (effects), `open()` |
-| `harness` | `pi` (provided by its init) | the pi-durable `Harness`, closed when the `pi` row unloads |
-| `ops` | `ops` | `define(op)` (effect), `run(command, actor)`, `list()`. Receipts as in §3 |
-| `http` | `http` | `route("GET /path" or "GET /prefix*", handler)` (effect), `handle(request)` |
-| `wire` | `wire` | sockets, `home(part, fn)` (effect), `publishHome()` |
-| `clock` | `clock` | `timer({ due, fire })` (effect), `arm(wake)`, `fire(now)`. It owns the single DO alarm (§1) |
-| `secrets` | `secrets` | named credentials, as dsh `credentials`: `get(ref)` and `set(ref, value)` over values sealed with `KEK`, one namespace for the Home. Config strings that accept credentials resolve `${credential:REF}` with `expandCredentials(text, secrets)` from `src/credentials.ts`. `values()` is kernel-only and feeds the redaction hook. Defines the owner op `secret.set { ref, value }` (empty `value` deletes) |
-| `plugins` | `plugins` | the plugin manager below |
-| `packages` | `packages` | the build's `installed` packages, the parsed `pending` list, `plugin.install` and `plugin.uninstall`, `GET /v1/build/packages`, and the boot reconcile |
-| `system` | `system` | version, restart, update. Deploys go through the `deployer` seam |
+| `host` | root facts, not a row | `state`, `env`, `abort` |
+| `db` | `db` | SQLite plus `applySqliteMigrations` |
+| `pi` | `pi` | `registry`, `install(extension)`, `models(fn)`, `env(fn)`, `open()` |
+| `harness` | `pi` init | the pi-durable `Harness` |
+| `ops` | `ops` | `define`, `run`, `list` |
+| `http` | `http` | `route`, `handle` |
+| `wire` | `wire` | sockets, `home(part, fn)`, `publishHome()` |
+| `clock` | `clock` | `timer`, `arm`, `fire`; owns the single alarm |
+| `secrets` | `secrets` | `get`, `set`, `values()` (kernel only), redaction |
+| `plugins` | `plugins` | the manager and doctor below |
+| `packages` | `packages` | installed packages, pending installs, runtime bundles |
+| `system` | `system` | version, restart, update |
 
-Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `skills`, `mcp`, `workspace`, `threads`, `jobs`, `questions`). A feature that other features call provides a key. A feature that only adds tools, ops or timers provides none.
+Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `skills`, `mcp`, `workspace`, `threads`, `jobs`, `questions`, `schedules`, `watchdog`, `intake`, `presets`). A feature that others call provides a key; one that only adds tools, ops or timers provides none. A feature package splits its service row (`<name>`) from its tool row (`tool-<name>`), so disabling the tools leaves the service running.
 
-**Service rows and tool rows.** A feature package splits what it serves from what the model sees.
+**Events** are declared on Cordis `Events` with an `@mode` tag: `ops/before` (waterfall), `intake/batch` (waterfall), `thread/settled` (emit), `wire/typing` (parallel), `plugins/changed`, `credentials/updated`, `mcp/changed` (emit). Turn, tool and request interception stays pi-native through extension hooks.
 
-- The service row (`<name>`) owns state, ops, routes, timers and the home part, and provides `ctx.<key>` (`files`, `models`, `threads`, `jobs`, `intake`, `memory`, `questions`, `skills`, `schedules`, `mcp`, `watchdog`, `push`, `workspace`). Its `apply` calls `ctx.provide("<key>", value)`.
-- The tool row (`tool-<name>`) is a plain plugin with `inject: ["pi", "<key>"]` that installs one extension, named `tool-<name>`, holding the model-facing tools (and their prompt sections). Disabling it removes those tools and leaves the service running.
-- Both rows are declared in the package's `xin.plugins` and listed in its `xin.bundle`.
-- Each service's interface lives in `src/contracts/<key>.ts`, which augments Cordis `Context` with `<key>: <Interface>`. That folder holds only types, doc definitions, schemas and pure helpers. A plugin may import `src/contracts/*`, `src/kernel/index.ts` and shared libs in `src/`, never another plugin's files. Calls into another feature go through `inject` (required) or `ctx.get(key)` (optional). A row module lists every service it reads in `inject` and reads it as `ctx.<key>` only inside that file; helper files take narrow ports as parameters (intake reads the optional `push` with `ctx.get("push")` at call time). `bun scripts/boundaries.ts` checks both rules. Each plugin reads and writes only its own SQL tables; `src/kernel/dbtables.ts` maps every table to its owning plugin or `kernel`, and `bun scripts/boundaries.ts`, run by `lint`, fails on any import from one plugin (or test plugin) into another, and on any SQL that names another feature's table. The kernel's `kv`, `receipts`, `plugins` and migration tables are shared infrastructure.
-
-| Key | Provider row | Called by |
-| --- | --- | --- |
-| `intake` | `intake` | jobs, watchdog, orchestrator, questions, schedules, failures |
-| `push` | `push` | intake (optional) |
-| `jobs` | `jobs` | mcp, watchdog, orchestrator |
-| `watchdog` | `watchdog` | orchestrator, questions |
-| `models` | `models` | orchestrator, memory, tool-models |
-| `threads` | `orchestrator` | questions, tool-orchestrator |
-| `files` | `files` (or any row, e.g. the test `fake-files`) | tool-files |
-
- `ctx.pi.install(defineExtension({ ... }))` accepts any pi extension: tools, `wrapTool`, hooks, prompt sections, tasks, docs. It installs it in the live registry and calls `registry.uninstall` on dispose. pi treats a reinstall under the same name as a hot replace, so a reconfigured plugin swaps its extension in place.
-
-## Events
-
-Events are declared on Cordis `Events` with an `@mode` tag. The dispatch mode is part of the contract.
-
-| Event | Mode | Use |
-| --- | --- | --- |
-| `ops/before(call, next)` | waterfall | policy over every op: deny, rewrite args, or observe. `call = { command, actor }` returns an `Outcome` |
-| `intake/batch(batch, next)` | waterfall | rewrite a claimed batch before dispatch. `batch = { batchId, target, rows }`; a listener edits `rows` or a row's `text` in place, then calls `next()` (Cordis passes no value through `next`). Returning `{ kind: "dropped", reason }` without `next()` marks the batch done unsent. `next()` stores the rewritten rows (and a completed marker in DO kv `intake.dispatched.<batchId>`) before submitting, so a crash replay resubmits the stored rows without running the event again. Listeners run at the first fire after every row mounts; one that throws or rejects is logged and skipped, and the batch dispatches as given |
-| `thread/settled(event)` | emit | a thread reached a terminal status. `event = { threadId, parentId, projectId, title, status, result? }`. Emitted from the reporter's replay-safe report phase after the status commit: at least once, never inside a transaction. Each listener is contained: a throw or rejection is logged and the others still run |
-| `wire/typing(conversation, on)` | parallel | typing indicators |
-| `plugins/changed()` | emit | the composed tree or a row's state changed |
-| `credentials/updated(ref)` | emit | a credential reference now resolves to a new value, or was deleted; rows with `${credential:REF}` templates reconnect |
-| `mcp/changed()` | emit | the MCP server tool set changed; `tool-mcp` republishes its extension |
-
-Turn, tool and request interception stay pi-native: install an extension with hooks or `wrapTool`.
-
-## Rows, bundles and layers
-
-A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disabled?, group?, isolate? }`.
-
-- **Catalog.** `src/catalog.ts` lists the kernel rows in the `xin-base` bundle: the required ones (`db`, `clock`, `pi`, `ops`, `http`, `wire`, `secrets`, `plugins`, `packages`, `system`) and one that is not required and is disabled by default, `tool-plugins`. Every feature is a package under `plugins/<name>/` (models, files, intake, memory, push, skills, mcp, workspace, schedules, orchestrator, jobs, questions, watchdog, failures, deploy-hook, time), and the generated `src/catalog.gen.ts` lists them and installed dependencies, one bundle per package. Entries are `{ plugin, title, description, required?, local?, source }`; `local: true` marks a package that lives in this repository. A package can never declare a core plugin, bundle or row id.
-- **Feature modules** are native Cordis plugins, as in dsh: `export const name`, `inject` and `apply(ctx, config)`. `apply` registers each part as an effect through the kernel services: `ctx.provide`, `ctx.pi.install`, `ctx.ops.define`, `ctx.http.route`, `ctx.wire.home`, `ctx.clock.timer`, `ctx.on("wire/typing")`, and `ctx.effect` for start-up work with a disposer. Helpers take narrow ports (`{ db, arm }`) that `apply` builds and tests build directly. (P1 to P4 mounted features through a `hostModule` adapter; P5 removed it.)
-- **Bundles.** A bundle is an ordered list of rows. `xin-base` holds the kernel rows. `xin.profile.json` names `xin-base` and every feature package's bundle. A package can ship its own bundle.
-- **Layers**, applied in order to an empty list (as in dsh):
-  1. The bundles named in `xin.profile.json`, in order, then the runtime bundles (§12).
-  2. That file's `patch`. It is build time and checked in.
-  3. The owner patch. It is run time and stored in the `kv` key `plugins.patch`.
-
-  The last write wins per row.
-- **Patch semantics (dsh).**
-  - `{ insert: [rows] }` appends rows.
-  - `{ id, ...fields }` replaces each named field of that row whole, `config` included, with no deep merge.
-  - An unknown id is reported and skipped.
-- **Persistence.** `XinLoader.commit(change)` recomputes the owner patch as the minimal departure from the lower layers and stores it, so the owner patch records only what the owner changed, and writing a row's inherited value back drops its override (dsh `config-editor`). The owner adds rows by putting a local bundle (§12), as dsh adds rows through a bundle.
-- **Failure.**
-  - A failed `required` row puts Home in `boot_failed`. `/v1/status` reports it and ops return `unavailable`.
-  - Any other failed row is reported as `failed` with its error, and the rest keep running.
-  - A row whose plugin is missing from the catalog, for example after a removal, is reported as `missing` and is not mounted.
-
-## Plugin manager (`plugins` row)
+## Plugin manager
 
 | Op | Effect |
 | --- | --- |
-| `plugin.list` | rows with id, name, state (`active`, `pending`, `failed`, `disabled`, `missing`), error, layer, config and its schema JSON |
-| `plugin.catalog` | compiled plugins with meta, `Config` schema JSON and the package they came from |
-| `plugin.tree` | `{ [id]: { addedBy, patchedBy } }` for every composed row (dsh `--dump-config`), plus the bundles, runtime bundles, lower rows, owner patch and warnings |
-| `plugin.enable` | `{ id, enabled }`. Rejected for a `required` row |
-| `plugin.configure` | `{ id, config }`, validated against the plugin's `Config` before it is committed. Rejected for a plugin with no `Config` (every kernel service but `plugins`) and for a `missing` row |
-| `plugin.install` | `{ spec }` records a parsed package spec for the next build: `{ kind: "registry", name, range? }` or `{ kind: "git", url, ref? }`. Idempotent per spec, and it cancels a pending removal of the same package |
-| `plugin.uninstall` | `{ package }` records a package for the next build to remove. Rejected when the package provides a core row, is local to this repository, or is not in the build |
-| `plugin.packages` | the build's `installed` packages as `{package, version}`, and the `pending` `{add, remove}` list the next build will apply |
+| `plugin.list` | rows with id, plugin, title, state, layer, config and manifest |
+| `plugin.catalog` | compiled plugins with title, description, manifest, config schema and source |
+| `plugin.doctor` | `{ ok, rows }` with package, version, state, manifest and issues |
+| `plugin.tree` | `{ bundles, runtime, layers, lower, owner, rows, warnings }` |
+| `plugin.enable` | `{ id, enabled }`; rejected for a required row |
+| `plugin.configure` | `{ id, config }`, validated against `Config`; rejected for a plugin without one |
 
-`plugin.install`, `plugin.uninstall`, `plugin.packages`, the `GET /v1/build/packages` route and the boot reconcile live in the `packages` row; the other ops in this table live in `plugins`.
+Every mutating result carries `application: "applied" | "failed"` and the row's new state. A row whose new config or code fails to start is an outcome, not an error.
 
-Every mutating result carries `application: "applied" | "failed"` and the row's new state. A change applies live in place through Cordis disposal. New code always means a rebuild and `system.update`.
-
-The agent tool `plugin_manager` is its own row, `tool-plugins` (`src/kernel/managertool.ts`, not required, disabled by default, as dsh ships `plugin_manager` as an optional tool row). It takes `action: list | catalog | tree | enable | configure`. Approval of its mutations follows dsh `tools/pre-execute` and `user-approval` (P10).
-
-A row whose new config or code fails to start is an outcome, not an error: the op returns `application: "failed"` with the row and its recorded error, and the other rows keep running.
-
-## Presets
-
-As in dsh (`agent-preset`, `agent-preset-registry`), a preset is an ordinary row and the registry only names the default.
-
-```yaml
-- id: presets                 # the registry row
-  plugin: presets
-  config: { default: full }
-- id: preset-full
-  plugin: preset
-  config: { id: full, name: Full, description: Every tool row., tools: all }
-- id: preset-minimal
-  plugin: preset
-  config: { id: minimal, name: Minimal, tools: [tool-memory, tool-skills] }
-```
-
-A `preset` row config is `{ id, name?, description?, order?, tools }`, where `tools` is `"all"` or an allowlist of tool extension names (dsh lists child plugin rows; Xin's agent shares one tree, so a preset selects the `tool-*` extensions those rows install). Every extension that carries tools is named `tool-*`: `ctx.pi.install` throws for any other name. A new preset, or an override of a shipped one, is a bundle row or patch entry, as in dsh. Two preset rows with one `id` leave the later row `failed`. As in dsh, an unknown id fails only when it is used: `preset.select` and `project.create` answer `bad_args`, and a conversation whose recorded preset and default are both undeclared keeps every tool.
-
-- **Selection** is per conversation, as dsh records a preset per session. A conversation records its preset id when it is created (`project.create { preset? }` for a coordinator, else the registry `default`); `preset.select { conversation, preset }` changes it only while the conversation has no turns, as dsh allows only for a blank session. A thread records its coordinator's preset when it is spawned. The records live in the plugin's own table (`presets`, one row per conversation). The service is `ctx.presets`: `list()` and `presetOf(conversation)`.
-- **Definitions are read live.** A conversation keeps its preset id; each apply uses that preset's current definition, as dsh recovers a session with the current definition of its recorded preset. A conversation whose preset no longer exists uses `default`.
-- **Removals.** For a conversation, the removed extensions are every installed `tool-*` extension that the preset's allowlist does not name; `"all"` removes none. Each apply computes them from `ctx.pi.installed` and calls `configure({ extensions: { remove } })` (or `null` for `"all"`) only when the resolved set differs, so replay is harmless.
-- **Serialization.** Every apply runs through one queue: the row's start, `plugins/changed`, a new conversation and `preset.select` all append to it.
-- **When.** The row applies on its own start, on `plugins/changed`, and when a conversation is created or selected. When the row unloads, it configures every recorded conversation back to `extensions: null`.
-
-| Op | Effect |
-| --- | --- |
-| `preset.list` | the presets in `order`, the default, and each conversation's recorded preset |
-| `preset.select` | `{ conversation, preset }` for a conversation with no turns; otherwise, or for an unknown conversation or preset, `bad_args` |
-| `prompt.list` / `prompt.put` / `prompt.delete` | owner slash commands in kv `prompts`, a name-to-`{ description?, text }` map: list sorts by name, put replaces whole (name `^[a-z][a-z0-9-]*$`, text at most 8,000 characters), delete is idempotent. The composer expands `/name rest` through these before `message.send` |
-
-## Install, update, restart
-
-- **Code is installed at build time.** It cannot be installed in a running Worker.
-  - A plugin package declares itself in `package.json`: `"xin": { "plugins": { "<name>": { "module": "./index.ts", "title", "description" } }, "bundle"?: [{ "id", "plugin", "config"?, "disabled"? }] }`. Without `bundle`, each plugin gets one row with its own name as the id. The bundle is named after the package.
-  - `bun scripts/xin.ts plugin add <npm spec | git url | path> [--enable]` runs `bun add`, regenerates `src/catalog.gen.ts` and, with `--enable`, appends the bundle to `xin.profile.json`. `generate`, `list`, `enable`, `disable` and `remove` work the same way. In-repo packages under `plugins/*` are found without installing.
-  - `plugin remove` and `plugin list` work the same way. Then deploy.
-- **`system.version`** reports the build id (the `XIN_BUILD` define), the package versions, the bundles and whether the tree is degraded.
-- **`system.restart`.**
-  - `{ hard: false }` disposes the root context and boots it again in place, with the same code and fresh fibers.
-  - `{ hard: true }` calls `state.abort()`, so the DO restarts on the next request.
-- **`system.update`** asks the `deployer` seam to deploy. The default row, `deploy-hook`, POSTs to the URL, token and ref its config builds from `${credential:REF}` templates, such as a GitHub `workflow_dispatch` or a Cloudflare Workers Builds deploy hook. The new version comes up when Cloudflare restarts the DO on the new code. The result is `{ application: "deploying" }`, and the client polls `system.version`.
-
-## Installing from the client
-
-A Worker cannot run `bun add` or load code it did not ship with. An install is therefore two steps: the owner records the wish, and a build applies it.
-
-1. The owner calls `plugin.install` or `plugin.uninstall`. The `packages` row parses an install spec at the boundary into `{ kind: "registry", name, range? }` or `{ kind: "git", url, ref? }`, and stores the list in the `kv` key `plugins.packages` together with the build id each entry was recorded under. It accepts a registry name, `name@range`, `github:owner/repo[#ref]`, `git+https://host/x.git[#ref]` and `https://host/x.git[#ref]`, and rejects every other scheme (`file:`, `link:`, `npm:`), tarball URLs, whitespace and shell characters. Both ops are idempotent, and an install cancels a pending removal of the same package. A package in this repository (`local: true`) cannot be uninstalled; disable its bundle instead.
-2. `system.update` reads that list and calls `deployer.deploy({ packages })`. `deploy-hook` puts `{ ref, inputs: { packages: JSON.stringify(packages) } }` in its POST body, which is what a GitHub `workflow_dispatch` accepts. A pipeline that cannot take a body fetches the same JSON from `GET /v1/build/packages`, behind the Worker's owner token.
-3. The pipeline runs `bun scripts/xin.ts plugin sync <file|->`, which applies `bun add` and `bun remove`, then edits `xin.profile.json` and regenerates `src/catalog.gen.ts`. Every `bun` command runs before the profile changes, so a failed removal leaves both files untouched. An empty list does nothing.
-4. When a later build boots, the `packages` row reconciles the list. An entry recorded under this build is kept. On a newer build, a registry add settles when the build has the package name (and, when the spec gives a range, the built version satisfies it), a git add settles when its resolved name is present or, without one, when the build changed, and a removal settles when the package is gone. Reconcile is idempotent, so a boot after a crash repeats it harmlessly.
-
-`plugin.packages` returns the build's `installed` packages (from the catalog's `source` values) and the `pending` list, so the client can show both what is running and what the next build will change. The full workflow is in `docs/deploy/install-pipeline.md`.
+The agent tool `plugin_manager` is its own row, `tool-plugins` (not required, off by default). It reads `list`, `catalog`, `tree` and `doctor`, and can `enable` and `configure` a row like the owner can.
 
 ## Authoring a plugin
 
@@ -217,10 +369,26 @@ export function apply(ctx: Context, config: { greeting: string }) {
 }
 ```
 
-## Trust
+```json
+{ "xin": { "plugins": { "hello": { "module": "./index.ts", "title": "Hello" } } } }
+```
 
-In-process plugins run in the Home isolate with full access to what they `inject`, as in dsh. Installing a package is the trust decision. There is no network allowlist. Secrets are scoped by the calling row's id, so one row cannot read another's values by accident, but in-process scoping is not a security boundary. Running untrusted third-party code without a redeploy needs a separate isolate behind the same services over RPC. Cloudflare's Dynamic Workers (the Worker Loader binding) provide one with no container, but only on the Workers Paid plan (checked 2026-11-07), so it is later. On the free plan, code arrives through the install pipeline: build, then deploy.
+## Slices
 
-## Later
+| Slice | Builds | Status |
+| --- | --- | --- |
+| 1 | manifest v2, catalog generation, `plugin.doctor`, mount-time `api`/`requires` checks | done |
+| 2 | presets as plugin sets, per-scope selection (Home, project, thread), per-conversation extension selection | done |
+| 3 | the market's default index is the build's own packages; the shipped presets moved to `plugins` | **this change** |
+| 4 | live inventory of what each row registered, config migrations | later |
+| 5 | per-scope host-row mounting: services, ops, routes and timers inside a project or thread | only if a plugin needs it |
+| 6 | a sandbox behind the same services | only if a concrete use case appears |
 
-- **A market index.** A read-only list of plugin packages, with an install hint, for the CLI.
+## Decisions (settled)
+
+1. **Scope granularity:** Home → project → thread. The project is the middle level, so a project and its threads share one preset until a thread overrides it.
+2. **Preset semantics:** one breaking change from `tools` to `plugins`. No dual model and no migration layer; a row that still says `tools` fails and is fixed by renaming the field.
+3. **API stability:** `api: 1` is frozen now. A breaking kernel change is `api: 2` with a deprecation window.
+4. **Naming:** the user-facing word stays "preset".
+
+Two triggers would reopen a cut: a plugin that needs a project- or thread-scoped timer, op or route justifies per-scope host mounting; a public plugin directory with unknown authors would justify a sandbox. Neither exists today.

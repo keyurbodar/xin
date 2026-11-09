@@ -13,7 +13,8 @@ import {
   type Row,
   type RowTrace,
 } from "./layers.ts"
-import { sourcePackage } from "./packages.ts"
+import { checkManifest, DEFAULT_MANIFEST, describeProblem, type Manifest, type ManifestProblem } from "./manifest.ts"
+import { sourcePackage, sourceVersion } from "./packages.ts"
 import { readOwnerPatch, writeOwnerPatch } from "./patch.ts"
 import type { Runtime } from "./types.ts"
 
@@ -24,6 +25,7 @@ export type CatalogEntry = {
   readonly required?: boolean
   readonly local?: boolean
   readonly source: string
+  readonly manifest?: Manifest
 }
 
 export type Catalog = Readonly<Record<string, CatalogEntry>>
@@ -75,6 +77,7 @@ export class XinLoader extends Loader {
   private readonly initial: readonly Row[]
   private readonly persistPatch: (patch: readonly Patch[]) => void
   private missing: Row[]
+  private blocked: Row[] = []
   private unresolved: readonly Patch[]
   private runtimeUnresolved: readonly Patch[] = []
   private mounted = false
@@ -123,7 +126,26 @@ export class XinLoader extends Loader {
   }
 
   rows(): readonly Row[] {
-    return [...this.root.data, ...this.missing]
+    return [...this.root.data, ...this.blocked, ...this.missing]
+  }
+
+  manifestOf(row: Row): Manifest {
+    return this.composition.catalog[pluginOf(row)]?.manifest ?? DEFAULT_MANIFEST
+  }
+
+  /** The plugin a mounted row belongs to, or undefined when the row is not in this tree. */
+  pluginOfRow(id: string): string | undefined {
+    const row = this.rows().find((candidate) => candidate.id === id)
+    return row === undefined ? undefined : pluginOf(row)
+  }
+
+  /** Why this build cannot mount the row, from the plugin's declaration. */
+  problemOf(row: Row): ManifestProblem | undefined {
+    if (!this.has(row)) return undefined
+    return checkManifest(this.manifestOf(row), (name) => {
+      const entry = this.composition.catalog[name]
+      return entry === undefined ? undefined : sourceVersion(entry.source)
+    })
   }
 
   ownerPatch(): Patch[] {
@@ -154,9 +176,13 @@ export class XinLoader extends Loader {
   }
 
   async state(id: string): Promise<RowState> {
+    const row = this.rows().find((candidate) => candidate.id === id)
+    if (row === undefined || this.isMissing(id)) return { kind: "missing" }
     const entry = this.store[id]
-    if (entry === undefined || this.isMissing(id)) return { kind: "missing" }
-    if (entry.disabled) return { kind: "disabled" }
+    if (entry?.disabled === true || row.disabled === true) return { kind: "disabled" }
+    const problem = this.problemOf(row)
+    if (problem !== undefined) return { kind: "failed", error: describeProblem(problem) }
+    if (entry === undefined) return { kind: "pending" }
     const fiber = entry.fiber
     if (fiber === undefined) return { kind: "pending" }
     const state = Number(fiber.state)
@@ -188,7 +214,9 @@ export class XinLoader extends Loader {
   }
 
   async mount(): Promise<void> {
-    for (const row of this.initial) if (this.has(row)) await this.create(row)
+    this.blocked = this.initial.filter((row) => this.has(row) && this.problemOf(row) !== undefined)
+    const blocked = new Set(this.blocked.map((row) => row.id))
+    for (const row of this.initial) if (this.has(row) && !blocked.has(row.id)) await this.create(row)
     await this.await()
     this.mounted = true
   }
@@ -196,7 +224,8 @@ export class XinLoader extends Loader {
   async recompose(runtime: readonly RuntimeBundle[], owner: readonly Patch[] = this.ownerPatch()): Promise<void> {
     const lower = this.lowerOf(runtime)
     const applied = applyPatches(lower.rows, owner, (message) => this.warn(message), "owner", lower.trace)
-    const present = applied.rows.filter((row) => this.has(row))
+    const blocked = applied.rows.filter((row) => this.has(row) && this.problemOf(row) !== undefined)
+    const present = applied.rows.filter((row) => this.has(row) && !blocked.includes(row))
     const missing = applied.rows.filter((row) => !this.has(row))
     const mountedRows = [...this.root.data]
     this.quiet = true
@@ -213,6 +242,7 @@ export class XinLoader extends Loader {
     this.lowerRows = lower.rows
     this.lowerTrace = lower.trace
     this.runtimeBundles = runtime.filter((bundle) => !this.compiled.has(bundle.package))
+    this.blocked = blocked
     this.missing = missing
     this.unresolved = applied.unresolved
     this.rowTrace = applied.trace

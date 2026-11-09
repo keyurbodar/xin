@@ -4,7 +4,7 @@ import type { Context } from "@deepseek-ai/cordis"
 import { OpRejected } from "../ops.ts"
 import type { Manager } from "./manager.ts"
 
-const READS = ["list", "catalog", "tree"] as const
+const READS = ["list", "catalog", "tree", "doctor"] as const
 const ACTIONS = [...READS, "enable", "configure"] as const
 
 const text = (value: unknown, isError = false) => ({
@@ -19,7 +19,7 @@ function pluginManagerTool(manager: Manager): Extension {
       defineTool({
         name: "plugin_manager",
         description:
-          "Inspect and change Xin's plugin rows: list, catalog, tree, enable {id, enabled}, configure {id, config}. Changes apply live; tell the owner what you changed.",
+          "Inspect and change Xin's plugin rows: list, catalog, tree, doctor, enable {id, enabled}, configure {id, config}. Changes apply live; tell the owner what you changed.",
         parameters: obj({
           action: oneOf(ACTIONS),
           id: opt(str({ minLength: 1 })),
@@ -35,6 +35,8 @@ function pluginManagerTool(manager: Manager): Extension {
                 return text(manager.catalog())
               case "tree":
                 return text(manager.tree())
+              case "doctor":
+                return text(await manager.doctor())
               case "enable":
                 if (id === undefined || enabled === undefined)
                   return text({ error: "enable needs id and enabled" }, true)
