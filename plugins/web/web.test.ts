@@ -4,7 +4,7 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { respond } from "../../test/plugins/m8.ts"
-import { fresh, turn } from "../../test/support.ts"
+import { addThreads, cmd, fresh, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { extractHtml, parseSearchResults, publicUrl } from "./web.ts"
 
@@ -30,6 +30,15 @@ const PAGE_HTML = `<!doctype html>
     <p>Second line</p>
   </body>
 </html>`
+
+const fakeFetch = (async (input: Parameters<typeof fetch>[0]) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+  if (url.startsWith("https://html.duckduckgo.com/html/"))
+    return new Response(SEARCH_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
+  if (url === "https://example.com/page")
+    return new Response(PAGE_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
+  return new Response("not found", { status: 404 })
+}) as typeof fetch
 
 describe("web parsing", () => {
   it("reads DuckDuckGo anchors, snippets and redirect URLs", () => {
@@ -88,14 +97,7 @@ const toolTexts = (home: Home, conversationId: ConversationId): Promise<string[]
 describe("web tools", () => {
   it("searches and fetches through the model-facing tools", async () => {
     const original = globalThis.fetch
-    globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
-      if (url.startsWith("https://html.duckduckgo.com/html/"))
-        return new Response(SEARCH_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
-      if (url === "https://example.com/page")
-        return new Response(PAGE_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
-      return new Response("not found", { status: 404 })
-    }) as typeof fetch
+    globalThis.fetch = fakeFetch
     try {
       const stub = fresh()
       respond([
@@ -110,6 +112,42 @@ describe("web tools", () => {
       const root = await runInDurableObject(stub, async (home: Home) => (await home.root()).id)
       const texts = await runInDurableObject(stub, (home: Home) => toolTexts(home, root))
       expect(texts.some((text) => text.includes("Example Page"))).toBe(true)
+      expect(texts.some((text) => text.includes("One & two"))).toBe(true)
+    } finally {
+      globalThis.fetch = original
+    }
+  }, 20_000)
+
+  it("offers the same web tools to a delegated thread", async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = fakeFetch
+    try {
+      const stub = fresh()
+      const created = await cmd(stub, "web-thread-project", "project.create", {
+        slug: "web-thread",
+        name: "Web thread",
+      })
+      expect(created.ok, JSON.stringify(created)).toBe(true)
+      const project = created.result as { id: string }
+      const [thread] = await addThreads(stub, project.id, ["web thread"])
+      if (thread === undefined) throw new Error("no thread")
+      respond([
+        () =>
+          fauxAssistantMessage([fauxToolCall("web_fetch", { url: "https://example.com/page" })], {
+            stopReason: "toolUse",
+          }),
+        () => fauxAssistantMessage("done"),
+      ])
+      await runInDurableObject(stub, async (home: Home) => {
+        const conversation = await home.harness.conversation(thread.id, BACKGROUND_CONTEXT)
+        if (conversation === undefined) throw new Error("thread conversation disappeared")
+        await conversation.submit(
+          { type: "input", content: "read the page", requestId: "web-thread-1" },
+          BACKGROUND_CONTEXT,
+        )
+        await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+      })
+      const texts = await runInDurableObject(stub, (home: Home) => toolTexts(home, thread.id))
       expect(texts.some((text) => text.includes("One & two"))).toBe(true)
     } finally {
       globalThis.fetch = original
