@@ -3,7 +3,7 @@
 **Date:** 2026-11-09
 **Tree:** `a5d4716` (this checkout is shallow; the history available here is one commit)
 **Scope:** backend and agentic behaviour only. The web client is out of scope.
-**Method:** read the source, contracts, migrations, tests and `docs/plan/`. The current-state pass was code-only; the follow-up isolation, web and MCP slices installed dependencies and ran the repo gate. `fmt`, `lint`, `types`, `test` and `bundle` all pass. The full test run is 64 files passed, 1 skipped; 441 tests passed, 15 skipped. Statements about behaviour cite the code that implements it. Where the spec and code disagree, the disagreement is called out in [Spec vs code](#spec-vs-code).
+**Method:** read the source, contracts, migrations, tests and `docs/plan/`. The current-state pass was code-only; the follow-up isolation, web, MCP and git slices installed dependencies and ran the repo gate. `fmt`, `lint`, `types`, `test` and `bundle` all pass. The full test run is 65 files passed, 1 skipped; 444 tests passed, 15 skipped. Statements about behaviour cite the code that implements it. Where the spec and code disagree, the disagreement is called out in [Spec vs code](#spec-vs-code).
 
 Status legend:
 
@@ -18,7 +18,7 @@ Status legend:
 - The strongest design decision is the storage split: anything that must commit with a transcript is a pi document; everything outside pi's commit is a host table written through the same operation queue. The derived idempotency keys make replay the default recovery strategy rather than an afterthought.
 - The weakest area for the stated goal was isolation and policy. The three isolation gaps that mattered most are now closed: a thread's file access is project-scoped, a child cannot read its siblings, and an agent can change the model only of itself or a thread in its own project. No approval gate, permission gate, sandbox or click-through was added.
 - The plugin ecosystem is architecturally ahead of its surface. Rows, bundles, runtime bundles, market and an install pipeline exist, but there is no sandbox, no prompt/skill contribution row, no signature check, and code still requires a build and deploy.
-- Agentic breadth is still narrow, but the first missing capability is now real: `web_search` and `web_fetch` read the public web through the job wrapper, and MCP now exposes resources and prompts as well as tools. There is no code execution, browser or git. The deliberate "no code execution" rule is implemented, not merely documented.
+- Agentic breadth is still narrow, but the missing lookup capabilities are now real: `web_search` and `web_fetch` read the public web, MCP exposes resources and prompts as well as tools, and `git_log`/`git_diff`/`git_show`/`git_blame` read a project repository. There is no code execution or browser. The deliberate "no code execution" rule is implemented, not merely documented.
 
 ## System shape and entry points
 
@@ -152,8 +152,9 @@ The `plugins` host table created by migration 2 is not read or written anywhere 
 | 27 | Presets | Named tool-row allowlists, per-conversation record, live definitions, blank-conversation selection, thread inheritance. | `plugins/presets/presets.ts:85` | Solid |
 | 28 | Observability | `system.version`, `system.metrics`, `system.logs`, `GET /v1/status`; in-memory log ring. | `src/kernel/system.ts`, `src/kernel/logs.ts` | Partial |
 | 29 | Security | Owner token + rotation, KEK sealing, named credentials, tool-output redaction, `/me` and project-scoped file access. | `src/kernel/secrets.ts`, `src/kernel/redaction.ts`, `src/worker.ts`, `plugins/files/files.ts` | Partial |
-| 30 | Tests | 65 test files, about 11.7k lines, real Worker/DO with `vitest-pool-workers`, faux provider by default, live test opt-in. | `src/**/*.test.ts`, `plugins/**/*.test.ts`, `test/` | Solid in tree |
+| 30 | Tests | 66 test files, about 11.9k lines, real Worker/DO with `vitest-pool-workers`, faux provider by default, live test opt-in. | `src/**/*.test.ts`, `plugins/**/*.test.ts`, `test/` | Solid in tree |
 | 31 | Web | `web_search` over DuckDuckGo HTML and `web_fetch` over public http(s); both run as jobs and return text, never files. | `plugins/web/*` | Solid |
+| 32 | Git | Read-only `git_log`, `git_show`, `git_diff` and `git_blame` over a project's GitHub repository; project-scoped, no write or push. | `plugins/git/*` | Solid, GitHub only |
 
 ## Plugin and extension story
 
@@ -218,7 +219,7 @@ In-process plugins run in the Home isolate with full access to the services they
 
 Ordered by what blocks the Space's three goals: a better backend/agentic experience, better capabilities, and a best-in-class plugin ecosystem.
 
-> **Closed in this change (2026-11-09):** the three isolation gaps below are fixed. The regression tests are `confines a thread to its own project for writes and reads` and `blocks a thread's pi write outside its project` (`plugins/files/files.test.ts`), `confines an agent's model changes to itself or its own project's threads` (`plugins/models/models.test.ts`), and `lets a thread see itself but not its siblings` plus `does not offer a delegated thread its siblings or the coordinator's thread tools` (`plugins/orchestrator/orchestrator.test.ts`, `plugins/orchestrator/tools.test.ts`). The web slice is also in: `web_search` and `web_fetch` are built and tested (`plugins/web/web.test.ts`). MCP now exposes read-only resources and prompts next to tools (`plugins/mcp/mcp.test.ts`).
+> **Closed in this change (2026-11-09):** the three isolation gaps below are fixed. The regression tests are `confines a thread to its own project for writes and reads` and `blocks a thread's pi write outside its project` (`plugins/files/files.test.ts`), `confines an agent's model changes to itself or its own project's threads` (`plugins/models/models.test.ts`), and `lets a thread see itself but not its siblings` plus `does not offer a delegated thread its siblings or the coordinator's thread tools` (`plugins/orchestrator/orchestrator.test.ts`, `plugins/orchestrator/tools.test.ts`). The web slice is also in: `web_search` and `web_fetch` are built and tested (`plugins/web/web.test.ts`). MCP now exposes read-only resources and prompts next to tools (`plugins/mcp/mcp.test.ts`). Git adds read-only history scoped to the project (`plugins/git/git.test.ts`).
 
 ### P0 — isolation and policy (1–3 closed in this change)
 
@@ -246,7 +247,7 @@ Ordered by what blocks the Space's three goals: a better backend/agentic experie
 ### P1 — agentic depth
 
 18. **Fixed: web search and page fetch.** `web_search` reads DuckDuckGo HTML and returns titles, URLs and snippets; `web_fetch` reads a public http(s) page and returns readable text, with loopback/private/link-local addresses, credentials and non-default ports refused. Both run through `jobs.tool` and write no files (`plugins/web/*`).
-19. **No code execution, browser, git or VPS access.** `R2Env.exec()` returns `shell_unavailable` (`src/r2env.ts`), and there are no optional plugins for bash, a sandbox, a browser or git. This is deliberate in the spec and AGENTS, but it means the agent cannot run a build, inspect a repo or drive a page today.
+19. **No code execution, browser or VPS access.** `R2Env.exec()` returns `shell_unavailable` (`src/r2env.ts`), and there are no optional plugins for bash, a sandbox, a browser or a VPS. Git history is now read-only; there is still no checkout, build or page driver.
 20. **Fixed: MCP resources and prompts.** When a server declares the capability, `tool-mcp` now installs read-only `mcp_resources`/`mcp_resource` and `mcp_prompts`/`mcp_prompt` alongside its tools; all are deferred, hidden with the row and available to threads. Sampling, elicitation and the GET stream remain absent (`plugins/mcp/mcp.ts`).
 21. **Jobs have only two callers.** `jobTool` is a good primitive (`plugins/jobs/jobs.ts:57`), but only MCP (`plugins/mcp/mcp.ts`) and web (`plugins/web/index.ts`) call it. A new slow tool must remember to wrap itself; there is no registry-level `latency` declaration or automatic wrap.
 22. **No agent-authored skills.** `skill.put` is owner-only (`plugins/skills/skills.ts:104`). The agent can load a skill but cannot create or edit one. Memory and files are the durable channels it can write; skills are owner-only.
@@ -276,13 +277,13 @@ Ordered by what blocks the Space's three goals: a better backend/agentic experie
 - **The Dreamer.** One writer, a validated output contract, a size cap, a secret-leak check and an instruction-shape check; an invalid result retries once and leaves the cursor unchanged.
 - **Bundle layering.** The owner patch is a minimal departure from lower layers, runtime bundle updates restore the previous version on failure, and a fresh install with a failing row stays installed and reports it.
 - **Market tarball handling.** Redirects refused, byte caps, sha512 integrity, gunzip, ustar, only `package/package.json` trusted.
-- **Test breadth.** 65 files and about 11.7k lines cover the host loop, ops, wire, intake, models, files, orchestrator, jobs, questions, watchdog, memory, schedules, goals, presets, MCP, market, web, plugin kernel and live runs. The live test is opt-in through `XIN_LIVE=1`.
+- **Test breadth.** 66 files and about 11.9k lines cover the host loop, ops, wire, intake, models, files, orchestrator, jobs, questions, watchdog, memory, schedules, goals, presets, MCP, market, web, git, plugin kernel and live runs. The live test is opt-in through `XIN_LIVE=1`.
 
 ## What I would do next
 
 This is judgment, not a claim about the current state.
 
-1. **Keep the isolation and web tests green.** The three isolation fixes and the two web tools are covered by regression tests; a future change that widens thread scope, child tools or the web URL policy should fail one of them.
+1. **Keep the isolation, web and git tests green.** The isolation fixes, the two web tools and the four git tools are covered by regression tests; a future change that widens thread scope, child tools, the web URL policy or the git project scope should fail one of them.
 2. **Make skills and prompts contributable rows.** That is the smallest change that turns bundles from "tool connectors" into "agent behaviour packages". The `skills.contribute` API already exists; it needs a `skill` row, a `prompt` row and tests.
 3. **Ship a default market index and a trust story.** A read-only index with a few first-party bundles, plus a signature or publisher allowlist, would make the market usable on day one.
 
