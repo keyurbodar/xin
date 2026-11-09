@@ -6,16 +6,55 @@ import {
   type FauxResponseStep,
   type TranscriptContext,
 } from "@earendil-works/pi-ai"
-import type { ModelRef } from "@earendil-works/pi-durable"
+import { configure, type ConversationId, type ModelRef } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { env, exports } from "cloudflare:workers"
 import { expect } from "vitest"
 import { M8_MODEL } from "./plugins/m8.ts"
 import type { Home } from "./worker.ts"
+import { ThreadDoc } from "../src/contracts/threaddoc.ts"
+import { WorkspaceDoc } from "../src/contracts/workspace.ts"
 
 export type Stub = DurableObjectStub<Home>
 
 export const fresh = (): Stub => env.HOME.get(env.HOME.newUniqueId())
+
+export type TestThread = { readonly id: ConversationId; readonly title: string }
+
+/** Adds thread documents to an existing project, for tests that exercise thread-scoped behaviour. */
+export async function addThreads(
+  stub: Stub,
+  projectId: string,
+  titles: readonly string[],
+  cwd?: string,
+): Promise<readonly TestThread[]> {
+  return runInDurableObject(stub, (home: Home) =>
+    home.harness.commit(async (tx) => {
+      const workspace = await tx.doc(WorkspaceDoc)
+      const project = workspace.projects[projectId]
+      if (project === undefined) throw new Error(`no project ${projectId}`)
+      const created: TestThread[] = []
+      for (const title of titles) {
+        const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } })
+        await configure(tx, conversation.id, { model: M8_MODEL, cwd: cwd ?? `/projects/${project.slug}` })
+        const doc = await tx.doc(ThreadDoc, conversation.id)
+        const now = Date.now()
+        Object.assign(doc, {
+          projectId,
+          title,
+          role: "thread",
+          status: "working",
+          run: 1,
+          beatAt: now,
+          deadlineAt: now + project.settings.deadlineMs,
+        })
+        if (!project.threadIds.includes(conversation.id)) project.threadIds.push(conversation.id)
+        created.push({ id: conversation.id, title })
+      }
+      return created
+    }, BACKGROUND_CONTEXT),
+  )
+}
 
 export type Ack = {
   readonly ok: boolean
