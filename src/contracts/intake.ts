@@ -1,4 +1,4 @@
-import type { ConversationId } from "@earendil-works/pi-durable"
+import { type ConversationId, defineDoc } from "@earendil-works/pi-durable"
 import type { BatchId } from "../ids.ts"
 import type { MessageAttachment } from "./message.ts"
 
@@ -77,6 +77,33 @@ export interface IntakeService {
   withdraw(commandId: string): Promise<boolean>
   batch(batchId: string): Promise<readonly InboundRecord[]>
 }
+
+export type IntakeStatus = "pending" | "claimed" | "done"
+
+/** One queued item. `batchId` is set when it is claimed, and `status` records the claim and the finish. */
+export type IntakeItem = {
+  readonly id: number
+  readonly target: number
+  readonly kind: InboundKind
+  readonly commandId: string
+  /** The stored content as JSON, exactly as the batch entry and its `stored` comparison expect it. */
+  readonly body: string
+  readonly clientTs: number
+  readonly firstAt: number
+  fireAt: number
+  status: IntakeStatus
+  batchId: string | null
+}
+
+export type IntakeState = { items: IntakeItem[]; nextId: number }
+
+export const IntakeDoc = defineDoc<IntakeState>({
+  kind: "xin.intake",
+  version: 1,
+  scope: "session",
+  initial: () => ({ items: [], nextId: 1 }),
+  checkpointWhen: () => false,
+})
 
 export type IntakeBatchRow =
   | {

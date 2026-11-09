@@ -28,14 +28,12 @@ async function chooseModel(stub: Stub, coordinatorId: number): Promise<void> {
 }
 
 async function fireNow(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
-const reportCount = (home: Home): Promise<number> =>
-  home.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM inbound WHERE kind = 'report'").then((row) => row?.n ?? 0)
+const reportCount = async (home: Home): Promise<number> =>
+  (await home.intake()).filter((item) => item.kind === "report").length
 
 const directEvents = (state: DurableObjectState): readonly ThreadSettled[] =>
   state.storage.kv.get<ThreadSettled[]>(DIRECT_KEY) ?? []

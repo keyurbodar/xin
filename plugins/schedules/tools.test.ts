@@ -27,8 +27,6 @@ const RRULE = "DTSTART:20990101T090000Z\nRRULE:FREQ=DAILY;BYMINUTE=0"
 
 type ToolResult = { readonly name: string; readonly text: string; readonly isError: boolean }
 
-type Inbound = { readonly body: string; readonly target: number }
-
 type Args = Record<string, string | number | boolean>
 
 const call = (name: string, args: Args): FauxResponseStep =>
@@ -76,8 +74,8 @@ async function callOn(stub: Stub, conversationId: number, step: FauxResponseStep
 
 const parse = (result: ToolResult | undefined): unknown => JSON.parse(result?.text ?? "null")
 
-const rows = (home: Home): Promise<readonly Inbound[]> =>
-  home.db.all<Inbound>("SELECT body, target FROM inbound ORDER BY id")
+const rows = async (home: Home): Promise<{ readonly body: string; readonly target: number }[]> =>
+  (await home.intake()).map((item) => ({ body: item.body, target: item.target }))
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)))
 

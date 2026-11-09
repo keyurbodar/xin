@@ -31,9 +31,7 @@ async function configure(stub: Stub, conversationId: number): Promise<void> {
 const rootId = (stub: Stub): Promise<number> => runInDurableObject(stub, async (home: Home) => (await home.root()).id)
 
 async function fireNow(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
@@ -65,10 +63,8 @@ async function toolResults(home: Home, conversationId: number): Promise<string[]
   )
 }
 
-const hasReport = (home: Home, target: number): Promise<boolean> =>
-  home.db
-    .get<{ n: number }>("SELECT COUNT(*) AS n FROM inbound WHERE kind = 'report' AND target = ?", target)
-    .then((row) => (row?.n ?? 0) > 0)
+const hasReport = async (home: Home, target: number): Promise<boolean> =>
+  (await home.intake()).some((item) => item.kind === "report" && item.target === target)
 
 const titlesOf = (project: { threads: Record<string, unknown[]> } | undefined): string[] =>
   project === undefined

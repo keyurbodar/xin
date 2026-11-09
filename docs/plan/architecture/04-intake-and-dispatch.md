@@ -2,24 +2,24 @@
 
 This section decides how inbound items are debounced and claimed as one batch, and how the host deterministically picks a dispatch mode for that batch.
 
-Read with: [02 State](./02-state.md) for the `inbound` table, [03 Commands and wire](./03-commands-and-wire.md) for the command layer, [06 Orchestration](./06-orchestration.md) for the coordinator turn a batch feeds, [10 Time](./10-time.md) for the only timer Xin owns, [11 Failures and cost](./11-failures-and-cost.md) for the crash cases.
+Read with: [02 State](./02-state.md) for the `xin.intake` document, [03 Commands and wire](./03-commands-and-wire.md) for the command layer, [06 Orchestration](./06-orchestration.md) for the coordinator turn a batch feeds, [10 Time](./10-time.md) for the only timer Xin owns, [11 Failures and cost](./11-failures-and-cost.md) for the crash cases.
 
 ## 5 · Intake: answer the burst
 
 ```mermaid
 flowchart LR
-  IN["inbound per target conv<br/>INSERT OR IGNORE on command_id<br/>fire_at = min(last+2s, first+8s)<br/>typing=on holds, still ≤ first+8s"]
+  IN["xin.intake per target conv<br/>one item per commandId, deduped on it<br/>fire_at = min(last+2s, first+8s)<br/>typing=on holds, still ≤ first+8s"]
   U["user message"] --> IN
   R["thread report"] --> IN
   Q["thread question"] --> IN
   J["job result"] --> IN
-  IN --> CL["claim at fire_at<br/>UPDATE ... SET status='claimed', batch_id=?<br/>WHERE target=? AND status='pending' RETURNING *"]
+  IN --> CL["claim at fire_at<br/>one commit: due items of the target<br/>status='claimed', batchId=?"]
   CL --> DI["dispatch (§6)<br/>one turn, many items"]
 ```
 
-Reports use the same pipe: 8 threads finishing within 2 s cost ONE coordinator turn, not 8. A question answered in the UI before its row is claimed deletes the row (t3 rule: no stale notification turns).
+The queue is one session document, `xin.intake` (§02), not a host table: `enqueue`, the claim, a listener's body rewrite and `markDone` are each one commit, so each costs one journal row instead of a table row plus its index rows. Reports use the same pipe: 8 threads finishing within 2 s cost ONE coordinator turn, not 8. A question answered in the UI before its item is claimed withdraws it (t3 rule: no stale notification turns).
 
-**Rendering a batch.** The batch becomes one `submit({type:"input", content, entry:{kind:"xin.batch", data:rows}, requestId:"batch:"+id})`. The UI renders `xin.batch` as the original bubbles. The model sees one user message with items ordered by `client_ts`:
+**Rendering a batch.** The batch becomes one `submit({type:"input", content, entry:{kind:"xin.batch", data:rows}, requestId:"batch:"+id})`. The UI renders `xin.batch` as the original bubbles. The model sees one user message with items ordered by `clientTs`:
 
 ```text
 <msg t="16:31:50">so like</msg>
@@ -41,7 +41,7 @@ The sizes come from the file index, not from the client. A model that takes imag
 
 This is the same text whether the coordinator is idle (it starts a turn) or busy (it steers).
 
-**Crash safety**: on boot, any `pending` row with `fire_at < now` fires at once, and any `claimed` row whose batch has no pi submission is resubmitted with the same `requestId`, which pi dedupes. Rows become `done` after the submission settles, and are pruned after 7 days.
+**Crash safety**: one snapshot of the document drives the boot scan. Any `pending` item with `fireAt < now` fires at once, and any `claimed` item whose batch has no pi submission is resubmitted with the same `requestId`, which pi dedupes. Items become `done` after the submission settles, and `done` items are pruned at boot only, once they are 7 days old: `intake.batch` still answers `message.retry` for them, so they cannot be deleted at finish. The batch ledger in `kv` is what stops a replayed claimed batch from running the `intake/batch` waterfall twice.
 
 ## 6 · Dispatch: what a batch does to a running turn
 

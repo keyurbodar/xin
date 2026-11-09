@@ -8,21 +8,19 @@ import { FAUX_MODEL, type Home } from "./worker.ts"
 const context = BACKGROUND_CONTEXT
 
 async function fireNow(stub: ReturnType<typeof fresh>): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
 const idle = (stub: ReturnType<typeof fresh>): Promise<void> =>
   runInDurableObject(stub, (home: Home) => home.harness.waitForIdle(context))
 
-const inboundDone = async (home: Home): Promise<boolean> => {
-  const rows = await home.db.all<{ status: string }>("SELECT status FROM inbound")
-  return rows.length > 0 && rows.every((row) => row.status === "done")
+const intakeDone = async (home: Home): Promise<boolean> => {
+  const items = await home.intake()
+  return items.length > 0 && items.every((item) => item.status === "done")
 }
 
-const BASELINE = { written: 18, read: 34 }
+const BASELINE = { written: 5, read: 10 }
 const TOLERANCE = 5
 
 /**
@@ -47,7 +45,7 @@ describe("billed rows", () => {
       const sent = await cmd(stub, `rows-message-${index}`, "message.send", { text })
       expect(sent.ok, JSON.stringify(sent)).toBe(true)
       await fireNow(stub)
-      await eventually(stub, (home: Home) => inboundDone(home))
+      await eventually(stub, (home: Home) => intakeDone(home))
       await idle(stub)
       const billed = await meter.snapshot()
       console.warn(`message ${index + 1} and its reply: ${JSON.stringify(billed)}`)

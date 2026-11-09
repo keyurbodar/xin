@@ -60,9 +60,7 @@ async function until<T>(stub: Stub, label: string, check: () => Promise<T | unde
   while (Date.now() < deadline) {
     const found = await check()
     if (found !== undefined) return found
-    await runInDurableObject(stub, (home: Home) =>
-      home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-    )
+    await runInDurableObject(stub, (home: Home) => home.fireIntake())
     await runDurableObjectAlarm(stub)
     await new Promise((resolve) => setTimeout(resolve, 2_000))
   }

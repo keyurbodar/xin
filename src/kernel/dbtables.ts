@@ -5,7 +5,6 @@ export const TABLE_OWNERS: Readonly<Record<string, string>> = {
   kv: KERNEL_OWNER,
   receipts: KERNEL_OWNER,
   plugins: KERNEL_OWNER,
-  inbound: "intake",
   credentials: "models",
   files: "files",
   notes: "memory",

@@ -34,9 +34,7 @@ async function send(stub: Stub, id: string, text: string, attachments: readonly 
 }
 
 async function fireNow(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 

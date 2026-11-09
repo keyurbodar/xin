@@ -1,6 +1,5 @@
-import { copyJson, type JsonValue } from "@earendil-works/chord"
+import { copyJson, type Draft, type JsonValue } from "@earendil-works/chord"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import { type Conversation, type Harness, LiveDoc, type Wake } from "@earendil-works/pi-durable"
 import {
   type InboundBody,
@@ -11,6 +10,8 @@ import {
   type IntakeBatch,
   type IntakeBatchResult,
   type IntakeBatchRow,
+  IntakeDoc,
+  type IntakeItem,
   type IntakeService,
   parseInboundBody,
 } from "../../src/contracts/intake.ts"
@@ -24,21 +25,6 @@ const context = BACKGROUND_CONTEXT
 const DEBOUNCE_MS = 2_000
 const WINDOW_MS = 8_000
 const RETENTION_MS = 7 * 24 * 60 * 60_000
-
-type InboundStatus = "pending" | "claimed" | "done"
-
-type InboundRow = {
-  readonly id: number
-  readonly target: number
-  readonly kind: InboundKind
-  readonly command_id: string
-  readonly body: string
-  readonly client_ts: number
-  readonly first_at: number
-  readonly fire_at: number
-  readonly status: InboundStatus
-  readonly batch_id: string | null
-}
 
 type BatchEntryRow = {
   readonly id: number
@@ -58,7 +44,6 @@ export type BatchLedger = {
 }
 
 export type IntakeHost = {
-  readonly db: SqliteDatabase
   readonly harness: Harness
   readonly ledger: BatchLedger
   readBytes(path: string): Promise<Uint8Array | undefined>
@@ -81,9 +66,9 @@ export function createGateway(host: IntakeHost): Gateway {
   const replay: BatchId[] = []
   return {
     intake: {
-      enqueue: (draft) => enqueue(host.db, draft),
+      enqueue: (draft) => enqueue(host, draft),
       withdraw: (commandId) => withdraw(host, commandId),
-      batch: (batchId) => batchRows(host.db, batchId),
+      batch: (batchId) => batchRows(host, batchId),
     },
     start: () => start(host, replay),
     due: () => due(host, replay),
@@ -92,28 +77,38 @@ export function createGateway(host: IntakeHost): Gateway {
   }
 }
 
-export async function enqueue(db: SqliteDatabase, draft: InboundDraft, now = Date.now()): Promise<boolean> {
-  const pending = await db.get<{ first: number | null }>(
-    "SELECT MIN(first_at) AS first FROM inbound WHERE target = ? AND status = 'pending'",
-    draft.target,
-  )
-  const first = pending?.first ?? now
-  const fireAt = Math.min(now + DEBOUNCE_MS, first + WINDOW_MS)
-  const inserted = await db.all<{ id: number }>(
-    "INSERT OR IGNORE INTO inbound (target, kind, command_id, body, client_ts, first_at, fire_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending') RETURNING id",
-    draft.target,
-    draft.kind,
-    draft.commandId,
-    JSON.stringify(contentOf(draft)),
-    draft.clientTs ?? now,
-    first,
-    fireAt,
-  )
-  if (inserted.length === 0) return false
-  // The row just inserted already carries `fireAt`; only earlier pending rows of this target need moving.
-  if (pending?.first !== null && pending?.first !== undefined)
-    await db.run("UPDATE inbound SET fire_at = ? WHERE target = ? AND status = 'pending'", fireAt, draft.target)
-  return true
+async function snapshot(host: Pick<IntakeHost, "harness">): Promise<readonly IntakeItem[]> {
+  const state = await host.harness.snapshot(IntakeDoc, context)
+  return state?.items ?? []
+}
+
+export async function enqueue(
+  host: Pick<IntakeHost, "harness">,
+  draft: InboundDraft,
+  now = Date.now(),
+): Promise<boolean> {
+  return host.harness.commit(async (tx) => {
+    const doc = await tx.doc(IntakeDoc)
+    if (doc.items.some((item) => item.commandId === draft.commandId)) return false
+    const pending = doc.items.filter((item) => item.target === draft.target && item.status === "pending")
+    const first = pending.length === 0 ? now : Math.min(...pending.map((item) => item.firstAt))
+    const fireAt = Math.min(now + DEBOUNCE_MS, first + WINDOW_MS)
+    for (const item of pending) item.fireAt = fireAt
+    doc.items.push({
+      id: doc.nextId,
+      target: draft.target,
+      kind: draft.kind,
+      commandId: draft.commandId,
+      body: JSON.stringify(contentOf(draft)),
+      clientTs: draft.clientTs ?? now,
+      firstAt: first,
+      fireAt,
+      status: "pending",
+      batchId: null,
+    })
+    doc.nextId += 1
+    return true
+  }, context)
 }
 
 export async function resolve(host: IntakeHost, conv: number | undefined): Promise<ConversationId> {
@@ -129,41 +124,55 @@ export async function stop(host: IntakeHost, conv: number | undefined): Promise<
 }
 
 async function withdraw(host: IntakeHost, commandId: string): Promise<boolean> {
-  const withdrawn = await host.db.runCounted(
-    "DELETE FROM inbound WHERE command_id = ? AND status = 'pending'",
-    commandId,
-  )
-  if (withdrawn > 0) await host.arm()
-  return withdrawn > 0
+  const withdrawn = await host.harness.commit(async (tx) => {
+    const doc = await tx.doc(IntakeDoc)
+    const index = doc.items.findIndex((item) => item.commandId === commandId && item.status === "pending")
+    if (index === -1) return false
+    doc.items.splice(index, 1)
+    return true
+  }, context)
+  if (withdrawn) await host.arm()
+  return withdrawn
 }
 
-async function batchRows(db: SqliteDatabase, batchId: string): Promise<readonly InboundRecord[]> {
-  const rows = await db.all<InboundRow>("SELECT * FROM inbound WHERE batch_id = ? ORDER BY client_ts, id", batchId)
-  return rows.map(recordOf)
+async function batchRows(host: IntakeHost, batchId: string): Promise<readonly InboundRecord[]> {
+  return (await snapshot(host))
+    .filter((item) => item.batchId === batchId)
+    .toSorted(compareItems)
+    .map(recordOf)
 }
 
 async function start(host: IntakeHost, replay: BatchId[]): Promise<void> {
-  await host.db.run("DELETE FROM inbound WHERE status = 'done' AND fire_at < ?", Date.now() - RETENTION_MS)
-  const claimed = await host.db.all<{ batch_id: string }>(
-    "SELECT DISTINCT batch_id FROM inbound WHERE status = 'claimed' AND batch_id IS NOT NULL ORDER BY batch_id",
+  const items = await snapshot(host)
+  const cutoff = Date.now() - RETENTION_MS
+  const expired = (item: IntakeItem): boolean => item.status === "done" && item.fireAt < cutoff
+  if (items.some(expired)) {
+    await host.harness.commit(async (tx) => {
+      const doc = await tx.doc(IntakeDoc)
+      for (let index = doc.items.length - 1; index >= 0; index -= 1) {
+        const item = doc.items[index]
+        if (item !== undefined && expired(item)) doc.items.splice(index, 1)
+      }
+    }, context)
+  }
+  const claimed = new Set<string>()
+  for (const item of items) if (item.status === "claimed" && item.batchId !== null) claimed.add(item.batchId)
+  for (const batchId of [...claimed].toSorted()) replay.push(batchId as BatchId)
+  await prune(
+    host,
+    items.filter((item) => !expired(item)),
   )
-  replay.push(...claimed.map((row) => row.batch_id as BatchId))
-  await prune(host)
 }
 
-async function prune(host: IntakeHost): Promise<void> {
-  for (const batchId of host.ledger.ids()) {
-    const live = await host.db.get<{ id: number }>("SELECT id FROM inbound WHERE batch_id = ? LIMIT 1", batchId)
-    if (live === undefined) host.ledger.forget(batchId)
-  }
+async function prune(host: IntakeHost, items: readonly IntakeItem[]): Promise<void> {
+  const live = new Set(items.flatMap((item) => (item.batchId === null ? [] : [item.batchId])))
+  for (const batchId of host.ledger.ids()) if (!live.has(batchId)) host.ledger.forget(batchId)
 }
 
 async function due(host: IntakeHost, replay: readonly BatchId[]): Promise<number | undefined> {
   if (replay.length > 0) return Date.now()
-  const row = await host.db.get<{ at: number | null }>(
-    "SELECT MIN(fire_at) AS at FROM inbound WHERE status = 'pending'",
-  )
-  return row?.at ?? undefined
+  const pending = (await snapshot(host)).filter((item) => item.status === "pending")
+  return pending.length === 0 ? undefined : Math.min(...pending.map((item) => item.fireAt))
 }
 
 async function fire(host: IntakeHost, replay: BatchId[], now: number): Promise<void> {
@@ -172,10 +181,7 @@ async function fire(host: IntakeHost, replay: BatchId[], now: number): Promise<v
 }
 
 async function resume(host: IntakeHost, batchId: BatchId): Promise<void> {
-  const rows = await host.db.all<InboundRow>(
-    "SELECT * FROM inbound WHERE batch_id = ? AND status = 'claimed' ORDER BY client_ts, id",
-    batchId,
-  )
+  const rows = (await snapshot(host)).filter((item) => item.batchId === batchId && item.status === "claimed")
   const target = rows[0]?.target
   if (target === undefined) {
     host.ledger.forget(batchId)
@@ -214,36 +220,35 @@ async function resume(host: IntakeHost, batchId: BatchId): Promise<void> {
 async function typing(host: IntakeHost, conversation: ConversationId, on: boolean): Promise<void> {
   if (!on) return
   const now = Date.now()
-  const pending = await host.db.get<{ first: number | null }>(
-    "SELECT MIN(first_at) AS first FROM inbound WHERE target = ? AND status = 'pending'",
-    conversation,
-  )
-  if (pending?.first === null || pending?.first === undefined) return
-  const fireAt = Math.min(now + DEBOUNCE_MS, pending.first + WINDOW_MS)
-  const held = await host.db.runCounted(
-    "UPDATE inbound SET fire_at = ? WHERE target = ? AND status = 'pending'",
-    fireAt,
-    conversation,
-  )
-  if (held > 0) await host.arm()
+  const pending = (await snapshot(host)).filter((item) => item.target === conversation && item.status === "pending")
+  if (pending.length === 0) return
+  const fireAt = Math.min(now + DEBOUNCE_MS, Math.min(...pending.map((item) => item.firstAt)) + WINDOW_MS)
+  await host.harness.commit(async (tx) => {
+    const doc = await tx.doc(IntakeDoc)
+    for (const item of doc.items) {
+      if (item.target === conversation && item.status === "pending") item.fireAt = fireAt
+    }
+  }, context)
+  await host.arm()
 }
 
 async function fireDue(host: IntakeHost, now: number): Promise<void> {
-  const targets = await host.db.all<{ target: number }>(
-    "SELECT DISTINCT target FROM inbound WHERE status = 'pending' AND fire_at <= ?",
-    now,
-  )
-  for (const { target } of targets) await dispatch(host, target, now)
+  const targets = new Set<number>()
+  for (const item of await snapshot(host)) if (item.status === "pending" && item.fireAt <= now) targets.add(item.target)
+  for (const target of targets) await dispatch(host, target, now)
 }
 
 async function dispatch(host: IntakeHost, target: number, now: number): Promise<void> {
   const batchId = crypto.randomUUID() as BatchId
-  const rows = await host.db.all<InboundRow>(
-    "UPDATE inbound SET status = 'claimed', batch_id = ? WHERE target = ? AND status = 'pending' AND fire_at <= ? RETURNING *",
-    batchId,
-    target,
-    now,
-  )
+  const rows = await host.harness.commit(async (tx) => {
+    const doc = await tx.doc(IntakeDoc)
+    const ready = doc.items.filter((item) => item.target === target && item.status === "pending" && item.fireAt <= now)
+    for (const item of ready) {
+      item.status = "claimed"
+      item.batchId = batchId
+    }
+    return ready.map(copyItem)
+  }, context)
   if (rows.length === 0) return
   const conversation = await host.harness.conversation(target as ConversationId, context)
   if (conversation === undefined) {
@@ -260,18 +265,20 @@ async function dispatch(host: IntakeHost, target: number, now: number): Promise<
 }
 
 async function persist(host: IntakeHost, batch: IntakeBatch): Promise<void> {
-  for (const row of batch.rows) {
-    const body = JSON.stringify(contentOfRow(row))
-    if (body !== row.stored) await host.db.run("UPDATE inbound SET body = ? WHERE id = ?", body, row.id)
-  }
-  const kept = new Set(batch.rows.map((row) => row.id))
-  const stored = await host.db.all<{ id: number }>(
-    "SELECT id FROM inbound WHERE batch_id = ? AND status = 'claimed'",
-    batch.batchId,
-  )
-  for (const row of stored) {
-    if (!kept.has(row.id)) await host.db.run("UPDATE inbound SET status = 'done' WHERE id = ?", row.id)
-  }
+  const kept = new Map(batch.rows.map((row) => [row.id, row]))
+  await host.harness.commit(async (tx) => {
+    const doc = await tx.doc(IntakeDoc)
+    for (const item of doc.items) {
+      if (item.batchId !== batch.batchId || item.status !== "claimed") continue
+      const row = kept.get(item.id)
+      if (row === undefined) {
+        item.status = "done"
+        continue
+      }
+      const body = JSON.stringify(contentOfRow(row))
+      if (body !== item.body) item.body = body
+    }
+  }, context)
   host.ledger.mark(batch.batchId)
 }
 
@@ -289,34 +296,37 @@ async function dispatchBatch(host: IntakeHost, conversation: Conversation, batch
       await announce(host, batch)
       return
     case "restart": {
-      const prior = await host.db.all<InboundRow>(
-        "SELECT * FROM inbound WHERE target = ? AND status = 'claimed' AND batch_id <> ? ORDER BY client_ts, id",
-        batch.target,
-        batch.batchId,
-      )
-      const merged = new Set(prior.flatMap((row) => (row.batch_id === null ? [] : [row.batch_id])))
-      await host.db.run(
-        "UPDATE inbound SET batch_id = ? WHERE target = ? AND status = 'claimed' AND batch_id <> ?",
-        batch.batchId,
-        batch.target,
-        batch.batchId,
-      )
-      for (const batchId of merged) host.ledger.forget(batchId)
+      const restart = await host.harness.commit(async (tx) => {
+        const doc = await tx.doc(IntakeDoc)
+        const prior: IntakeItem[] = []
+        const merged = new Set<string>()
+        for (const item of doc.items) {
+          if (item.target !== batch.target || item.status !== "claimed" || item.batchId === batch.batchId) continue
+          if (item.batchId !== null) merged.add(item.batchId)
+          prior.push(copyItem(item))
+          item.batchId = batch.batchId
+        }
+        return { rows: prior.toSorted(compareItems), merged: [...merged] }
+      }, context)
+      for (const batchId of restart.merged) host.ledger.forget(batchId)
       await conversation.abort(context)
-      const restarted = [...prior.map((row) => postOf(batchRowOf(row), row.batch_id)), ...posts]
+      const restarted = [...restart.rows.map((item) => postOf(batchRowOf(item), item.batchId)), ...posts]
       await submit(host, conversation, batch.batchId, ordered(restarted))
       await announce(host, batch)
       return
     }
     case "stop": {
-      const claimed = await host.db.all<{ batch_id: string | null }>(
-        "SELECT DISTINCT batch_id FROM inbound WHERE target = ? AND status = 'claimed'",
-        batch.target,
-      )
-      await host.db.run("UPDATE inbound SET status = 'done' WHERE target = ? AND status = 'claimed'", batch.target)
-      for (const row of claimed) {
-        if (row.batch_id !== null) host.ledger.forget(row.batch_id)
-      }
+      const merged = await host.harness.commit(async (tx) => {
+        const doc = await tx.doc(IntakeDoc)
+        const batchIds = new Set<string>()
+        for (const item of doc.items) {
+          if (item.target !== batch.target || item.status !== "claimed") continue
+          if (item.batchId !== null) batchIds.add(item.batchId)
+          item.status = "done"
+        }
+        return [...batchIds]
+      }, context)
+      for (const batchId of merged) host.ledger.forget(batchId)
       await conversation.abort(context)
       await conversation.submit({ type: "write", entry: { kind: "xin.notice", data: { text: "stopped." } } }, context)
       return
@@ -387,12 +397,15 @@ async function submit(
 }
 
 async function finish(host: IntakeHost, batchId: BatchId): Promise<void> {
-  await markDone(host.db, batchId)
+  await markDone(host, batchId)
   host.ledger.forget(batchId)
 }
 
-function markDone(db: SqliteDatabase, batchId: BatchId): Promise<void> {
-  return db.run("UPDATE inbound SET status = 'done' WHERE batch_id = ? AND status = 'claimed'", batchId)
+async function markDone(host: IntakeHost, batchId: BatchId): Promise<void> {
+  await host.harness.commit(async (tx) => {
+    const doc = await tx.doc(IntakeDoc)
+    for (const item of doc.items) if (item.batchId === batchId && item.status === "claimed") item.status = "done"
+  }, context)
 }
 
 async function conversationOf(host: IntakeHost, conv: number | undefined): Promise<Conversation> {
@@ -402,36 +415,51 @@ async function conversationOf(host: IntakeHost, conv: number | undefined): Promi
   return conversation
 }
 
-function claimedBatch(batchId: BatchId, target: ConversationId, rows: readonly InboundRow[]): IntakeBatch {
-  return { batchId, target, rows: orderedRows(rows).map(batchRowOf) }
+function copyItem(item: Draft<IntakeItem>): IntakeItem {
+  return {
+    id: item.id,
+    target: item.target,
+    kind: item.kind,
+    commandId: item.commandId,
+    body: item.body,
+    clientTs: item.clientTs,
+    firstAt: item.firstAt,
+    fireAt: item.fireAt,
+    status: item.status,
+    batchId: item.batchId,
+  }
 }
 
-function orderedRows(rows: readonly InboundRow[]): InboundRow[] {
-  return rows.toSorted((left, right) => left.client_ts - right.client_ts || left.id - right.id)
+function compareItems(left: IntakeItem, right: IntakeItem): number {
+  return left.clientTs - right.clientTs || left.id - right.id
 }
 
-function batchRowOf(row: InboundRow): IntakeBatchRow {
-  const body = bodyOf(row)
-  return row.kind === "user"
+function claimedBatch(batchId: BatchId, target: ConversationId, items: readonly IntakeItem[]): IntakeBatch {
+  return { batchId, target, rows: [...items].toSorted(compareItems).map(batchRowOf) }
+}
+
+function batchRowOf(item: IntakeItem): IntakeBatchRow {
+  const body = bodyOf(item)
+  return item.kind === "user"
     ? {
-        id: row.id,
+        id: item.id,
         kind: "user",
-        clientTs: row.client_ts,
-        commandId: row.command_id,
+        clientTs: item.clientTs,
+        commandId: item.commandId,
         text: body.text,
         attachments: body.attachments,
-        stored: row.body,
+        stored: item.body,
       }
     : {
-        id: row.id,
-        kind: row.kind,
-        clientTs: row.client_ts,
-        commandId: row.command_id,
+        id: item.id,
+        kind: item.kind,
+        clientTs: item.clientTs,
+        commandId: item.commandId,
         threadId: body.threadId,
         title: body.title,
         status: body.status,
         text: body.text,
-        stored: row.body,
+        stored: item.body,
       }
 }
 
@@ -451,18 +479,18 @@ function contentOfRow(row: IntakeBatchRow): InboundContent {
     : { kind: row.kind, threadId: row.threadId, title: row.title, status: row.status, text: row.text }
 }
 
-function recordOf(row: InboundRow): InboundRecord {
-  const body = bodyOf(row)
+function recordOf(item: IntakeItem): InboundRecord {
+  const body = bodyOf(item)
   return {
-    id: row.id,
-    target: row.target as ConversationId,
-    kind: row.kind,
-    commandId: row.command_id,
-    clientTs: row.client_ts,
+    id: item.id,
+    target: item.target as ConversationId,
+    kind: item.kind,
+    commandId: item.commandId,
+    clientTs: item.clientTs,
     content:
-      row.kind === "user"
+      item.kind === "user"
         ? { kind: "user", text: body.text, attachments: body.attachments }
-        : { kind: row.kind, threadId: body.threadId, title: body.title, status: body.status, text: body.text },
+        : { kind: item.kind, threadId: body.threadId, title: body.title, status: body.status, text: body.text },
   }
 }
 
@@ -501,8 +529,8 @@ function entryRow(post: Post): BatchEntryRow {
   }
 }
 
-function bodyOf(row: InboundRow): InboundBody {
-  return parseInboundBody(row.body)
+function bodyOf(item: IntakeItem): InboundBody {
+  return parseInboundBody(item.body)
 }
 
 function escape(text: string): string {

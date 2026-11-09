@@ -1,14 +1,14 @@
 # Intake and dispatch
 
-`message.send` lands a row in `inbound`. Rows for one conversation debounce (fire 2 s after the last, at most 8 s after the first; typing holds them) and are claimed in one `UPDATE ... RETURNING` as one batch, submitted as one pi input with `requestId "batch:<id>"`. The host picks start, steer, restart or stop from pi's live state (`plugins/intake/dispatch.ts`).
+`message.send` lands one item in the session document `xin.intake` (`{items, nextId}`). Items for one conversation debounce (fire 2 s after the last, at most 8 s after the first; typing holds them) and are claimed in one commit as one batch, submitted as one pi input with `requestId "batch:<id>"`. The host picks start, steer, restart or stop from pi's live state (`plugins/intake/dispatch.ts`).
 
 ## Sub-features
 
-- `message.send {conv?, text, clientTs?, attachments?}`: a repeated command id inserts once. Each attachment is `{path, name, type, size?}` pointing at a `PUT /files/<path>` the Worker already stored; the turn names every file in an `<attachments>` block and, when the conversation's model takes images, sends each image under 5 MB as an `image` part.
-- `message.withdraw {commandId}`: removes a still-pending row.
+- `message.send {conv?, text, clientTs?, attachments?}`: a repeated command id answers `accepted: true` from its existing item and inserts nothing (no receipt row; the item is the receipt). Each attachment is `{path, name, type, size?}` pointing at a `PUT /files/<path>` the Worker already stored; the turn names every file in an `<attachments>` block and, when the conversation's model takes images, sends each image under 5 MB as an `image` part.
+- `message.withdraw {commandId}`: removes a still-pending item.
 - `conv.stop {conv?}`: aborts the running turn.
 - Socket `{t:"typing", conv, on:true}`: holds the batch, never past first+8 s.
-- Crash safety: on open, due pending rows fire and claimed rows resubmit with the same requestId.
+- Crash safety: on open, due pending items fire and claimed items resubmit with the same requestId; done items stay 7 days so `message.retry` can still read their body.
 - `notify.prefs` / `notify.set {waiting?, finished?, failed?, spend?, schedule?}`: which push kinds are delivered (`schedule` is off by default); `announce` skips a disabled kind before it reaches `push.notify`. `spend` covers the daily and cap alerts from the models plugin.
 - `notify.quiet` / `notify.quiet.set {enabled?, start?, end?}`: minutes since UTC midnight. While the window is on, a report waits until it ends; a question waits until it has been paused two hours or the window ends, whichever comes first. Held notifications live in kv `notify.held` and the clock wakes for the earliest one.
 - `push.list` / `push.unsubscribe {endpoint}`: the subscribed browsers as `[{endpoint, origin}]`, and removal of one.
@@ -26,7 +26,7 @@ Typing three quick messages gets one reply. "stop" while it answers stops it.
 ```bash
 S=.claude/skills/verify-xin/xin.sh
 $S call POST /v1/cmd '{"id":"vm-1","op":"message.send","args":{"text":"hello","clientTs":1}}'   # accepted:true
-$S call POST /v1/cmd '{"id":"vm-1","op":"message.send","args":{"text":"hello","clientTs":1}}'   # same ack (receipt)
+$S call POST /v1/cmd '{"id":"vm-1","op":"message.send","args":{"text":"hello","clientTs":1}}'   # same ack (the item dedupes)
 $S call POST /v1/cmd '{"id":"vm-2","op":"message.send","args":{"text":"again"}}'
 $S call POST /v1/cmd '{"id":"vm-3","op":"message.withdraw","args":{"commandId":"vm-2"}}'      # withdrawn:true
 ```

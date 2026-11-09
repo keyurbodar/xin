@@ -35,9 +35,7 @@ async function send(stub: Stub, id: string, coordinatorId: number, text: string)
 }
 
 async function fireNow(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
@@ -57,10 +55,12 @@ const threadOf = async (home: Home, projectId: string): Promise<ThreadRow | unde
   return found[0]
 }
 
-type ReportRow = { command_id: string; status: string; body: string }
+type ReportRow = { commandId: string; status: string; body: string }
 
-const reports = (home: Home): Promise<ReportRow[]> =>
-  home.db.all<ReportRow>("SELECT command_id, status, body FROM inbound WHERE kind = 'report' ORDER BY id")
+const reports = async (home: Home): Promise<ReportRow[]> =>
+  (await home.intake())
+    .filter((item) => item.kind === "report")
+    .map((item) => ({ commandId: item.commandId, status: item.status, body: item.body }))
 
 function statusOf(body: string): string {
   const value: unknown = JSON.parse(body)
@@ -108,13 +108,13 @@ describe("watchdog", () => {
     await restartWatchdog(stub)
 
     await eventually(stub, async (home: Home) =>
-      (await reports(home)).some((row) => row.command_id === `report:${thread.id}:1`),
+      (await reports(home)).some((row) => row.commandId === `report:${thread.id}:1`),
     )
     const found = await runInDurableObject(stub, async (home: Home) => {
       const all = await reports(home)
       return {
-        row: all.find((report) => report.command_id === `report:${thread.id}:1`),
-        count: all.filter((report) => report.command_id === `report:${thread.id}:1`).length,
+        row: all.find((report) => report.commandId === `report:${thread.id}:1`),
+        count: all.filter((report) => report.commandId === `report:${thread.id}:1`).length,
         doc: await home.harness.snapshot(ThreadDoc, thread.id as ConversationId, context),
       }
     })
@@ -127,7 +127,7 @@ describe("watchdog", () => {
     await runDurableObjectAlarm(stub)
     const again = await runInDurableObject(stub, async (home: Home) => {
       const rows = await reports(home)
-      return rows.filter((report) => report.command_id === `report:${thread.id}:1`).length
+      return rows.filter((report) => report.commandId === `report:${thread.id}:1`).length
     })
     expect(again).toBe(1)
   }, 30_000)

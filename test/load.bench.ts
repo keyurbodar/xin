@@ -65,12 +65,10 @@ const journalRows = (stub: Stub): Promise<number> =>
 
 type Window = { readonly plumbing: Counts; readonly harness: Counts }
 
-/** The synthetic fire-at write is test plumbing, not a message's cost; the alarm window is the harness's. */
+/** Moving the document's `fireAt` is test plumbing, not a message's cost; the alarm window is the harness's. */
 async function fireNow(stub: Stub): Promise<Window> {
   const before = await meter(stub)
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   const plumbing = delta(await meter(stub), before).total
   const alarmBefore = await meter(stub)
   await runDurableObjectAlarm(stub)
@@ -217,14 +215,15 @@ describe("load", () => {
         .map(([name, counts]) => [name, `${counts.reads}r/${counts.writes}w`] as [string, string]),
     }
     // Bounds from the measurement below, on a tree with no other load: 100 threads, 300 messages, half of them with
-    // two tool calls. Writes are ~9 in 10 rows from pi's own commits, so a Xin regression shows here in the small part.
+    // two tool calls. Almost every written row is a journal row now, so a Xin regression still shows here in the small
+    // part: the intake document's three commits add two rows each, one stored and one truncated.
     const within = (name: string, value: number, bound: number): void => {
       expect(value, `${name} is ${value}, over ${bound}\n${JSON.stringify(report, null, 2)}`).toBeLessThanOrEqual(bound)
     }
     expect(report.coldBoot.reads, "cold boot replay measured no reads").toBeGreaterThan(0)
-    within("calls per message", report.turnPerMessage.calls, 75)
-    within("writes per message", report.turnPerMessage.writes, 36)
-    within("reads per message", report.turnPerMessage.reads, 64)
+    within("calls per message", report.turnPerMessage.calls, 65)
+    within("writes per message", report.turnPerMessage.writes, 22)
+    within("reads per message", report.turnPerMessage.reads, 32)
     within("calls per cold turn", report.coldTurn.calls, 200)
     within("reads per cold turn", report.coldTurn.reads, 104)
     within("writes per cold turn", report.coldTurn.writes, 64)

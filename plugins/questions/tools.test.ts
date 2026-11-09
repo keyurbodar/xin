@@ -49,9 +49,7 @@ async function askThread(stub: ReturnType<typeof fresh>, slug: string): Promise<
   })
   const sent = await cmd(stub, `${slug}-1`, "message.send", { conv: project.coordinatorId, text: "delegate ask" })
   expect(sent.ok, JSON.stringify(sent)).toBe(true)
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
   await eventually(stub, async (home: Home) => (await threadOf(home, project.id))?.status === "waiting")
   const thread = await runInDurableObject(stub, (home: Home) => threadOf(home, project.id))

@@ -14,7 +14,7 @@ const context = BACKGROUND_CONTEXT
 type Stub = ReturnType<typeof fresh>
 type ThreadRow = { readonly id: number; readonly title: string; readonly status: string }
 type Batch = { readonly rows: readonly unknown[]; readonly text: string }
-type ReportRow = { readonly command_id: string; readonly status: string }
+type ReportRow = { readonly commandId: string; readonly status: string }
 
 async function makeProject(stub: Stub, slug: string): Promise<{ id: string; coordinatorId: number; spaceId: string }> {
   const created = await cmd(stub, `create-${slug}`, "project.create", { slug, name: slug })
@@ -36,9 +36,7 @@ async function send(stub: Stub, id: string, coordinatorId: number, text: string)
 }
 
 async function fireNow(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
@@ -52,11 +50,13 @@ function textOf(message: { readonly content: unknown }): string {
     .join("")
 }
 
-const reportCount = (home: Home): Promise<number> =>
-  home.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM inbound WHERE kind = 'report'").then((row) => row?.n ?? 0)
+const reportCount = async (home: Home): Promise<number> =>
+  (await home.intake()).filter((item) => item.kind === "report").length
 
-const reports = (home: Home): Promise<ReportRow[]> =>
-  home.db.all<ReportRow>("SELECT command_id, status FROM inbound WHERE kind = 'report' ORDER BY id")
+const reports = async (home: Home): Promise<ReportRow[]> =>
+  (await home.intake())
+    .filter((item) => item.kind === "report")
+    .map((item) => ({ commandId: item.commandId, status: item.status }))
 
 const threads = async (home: Home, projectId: string): Promise<ThreadRow[]> => {
   const workspace = await home.harness.snapshot(WorkspaceDoc, context)
@@ -239,12 +239,10 @@ describe("orchestrator", () => {
     expect(
       (await read(stub, (home) => home.harness.snapshot(ThreadDoc, thread.id as ConversationId, context)))?.run,
     ).toBe(2)
-    await eventually(stub, (home: Home) =>
-      home.db
-        .get("SELECT command_id FROM inbound WHERE command_id = ?", `report:${thread.id}:2`)
-        .then((row) => row !== undefined),
+    await eventually(stub, async (home: Home) =>
+      (await home.intake()).some((item) => item.commandId === `report:${thread.id}:2`),
     )
-    expect((await read(stub, reports)).map((row) => row.command_id)).toContain(`report:${thread.id}:2`)
+    expect((await read(stub, reports)).map((row) => row.commandId)).toContain(`report:${thread.id}:2`)
     await eventually(stub, async (home: Home) => (await answerTexts(home, thread.id)).length === 2)
   }, 20_000)
 
@@ -297,10 +295,11 @@ describe("orchestrator", () => {
     await fireNow(stub)
 
     await eventually(stub, (home: Home) => reportCount(home).then((count) => count === 1))
-    const body = await read(stub, (home: Home) =>
-      home.db.get<{ body: string }>("SELECT body FROM inbound WHERE kind = 'report'"),
+    const body = await read(
+      stub,
+      async (home: Home) => (await home.intake()).find((item) => item.kind === "report")?.body,
     )
-    const value: unknown = JSON.parse(body?.body ?? "{}")
+    const value: unknown = JSON.parse(body ?? "{}")
     const text = typeof value === "object" && value !== null ? Reflect.get(value, "text") : undefined
     expect(text).toBe("thread answer: think about it")
   }, 20_000)

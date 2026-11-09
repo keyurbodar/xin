@@ -36,19 +36,14 @@ async function send(stub: Stub, id: string, coordinatorId: number, text: string)
 }
 
 async function fireNow(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
 async function fireUsers(stub: Stub): Promise<void> {
   await runInDurableObject(stub, async (home: Home) => {
-    await home.db.run(
-      "UPDATE inbound SET fire_at = ? WHERE status = 'pending' AND kind = 'question'",
-      Date.now() + 3_600_000,
-    )
-    await home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending' AND kind = 'user'", Date.now() - 1)
+    await home.fireIntake("question", Date.now() + 3_600_000)
+    await home.fireIntake("user")
   })
   await runDurableObjectAlarm(stub)
 }
@@ -84,10 +79,12 @@ const threadOf = async (home: Home, projectId: string): Promise<ThreadRow | unde
   return found[0]
 }
 
-type ReportRow = { command_id: string; status: string; body: string }
+type ReportRow = { commandId: string; status: string; body: string }
 
-const reports = (home: Home): Promise<ReportRow[]> =>
-  home.db.all<ReportRow>("SELECT command_id, status, body FROM inbound WHERE kind = 'report' ORDER BY id")
+const reports = async (home: Home): Promise<ReportRow[]> =>
+  (await home.intake())
+    .filter((item) => item.kind === "report")
+    .map((item) => ({ commandId: item.commandId, status: item.status, body: item.body }))
 
 function statusOf(body: string): string {
   const value: unknown = JSON.parse(body)
@@ -96,10 +93,10 @@ function statusOf(body: string): string {
   return typeof status === "string" ? status : ""
 }
 
-const questions = (home: Home): Promise<{ command_id: string; status: string }[]> =>
-  home.db.all<{ command_id: string; status: string }>(
-    "SELECT command_id, status FROM inbound WHERE kind = 'question' ORDER BY id",
-  )
+const questions = async (home: Home): Promise<{ commandId: string; status: string }[]> =>
+  (await home.intake())
+    .filter((item) => item.kind === "question")
+    .map((item) => ({ commandId: item.commandId, status: item.status }))
 
 type Asked = { projectId: string; threadId: number; requestId: string }
 
@@ -148,7 +145,7 @@ describe("questions", () => {
       answered: [],
     })
     expect(await runInDurableObject(stub, questions)).toEqual([
-      { command_id: `question:${requestId}`, status: "pending" },
+      { commandId: `question:${requestId}`, status: "pending" },
     ])
 
     const first = await cmd(stub, "respond-1", "request.respond", { threadId, requestId, answer: "red" })
@@ -168,7 +165,7 @@ describe("questions", () => {
 
     await eventually(stub, async (home: Home) =>
       (await reports(home)).some(
-        (row) => row.command_id === `report:${threadId}:2` && statusOf(row.body) === "completed",
+        (row) => row.commandId === `report:${threadId}:2` && statusOf(row.body) === "completed",
       ),
     )
     await eventually(stub, async (home: Home) => {
@@ -184,7 +181,7 @@ describe("questions", () => {
     expect(second.ok, JSON.stringify(second)).toBe(true)
     expect(second.result).toMatchObject({ kind: "already_answered", answer: "red" })
     const rows = await runInDurableObject(stub, reports)
-    expect(rows.filter((row) => row.command_id === `report:${threadId}:2`)).toHaveLength(1)
+    expect(rows.filter((row) => row.commandId === `report:${threadId}:2`)).toHaveLength(1)
   }, 20_000)
 
   it("answers a waiting thread through the coordinator's pending_request tool", async () => {
@@ -193,7 +190,7 @@ describe("questions", () => {
 
     await fireNow(stub)
     await eventually(stub, async (home: Home) =>
-      (await reports(home)).some((row) => row.command_id === `report:${threadId}:2`),
+      (await reports(home)).some((row) => row.commandId === `report:${threadId}:2`),
     )
     await eventually(stub, async (home: Home) => (await threadOf(home, projectId))?.status === "completed")
     expect(await runInDurableObject(stub, (home: Home) => requestsOf(home, threadId))).toMatchObject({
@@ -201,7 +198,7 @@ describe("questions", () => {
       answered: [{ requestId, answer: "blue" }],
     })
     const asked = await runInDurableObject(stub, questions)
-    expect(asked.find((row) => row.command_id === `question:${requestId}`)?.status).not.toBe("pending")
+    expect(asked.find((row) => row.commandId === `question:${requestId}`)?.status).not.toBe("pending")
   }, 20_000)
 
   it("lists pending questions newest first, bounded, and drops answered ones", async () => {

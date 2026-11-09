@@ -46,6 +46,8 @@ Reads take the same path, so the Inbox, the transcript and the Usage pane see ex
 
 `session.list` returns one entry per live socket — `{id, since, origin}` — and `session.close` closes the socket with that `id`, or every live socket when the id is omitted, returning `{closed}`. A socket is the only session state; the owner token is the identity, so `session.rotate` is the revocation path: it mints a new `own_`-prefixed token, stores only its SHA-256 in `kv` under `owner.token`, closes every socket, and returns `{token}` for the one moment it is readable. The Worker accepts the deploy token (`OWNER_TOKEN`) or any token whose digest the home matches, asking the home through `POST /v1/auth {token}` (204 or 401) only when the deploy token does not match, so a rotation takes effect on the next request. The deploy token always works; it is the recovery credential.
 
+An op declared with `receipts: false` skips steps 1 and 4 entirely: its own state answers a resend, so no receipt is read, written or swept. Only `message.send` does this, because its intake item carries the command id (02). Every other op keeps a receipt.
+
 Receipts store `ok` and deterministic rejections (`unknown_op`, `bad_args`, `forbidden`). A `failed` outcome (the op threw) stores none, so a retry runs it again. The op's effect and its receipt are separate writes, so every op must also be idempotent through its derived key. The same command layer is reachable over HTTP as `POST /v1/cmd {id, op, args?}`, and an omitted `args` means `{}`. Concurrent duplicates inside one object share one in-flight run.
 
 ## 4 · Web wire protocol (one socket per tab, hibernation-safe)

@@ -32,6 +32,7 @@ import { BUNDLES, CATALOG } from "../src/catalog.ts"
 import { XIN_VERSION } from "../src/catalog.gen.ts"
 import { Home as ProductHome, PROFILE } from "../src/host.ts"
 import type { Env } from "../src/env.ts"
+import { type InboundKind, IntakeDoc, type IntakeItem } from "../src/contracts/intake.ts"
 import { install, sample, setLabel, type Sample } from "./meter.ts"
 
 export { default } from "../src/worker.ts"
@@ -183,6 +184,20 @@ export class Home extends ProductHome {
 
   async chooseModel(model: ModelRef): Promise<void> {
     await (await this.root()).configure({ model }, BACKGROUND_CONTEXT)
+  }
+
+  async intake(): Promise<readonly IntakeItem[]> {
+    return (await this.harness.snapshot(IntakeDoc, BACKGROUND_CONTEXT))?.items ?? []
+  }
+
+  /** Move every pending item's deadline into the past, so the next alarm fires it (optionally only one kind). */
+  async fireIntake(kind?: InboundKind, now = Date.now() - 1): Promise<void> {
+    await this.harness.commit(async (tx) => {
+      const doc = await tx.doc(IntakeDoc)
+      for (const item of doc.items) {
+        if (item.status === "pending" && (kind === undefined || item.kind === kind)) item.fireAt = now
+      }
+    }, BACKGROUND_CONTEXT)
   }
 
   script(responses: readonly string[]): void {

@@ -5,12 +5,12 @@ import { describe, expect, it } from "vitest"
 import { MARK } from "../../test/plugins/intakebatch.ts"
 import { eventually, fresh, setRow } from "../../test/support.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
+import { IntakeDoc } from "../../src/contracts/intake.ts"
 import type { CommandId } from "../../src/ids.ts"
 
 const context = BACKGROUND_CONTEXT
 
 type Stub = ReturnType<typeof fresh>
-type Inbound = { readonly status: string }
 
 const send = async (stub: Stub, id: string, text: string): Promise<void> => {
   const outcome = await runInDurableObject(stub, (home: Home) =>
@@ -27,9 +27,7 @@ async function script(stub: Stub): Promise<void> {
 }
 
 async function fireNow(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
@@ -83,9 +81,7 @@ describe("intake/batch event", () => {
     })
     await send(stub, "drop-1", "hello")
     await fireNow(stub)
-    await eventually(stub, async (home: Home) =>
-      (await home.db.all<Inbound>("SELECT status FROM inbound ORDER BY id")).every((row) => row.status === "done"),
-    )
+    await eventually(stub, async (home: Home) => (await home.intake()).every((item) => item.status === "done"))
     expect(await users(stub)).toEqual([])
   })
 
@@ -98,16 +94,22 @@ describe("intake/batch event", () => {
     await setRow(stub, "intakebatch", true)
     await runInDurableObject(stub, async (home: Home) => {
       const root = await home.root()
-      await home.db.run(
-        "INSERT INTO inbound (target, kind, command_id, body, client_ts, first_at, fire_at, status, batch_id) VALUES (?, 'user', ?, ?, ?, ?, ?, 'claimed', ?)",
-        root.id,
-        "recovered-1",
-        JSON.stringify({ kind: "user", text: "hello" }),
-        1_000,
-        1_000,
-        1_000,
-        "recovered-batch",
-      )
+      await home.harness.commit(async (tx) => {
+        const doc = await tx.doc(IntakeDoc)
+        doc.items.push({
+          id: 1,
+          target: root.id,
+          kind: "user",
+          commandId: "recovered-1",
+          body: JSON.stringify({ kind: "user", text: "hello" }),
+          clientTs: 1_000,
+          firstAt: 1_000,
+          fireAt: 1_000,
+          status: "claimed",
+          batchId: "recovered-batch",
+        })
+        doc.nextId = 2
+      }, context)
     })
     await evictDurableObject(stub)
     expect(await runDurableObjectAlarm(stub)).toBe(true)
@@ -127,9 +129,7 @@ describe("intake/batch event", () => {
     await fireNow(stub)
     await eventually(stub, async (home: Home) => texts(await history(await home.root()), "user").length === 1)
     expect(await users(stub)).toEqual([`<msg t="00:00:01">hello</msg>`])
-    await eventually(stub, async (home: Home) =>
-      (await home.db.all<Inbound>("SELECT status FROM inbound ORDER BY id")).every((row) => row.status === "done"),
-    )
+    await eventually(stub, async (home: Home) => (await home.intake()).every((item) => item.status === "done"))
   })
 
   it("does not resend unrewritten text when a restart picks up an earlier batch", async () => {

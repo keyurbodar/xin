@@ -8,11 +8,10 @@ import { connect, eventually, fresh, owner } from "../../test/support.ts"
 import { decrypt, pushTopic, subscriber, type Subscriber } from "../../test/webpush.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 import { enqueue } from "./gateway.ts"
+import type { IntakeItem } from "../../src/contracts/intake.ts"
 import type { CommandId } from "../../src/ids.ts"
 
 const context = BACKGROUND_CONTEXT
-
-type Row = { readonly status: string; readonly batch_id: string | null; readonly command_id: string }
 
 const command = (stub: ReturnType<typeof fresh>, id: string, op: string, args: unknown = {}) =>
   runInDurableObject(stub, (home: Home) => home.commands.run({ id: id as CommandId, op, args }, { kind: "owner" }))
@@ -39,10 +38,8 @@ const texts = (entries: readonly EntryRecord[], role: "user" | "assistant"): str
     ),
   )
 
-const rows = (stub: ReturnType<typeof fresh>): Promise<Row[]> =>
-  runInDurableObject(stub, (home: Home) =>
-    home.db.all<Row>("SELECT status, batch_id, command_id FROM inbound ORDER BY id"),
-  )
+const rows = (stub: ReturnType<typeof fresh>): Promise<readonly IntakeItem[]> =>
+  runInDurableObject(stub, (home: Home) => home.intake())
 
 const users = (stub: ReturnType<typeof fresh>) =>
   runInDurableObject(stub, async (home: Home) => texts(await history(await home.root()), "user"))
@@ -51,9 +48,7 @@ const answers = (stub: ReturnType<typeof fresh>) =>
   runInDurableObject(stub, async (home: Home) => texts(await history(await home.root()), "assistant"))
 
 async function fireNow(stub: ReturnType<typeof fresh>): Promise<void> {
-  await runInDurableObject(stub, async (home: Home) => {
-    await home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1)
-  })
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
@@ -94,12 +89,8 @@ describe("gateway intake and dispatch", () => {
     expect(text.indexOf("so like")).toBeGreaterThanOrEqual(0)
     expect(text.indexOf("so like")).toBeLessThan(text.indexOf("https://x.test"))
     expect(text.indexOf("https://x.test")).toBeLessThan(text.indexOf("can u setup"))
-    await eventually(stub, async (home: Home) =>
-      (await home.db.all<Row>("SELECT status, batch_id, command_id FROM inbound")).every(
-        (row) => row.status === "done",
-      ),
-    )
-    const batches = new Set((await rows(stub)).map((row) => row.batch_id))
+    await eventually(stub, async (home: Home) => (await home.intake()).every((item) => item.status === "done"))
+    const batches = new Set((await rows(stub)).map((item) => item.batchId))
     expect(batches.size).toBe(1)
   })
 
@@ -175,10 +166,10 @@ describe("gateway intake and dispatch", () => {
     await send(stub, "t2", "beta", 2_000)
     await fireNow(stub)
     const status = await runInDurableObject(stub, async (home: Home) => {
-      const row = await home.db.get<{ batch_id: string }>("SELECT batch_id FROM inbound WHERE command_id = 't2'")
-      if (row === undefined) return undefined
+      const item = (await home.intake()).find((candidate) => candidate.commandId === "t2")
+      if (item === undefined || item.batchId === null) return undefined
       const inspection = await home.harness.inspect(context)
-      return inspection.submissions.find((submission) => submission.requestId === `batch:${row.batch_id}`)?.status
+      return inspection.submissions.find((submission) => submission.requestId === `batch:${item.batchId}`)?.status
     })
     expect(status).toBe("queued")
   }, 15_000)
@@ -200,11 +191,7 @@ describe("gateway intake and dispatch", () => {
     )
     expect(await answers(stub)).toEqual(["recovered"])
     expect(await users(stub)).toHaveLength(1)
-    await eventually(stub, async (home: Home) =>
-      (await home.db.all<Row>("SELECT status, batch_id, command_id FROM inbound")).every(
-        (row) => row.status === "done",
-      ),
-    )
+    await eventually(stub, async (home: Home) => (await home.intake()).every((item) => item.status === "done"))
   })
 
   it("does not fire a batch before its debounce elapses", async () => {
@@ -249,7 +236,7 @@ async function subscribe(stub: Stub, id: string, target: Subscriber): Promise<vo
 
 async function enqueueReport(stub: Stub, commandId: string, title: string): Promise<void> {
   await runInDurableObject(stub, async (home: Home) => {
-    const accepted = await enqueue(home.db, {
+    const accepted = await enqueue(home, {
       target: (await home.root()).id,
       commandId,
       kind: "report",
@@ -331,10 +318,6 @@ describe("dispatch push", () => {
     expect(second.url).toBe(first.url)
     expect(await payloadOf(target, first)).toMatchObject({ threadTitle: "Replay thread", tag: "report:9:1" })
     expect(await payloadOf(target, second)).toMatchObject({ threadTitle: "Replay thread", tag: "report:9:1" })
-    await eventually(stub, async (home: Home) =>
-      (await home.db.all<Row>("SELECT status, batch_id, command_id FROM inbound")).every(
-        (row) => row.status === "done",
-      ),
-    )
+    await eventually(stub, async (home: Home) => (await home.intake()).every((item) => item.status === "done"))
   })
 })

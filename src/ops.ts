@@ -22,6 +22,11 @@ export type Outcome =
 export type Op = {
   readonly name: string
   readonly actors: readonly Actor["kind"][]
+  /**
+   * False when the op's own state answers a resend (an intake item with the same command id), so a receipt row would
+   * only repeat it. The command still runs through `ops/before`.
+   */
+  readonly receipts?: boolean
   invoke(api: OpApi, args: unknown): Promise<Outcome>
 }
 
@@ -43,12 +48,14 @@ export function defineOp<A>(definition: {
   readonly name: string
   readonly args: Schema<A>
   readonly actors: readonly Actor["kind"][]
+  readonly receipts?: boolean
   run(api: OpApi, args: A): Promise<JsonValue>
 }): Op {
   const validator = compile(definition.args)
   return {
     name: definition.name,
     actors: definition.actors,
+    ...(definition.receipts === undefined ? {} : { receipts: definition.receipts }),
     invoke: async (api, args) => {
       if (!validator.check(args)) {
         const message = validator
@@ -92,6 +99,8 @@ export class Commands {
   }
 
   async #run(command: Command, actor: Actor): Promise<Outcome> {
+    if (this.deps.op(command.op)?.receipts === false)
+      return this.deps.around(command, actor, () => this.#invoke(command, actor))
     const receipt = await this.deps.db.get<{ outcome: string }>(
       "SELECT outcome FROM receipts WHERE command_id = ?",
       command.id,

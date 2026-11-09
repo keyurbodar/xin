@@ -77,7 +77,7 @@ flowchart LR
   G --> A{"armed?"}
   A -->|no| W["waits for goal.set resume"]
   A -->|yes| R["run ends, idle"]
-  R --> E["enqueue inbound kind=job<br/>command_id goal:&lt;id&gt;:&lt;round&gt;:&lt;run&gt;"]
+  R --> E["enqueue intake item kind=job<br/>command_id goal:&lt;id&gt;:&lt;round&gt;:&lt;run&gt;"]
   E --> C{"claim re-checks the goal"}
   C -->|stale, paused, or cap left 0| D["row dropped, no round spent"]
   C -->|ok| T["coordinator turn with the goal_round prompt<br/>rounds := rounds + 1"]
@@ -111,7 +111,7 @@ type Goal = {
 
 **The round driver** (`goal-rounds` row). It has no config and no service key, and disabling it leaves goals usable by hand.
 
-- **Reserve, then admit.** A `GenerationTask.afterRun` hook fires once a run ends. With a live unarmed-free goal, `phase: active`, `armed`, and `rounds < maxRounds`, the driver enqueues one inbound row `{ kind: "job", command_id: "goal:<goalId>:<round>:<run>" }` through `intake`, where `<run>` is the run's last entry id. The trailing id makes a reservation unique per run, so a dropped reservation never blocks the next one, and a replayed run reuses the same id. Nothing is counted yet.
+- **Reserve, then admit.** A `GenerationTask.afterRun` hook fires once a run ends. With a live unarmed-free goal, `phase: active`, `armed`, and `rounds < maxRounds`, the driver enqueues one intake item `{ kind: "job", command_id: "goal:<goalId>:<round>:<run>" }` through `intake`, where `<run>` is the run's last entry id. The trailing id makes a reservation unique per run, so a dropped reservation never blocks the next one, and a replayed run reuses the same id. Nothing is counted yet.
 - **Admission re-checks.** The batch is claimed when the alarm fires and the conversation is idle. The claim recomputes `armed`, `phase` and the remaining rounds from `kv`, and drops the row when any changed, so a pause, a completion or a human message in between costs no round. This is dsh's stale-reservation rule.
 - **Admission spends one round.** The round is committed together with the claim, before the turn starts, so a crash after that point does not spend the round twice.
 - **Cap.** When the last round is admitted, or a reservation finds `rounds === maxRounds`, the phase becomes `blocked` with code `round-limit`. Default cap `256`, overridable per goal; dsh's default.

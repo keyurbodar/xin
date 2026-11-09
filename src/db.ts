@@ -78,6 +78,12 @@ export const HOST_MIGRATIONS: readonly SqliteMigration[] = [
       "CREATE INDEX IF NOT EXISTS receipts_at ON receipts (at)",
     ],
   },
+  {
+    // The queue is the `xin.intake` session document now, so its table and indexes are gone. A message still pending at
+    // the upgrade is dropped with the table.
+    version: 12,
+    statements: ["DROP TABLE IF EXISTS inbound"],
+  },
 ]
 
 export function migrate(db: SqliteDatabase): Promise<void> {

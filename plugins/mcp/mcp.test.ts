@@ -167,8 +167,8 @@ async function lastToolResult(stub: DurableObjectStub<Home>): Promise<{ isError:
   })
 }
 
-const jobRows = (home: Home): Promise<{ command_id: string }[]> =>
-  home.db.all<{ command_id: string }>("SELECT command_id FROM inbound WHERE kind = 'job' ORDER BY id")
+const jobRows = async (home: Home): Promise<{ commandId: string }[]> =>
+  (await home.intake()).filter((item) => item.kind === "job").map((item) => ({ commandId: item.commandId }))
 
 const installedTools = (stub: DurableObjectStub<Home>): Promise<string[]> =>
   runInDurableObject(stub, async (home: Home) =>
@@ -423,7 +423,7 @@ describe("mcp servers", () => {
     await eventually(stub, async (home: Home) => (await jobRows(home)).length === 1)
     const rows = await runInDurableObject(stub, jobRows)
     expect(rows).toHaveLength(1)
-    expect(rows[0]?.command_id).toMatch(/^job:\d+$/)
+    expect(rows[0]?.commandId).toMatch(/^job:\d+$/)
   }, 30_000)
 
   it("answers a server's cached tools and rejects an unknown name", async () => {

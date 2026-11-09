@@ -34,7 +34,7 @@ The coordinator gets this tool surface. Threads get a narrower version (no `dele
 flowchart LR
   D["delegate_task, one commit<br/>tx.createTask Anchor with background<br/>tx.createConversation owner = anchor<br/>configure child model and tools subset of parent<br/>doc xin.thread status working"] --> C["child conversation<br/>submit brief with requestId<br/>pi.generation and pi.tool xN<br/>hook afterResponse sets beatAt<br/>tool status sets statusLine"]
   C --> S["settles<br/>done to completed<br/>ask_user to waiting<br/>unanswered to failed<br/>abort to cancelled"]
-  S --> G["Reporter task, background, per run<br/>inbound kind=report<br/>command_id report:thread:runOrdinal"]
+  S --> G["Reporter task, background, per run<br/>intake item kind=report<br/>command_id report:thread:runOrdinal"]
   G -.-> I["intake then coordinator turn<br/>batched with other reports"]
 ```
 
@@ -75,7 +75,7 @@ execute(args, api, ctx):
   r   = await waitForTask(job, deadline 8000)                     // cancelling the wait never cancels the work
   if r.done   → doc delete xin.jobs[job]; return r.result        // felt synchronous
   else        → doc xin.jobs[job].detached = true; return "started (job j_42), result will follow"
-Job.finish  → doc result; the JobsDoc observer enqueues inbound kind=job, command_id="job:"+id
+Job.finish  → doc result; the JobsDoc observer enqueues an intake item kind=job, command_id="job:"+id
 ```
 
 The wrapper is always `replay:"safe"`. A replay of the same tool task finds its call id in `xin.jobs.calls` and waits on the job it already made. A job created inside a thread (the caller has a `xin.thread` doc) is never detached and never reports: the wrapper waits inline until the job settles or the thread's deadline passes.
@@ -89,14 +89,14 @@ A job is a thread with no conversation: it shows in the Overview, the watchdog c
 ```mermaid
 flowchart LR
   A["thread calls ask_user with q and options"] --> B["commit xin.requests.open[r]<br/>status waiting<br/>terminate"]
-  B --> C["Waiting on you<br/>Overview plus push if no tab<br/>inbound kind=question"]
+  B --> C["Waiting on you<br/>Overview plus push if no tab<br/>intake item kind=question"]
   C --> D["answer in UI on the card<br/>op request.respond"]
   C --> E["answer in coordinator chat<br/>pending_request respond"]
   D --> F["thread resumes<br/>submit answer, new run<br/>open[r] becomes answered[r]"]
   E --> F
 ```
 
-- `respond` also DELETEs the question's inbound row if still pending, so the coordinator never gets a turn about an answered question.
+- `respond` also withdraws the question's intake item if still pending, so the coordinator never gets a turn about an answered question.
 - `request.list` reads every open request in active projects, newest first, for the Inbox and the Home "Needs you" block. It reads the same `xin.requests` documents the coordinator resolves, so the card the owner answers is the card the model asked.
 - Why not a tool that waits for the answer: a held tool task across hours of eviction needs replay tricks; a finished run needs nothing.
 - `respond` returns `{kind:"answered", run}` or, on a replay after the first answer, `{kind:"already_answered", answer}`. An unknown request, a thread that is not waiting, or a thread with no parent is `bad_args`, checked before the request document changes.

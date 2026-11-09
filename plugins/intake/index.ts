@@ -9,7 +9,7 @@ import { type BatchLedger, createGateway, enqueue, type IntakeHost, resolve, sto
 import { historyOp } from "./history.ts"
 
 export const name = "intake"
-export const inject = ["db", "harness", "ops", "clock", "host", "files", "models"]
+export const inject = ["harness", "ops", "clock", "host", "files", "models"]
 
 const BATCH_MARK = "intake.dispatched."
 
@@ -17,7 +17,6 @@ type BatchListener = (batch: IntakeBatch, next: () => Promise<IntakeBatchResult>
 
 export async function apply(ctx: Context): Promise<void> {
   const host: IntakeHost = {
-    db: ctx.db,
     harness: ctx.harness,
     ledger: ledgerOf(ctx),
     arm: (wake) => ctx.clock.arm(wake),
@@ -38,6 +37,7 @@ export async function apply(ctx: Context): Promise<void> {
       name: "message.send",
       args: MessageSendArgsSchema,
       actors: ["owner"],
+      receipts: false,
       run: async (api, args) => {
         if (args.text.trim() === "" && (args.attachments ?? []).length === 0)
           throw new OpRejected("bad_args", "a message needs text or a file")
@@ -48,8 +48,8 @@ export async function apply(ctx: Context): Promise<void> {
             `the monthly cap of ${spend.cap.toFixed(2)} USD is reached; raise it in Usage first`,
           )
         const target = await resolve(host, args.conv)
-        const accepted = await enqueue(
-          ctx.db,
+        const inserted = await enqueue(
+          host,
           {
             target,
             commandId: api.commandId,
@@ -60,8 +60,8 @@ export async function apply(ctx: Context): Promise<void> {
           },
           Date.now(),
         )
-        if (accepted) await ctx.clock.arm()
-        return { accepted }
+        if (inserted) await ctx.clock.arm()
+        return { accepted: true }
       },
     }),
   )

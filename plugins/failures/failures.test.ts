@@ -35,9 +35,7 @@ async function entriesOf(home: Home, conversationId: number): Promise<readonly E
 }
 
 async function fireNow(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
@@ -63,8 +61,8 @@ describe("failures", () => {
     expect(bad.ok).toBe(false)
     expect(bad.error?.code).toBe("bad_args")
 
-    const original = await runInDurableObject(stub, (home: Home) =>
-      home.db.get<{ id: number }>("SELECT id FROM inbound WHERE command_id = 'retry-1'"),
+    const original = await runInDurableObject(stub, async (home: Home) =>
+      (await home.intake()).find((item) => item.commandId === "retry-1"),
     )
     expect(original).toBeDefined()
 
@@ -72,11 +70,11 @@ describe("failures", () => {
     expect(retried.ok, JSON.stringify(retried)).toBe(true)
     expect(retried.result).toEqual({ resubmitted: 1 })
 
-    const rows = await runInDurableObject(stub, (home: Home) =>
-      home.db.all<{ command_id: string; status: string }>(
-        "SELECT command_id, status FROM inbound WHERE command_id LIKE 'retry:%' ORDER BY id",
-      ),
+    const rows = await runInDurableObject(stub, async (home: Home) =>
+      (await home.intake())
+        .filter((item) => item.commandId.startsWith("retry:"))
+        .map((item) => ({ commandId: item.commandId, status: item.status })),
     )
-    expect(rows).toEqual([{ command_id: `retry:${error?.id}:${original?.id}`, status: "pending" }])
+    expect(rows).toEqual([{ commandId: `retry:${error?.id}:${original?.id}`, status: "pending" }])
   }, 20_000)
 })

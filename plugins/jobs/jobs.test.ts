@@ -33,9 +33,7 @@ async function send(stub: Stub, id: string, coordinatorId: number, text: string)
 }
 
 async function fireNow(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
@@ -58,10 +56,10 @@ function textOf(message: { readonly content: unknown }): string {
     .join("")
 }
 
-const jobRows = (home: Home): Promise<{ command_id: string; status: string; body: string }[]> =>
-  home.db.all<{ command_id: string; status: string; body: string }>(
-    "SELECT command_id, status, body FROM inbound WHERE kind = 'job' ORDER BY id",
-  )
+const jobRows = async (home: Home): Promise<{ commandId: string; status: string; body: string }[]> =>
+  (await home.intake())
+    .filter((item) => item.kind === "job")
+    .map((item) => ({ commandId: item.commandId, status: item.status, body: item.body }))
 
 async function waitFor(stub: Stub, check: (home: Home) => Promise<boolean>, attempts: number): Promise<void> {
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -212,15 +210,15 @@ describe("jobs", () => {
       stub,
       async (home: Home) => {
         const rows = await jobRows(home)
-        return rows.some((row) => row.command_id === `job:${id}` && statusOf(row.body) === "completed")
+        return rows.some((row) => row.commandId === `job:${id}` && statusOf(row.body) === "completed")
       },
       2_500,
     )
     const found = await runInDurableObject(stub, async (home: Home) => {
       const rows = await jobRows(home)
-      const report = rows.find((row) => row.command_id === `job:${id}`)
+      const report = rows.find((row) => row.commandId === `job:${id}`)
       return {
-        count: rows.filter((row) => row.command_id === `job:${id}`).length,
+        count: rows.filter((row) => row.commandId === `job:${id}`).length,
         text: report?.body ?? "",
         jobs: Object.keys((await home.harness.snapshot(JobsDoc, context))?.jobs ?? {}),
       }
@@ -229,7 +227,7 @@ describe("jobs", () => {
 
     await runDurableObjectAlarm(stub)
     const again = await runInDurableObject(stub, jobRows)
-    expect(again.filter((row) => row.command_id === `job:${id}`)).toHaveLength(1)
+    expect(again.filter((row) => row.commandId === `job:${id}`)).toHaveLength(1)
   }, 60_000)
 
   it("keeps a thread's job result inline and never detaches it", async () => {
@@ -273,7 +271,7 @@ describe("jobs", () => {
     await waitFor(stub, async (home: Home) => (await jobRows(home)).length === 1, 500)
     const rows = await runInDurableObject(stub, jobRows)
     expect(rows).toHaveLength(1)
-    expect(rows[0]?.command_id).toMatch(/^job:/)
+    expect(rows[0]?.commandId).toMatch(/^job:/)
   }, 40_000)
 })
 

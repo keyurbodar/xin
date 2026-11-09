@@ -10,9 +10,9 @@ import { dueOf, runsOf, SCHEDULE_TASK, type SchedulesPort, sendDue, slotKey, typ
 
 type Row = {
   readonly kind: string
-  readonly command_id: string
+  readonly commandId: string
   readonly body: string
-  readonly client_ts: number
+  readonly clientTs: number
   readonly target: number
   readonly status: string
 }
@@ -20,8 +20,15 @@ type Row = {
 const run = (home: Home, id: string, op: string, args: unknown = {}) =>
   home.commands.run({ id: id as CommandId, op, args }, { kind: "owner" })
 
-const rows = (home: Home) =>
-  home.db.all<Row>("SELECT kind, command_id, body, client_ts, target, status FROM inbound ORDER BY id")
+const rows = async (home: Home): Promise<Row[]> =>
+  (await home.intake()).map((item) => ({
+    kind: item.kind,
+    commandId: item.commandId,
+    body: item.body,
+    clientTs: item.clientTs,
+    target: item.target,
+    status: item.status,
+  }))
 
 const timers = async (home: Home) =>
   (await home.harness.inspect(BACKGROUND_CONTEXT)).tasks.filter((task) => task.record.kind === SCHEDULE_TASK)
@@ -99,7 +106,7 @@ describe("schedules", () => {
     await eventually(stub, async (home: Home) => (await rows(home)).length === 1)
 
     const stored = await runInDurableObject(stub, (home: Home) => rows(home))
-    expect(stored[0]).toMatchObject({ kind: "job", command_id: slotKey("reminder-1", at), client_ts: at })
+    expect(stored[0]).toMatchObject({ kind: "job", commandId: slotKey("reminder-1", at), clientTs: at })
     expect(JSON.parse(stored[0]?.body ?? "{}")).toEqual({
       kind: "job",
       threadId: "reminder-1",
@@ -233,7 +240,7 @@ describe("schedules", () => {
     expect(evidence.due).toEqual({ count: 1, latest: ANCHOR, index: 0 })
     expect(evidence.recomputed).toEqual({ count: 4, latest: ANCHOR + 3 * HOUR, index: 3 })
     expect(evidence.stored).toHaveLength(1)
-    expect(evidence.stored[0]?.command_id).toBe(slotKey("hydrate", ANCHOR))
+    expect(evidence.stored[0]?.commandId).toBe(slotKey("hydrate", ANCHOR))
   })
 
   it("collapses three missed slots into one fire", async () => {
@@ -246,7 +253,7 @@ describe("schedules", () => {
     })
     expect(evidence.due).toEqual({ count: 3, latest: ANCHOR + 2 * HOUR, index: 2 })
     expect(evidence.stored).toHaveLength(1)
-    expect(evidence.stored[0]).toMatchObject({ kind: "job", command_id: slotKey("hydrate", ANCHOR + 2 * HOUR) })
+    expect(evidence.stored[0]).toMatchObject({ kind: "job", commandId: slotKey("hydrate", ANCHOR + 2 * HOUR) })
     expect(JSON.parse(evidence.stored[0]?.body ?? "{}")).toEqual({
       kind: "job",
       threadId: "hydrate",

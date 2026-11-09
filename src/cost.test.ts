@@ -7,10 +7,10 @@ import { eventually, fresh } from "../test/support.ts"
 import { FAUX_MODEL, type Home } from "../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
-const MESSAGE_ROW_BOUND = 36
-const MESSAGE_READ_BOUND = 64
-const DELEGATE_ROW_BOUND = 64
-const DELEGATE_READ_BOUND = 104
+const MESSAGE_ROW_BOUND = 18
+const MESSAGE_READ_BOUND = 22
+const DELEGATE_ROW_BOUND = 36
+const DELEGATE_READ_BOUND = 46
 
 type Stub = ReturnType<typeof fresh>
 type Ack = { readonly ok: boolean; readonly result?: unknown }
@@ -21,9 +21,7 @@ const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Promise<Ac
     .then((reply) => reply.json<Ack>())
 
 async function fireNow(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
 }
 
@@ -45,14 +43,13 @@ async function read(stub: Stub): Promise<number> {
 
 const idle = (stub: Stub): Promise<void> => runInDurableObject(stub, (home: Home) => home.harness.waitForIdle(context))
 
-const inboundDone = async (home: Home): Promise<boolean> => {
-  const rows = await home.db.all<{ status: string }>("SELECT status FROM inbound")
-  return rows.length > 0 && rows.every((row) => row.status === "done")
+const intakeDone = async (home: Home): Promise<boolean> => {
+  const items = await home.intake()
+  return items.length > 0 && items.every((item) => item.status === "done")
 }
 
 async function reportCount(home: Home): Promise<number> {
-  const row = await home.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM inbound WHERE kind = 'report'")
-  return row?.n ?? 0
+  return (await home.intake()).filter((item) => item.kind === "report").length
 }
 
 function textOf(message: { readonly content: unknown }): string {
@@ -96,7 +93,7 @@ describe("a message, in what the platform bills", () => {
     const sent = await cmd(stub, "cost-message", "message.send", { text: "hello" })
     expect(sent.ok, JSON.stringify(sent)).toBe(true)
     await fireNow(stub)
-    await eventually(stub, (home: Home) => inboundDone(home))
+    await eventually(stub, (home: Home) => intakeDone(home))
     await idle(stub)
 
     const after = await written(stub)
@@ -129,7 +126,7 @@ describe("a message, in what the platform bills", () => {
     await idle(stub)
     await fireNow(stub)
     await eventually(stub, async (home: Home) => (await replies(home, project.coordinatorId)).includes("delegated"))
-    await eventually(stub, (home: Home) => inboundDone(home))
+    await eventually(stub, (home: Home) => intakeDone(home))
     await idle(stub)
 
     const after = await written(stub)

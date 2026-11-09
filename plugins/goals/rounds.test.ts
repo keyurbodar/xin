@@ -62,23 +62,24 @@ const resumeGoal = (stub: Stub, id: string, revision: number): Promise<unknown> 
     home.loader.ctx.goals.set({ conversation: (await home.root()).id, action: "resume", id, revision }),
   )
 
-type Inbound = { readonly command_id: string; readonly status: string }
+type Inbound = { readonly commandId: string; readonly status: string }
 
-const inbound = (stub: Stub): Promise<Inbound[]> =>
-  runInDurableObject(stub, (home: Home) => home.db.all<Inbound>("SELECT command_id, status FROM inbound ORDER BY id"))
+const intakeRows = async (stub: Stub): Promise<Inbound[]> =>
+  (await runInDurableObject(stub, (home: Home) => home.intake())).map((item) => ({
+    commandId: item.commandId,
+    status: item.status,
+  }))
 
 const goalRows = async (stub: Stub): Promise<Inbound[]> =>
-  (await inbound(stub)).filter((row) => row.command_id.startsWith("goal:"))
+  (await intakeRows(stub)).filter((row) => row.commandId.startsWith("goal:"))
 
 const pendingGoalCommands = async (stub: Stub): Promise<string[]> =>
-  (await goalRows(stub)).filter((row) => row.status === "pending").map((row) => row.command_id)
+  (await goalRows(stub)).filter((row) => row.status === "pending").map((row) => row.commandId)
 
 const goalCommand = (goalId: string, round: number): RegExp => new RegExp(`^goal:${goalId}:${round}:[1-9][0-9]*$`)
 
 async function fire(stub: Stub): Promise<void> {
-  await runInDurableObject(stub, (home: Home) =>
-    home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
-  )
+  await runInDurableObject(stub, (home: Home) => home.fireIntake())
   await runDurableObjectAlarm(stub)
   await runInDurableObject(stub, (home: Home) => home.harness.waitForIdle(context))
 }
@@ -118,7 +119,7 @@ describe("goal rounds", () => {
     await turn(stub, `rounds-start-${crypto.randomUUID()}`)
     const reserved = await goalRows(stub)
     expect(reserved).toHaveLength(1)
-    expect(reserved[0]?.command_id).toMatch(goalCommand(goal.id, 1))
+    expect(reserved[0]?.commandId).toMatch(goalCommand(goal.id, 1))
 
     await fire(stub)
     expect(await goalNow(stub)).toMatchObject({ rounds: 1, phase: "active", activation: "armed" })
