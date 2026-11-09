@@ -40,7 +40,7 @@ sequenceDiagram
   H->>H: arm again
 
   Note over H: idle owner has no live tasks and no debounce
-  Note over H: so no heartbeat is armed, only far module dues (weekly sweep, daily Dreamer), it hibernates, cost 0
+  Note over H: so no periodic wake is armed, only far module dues (weekly sweep, daily Dreamer), it hibernates, cost 0
   Note over P: harness.closed on a storage error ends the Harness
   Note over P: ctx.abort, the next event reconstructs, commits stay atomic
 ```
@@ -91,9 +91,9 @@ Three rules keep the write count down without delaying work:
 - **Arms coalesce.** A call that arrives while one is running joins the next round, and the round uses the latest wake, so a burst of wake changes costs one round of `due()` reads, not one per call.
 - **One deadline, one row.** The alarm is written only when the earliest deadline moves, and deleted when an idle home has none. There is no fixed heartbeat: a run in progress holds the alarm it started with, and an eviction during one is recovered by the turn's own retry, not by a periodic wake. `fired()`, called first in `alarm()`, marks the consumed alarm unset so the next arm writes one.
 
-`onWake` fires whenever pi's next-needed time changes (a sleep is created, work starts or ends), and it calls `arm()` again. The 60 s heartbeat runs only while `wake.active`: an eviction mid-run is noticed within 60 s and `resume()` continues from the last checkpoint. The only non-pi timer is the debounce (`inbound.fire_at`), folded into the same `min()`.
+`onWake` fires whenever pi's next-needed time changes (a sleep is created, work starts or ends), and it calls `arm()` again. A run in progress keeps the one alarm armed when it began: nothing rearms it every 60 s, so an eviction mid-run is recovered by the turn's own retry and `resume()` continues from the last checkpoint. The only non-pi timer is the debounce (`inbound.fire_at`), folded into the same `min()`. The only 60 s alarm is the boot fallback the constructor writes when no nearer alarm exists, so a home evicted while idle still wakes once instead of staying stranded.
 
-An idle owner has no live tasks and no debounce, so no heartbeat is armed. The alarm then sits at the earliest far module `due()` (the weekly file sweep, the daily Dreamer pass, the next schedule slot), or is deleted when there is none. It hibernates, its sockets stay open, and it costs $0. If a storage error ends the Harness, `harness.closed(failed)` runs: `ctx.abort()`, the next event reconstructs the instance, and commits stay atomic.
+An idle owner has no live tasks and no debounce, so once its boot fallback has fired and `arm()` finds no deadline, the alarm is deleted. The alarm then sits at the earliest far module `due()` (the weekly file sweep, the daily Dreamer pass, the next schedule slot), or is deleted when there is none. It hibernates, its sockets stay open, and it costs $0. If a storage error ends the Harness, `harness.closed(failed)` runs: `ctx.abort()`, the next event reconstructs the instance, and commits stay atomic.
 
 The host is about 120 lines. Feature code lives in plugins, and the host never branches on a feature.
 
