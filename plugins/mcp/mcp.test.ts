@@ -30,6 +30,8 @@ type FakeServer = {
   duringCall?: () => Promise<void>
 }
 
+type Features = { readonly resources: boolean; readonly prompts: boolean }
+
 const TOOLS = [
   {
     name: "echo",
@@ -43,6 +45,16 @@ const TOOLS = [
   { name: "fail", description: "Always reports a failure.", inputSchema: { type: "object", properties: {} } },
 ]
 
+const RESOURCES = [{ uri: "memo://welcome", name: "Welcome", description: "A welcome memo", mimeType: "text/plain" }]
+const TEMPLATES = [{ uriTemplate: "memo://{id}", name: "Memo" }]
+const PROMPTS = [
+  {
+    name: "greet",
+    description: "Greet someone.",
+    arguments: [{ name: "who", description: "Person to greet", required: true }],
+  },
+]
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
 
@@ -52,12 +64,16 @@ const HEADERS = { "content-type": "application/json", "mcp-session-id": "fake-se
 
 const json = (value: unknown): Response => new Response(JSON.stringify(value), { status: 200, headers: HEADERS })
 
-function respond(method: string, params: Record<string, unknown>): unknown {
+function respond(method: string, params: Record<string, unknown>, features: Features): unknown {
   switch (method) {
     case "initialize":
       return {
         protocolVersion: LATEST_PROTOCOL_VERSION,
-        capabilities: { tools: {} },
+        capabilities: {
+          tools: {},
+          ...(features.resources ? { resources: {} } : {}),
+          ...(features.prompts ? { prompts: {} } : {}),
+        },
         serverInfo: { name: "fake-mcp", version: "1.0.0" },
       }
     case "ping":
@@ -70,12 +86,31 @@ function respond(method: string, params: Record<string, unknown>): unknown {
       if (params.name === "fail") return { content: [{ type: "text", text: "it broke" }], isError: true }
       throw new Error(`unknown tool ${String(params.name)}`)
     }
+    case "resources/list":
+      return { resources: RESOURCES }
+    case "resources/templates/list":
+      return { resourceTemplates: TEMPLATES }
+    case "resources/read": {
+      const uri = typeof params.uri === "string" ? params.uri : ""
+      if (uri !== "memo://welcome") throw new Error(`unknown resource ${uri}`)
+      return { contents: [{ uri, mimeType: "text/plain", text: "welcome resource" }] }
+    }
+    case "prompts/list":
+      return { prompts: PROMPTS }
+    case "prompts/get": {
+      const args = isRecord(params.arguments) ? params.arguments : {}
+      if (params.name !== "greet") throw new Error(`unknown prompt ${String(params.name)}`)
+      return {
+        description: "Greet someone.",
+        messages: [{ role: "user", content: { type: "text", text: `hello ${String(args.who ?? "nobody")}` } }],
+      }
+    }
     default:
       throw new Error(`unknown method ${method}`)
   }
 }
 
-function fakeServer(): FakeServer {
+function fakeServer(features: Features = { resources: false, prompts: false }): FakeServer {
   const calls: Call[] = []
   const server: FakeServer = {
     calls,
@@ -95,7 +130,7 @@ function fakeServer(): FakeServer {
       if (server.holdCall && method === "tools/call") await server.duringCall?.()
       let reply: unknown
       try {
-        reply = { result: respond(method, isRecord(body.params) ? body.params : {}) }
+        reply = { result: respond(method, isRecord(body.params) ? body.params : {}, features) }
       } catch (error) {
         reply = { error: { code: -32601, message: messageOf(error) } }
       }
@@ -134,6 +169,11 @@ async function lastToolResult(stub: DurableObjectStub<Home>): Promise<{ isError:
 
 const jobRows = (home: Home): Promise<{ command_id: string }[]> =>
   home.db.all<{ command_id: string }>("SELECT command_id FROM inbound WHERE kind = 'job' ORDER BY id")
+
+const installedTools = (stub: DurableObjectStub<Home>): Promise<string[]> =>
+  runInDurableObject(stub, async (home: Home) =>
+    [...(home.extension("tool-mcp").tools ?? [])].map((tool) => tool.name).toSorted(),
+  )
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -393,4 +433,64 @@ describe("mcp servers", () => {
       error: { code: "bad_args", message: "no MCP server nope" },
     })
   })
+
+  it("lists and reads resources and renders prompts when the server declares them", async () => {
+    const stub = fresh()
+    const fake = fakeServer({ resources: true, prompts: true })
+    serve(fake)
+
+    expect(
+      await cmd(stub, "mcp-resources-add", "mcp.add", { name: "docs", url: "https://mcp.test/mcp" }),
+    ).toMatchObject({
+      ok: true,
+      result: { name: "docs", url: "https://mcp.test/mcp", tools: 2, resources: 2, prompts: 1 },
+    })
+    expect(await installedTools(stub)).toEqual([
+      "mcp__docs__echo",
+      "mcp__docs__fail",
+      "mcp__docs__mcp_prompt",
+      "mcp__docs__mcp_prompts",
+      "mcp__docs__mcp_resource",
+      "mcp__docs__mcp_resources",
+    ])
+    expect((await cmd(stub, "mcp-resources-op", "mcp.resources", { name: "docs" })).result).toEqual({
+      name: "docs",
+      resources: [{ uri: "memo://welcome", name: "Welcome", description: "A welcome memo", mimeType: "text/plain" }],
+      templates: [{ uriTemplate: "memo://{id}", name: "Memo" }],
+    })
+    expect((await cmd(stub, "mcp-prompts-op", "mcp.prompts", { name: "docs" })).result).toEqual({
+      name: "docs",
+      prompts: [
+        {
+          name: "greet",
+          description: "Greet someone.",
+          arguments: [{ name: "who", description: "Person to greet", required: true }],
+        },
+      ],
+    })
+
+    script([
+      fauxAssistantMessage([fauxToolCall("tool_search", { query: "mcp_resources" })], { stopReason: "toolUse" }),
+      fauxAssistantMessage([fauxToolCall("mcp__docs__mcp_resources", {})], { stopReason: "toolUse" }),
+      fauxAssistantMessage([fauxToolCall("tool_search", { query: "mcp_resource" })], { stopReason: "toolUse" }),
+      fauxAssistantMessage([fauxToolCall("mcp__docs__mcp_resource", { uri: "memo://welcome" })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage([fauxToolCall("tool_search", { query: "mcp_prompts" })], { stopReason: "toolUse" }),
+      fauxAssistantMessage([fauxToolCall("mcp__docs__mcp_prompts", {})], { stopReason: "toolUse" }),
+      fauxAssistantMessage([fauxToolCall("tool_search", { query: "mcp_prompt" })], { stopReason: "toolUse" }),
+      fauxAssistantMessage([fauxToolCall("mcp__docs__mcp_prompt", { name: "greet", arguments: { who: "Keyur" } })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("done"),
+    ])
+    await turn(stub, "mcp-resources-turn", { text: "read the docs server", model: MCP_MODEL })
+
+    expect(await lastToolResult(stub)).toEqual({ isError: false, text: "user: hello Keyur" })
+    expect(fake.calls.find((call) => call.method === "resources/read")?.params).toEqual({ uri: "memo://welcome" })
+    expect(fake.calls.find((call) => call.method === "prompts/get")?.params).toEqual({
+      name: "greet",
+      arguments: { who: "Keyur" },
+    })
+  }, 30_000)
 })
