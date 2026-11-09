@@ -96,7 +96,8 @@ function decodeResultUrl(raw: string): string | undefined {
     return undefined
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
-  if (url.hostname.endsWith("duckduckgo.com") && url.pathname === "/l/") {
+  if (url.hostname === "duckduckgo.com" || url.hostname.endsWith(".duckduckgo.com")) {
+    if (url.pathname !== "/l/") return undefined
     const target = url.searchParams.get("uddg")
     if (target === null) return undefined
     try {
@@ -106,7 +107,6 @@ function decodeResultUrl(raw: string): string | undefined {
       return undefined
     }
   }
-  if (url.hostname.endsWith("duckduckgo.com")) return undefined
   return url.toString()
 }
 
@@ -132,7 +132,8 @@ export function parseSearchResults(html: string, limit = DEFAULT_RESULTS): Searc
     if (url === undefined) continue
     const title = stripTags(rawTitle)
     if (title === "") continue
-    const snippet = text[index]?.[1] === undefined ? "" : stripTags(text[index]?.[1] ?? "")
+    const rawSnippet = text[index]?.[1] ?? ""
+    const snippet = stripTags(rawSnippet)
     results.push({ title, url, snippet })
     if (results.length >= limit) break
   }
