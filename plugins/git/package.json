@@ -1,0 +1,22 @@
+{
+  "name": "xin-plugin-git",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only git history tools for a project's GitHub repository.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "tool-git": {
+        "module": "./index.ts",
+        "title": "Git tools",
+        "description": "Read-only log, diff, show and blame for the project's GitHub repository."
+      }
+    },
+    "bundle": [
+      {
+        "id": "tool-git",
+        "plugin": "tool-git"
+      }
+    ]
+  }
+}

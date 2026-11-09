@@ -22,7 +22,8 @@
     "xin-plugin-time",
     "xin-plugin-watchdog",
     "xin-plugin-workspace",
-    "xin-plugin-web"
+    "xin-plugin-web",
+    "xin-plugin-git"
   ],
   "patch": []
 }

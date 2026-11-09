@@ -12,15 +12,21 @@ export const RoleModelsSchema = obj({
   thread: opt(ModelRefSchema),
   utility: opt(ModelRefSchema),
 })
+export const GitSettingsSchema = obj({
+  repo: str({ pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" }),
+  ref: opt(str({ minLength: 1, maxLength: 200 })),
+})
 export const SettingsSchema = obj({
   threadLimit: int({ minimum: 1 }),
   deadlineMs: int({ minimum: 1_000 }),
   models: opt(RoleModelsSchema),
+  git: opt(GitSettingsSchema),
 })
 export const SettingsPatchSchema = obj({
   threadLimit: opt(int({ minimum: 1 })),
   deadlineMs: opt(int({ minimum: 1_000 })),
   models: opt(RoleModelsSchema),
+  git: opt(GitSettingsSchema),
 })
 export const ProjectSchema = obj({
   slug: str({ pattern: SLUG }),
@@ -34,6 +40,7 @@ export const ProjectSchema = obj({
 })
 export const WorkspaceSchema = obj({ projects: map(ProjectSchema) })
 
+export type GitSettings = Static<typeof GitSettingsSchema>
 export type ProjectSettings = Static<typeof SettingsSchema>
 export type SettingsPatch = Static<typeof SettingsPatchSchema>
 export type ProjectState = Static<typeof ProjectSchema>

@@ -97,6 +97,7 @@ function mergeSettings(current: ProjectSettings, patch: SettingsPatch): ProjectS
     ...(patch.models === undefined && current.models === undefined
       ? {}
       : { models: { ...current.models, ...patch.models } }),
+    ...(patch.git === undefined && current.git === undefined ? {} : { git: patch.git ?? current.git }),
   }
 }
 
@@ -117,6 +118,9 @@ function settingsOf(settings: ProjectSettings): JsonObject {
     threadLimit: settings.threadLimit,
     deadlineMs: settings.deadlineMs,
     ...(settings.models === undefined ? {} : { models: modelsOf(settings.models) }),
+    ...(settings.git === undefined
+      ? {}
+      : { git: { repo: settings.git.repo, ...(settings.git.ref === undefined ? {} : { ref: settings.git.ref }) } }),
   }
 }
 
