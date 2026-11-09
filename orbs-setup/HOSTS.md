@@ -82,7 +82,7 @@ Dispatch also mounts shared caches when present:
 cache and dangling images. It does not delete running or paused orbs.
 
 The default provider is now `host-4` (it was `dof-live`, which has four paused
-orbs and is at its two-container limit).
+orbs and refuses new spawns).
 
 ## Applied 2026-11-09
 
@@ -107,7 +107,7 @@ Installed by `install-provider-on-host.sh`:
 - Docker data root moved to `/data/docker` (20 GiB persistent disk).
 - Amp CLI copied to `/usr/local/bin/amp`.
 - `/opt/orbs/dispatch.sh` — spawn/pause/delete with Docker.
-- `/etc/amp-orb-provider.env` — provider token, `ORB_CPUS=2`, `ORB_MEMORY=3g`, `ORB_SHM=1g` (root-only).
+- `/etc/amp-orb-provider.env` — provider token, budget caps, and `ORB_TYPE_*` sizing (root-only).
 - `amp-orb-provider.service` — systemd, enabled at boot, runs as root.
 - `orb-janitor.timer` — every 30 minutes, prunes build cache and dangling images, logs disk use.
 
@@ -139,5 +139,6 @@ Then delete the test thread so its container is removed.
 ## Disk rule
 
 Each host has 20 GiB. The orb image is several GiB unpacked; each thread adds
-0.5–2 GiB; `docker commit` snapshots add more. Keep the janitor installed, or
-remove the `docker commit` line from `dispatch.sh` to stop snapshot growth.
+0.5–2 GiB. Snapshots on pause are disabled and `delete` removes the container and
+its snapshot, so disk is returned when the thread is deleted. Keep the janitor
+installed; it prunes build cache and dangling images.
