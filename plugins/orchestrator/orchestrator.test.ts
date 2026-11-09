@@ -4,9 +4,9 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { LiveDoc } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { M5_MODEL } from "../../test/plugins/m5.ts"
-import { cmd, connect, eventually, fresh, owner } from "../../test/support.ts"
+import { cmd, addThreads, connect, eventually, fresh, owner } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
-import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
+import { ThreadDoc, threadInScope } from "../../src/contracts/threaddoc.ts"
 import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -140,6 +140,24 @@ describe("orchestrator", () => {
     const workspace = await read(stub, (home) => home.harness.snapshot(WorkspaceDoc, context))
     expect(workspace?.spaces[space.id]?.threadIds).toHaveLength(1)
     expect(workspace?.spaces[project.spaceId]?.threadIds).toHaveLength(0)
+  })
+
+  it("lets a thread see itself but not its siblings", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "scope")
+    const [alpha, beta] = await addThreads(stub, project.id, ["alpha", "beta"])
+    if (alpha === undefined || beta === undefined) throw new Error("no threads")
+
+    const [self, sibling, coordinator] = await read(stub, (home: Home) =>
+      Promise.all([
+        threadInScope(home.harness, alpha.id, alpha.id),
+        threadInScope(home.harness, alpha.id, beta.id),
+        threadInScope(home.harness, project.coordinatorId as ConversationId, beta.id),
+      ]),
+    )
+    expect(self).toBeDefined()
+    expect(sibling).toBeUndefined()
+    expect(coordinator).toBeDefined()
   })
 
   it("turns eight finished threads into exactly one coordinator turn", async () => {

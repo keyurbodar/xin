@@ -319,9 +319,11 @@ The last write wins per row. A patch replaces each named field whole, config inc
 | `packages` | `packages` | installed packages, pending installs, runtime bundles |
 | `system` | `system` | version, restart, update |
 
-Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `skills`, `mcp`, `workspace`, `threads`, `jobs`, `questions`, `schedules`, `watchdog`, `intake`, `presets`). A feature that others call provides a key; one that only adds tools, ops or timers provides none. A feature package splits its service row (`<name>`) from its tool row (`tool-<name>`), so disabling the tools leaves the service running.
+Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `skills`, `mcp`, `workspace`, `threads`, `jobs`, `questions`, `schedules`, `watchdog`, `intake`, `presets`). A tool-only package such as `tool-web` or `tool-git` provides no service and mounts only its tool row. A feature that others call provides a key; one that only adds tools, ops or timers provides none. A feature package splits its service row (`<name>`) from its tool row (`tool-<name>`), so disabling the tools leaves the service running.
 
-**Events** are declared on Cordis `Events` with an `@mode` tag: `ops/before` (waterfall), `intake/batch` (waterfall), `thread/settled` (emit), `wire/typing` (parallel), `plugins/changed`, `credentials/updated`, `mcp/changed` (emit). Turn, tool and request interception stays pi-native through extension hooks.
+**Events** are declared on Cordis `Events` with an `@mode` tag: `ops/before` (waterfall), `intake/batch` (waterfall), `thread/settled` (emit), `wire/typing` (parallel), `plugins/changed`, `credentials/updated`, `mcp/changed` (emit; the MCP surface changed, whether tools, resources or prompts). Turn, tool and request interception stays pi-native through extension hooks.
+
+**MCP surface.** `tool-mcp` installs one deferred tool per MCP tool. When a server declares the `resources` capability it also installs `mcp_resources` (list resources and templates) and `mcp_resource` (read one URI); when it declares `prompts` it installs `mcp_prompts` (list) and `mcp_prompt` (render with arguments). All four are read-only, carry the server name in their tool name, and sit behind `tool_search`. `mcp.list` reports the cached tool count and, when the capability is present, the resource, template and prompt counts; `mcp.resources { name }` and `mcp.prompts { name }` read the live lists. Disabling `tool-mcp` hides all of them together, and a preset that hides the row does the same. There is no sampling, elicitation or GET stream.
 
 ## Plugin manager
 

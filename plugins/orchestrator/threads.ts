@@ -89,7 +89,16 @@ type ReporterCheckpoint =
 export type ReporterTask = Task<ReporterInput, ReporterCheckpoint, null, object>
 export type AnchorTask = Task<null, { readonly phase: "done" }, null, object>
 
-export const CHILD_TOOLS = ["delegate_task", "thread_create", "task_cancel", "thread_send"] as const
+export const CHILD_TOOLS = [
+  "delegate_task",
+  "thread_create",
+  "task_cancel",
+  "thread_send",
+  "thread_read",
+  "thread_list",
+  "task_status",
+  "pending_request",
+] as const
 
 export function childTools(registry: Registry): readonly ToolRegistration[] {
   const registered = new Map(

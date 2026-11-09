@@ -12,15 +12,21 @@ export const RoleModelsSchema = obj({
   thread: opt(ModelRefSchema),
   utility: opt(ModelRefSchema),
 })
+export const GitSettingsSchema = obj({
+  repo: str({ pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" }),
+  ref: opt(str({ minLength: 1, maxLength: 200 })),
+})
 export const SettingsSchema = obj({
   threadLimit: int({ minimum: 1 }),
   deadlineMs: int({ minimum: 1_000 }),
   models: opt(RoleModelsSchema),
+  git: opt(GitSettingsSchema),
 })
 export const SettingsPatchSchema = obj({
   threadLimit: opt(int({ minimum: 1 })),
   deadlineMs: opt(int({ minimum: 1_000 })),
   models: opt(RoleModelsSchema),
+  git: opt(GitSettingsSchema),
 })
 
 /** A project is the environment: settings, files and memory. It has no conversation. */
@@ -75,6 +81,8 @@ const LegacyProjectSchema = obj({
 
 const LegacyWorkspaceSchema = obj({ projects: map(LegacyProjectSchema) })
 const parseLegacy = compile(LegacyWorkspaceSchema)
+
+export type GitSettings = Static<typeof GitSettingsSchema>
 
 export const spaceIdOf = (projectId: string): string =>
   projectId.startsWith("prj_") ? `spc_${projectId.slice(4)}` : `spc_${projectId}`

@@ -1,10 +1,12 @@
 {
   "bundles": [
     "xin-base",
+    "xin-plugin-artifacts",
     "xin-plugin-compact",
     "xin-plugin-deploy-hook",
     "xin-plugin-failures",
     "xin-plugin-files",
+    "xin-plugin-git",
     "xin-plugin-goals",
     "xin-plugin-guard",
     "xin-plugin-intake",
@@ -21,8 +23,8 @@
     "xin-plugin-skills",
     "xin-plugin-time",
     "xin-plugin-watchdog",
-    "xin-plugin-workspace",
-    "xin-plugin-artifacts"
+    "xin-plugin-web",
+    "xin-plugin-workspace"
   ],
   "patch": []
 }

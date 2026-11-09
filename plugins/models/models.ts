@@ -39,6 +39,7 @@ import {
   type ModelsService,
 } from "../../src/contracts/models.ts"
 import type { Notification } from "../../src/contracts/push.ts"
+import { spaceInScope, ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { parseWorkspace, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
 import type { Provider } from "../../src/module.ts"
@@ -630,6 +631,20 @@ async function currentModel(harness: Harness, actor: Actor): Promise<ModelRef | 
   return conversation === undefined ? undefined : (await conversation.agent(BACKGROUND_CONTEXT)).model
 }
 
+/**
+ * An agent configures itself, or a thread in its own space when it is that space's coordinator.
+ * A thread never reaches its coordinator or a sibling.
+ */
+async function canConfigure(harness: Harness, actor: Actor, target: ConversationId): Promise<boolean> {
+  if (actor.kind === "owner") return true
+  if (actor.kind !== "agent") return false
+  if (actor.conversationId === target) return true
+  const own = await harness.snapshot(ThreadDoc, actor.conversationId, BACKGROUND_CONTEXT)
+  if (own !== undefined) return false
+  const scope = await spaceInScope(harness, actor.conversationId)
+  return scope !== undefined && scope.space.threadIds.includes(target)
+}
+
 function match(model: Model<Api>, query: string): number {
   const target = query.trim().toLowerCase()
   if (target === "") return 0
@@ -719,6 +734,8 @@ export function create(deps: ModelsPort): ModelsParts {
           ? await api.harness.root(BACKGROUND_CONTEXT)
           : await api.harness.conversation(args.conv as ConversationId, BACKGROUND_CONTEXT)
       if (conversation === undefined) throw new OpRejected("bad_args", `no conversation ${args.conv ?? "root"}`)
+      if (!(await canConfigure(api.harness, api.actor, conversation.id)))
+        throw new OpRejected("forbidden", "an agent may configure only its own conversation or a thread in its space")
       const change: { model?: ModelRef | null; thinkingLevel?: ModelThinkingLevel | null } = {}
       if (args.model !== undefined) {
         const found = registry.models.getModel(args.model.provider, args.model.modelId)

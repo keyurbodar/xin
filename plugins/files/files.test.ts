@@ -3,7 +3,7 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { env } from "cloudflare:workers"
 import { describe, expect, it } from "vitest"
-import { api, field, owner } from "../../test/support.ts"
+import { api, addThreads, cmd, field, owner } from "../../test/support.ts"
 import { M4_MODEL } from "../../test/plugins/m4.ts"
 import { type Home } from "../../test/worker.ts"
 import { sweep } from "./files.ts"
@@ -162,6 +162,70 @@ describe("files", () => {
     expect(await run(`owner-put-${path}`, "file.put", { path, text: "x" }, { kind: "owner" })).toMatchObject({
       kind: "ok",
     })
+  })
+
+  it("confines a thread to its own project for writes and reads", async () => {
+    const stub = owner()
+    const created = await cmd(stub, "thread-scope-project", "project.create", { slug: "alpha", name: "Alpha" })
+    expect(created.ok, JSON.stringify(created)).toBe(true)
+    const project = created.result as { id: string }
+    const [thread] = await addThreads(stub, project.id, ["alpha thread"], "/projects/alpha")
+    if (thread === undefined) throw new Error("no thread")
+    const actor: Actor = { kind: "agent", conversationId: thread.id }
+
+    expect(
+      await run("thread-own-put", "file.put", { path: "/projects/alpha/own.txt", text: "own" }, actor),
+    ).toMatchObject({ kind: "ok" })
+    expect(await run("thread-own-read", "file.read", { path: "/projects/alpha/own.txt" }, actor)).toMatchObject({
+      kind: "ok",
+      result: { text: "own" },
+    })
+    expect(await run("thread-own-list", "file.list", { prefix: "/projects/alpha/" }, actor)).toMatchObject({
+      kind: "ok",
+    })
+    expect(
+      await run("thread-other-put", "file.put", { path: "/projects/beta/other.txt", text: "no" }, actor),
+    ).toMatchObject({
+      kind: "rejected",
+      code: "forbidden",
+    })
+    expect(await run("thread-other-read", "file.read", { path: "/projects/beta/other.txt" }, actor)).toMatchObject({
+      kind: "rejected",
+      code: "forbidden",
+    })
+    expect(await run("thread-other-list", "file.list", { prefix: "/projects/beta/" }, actor)).toMatchObject({
+      kind: "rejected",
+      code: "forbidden",
+    })
+    expect(await rowOf("/projects/beta/other.txt")).toBeUndefined()
+  })
+
+  it("blocks a thread's pi write outside its project", async () => {
+    const stub = owner()
+    const created = await cmd(stub, "thread-hook-project", "project.create", { slug: "hook", name: "Hook" })
+    expect(created.ok, JSON.stringify(created)).toBe(true)
+    const project = created.result as { id: string }
+    const [thread] = await addThreads(stub, project.id, ["hook thread"], "/projects/hook")
+    if (thread === undefined) throw new Error("no thread")
+
+    await runInDurableObject(stub, async (home: Home) => {
+      const conversation = await home.harness.conversation(thread.id, BACKGROUND_CONTEXT)
+      if (conversation === undefined) throw new Error("thread conversation disappeared")
+      await conversation.configure({ model: M4_MODEL }, BACKGROUND_CONTEXT)
+      await conversation.submit(
+        {
+          type: "input",
+          content: "m4 write ../outside/escape.txt\nblocked",
+          requestId: `hook-${crypto.randomUUID()}`,
+        },
+        BACKGROUND_CONTEXT,
+      )
+      await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+    })
+
+    const texts = await runInDurableObject(stub, (home: Home) => toolTexts(home, thread.id))
+    expect(texts.some((text) => text.includes("a thread writes only under /projects/hook/"))).toBe(true)
+    expect(await rowOf("/projects/outside/escape.txt")).toBeUndefined()
   })
 
   it("lists a directory that exists only as row prefixes from a cold environment", async () => {

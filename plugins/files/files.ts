@@ -1,8 +1,10 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import {
   AgentDoc,
   type ConversationId,
   defineExtension,
+  type DocumentReader,
   type Extension,
   hook,
   ROOT_CONVERSATION_ID,
@@ -10,11 +12,15 @@ import {
   type ToolHooks,
 } from "@earendil-works/pi-durable"
 import { compile, int, obj, opt, str } from "@earendil-works/pi-schema"
+import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
+import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { FileEntry, FilesService } from "../../src/contracts/files.ts"
 import type { Env } from "../../src/env.ts"
 import type { Route } from "../../src/module.ts"
 import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import { blobKey, FileIndex, type FileRow, normalizePath, putFile, R2Env, resolvePath } from "../../src/r2env.ts"
+
+const context = BACKGROUND_CONTEXT
 
 const MAX_COMMIT_BYTES = 4096
 const SWEEP_EVERY_MS = 7 * 24 * 60 * 60_000
@@ -32,7 +38,11 @@ const Commit = obj({
 })
 const parseCommit = compile(Commit)
 
-export type WriteScope = (write: { readonly actor: Actor; readonly path: string }) => string | undefined
+export type WriteScope = (write: {
+  readonly actor: Actor
+  readonly path: string
+  readonly read: DocumentReader
+}) => string | undefined | Promise<string | undefined>
 
 export type FilesPort = {
   readonly state: DurableObjectState
@@ -52,24 +62,43 @@ export type FilesPlugin = {
   fire(now: number): Promise<void>
 }
 
+const isMe = (path: string): boolean => path === "/me" || path.startsWith("/me/")
+
 const coordinatorOnly: WriteScope = ({ actor, path }) => {
-  if (path !== "/me" && !path.startsWith("/me/")) return undefined
+  if (!isMe(path)) return undefined
   if (actor.kind === "owner") return undefined
   if (actor.kind === "agent" && actor.conversationId === ROOT_CONVERSATION_ID) return undefined
   return "only the coordinator may write /me"
 }
 
+/**
+ * A thread writes only under its own project's folder. A project coordinator, the root chat and the owner
+ * keep the older rule: everything except `/me` is open to them.
+ */
+const projectScoped: WriteScope = async ({ actor, path, read }) => {
+  const blocked = coordinatorOnly({ actor, path, read })
+  if (blocked !== undefined) return blocked
+  if (actor.kind !== "agent" || actor.conversationId === ROOT_CONVERSATION_ID) return undefined
+  const thread = await read.snapshot(ThreadDoc, actor.conversationId, context)
+  if (thread === undefined) return undefined
+  const workspace = await read.snapshot(WorkspaceDoc, context)
+  const project = workspace?.projects[thread.projectId]
+  if (project === undefined) return `thread ${actor.conversationId} has no project`
+  const prefix = `/projects/${project.slug}/`
+  return path.startsWith(prefix) ? undefined : `a thread writes only under ${prefix}`
+}
+
 const agentActor = (conversationId: ConversationId): Actor => ({ kind: "agent", conversationId })
 
 function scoped(scope: WriteScope): Extension {
-  const beforeTool: ToolHooks["beforeTool"] = async (call, api, context) => {
+  const beforeTool: ToolHooks["beforeTool"] = async (call, api, toolContext) => {
     if (call.name !== "write" && call.name !== "edit") return undefined
     const path = call.arguments.path
     if (typeof path !== "string") return undefined
-    const cwd = (await api.snapshot(AgentDoc, api.conversationId, context))?.cwd ?? "/"
+    const cwd = (await api.snapshot(AgentDoc, api.conversationId, toolContext))?.cwd ?? "/"
     const absolute = resolvePath(cwd, path)
     if (absolute === undefined) return { block: "path escapes the files root" }
-    const blocked = scope({ actor: agentActor(api.conversationId), path: absolute })
+    const blocked = await scope({ actor: agentActor(api.conversationId), path: absolute, read: api })
     return blocked === undefined ? undefined : { block: blocked }
   }
   return defineExtension({
@@ -95,7 +124,7 @@ function rootedPath(path: string): string {
   return normalized
 }
 
-export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): FilesPlugin {
+export function create(deps: FilesPort, scope: WriteScope = projectScoped): FilesPlugin {
   const dirs = new Set<string>(["/"])
   const index = new FileIndex(deps.db)
   const envFor = (cwd: string | undefined): R2Env => new R2Env(deps.env.FILES, deps.db, { cwd: cwd ?? "/", dirs })
@@ -128,10 +157,13 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
     name: "file.list",
     args: obj({ prefix: opt(str()) }),
     actors: ["owner", "agent", "plugin"],
-    run: async (_api, { prefix }) => {
+    run: async (api, { prefix }) => {
       const base = normalizePath("/", prefix ?? "/")
       if (base === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      return files.list(base === "/" ? "/" : `${base}/`)
+      const target = base === "/" ? "/" : `${base}/`
+      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
+      if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
+      return files.list(target)
     },
   })
 
@@ -139,10 +171,10 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
     name: "file.read",
     args: obj({ path: str({ minLength: 1 }) }),
     actors: ["owner", "agent", "plugin"],
-    run: async ({ actor }, { path }) => {
+    run: async (api, { path }) => {
       const target = normalizePath("/", path)
       if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = scope({ actor, path: target })
+      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       const entry = await files.stat(target)
       if (entry === undefined) throw new OpRejected("bad_args", `no file ${target}`)
@@ -156,10 +188,10 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
     name: "file.revision",
     args: obj({ path: str({ minLength: 1 }), sha256: str({ minLength: 64, maxLength: 64 }) }),
     actors: ["owner", "agent", "plugin"],
-    run: async ({ actor }, { path, sha256 }) => {
+    run: async (api, { path, sha256 }) => {
       const target = normalizePath("/", path)
       if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = scope({ actor, path: target })
+      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       const found = (await index.revisions(target)).find((candidate) => candidate.sha256 === sha256)
       if (found === undefined) throw new OpRejected("bad_args", `no revision of ${target}`)
@@ -173,10 +205,10 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
     name: "file.revisions",
     args: obj({ path: str({ minLength: 1 }) }),
     actors: ["owner", "agent", "plugin"],
-    run: async ({ actor }, { path }) => {
+    run: async (api, { path }) => {
       const target = normalizePath("/", path)
       if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = scope({ actor, path: target })
+      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       return { path: target, revisions: await index.revisions(target) }
     },
@@ -186,10 +218,10 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
     name: "file.delete",
     args: obj({ path: str({ minLength: 1 }) }),
     actors: ["owner", "agent", "plugin"],
-    run: async ({ actor }, { path }) => {
+    run: async (api, { path }) => {
       const target = normalizePath("/", path)
       if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = scope({ actor, path: target })
+      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       return { deleted: await files.remove(target) }
     },
@@ -199,10 +231,10 @@ export function create(deps: FilesPort, scope: WriteScope = coordinatorOnly): Fi
     name: "file.put",
     args: obj({ path: str({ minLength: 1 }), text: str() }),
     actors: ["owner", "agent", "plugin"],
-    run: async ({ actor }, { path, text }) => {
+    run: async (api, { path, text }) => {
       const target = normalizePath("/", path)
       if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = scope({ actor, path: target })
+      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       return files.write(target, text)
     },
