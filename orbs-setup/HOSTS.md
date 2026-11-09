@@ -7,17 +7,17 @@ runs `amp orb provider` as a systemd service and spawns one Docker container per
 
 | provider | hostname | ram | /data free | cap tiny/small/big | migrated | notes |
 |---|---|---|---:|---|---|---|
-| `dof-live` | dof | 8 GiB | 4.8 GiB | 3/2/1 | yes | 4 containers; cooling until 2026-11-09 10:58 UTC |
-| `xin-b2-live` | xin-b2 | 8 GiB | unknown | 3/2/1 | no | cooling until 2026-11-09 10:15 UTC; also runs runner `xin-b2` |
-| `xin-b3-orbs` | xin-b3 | 8 GiB | 5.2 GiB | 3/2/1 | yes | 1 container; cooling until 2026-11-09 11:32 UTC |
-| `host-4` | host-4 | 8 GiB | 9.6 GiB | 3/2/1 | yes | default provider; empty |
-| `host-5` | host-5 | 8 GiB | 16 GiB | 3/2/1 | yes | empty |
-| `host-6` | host-6 | 8 GiB | 16 GiB | 3/2/1 | yes | empty |
-| `host-7` | host-7 | 8 GiB | 16 GiB | 3/2/1 | yes | empty |
-| `vm14` | vm14 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots |
+| `dof-live` | dof | 8 GiB | 7.5 GiB | 3/2/1 | yes | fresh containerd store after metadata corruption; 0 containers; recovered workspaces at `/var/tmp/dof-recovered` |
+| `xin-b2-live` | xin-b2 | 8 GiB | 7 GiB | 3/2/1 | yes | 1 paused container for archived thread `Intake queue rewrite`; also runs runner `xin-b2` |
+| `xin-b3-orbs` | xin-b3 | 8 GiB | 5 GiB | 3/2/1 | yes | 1 paused container for archived thread `Kiko Durable Objects study`; below 6 GiB spawn threshold until that thread is deleted |
+| `host-4` | host-4 | 8 GiB | 9 GiB | 3/2/1 | yes | default provider; empty |
+| `host-5` | host-5 | 8 GiB | 15 GiB | 3/2/1 | yes | empty |
+| `host-6` | host-6 | 8 GiB | 15 GiB | 3/2/1 | yes | empty |
+| `host-7` | host-7 | 8 GiB | 15 GiB | 3/2/1 | yes | empty |
+| `vm14` | vm14 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots; hosts the live `Merge branches into one` thread |
 | `vm20` | vm20 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots |
 
-Last verified: 2026-11-09T09:43Z
+Last verified: 2026-11-09T12:05Z
 
 ## Accounts
 
@@ -96,9 +96,20 @@ orbs and refuses new spawns).
 - Orb types still need to be registered in **Settings → Orbs** before threads
   can choose them.
 
+### dof containerd incident
+
+Migrating dof's containerd store to `/data` copied a BoltDB that was already
+inconsistent from the first interrupted copy. containerd then crash-looped with
+`freepages: failed to get all reachable pages`. `bbolt` check, compact, freelist
+rebuild, freelist abandon, and meta-page revert all failed. The store was rebuilt
+fresh; the four stale containers were removed. Their workspaces were copied to
+`/var/tmp/dof-recovered/snap-*` before the reset. dof is healthy and took a test
+orb end-to-end after the rebuild.
+
 Capacity: 9 providers. `vm14`/`vm20` sizing unknown. The seven Instabox hosts
-give roughly 18 `small` or 27 `tiny` orbs, before disk and cooldown limits.
-`dof` is already at four containers and refuses new spawns.
+are 14 `small` or 21 `tiny` at the ceiling. Six are above the 6 GiB spawn
+threshold (all but `xin-b3`), so today's usable figure is 12 `small` or 18
+`tiny`, minus any of `dof`'s four existing threads that wake and respawn.
 
 ## New-host setup (host-4 … host-7)
 
