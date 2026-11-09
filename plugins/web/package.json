@@ -15,7 +15,8 @@
     "bundle": [
       {
         "id": "tool-web",
-        "plugin": "tool-web"
+        "plugin": "tool-web",
+        "disabled": true
       }
     ]
   }

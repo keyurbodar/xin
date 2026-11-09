@@ -38,7 +38,7 @@ export { default } from "../src/worker.ts"
 
 /** The product profile plus the test bundle and the optional tool packages the tests exercise. */
 export const TEST_PROFILE: Profile = {
-  bundles: [...PROFILE.bundles, "test", "xin-plugin-web", "xin-plugin-git"],
+  bundles: [...PROFILE.bundles, "test"],
   patch: PROFILE.patch,
 }
 

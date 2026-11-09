@@ -150,7 +150,7 @@ export class JournalStorage extends MemoryStorage {
       ])
       for (const [index, part] of parts.entries())
         this.#write("INSERT INTO pi_checkpoint_part (part, data) VALUES (?, ?)", [index, part.buffer as ArrayBuffer])
-      this.#write("DELETE FROM pi_journal", [])
+      this.#write("DELETE FROM pi_journal WHERE seq <= ?", [seq])
     })
     this.#journalled = 0
   }

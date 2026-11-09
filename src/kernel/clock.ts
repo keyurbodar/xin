@@ -101,23 +101,24 @@ export class Clock extends Service {
     const due = [current.at, ...owned].filter((at): at is number => at !== undefined)
     const storage = this.ctx.host.state.storage
     if (this.#armed === undefined) this.#armed = await storage.getAlarm()
-    if (due.length === 0) {
-      // A run in progress keeps the alarm it already has, and arms a recovery one when it has none: pi's contract says
-      // an active wake must be woken again if the process dies, and a deploy or crash mid-reply would otherwise wait for
-      // the client. An idle home drops its alarm entirely.
-      if (current.active) {
-        if (this.#armed !== null) return
-        const at = Date.now() + HEARTBEAT_MS
-        await storage.setAlarm(at)
-        this.#armed = at
-        return
-      }
+    const deadline = due.length === 0 ? undefined : Math.min(...due)
+    let at = deadline
+    if (current.active) {
+      // pi's contract: a process that dies while work is running must be woken again. Fold a recovery horizon into the
+      // minimum only when the alarm is not already inside it, so it never pushes a nearer deadline later and a standing
+      // recovery alarm is not rewritten on every event.
+      const horizon = Date.now() + HEARTBEAT_MS
+      if (this.#armed !== null && this.#armed <= horizon) {
+        if (deadline === undefined || this.#armed <= deadline) return
+        at = deadline
+      } else at = deadline === undefined ? horizon : Math.min(deadline, horizon)
+    }
+    if (at === undefined) {
       if (this.#armed === null) return
       await storage.deleteAlarm()
       this.#armed = null
       return
     }
-    const at = Math.min(...due)
     // One deadline, one row: the alarm moves only when the earliest deadline moves.
     if (this.#armed === at) return
     await storage.setAlarm(at)

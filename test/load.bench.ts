@@ -221,6 +221,7 @@ describe("load", () => {
     const within = (name: string, value: number, bound: number): void => {
       expect(value, `${name} is ${value}, over ${bound}\n${JSON.stringify(report, null, 2)}`).toBeLessThanOrEqual(bound)
     }
+    expect(report.coldBoot.reads, "cold boot replay measured no reads").toBeGreaterThan(0)
     within("calls per message", report.turnPerMessage.calls, 75)
     within("writes per message", report.turnPerMessage.writes, 36)
     within("reads per message", report.turnPerMessage.reads, 64)

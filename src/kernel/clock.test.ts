@@ -35,8 +35,9 @@ describe("the alarm", () => {
     expect(await alarmWrites(stub)).toBe(written + 1)
   })
 
-  it("arms a recovery alarm while a run is active with no deadline", async () => {
+  it("arms a recovery alarm within two minutes while a run is active", async () => {
     const stub = await boot()
+    const now = Date.now()
     await runInDurableObject(stub, async (home: Home, state) => {
       home.loader.ctx.clock.fired()
       await state.storage.deleteAlarm()
@@ -44,6 +45,16 @@ describe("the alarm", () => {
     })
     const at = await runInDurableObject(stub, (_home: Home, state) => state.storage.getAlarm())
     expect(at).not.toBeNull()
+    expect((at ?? 0) - now).toBeLessThanOrEqual(120_000)
+    expect((at ?? 0) - now).toBeGreaterThan(0)
+  })
+
+  it("keeps a nearer deadline when a run is active", async () => {
+    const stub = await boot()
+    const soon = Date.now() + 5_000
+    await arm(stub, { active: true, at: soon })
+    const at = await runInDurableObject(stub, (_home: Home, state) => state.storage.getAlarm())
+    expect(at).toBe(soon)
   })
 
   it("is written after the runtime consumed it", async () => {

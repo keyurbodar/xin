@@ -15,7 +15,8 @@
     "bundle": [
       {
         "id": "tool-git",
-        "plugin": "tool-git"
+        "plugin": "tool-git",
+        "disabled": true
       }
     ]
   }

@@ -49,6 +49,22 @@ describe("the journal", () => {
     })
   })
 
+  it("truncates only the journal rows the checkpoint covers", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (_home, state) => {
+      const sql = state.storage.sql
+      clear(sql)
+      const storage = await JournalStorage.open(state.storage, context)
+      storage.prepareCommit([conversation(301)], 1 as Seq).apply()
+      await storage.checkpoint(context)
+      journal(sql, 9, [conversation(302)])
+      await storage.checkpoint(context)
+
+      const restored = await JournalStorage.open(state.storage, context)
+      expect(await ids(restored)).toEqual([301, 302])
+    })
+  })
+
   it("keeps the previous checkpoint when a checkpoint write fails", async () => {
     const stub = fresh()
     await runInDurableObject(stub, async (_home, state) => {

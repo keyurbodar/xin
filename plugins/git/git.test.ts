@@ -142,6 +142,7 @@ const toolTexts = (home: Home, conversationId: ConversationId): Promise<string[]
 describe("git tools", () => {
   it("reads log, show, diff and blame from the thread's project repository", async () => {
     const stub = fresh()
+    await setRow(stub, "tool-git", true)
     const fake = fakeFetch()
     const original = globalThis.fetch
     globalThis.fetch = fake.fetch
@@ -183,6 +184,7 @@ describe("git tools", () => {
 
   it("refuses a project without a repository", async () => {
     const stub = fresh()
+    await setRow(stub, "tool-git", true)
     const project = await makeProject(stub, "git-none")
     respond([
       () => fauxAssistantMessage([fauxToolCall("git_log", {})], { stopReason: "toolUse" }),
@@ -197,6 +199,7 @@ describe("git tools", () => {
 
   it("hides the git tools when the tool-git row is disabled", async () => {
     const stub = fresh()
+    await setRow(stub, "tool-git", true)
     const project = await makeProject(stub, "git-row", { repo: "acme/demo" })
     const [thread] = await addThreads(stub, project.id, ["git row thread"])
     if (thread === undefined) throw new Error("no thread")

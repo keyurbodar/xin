@@ -4,7 +4,7 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { respond } from "../../test/plugins/m8.ts"
-import { addThreads, cmd, fresh, turn } from "../../test/support.ts"
+import { addThreads, cmd, fresh, setRow, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { extractHtml, parseSearchResults, publicUrl } from "./web.ts"
 
@@ -97,11 +97,25 @@ const toolTexts = (home: Home, conversationId: ConversationId): Promise<string[]
   })
 
 describe("web tools", () => {
+  it("ships the web row disabled and mounts it when enabled", async () => {
+    const stub = fresh()
+    const rowOf = async (id: string) => {
+      const listed = await cmd(stub, id, "plugin.list")
+      return Array.isArray(listed.result)
+        ? listed.result.find((row) => Reflect.get(row, "id") === "tool-web")
+        : undefined
+    }
+    expect(await rowOf("web-row-1")).toMatchObject({ disabled: true, state: { kind: "disabled" } })
+    await setRow(stub, "tool-web", true)
+    expect(await rowOf("web-row-2")).toMatchObject({ disabled: false })
+  })
+
   it("searches and fetches through the model-facing tools", async () => {
     const original = globalThis.fetch
     globalThis.fetch = fakeFetch
     try {
       const stub = fresh()
+      await setRow(stub, "tool-web", true)
       respond([
         () => fauxAssistantMessage([fauxToolCall("web_search", { query: "xin" })], { stopReason: "toolUse" }),
         () =>
@@ -125,6 +139,7 @@ describe("web tools", () => {
     globalThis.fetch = fakeFetch
     try {
       const stub = fresh()
+      await setRow(stub, "tool-web", true)
       const created = await cmd(stub, "web-thread-project", "project.create", {
         slug: "web-thread",
         name: "Web thread",

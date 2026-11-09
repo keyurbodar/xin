@@ -33,7 +33,7 @@ Read with: [01 Host](./01-host.md) for the alarm and Harness recovery paths, [03
 | One idle alarm in that home | 2 written, 7 read, 15 statements |
 | Idle hour | 0 (no alarm armed) |
 
-Both scenario measurements come from `SELECT total_changes()` deltas around each scenario in the real `Home` DO. `total_changes()` counts rows changed, not index entries, so it undercounts what Cloudflare bills; the load below counts the billing rows. The bounds carry about 30% headroom, so a regression that adds bookkeeping rows fails the test instead of hiding in the average.
+Both scenario measurements come from the storage meter (`test/meter.ts`) around the real `Home` DO, which counts the rows Cloudflare bills: each cursor's `rowsRead`/`rowsWritten`, each key-value method and each alarm method. The bounds above sit roughly 25–65% over the measurements, so a regression that adds bookkeeping rows fails the test instead of hiding in the average.
 
 **The 100-thread load.** `test/load.bench.ts` (`XIN_LOAD=1 bun scripts/gate.ts run test`) builds one project with 100 thread conversations, sends each thread three messages (half of them two tool calls), fills the journal towards a full checkpoint and evicts once, then fires five idle alarms. `test/meter.ts` wraps the Home's storage and counts what Cloudflare bills: SQL rows from each cursor's own `rowsRead`/`rowsWritten` (its documented billing counters), each key-value method as one row, and each alarm method as one row. The benchmark reports the synthetic fire-at write separately from the message, the alarm window as harness rows, and the cold boot replay apart from the turn that follows it; it bounds all of them, so a harness or replay regression cannot hide inside a total.
 

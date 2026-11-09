@@ -351,7 +351,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
     { id: "files", name: "cordis:files" },
     { id: "tool-files", name: "cordis:tool-files" },
   ],
-  "xin-plugin-git": [{ id: "tool-git", name: "cordis:tool-git" }],
+  "xin-plugin-git": [{ id: "tool-git", name: "cordis:tool-git", disabled: true }],
   "xin-plugin-goals": [
     { id: "goals", name: "cordis:goals" },
     { id: "tool-goals", name: "cordis:tool-goals" },
@@ -410,7 +410,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
   ],
   "xin-plugin-time": [{ id: "time", name: "cordis:time", config: { timezone: "UTC" } }],
   "xin-plugin-watchdog": [{ id: "watchdog", name: "cordis:watchdog" }],
-  "xin-plugin-web": [{ id: "tool-web", name: "cordis:tool-web" }],
+  "xin-plugin-web": [{ id: "tool-web", name: "cordis:tool-web", disabled: true }],
   "xin-plugin-workspace": [{ id: "workspace", name: "cordis:workspace" }],
 }
 
