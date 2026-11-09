@@ -138,16 +138,20 @@ export class JournalStorage extends MemoryStorage {
     this.#flush()
     const seq = Math.max(this.#lastSeq, 1) as Seq
     const parts = split(bytesOf({ seq, writes: await snapshot(this, context) }))
-    this.#write("DELETE FROM pi_checkpoint_part", [])
-    this.#write("DELETE FROM pi_checkpoint", [])
-    this.#write("INSERT INTO pi_checkpoint (singleton, seq, parts, bytes) VALUES (1, ?, ?, ?)", [
-      seq,
-      parts.length,
-      parts.reduce((total, part) => total + part.length, 0),
-    ])
-    for (const [index, part] of parts.entries())
-      this.#write("INSERT INTO pi_checkpoint_part (part, data) VALUES (?, ?)", [index, part.buffer as ArrayBuffer])
-    this.#write("DELETE FROM pi_journal", [])
+    // One transaction: a crash between the delete and the insert must leave the previous checkpoint and its journal
+    // intact, or the home reopens with neither.
+    this.#store.transactionSync(() => {
+      this.#write("DELETE FROM pi_checkpoint_part", [])
+      this.#write("DELETE FROM pi_checkpoint", [])
+      this.#write("INSERT INTO pi_checkpoint (singleton, seq, parts, bytes) VALUES (1, ?, ?, ?)", [
+        seq,
+        parts.length,
+        parts.reduce((total, part) => total + part.length, 0),
+      ])
+      for (const [index, part] of parts.entries())
+        this.#write("INSERT INTO pi_checkpoint_part (part, data) VALUES (?, ?)", [index, part.buffer as ArrayBuffer])
+      this.#write("DELETE FROM pi_journal", [])
+    })
     this.#journalled = 0
   }
 
@@ -184,7 +188,12 @@ export class JournalStorage extends MemoryStorage {
       this.#learn(envelope.writes)
       this.#lastSeq = Math.max(this.#lastSeq, envelope.seq)
     }
-    const rows = this.#read<JournalRow>("SELECT seq, part, parts, bytes, data FROM pi_journal ORDER BY seq, part", [])
+    // A crash after the checkpoint but before its journal delete leaves rows the checkpoint now covers; replaying them
+    // would repeat a commit sequence, which MemoryStorage refuses.
+    const rows = this.#read<JournalRow>(
+      "SELECT seq, part, parts, bytes, data FROM pi_journal WHERE seq > ? ORDER BY seq, part",
+      [checkpoint?.seq ?? 0],
+    )
     for (const group of groups(rows)) {
       const first = group[0]
       if (first === undefined) continue

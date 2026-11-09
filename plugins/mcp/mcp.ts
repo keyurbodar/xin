@@ -342,8 +342,21 @@ export function create(ports: McpPorts): McpModule {
     for (const connection of contributed.values()) sets.set(connection.name, connection.registrations)
     for (const [name, registered] of definitions) sets.set(name, registered)
     const byName = new Map<string, ToolRegistration>()
+    // Synthetic names truncate and replace punctuation, so two different servers or tools can land on one name. Rename
+    // the later one instead of dropping its server's tool: a model sees both and each keeps its own handler.
+    const claim = (base: string): string => {
+      if (!byName.has(base)) return base
+      for (let count = 2; ; count++) {
+        const suffix = `__${count}`
+        const name = `${base.slice(0, MAX_TOOL_NAME - suffix.length)}${suffix}`
+        if (!byName.has(name)) return name
+      }
+    }
     for (const [, registered] of [...sets.entries()].toSorted(([left], [right]) => left.localeCompare(right)))
-      for (const tool of registered) if (!byName.has(tool.name)) byName.set(tool.name, tool)
+      for (const tool of registered) {
+        const name = claim(tool.name)
+        byName.set(name, name === tool.name ? tool : { ...tool, name })
+      }
     return [...byName.values()]
   }
 

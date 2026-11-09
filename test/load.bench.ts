@@ -11,7 +11,8 @@ const CONTEXT = BACKGROUND_CONTEXT
 const THREADS = 100
 const TURNS = 3
 const IDLE_ALARMS = 5
-const COLD_TURNS = 10
+const COLD_TURNS = 1
+const FILL_TARGET = 250
 
 type Counts = { readonly calls: number; readonly reads: number; readonly writes: number }
 type Stub = ReturnType<typeof fresh>
@@ -57,21 +58,31 @@ const round = (counts: Counts): Counts => ({
 
 const idle = (stub: Stub): Promise<void> => runInDurableObject(stub, (home: Home) => home.harness.waitForIdle(CONTEXT))
 
-async function fireNow(stub: Stub): Promise<Counts> {
+const journalRows = (stub: Stub): Promise<number> =>
+  runInDurableObject(stub, (_home: Home, state) =>
+    Number(state.storage.sql.exec("SELECT COUNT(*) AS n FROM pi_journal").one().n),
+  )
+
+type Window = { readonly plumbing: Counts; readonly harness: Counts }
+
+/** The synthetic fire-at write is test plumbing, not a message's cost; the alarm window is the harness's. */
+async function fireNow(stub: Stub): Promise<Window> {
   const before = await meter(stub)
   await runInDurableObject(stub, (home: Home) =>
     home.db.run("UPDATE inbound SET fire_at = ? WHERE status = 'pending'", Date.now() - 1),
   )
-  const harness = delta(await meter(stub), before).total
+  const plumbing = delta(await meter(stub), before).total
+  const alarmBefore = await meter(stub)
   await runDurableObjectAlarm(stub)
-  return harness
+  const harness = delta(await meter(stub), alarmBefore).total
+  return { plumbing, harness }
 }
 
-async function turn(stub: Stub, id: number, text: string, seq: number): Promise<{ harness: Counts; sent: boolean }> {
+async function turn(stub: Stub, id: number, text: string, seq: number): Promise<Window & { readonly sent: boolean }> {
   const sent = await cmd(stub, `load-${id}-${seq}`, "message.send", { conv: id, text })
-  const harness = await fireNow(stub)
+  const window = await fireNow(stub)
   await idle(stub)
-  return { harness, sent: sent.ok }
+  return { ...window, sent: sent.ok }
 }
 
 function top(record: Record<string, Counts>, key: "reads" | "writes", count: number): [string, string][] {
@@ -129,6 +140,7 @@ describe("load", () => {
     await runInDurableObject(stub, (home: Home) => home.meterLabel("turn"))
     const turnBefore = await meter(stub)
     let harness: Counts = zero
+    let plumbing: Counts = zero
     let requests = 0
     for (let cycle = 0; cycle < TURNS; cycle++) {
       for (const [index, id] of ids.entries()) {
@@ -136,11 +148,12 @@ describe("load", () => {
         const result = await turn(stub, id, text, cycle * THREADS + index)
         expect(result.sent, `message to ${id} was refused`).toBe(true)
         harness = add(harness, result.harness)
+        plumbing = add(plumbing, result.plumbing)
         requests += 1
       }
     }
     const turns = delta(await meter(stub), turnBefore)
-    const productTurns = sub(turns.total, harness)
+    const productTurns = sub(turns.total, plumbing)
     const turnCount = THREADS * TURNS
 
     // Idle alarms: what one wake costs when no message is pending.
@@ -149,25 +162,28 @@ describe("load", () => {
     for (let index = 0; index < IDLE_ALARMS; index++) await runDurableObjectAlarm(stub).catch(() => undefined)
     const idleAlarm = delta(await meter(stub), idleBefore)
 
-    // Cold turns: evict between messages, as an idle owner's Home is evicted.
-    await runInDurableObject(stub, (home: Home) => home.meterLabel("cold"))
-    const coldBefore = await meter(stub)
-    let coldHarness: Counts = zero
-    for (const id of ids.slice(0, COLD_TURNS)) {
-      await evictDurableObject(stub)
-      const result = await turn(stub, id, "ping 0", 10_000 + id)
-      coldHarness = add(coldHarness, result.harness)
-      requests += 1
+    // Cold turn: fill the journal towards a full checkpoint, then evict. A cold start near the checkpoint bound is the
+    // worst case: it replays the most rows, and a small journal would make the number look better than the real one.
+    await runInDurableObject(stub, (home: Home) => home.meterLabel("fill"))
+    let filled = 0
+    while ((await journalRows(stub)) < FILL_TARGET && filled < THREADS * 4) {
+      const id = ids[filled % ids.length] ?? ids[0] ?? 0
+      const result = await turn(stub, id, "ping 0", 30_000 + filled)
+      expect(result.sent, `fill message to ${id} was refused`).toBe(true)
+      filled += 1
     }
-    const cold = per(sub(delta(await meter(stub), coldBefore).total, coldHarness), COLD_TURNS)
-
-    // The home snapshot a client reads when it opens Xin.
-    await runInDurableObject(stub, (home: Home) => home.meterLabel("snapshot"))
-    const snapshotBefore = await meter(stub)
-    await runInDurableObject(stub, async (home: Home) => {
-      await home.loader.ctx.wire.snapshot()
-    })
-    const snapshot = delta(await meter(stub), snapshotBefore)
+    const replayed = await journalRows(stub)
+    await runInDurableObject(stub, (home: Home) => home.meterLabel("cold"))
+    const beforeEvict = await meter(stub)
+    await evictDurableObject(stub)
+    // The first read of the meter rebuilds the Home, so it returns the boot cost and everything after it.
+    const afterBoot = await meter(stub)
+    const coldBoot = delta(afterBoot, beforeEvict).total
+    const coldBefore = afterBoot
+    const coldTurn = await turn(stub, ids[0] ?? 0, "ping 0", 20_000)
+    expect(coldTurn.sent, "cold message was refused").toBe(true)
+    requests += 1
+    const cold = per(sub(delta(await meter(stub), coldBefore).total, coldTurn.plumbing), COLD_TURNS)
 
     const all = await meter(stub)
     const report = {
@@ -185,7 +201,9 @@ describe("load", () => {
       harnessPerTurn: per(harness, turnCount),
       idleAlarm: { ...idleAlarm, total: per(idleAlarm.total, IDLE_ALARMS) },
       coldTurn: cold,
-      snapshot: snapshot.total,
+      coldBoot,
+      coldJournalRows: replayed,
+      filled,
       requests,
       sql: round(all.sql),
       kv: round(all.kv),
@@ -204,12 +222,15 @@ describe("load", () => {
       expect(value, `${name} is ${value}, over ${bound}\n${JSON.stringify(report, null, 2)}`).toBeLessThanOrEqual(bound)
     }
     within("calls per message", report.turnPerMessage.calls, 75)
-    within("reads per message", report.turnPerMessage.reads, 50)
-    within("writes per message", report.turnPerMessage.writes, 30)
-    within("calls per cold turn", report.coldTurn.calls, 130)
-    within("reads per cold turn", report.coldTurn.reads, 500)
-    within("writes per cold turn", report.coldTurn.writes, 40)
+    within("writes per message", report.turnPerMessage.writes, 36)
+    within("reads per message", report.turnPerMessage.reads, 64)
+    within("calls per cold turn", report.coldTurn.calls, 200)
+    within("reads per cold turn", report.coldTurn.reads, 104)
+    within("writes per cold turn", report.coldTurn.writes, 64)
     within("reads per idle alarm", report.idleAlarm.total.reads, 20)
     within("writes per idle alarm", report.idleAlarm.total.writes, 3)
+    within("harness reads per message", report.harnessPerTurn.reads, 40)
+    within("harness writes per message", report.harnessPerTurn.writes, 24)
+    within("cold boot reads", report.coldBoot.reads, 560)
   }, 900_000)
 })

@@ -4,6 +4,7 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { ArtifactsDoc } from "../../src/contracts/artifacts.ts"
 import { M5_MODEL } from "../../test/plugins/m5.ts"
+import type { CommandId } from "../../src/ids.ts"
 import { cmd, eventually, field, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
@@ -71,6 +72,41 @@ describe("artifacts", () => {
     expect(deleted.result).toMatchObject({ deleted: true, id })
     const gone = await cmd(stub, "artifact-read-2", "artifact.read", { threadId, id })
     expect(gone).toMatchObject({ ok: false, error: { code: "bad_args" } })
+  })
+
+  it("refuses a thread that targets a sibling thread's artifacts", async () => {
+    const stub = fresh()
+    const alpha = await setup(stub)
+    const made = await cmd(stub, "thread-2", "thread.create", {
+      project: "alpha",
+      title: "Sibling",
+      task: "other",
+    })
+    expect(made.ok, JSON.stringify(made)).toBe(true)
+    const beta = Number(field(made.result, "threadId"))
+    const asAlpha = (id: string, op: string, args: unknown) =>
+      runInDurableObject(stub, (home: Home) =>
+        home.commands.run(
+          { id: id as CommandId, op, args },
+          { kind: "agent", conversationId: alpha as ConversationId },
+        ),
+      )
+
+    expect(
+      await asAlpha("artifact-own", "artifact.write", { threadId: alpha, title: "Mine", markdown: "# Mine" }),
+    ).toMatchObject({ kind: "ok" })
+    for (const [op, args] of [
+      ["artifact.list", { threadId: beta }],
+      ["artifact.read", { threadId: beta, id: "art" }],
+      ["artifact.write", { threadId: beta, title: "Stolen", markdown: "# Stolen" }],
+      ["artifact.delete", { threadId: beta, id: "art" }],
+    ] as const)
+      expect(await asAlpha(`artifact-sibling-${op}`, op, args)).toMatchObject({ kind: "rejected", code: "bad_args" })
+
+    const stored = await runInDurableObject(stub, (home: Home) =>
+      home.harness.snapshot(ArtifactsDoc, beta as ConversationId, context),
+    )
+    expect(stored?.items ?? {}).toEqual({})
   })
 
   it("lets a thread write its own artifact through the tool", async () => {

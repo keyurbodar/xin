@@ -332,6 +332,21 @@ describe("mcp servers", () => {
     expect(offered(requestAt(1))).not.toContain("mcp__gone__echo")
   })
 
+  it("keeps every server's tools when their synthetic names collide", async () => {
+    const stub = fresh()
+    serve(fakeServer())
+    const one = "a".repeat(60)
+    const two = `${"a".repeat(59)}b`
+    await cmd(stub, "mcp-collide-1", "mcp.add", { name: one, url: "https://mcp.test/one" })
+    await cmd(stub, "mcp-collide-2", "mcp.add", { name: two, url: "https://mcp.test/two" })
+
+    const installed = await runInDurableObject(stub, (home: Home) =>
+      [...(home.extension("tool-mcp").tools ?? [])].map((tool) => tool.name),
+    )
+    expect(installed).toHaveLength(4)
+    expect(new Set(installed).size).toBe(4)
+  })
+
   it("leaves exactly the current servers' tools on the mcp extension through add, refresh and remove", async () => {
     const stub = fresh()
     serve(fakeServer())

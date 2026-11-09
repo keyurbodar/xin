@@ -279,11 +279,13 @@ export type JobsModule = {
 }
 
 export async function cancelJob(harness: Harness, callerId: ConversationId, jobId: number): Promise<boolean> {
+  const own = await harness.snapshot(ThreadDoc, callerId, context)
   const scope = await spaceInScope(harness, callerId)
   if (scope === undefined) return false
   const doc = await harness.snapshot(JobsDoc, context)
   const job = doc?.jobs[String(jobId)]
   if (job === undefined || job.result !== undefined) return false
+  if (own !== undefined && job.parentId !== callerId) return false
   if (job.parentId !== scope.space.coordinatorId && !scope.space.threadIds.includes(job.parentId)) return false
   await harness.abortTask(jobId as TaskId, context)
   return true

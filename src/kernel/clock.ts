@@ -102,9 +102,17 @@ export class Clock extends Service {
     const storage = this.ctx.host.state.storage
     if (this.#armed === undefined) this.#armed = await storage.getAlarm()
     if (due.length === 0) {
-      // Nothing is due. A run in progress keeps whatever alarm it already has — it was set before the run began, and an
-      // extra write here would only be deleted by the turn's own end — and an idle home drops its alarm entirely.
-      if (current.active || this.#armed === null) return
+      // A run in progress keeps the alarm it already has, and arms a recovery one when it has none: pi's contract says
+      // an active wake must be woken again if the process dies, and a deploy or crash mid-reply would otherwise wait for
+      // the client. An idle home drops its alarm entirely.
+      if (current.active) {
+        if (this.#armed !== null) return
+        const at = Date.now() + HEARTBEAT_MS
+        await storage.setAlarm(at)
+        this.#armed = at
+        return
+      }
+      if (this.#armed === null) return
       await storage.deleteAlarm()
       this.#armed = null
       return

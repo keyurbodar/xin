@@ -4,9 +4,9 @@ import type { ConversationId, TaskId, ToolExecutionApi, ToolExecutionResult } fr
 import { obj } from "@earendil-works/pi-schema"
 import { describe, expect, it } from "vitest"
 import { M6_MODEL } from "../../test/plugins/m6.ts"
-import { cmd, eventually, fresh } from "../../test/support.ts"
+import { addThreads, cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
-import { jobTool, JobsDoc } from "./jobs.ts"
+import { cancelJob, jobTool, JobsDoc } from "./jobs.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
@@ -130,6 +130,30 @@ function heldJobApi(home: Home, conversationId: ConversationId, taskId: number):
     waitForTask: home.harness.waitForTask.bind(home.harness),
   } as unknown as ToolExecutionApi
 }
+
+describe("job cancellation", () => {
+  it("lets a thread cancel only its own job, never a sibling's", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "cancel-scope")
+    const [mine, sibling] = await addThreads(stub, project.id, ["mine", "sibling"])
+    if (mine === undefined || sibling === undefined) throw new Error("no threads")
+    const jobId = await runInDurableObject(stub, (home: Home) =>
+      home.harness.commit(async (tx) => {
+        const doc = await tx.doc(JobsDoc)
+        doc.jobs["9001"] = {
+          tool: "ping",
+          title: "ping",
+          startedAt: Date.now(),
+          deadlineAt: Date.now() + 60_000,
+          parentId: sibling.id,
+        }
+        return 9001
+      }, context),
+    )
+
+    expect(await runInDurableObject(stub, (home: Home) => cancelJob(home.harness, mine.id, jobId))).toBe(false)
+  })
+})
 
 describe("jobs", () => {
   it("returns a fast tool's result inline without a job report", async () => {

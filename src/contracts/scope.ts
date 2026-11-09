@@ -82,6 +82,7 @@ export async function projectByRef(harness: Harness, ref: string): Promise<Resol
 export async function canUseThread(harness: Harness, callerId: ConversationId, threadId: number): Promise<boolean> {
   const scope = await scopeOf(harness, callerId)
   if (scope === undefined) return false
+  if (scope.kind === "thread") return threadId === scope.threadId
   if (scope.kind === "puck") {
     const workspace = await harness.snapshot(WorkspaceDoc, context)
     return (

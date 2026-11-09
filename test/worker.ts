@@ -21,6 +21,7 @@ import * as settled from "./plugins/settled.ts"
 import * as skills from "./plugins/skills.ts"
 import * as contrib from "./plugins/contrib.ts"
 import type { Composition, Catalog } from "../src/kernel/loader.ts"
+import type { Profile } from "../src/kernel/layers.ts"
 import type { Extension } from "@earendil-works/pi-durable"
 import { testPlugin } from "./kernel.ts"
 import { lastOwnerText } from "./support.ts"
@@ -34,6 +35,12 @@ import type { Env } from "../src/env.ts"
 import { install, sample, setLabel, type Sample } from "./meter.ts"
 
 export { default } from "../src/worker.ts"
+
+/** The product profile plus the test bundle and the optional tool packages the tests exercise. */
+export const TEST_PROFILE: Profile = {
+  bundles: [...PROFILE.bundles, "test", "xin-plugin-web", "xin-plugin-git"],
+  patch: PROFILE.patch,
+}
 
 export const Counter = defineDoc<{ count: number }>({
   kind: "test.counter",
@@ -158,7 +165,7 @@ export class Home extends ProductHome {
     return {
       catalog: { ...CATALOG, ...TEST_CATALOG },
       bundles: { ...BUNDLES, test: TEST_ROWS },
-      profile: { bundles: [...PROFILE.bundles, "test"], patch: PROFILE.patch },
+      profile: TEST_PROFILE,
       version: XIN_VERSION,
     }
   }

@@ -1,6 +1,6 @@
 import { exports } from "cloudflare:workers"
 import { describe, expect, it } from "vitest"
-import profile from "../xin.profile.json"
+import { TEST_PROFILE } from "../test/worker.ts"
 
 const call = (path: string, init?: RequestInit) => exports.default.fetch(new Request(`https://xin.test${path}`, init))
 
@@ -20,7 +20,7 @@ describe("Worker auth", () => {
     expect(await reply.json()).toMatchObject({
       wake: { active: false },
       build: "dev",
-      bundles: [...profile.bundles, "test"],
+      bundles: TEST_PROFILE.bundles,
     })
   })
 

@@ -37,7 +37,7 @@ The body is capped at 2 MiB and the request at 15 s. HTML is reduced to a title 
 
 ## Row and scoping
 
-The feature is a native Cordis package, `plugins/web`, with one row, `tool-web`, in the `xin-plugin-web` bundle. The row injects `pi` and `jobs` and installs the `tool-web` extension. It is enabled in `xin.profile.json` like every other feature.
+The feature is a native Cordis package, `plugins/web`, with one row, `tool-web`, in the `xin-plugin-web` bundle. The row injects `pi` and `jobs` and installs the `tool-web` extension. Its bundle ships in the build but is not in `xin.profile.json`: web and git access are optional plugins and off by default, as the scope rule requires. Enabling `xin-plugin-web` mounts it for the whole Home, and a preset can then hide it for one scope.
 
 The tools follow the same scoping rules as the rest of the agent:
 
