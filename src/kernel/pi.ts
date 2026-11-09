@@ -10,8 +10,8 @@ import {
   type Report,
 } from "@earendil-works/pi-durable"
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
-import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare"
 import { loaderRow } from "../contributions.ts"
+import { JournalStorage } from "./journal.ts"
 
 export type Installed = {
   readonly extension: Extension
@@ -19,25 +19,6 @@ export type Installed = {
   readonly row: string | undefined
 }
 type EnvProvider = (target: EnvTarget) => ExecutionEnv | undefined
-
-/**
- * pi's indexes that no query reads, so each one only adds a row to every write of its table.
- *
- * Every `scanTasks` in pi 1.5 filters by `status` or `kind` (scheduler open, task graph, and Xin's watchdog); nothing
- * filters tasks by conversation, abort flag, or background flag, submissions by conversation, documents by scope kind,
- * or conversations by owner conversation. Dropping them takes three rows off each task write, the biggest single line
- * in the write bill. `document_revisions_by_kind` stays: it is `(document_id, kind, seq)`, and the base lookup reads it.
- * The indexes stay in pi's migration, so a fresh home creates and drops them once; keep this list honest when pi adds a
- * query.
- */
-const UNREAD_INDEXES = [
-  "pi_tasks_by_conversation",
-  "pi_tasks_by_abort_requested",
-  "pi_tasks_by_background",
-  "pi_submissions_by_conversation",
-  "pi_documents_by_scope_kind",
-  "pi_conversations_by_owner_conversation",
-] as const
 
 export class Pi extends Service {
   static readonly inject = ["host", "clock"]
@@ -54,7 +35,7 @@ export class Pi extends Service {
   async [Service.init](): Promise<void> {
     const { state, abort } = this.ctx.host
     const harness = await Harness.open(
-      await openDurableObjectSqliteStorage(state.storage, { prefix: "pi_" }),
+      await JournalStorage.open(state.storage, BACKGROUND_CONTEXT),
       {
         models: () => this.currentModels(),
         registry: this.registry,
@@ -66,7 +47,6 @@ export class Pi extends Service {
       },
       BACKGROUND_CONTEXT,
     )
-    for (const index of UNREAD_INDEXES) state.storage.sql.exec(`DROP INDEX IF EXISTS ${index}`).toArray()
     this.ctx.effect(() => () => harness.close(BACKGROUND_CONTEXT), "harness.close")
     this.ctx.provide("harness", harness)
   }

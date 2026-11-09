@@ -68,6 +68,16 @@ export const HOST_MIGRATIONS: readonly SqliteMigration[] = [
     version: 10,
     statements: ["DROP INDEX IF EXISTS inbound_target", "DROP INDEX IF EXISTS receipts_at"],
   },
+  {
+    // The journal took the write bill down by an order of magnitude, so the scans these bound are worth a row again:
+    // intake by target, by batch, and the receipt sweep by age each read the whole table without them.
+    version: 11,
+    statements: [
+      "CREATE INDEX IF NOT EXISTS inbound_target ON inbound (target, status)",
+      "CREATE INDEX IF NOT EXISTS inbound_batch ON inbound (batch_id)",
+      "CREATE INDEX IF NOT EXISTS receipts_at ON receipts (at)",
+    ],
+  },
 ]
 
 export function migrate(db: SqliteDatabase): Promise<void> {

@@ -7,8 +7,10 @@ import { eventually, fresh } from "../test/support.ts"
 import { FAUX_MODEL, type Home } from "../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
-const MESSAGE_ROW_BOUND = 55
-const DELEGATE_ROW_BOUND = 235
+const MESSAGE_ROW_BOUND = 36
+const MESSAGE_READ_BOUND = 64
+const DELEGATE_ROW_BOUND = 64
+const DELEGATE_READ_BOUND = 104
 
 type Stub = ReturnType<typeof fresh>
 type Ack = { readonly ok: boolean; readonly result?: unknown }
@@ -25,10 +27,19 @@ async function fireNow(stub: Stub): Promise<void> {
   await runDurableObjectAlarm(stub)
 }
 
+/** What Cloudflare bills: rows written by SQL (index entries included), key-value puts and alarm writes. */
 async function written(stub: Stub): Promise<number> {
-  return runInDurableObject(stub, (_home: Home, state) => {
-    const row = state.storage.sql.exec<{ n: number }>("SELECT total_changes() AS n").one()
-    return Promise.resolve(row.n)
+  return runInDurableObject(stub, (home: Home) => {
+    const meter = home.meter()
+    return meter.sql.writes + meter.kv.writes + meter.alarm.writes
+  })
+}
+
+/** What Cloudflare bills as reads: SQL rows read, key-value gets and alarm reads. */
+async function read(stub: Stub): Promise<number> {
+  return runInDurableObject(stub, (home: Home) => {
+    const meter = home.meter()
+    return meter.sql.reads + meter.kv.reads + meter.alarm.reads
   })
 }
 
@@ -71,7 +82,7 @@ function projectOf(result: unknown): { readonly id: string; readonly coordinator
   return { id, coordinatorId }
 }
 
-describe("DO SQLite rows written", () => {
+describe("a message, in what the platform bills", () => {
   it("answers one message within the measured row bound", async () => {
     const stub = fresh()
     const rootId = await runInDurableObject(stub, async (home: Home) => {
@@ -80,6 +91,7 @@ describe("DO SQLite rows written", () => {
       return (await home.root()).id
     })
     const before = await written(stub)
+    const readBefore = await read(stub)
 
     const sent = await cmd(stub, "cost-message", "message.send", { text: "hello" })
     expect(sent.ok, JSON.stringify(sent)).toBe(true)
@@ -88,8 +100,10 @@ describe("DO SQLite rows written", () => {
     await idle(stub)
 
     const after = await written(stub)
+    const readAfter = await read(stub)
     expect(await runInDurableObject(stub, (home: Home) => replies(home, rootId))).toEqual(["one answer"])
     expect(after - before).toBeLessThanOrEqual(MESSAGE_ROW_BOUND)
+    expect(readAfter - readBefore).toBeLessThanOrEqual(MESSAGE_READ_BOUND)
   })
 
   it("delegates, reports and replies within the measured row bound", async () => {
@@ -103,6 +117,7 @@ describe("DO SQLite rows written", () => {
       await conversation.configure({ model: M5_MODEL }, context)
     })
     const before = await written(stub)
+    const readBefore = await read(stub)
 
     const sent = await cmd(stub, "cost-delegate", "message.send", {
       conv: project.coordinatorId,
@@ -118,6 +133,8 @@ describe("DO SQLite rows written", () => {
     await idle(stub)
 
     const after = await written(stub)
+    const readAfter = await read(stub)
     expect(after - before).toBeLessThanOrEqual(DELEGATE_ROW_BOUND)
+    expect(readAfter - readBefore).toBeLessThanOrEqual(DELEGATE_READ_BOUND)
   })
 })

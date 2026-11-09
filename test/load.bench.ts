@@ -199,12 +199,12 @@ describe("load", () => {
     const within = (name: string, value: number, bound: number): void => {
       expect(value, `${name} is ${value}, over ${bound}\n${JSON.stringify(report, null, 2)}`).toBeLessThanOrEqual(bound)
     }
-    within("calls per message", report.turnPerMessage.calls, 290)
-    within("reads per message", report.turnPerMessage.reads, 260)
-    within("writes per message", report.turnPerMessage.writes, 145)
-    within("calls per cold turn", report.coldTurn.calls, 1_450)
-    within("reads per cold turn", report.coldTurn.reads, 1_900)
-    within("writes per cold turn", report.coldTurn.writes, 100)
+    within("calls per message", report.turnPerMessage.calls, 75)
+    within("reads per message", report.turnPerMessage.reads, 50)
+    within("writes per message", report.turnPerMessage.writes, 30)
+    within("calls per cold turn", report.coldTurn.calls, 130)
+    within("reads per cold turn", report.coldTurn.reads, 500)
+    within("writes per cold turn", report.coldTurn.writes, 40)
     within("reads per idle alarm", report.idleAlarm.total.reads, 20)
     within("writes per idle alarm", report.idleAlarm.total.writes, 3)
   }, 900_000)
