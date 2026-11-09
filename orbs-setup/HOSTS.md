@@ -14,8 +14,8 @@ runs `amp orb provider` as a systemd service and spawns one Docker container per
 | `host-5` | host-5 | 8 GiB | 15 GiB | 3/2/1 | yes | empty |
 | `host-6` | host-6 | 8 GiB | 15 GiB | 3/2/1 | yes | empty |
 | `host-7` | host-7 | 8 GiB | 15 GiB | 3/2/1 | yes | empty |
-| `vm14` | vm14 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots; 0 threads, orphaned snapshot may remain |
-| `vm20` | vm20 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots |
+| `vm14` | vm14 | unknown | unknown | none | no | no SSH; old dispatch ignores the registered `tiny`/`small`/`big`; 0 threads, orphaned snapshot may remain |
+| `vm20` | vm20 | unknown | unknown | none | no | no SSH; old dispatch ignores the registered `tiny`/`small`/`big` |
 
 Last verified: 2026-11-09T12:22Z
 
@@ -119,9 +119,10 @@ snapshot only helps if the container itself is lost.
 `bbolt check` against a copy of `meta.db` returned `OK` on all seven Instabox
 hosts on 2026-11-09T12:15Z.
 
-Capacity: 9 providers. `vm14`/`vm20` sizing unknown. The seven Instabox hosts
-are **14 `small` or 21 `tiny`**, and all seven are now above the 6 GiB spawn
-threshold with zero containers on every host.
+Capacity: nine providers total — seven managed Instabox hosts plus `vm14` and
+`vm20`. Only the seven honor `ORB_TYPE`; the two VPS only show the labels until
+their dispatch is updated. The seven are **14 `small` or 21 `tiny`**, all above
+the 6 GiB spawn threshold with zero containers on every host.
 
 ## New-host setup (host-4 … host-7)
 
