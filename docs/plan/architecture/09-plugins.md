@@ -93,7 +93,7 @@ Turn, tool and request interception stay pi-native: install an extension with ho
 
 `tool-mcp` installs one deferred tool per MCP tool, as before. When a server declares the `resources` capability it also installs `mcp_resources` (list resources and templates) and `mcp_resource` (read one URI). When it declares the `prompts` capability it installs `mcp_prompts` (list) and `mcp_prompt` (render with arguments). All four are read-only, carry the server name in their tool name, and are deferred behind `tool_search`.
 
-`mcp.list` reports the cached tool count and, when the capability is present, the resource and prompt counts. The owner ops `mcp.resources { name }` and `mcp.prompts { name }` read the live lists. Disabling `tool-mcp` hides all of them together; a preset that hides the row does the same, and a thread inherits its coordinator's preset. There is no sampling, elicitation or GET stream.
+`mcp.list` reports the cached tool count and, when the capability is present, the resource, template and prompt counts. The owner ops `mcp.resources { name }` and `mcp.prompts { name }` read the live lists. Disabling `tool-mcp` hides all of them together; a preset that hides the row does the same, and a thread inherits its coordinator's preset. There is no sampling, elicitation or GET stream.
 
 ## Rows, bundles and layers
 
