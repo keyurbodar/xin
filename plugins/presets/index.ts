@@ -76,7 +76,8 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
     if (outcome.kind === "ok" && (op === "project.create" || (op === "project.update" && wanted !== undefined))) {
       if (op === "project.update") {
         const result: unknown = outcome.result
-        const coordinator = typeof result === "object" && result !== null ? Reflect.get(result, "coordinatorId") : undefined
+        const coordinator =
+          typeof result === "object" && result !== null ? Reflect.get(result, "coordinatorId") : undefined
         if (typeof coordinator === "number") await feature.forget(coordinator)
       }
       await feature.applyAll().catch((error: unknown) => console.warn("presets: apply failed", error))

@@ -43,7 +43,8 @@ export function readManifest(value: unknown, where: string): Manifest {
   }
   for (const spec of value.requires ?? []) {
     const match = REQUIRE.exec(spec)
-    if (match === null || !PLUGIN_NAME.test(match[1] ?? "")) throw new Error(`${where}: requires ${spec} is not plugin@range`)
+    if (match === null || !PLUGIN_NAME.test(match[1] ?? ""))
+      throw new Error(`${where}: requires ${spec} is not plugin@range`)
   }
   return {
     api: value.api ?? DEFAULT_MANIFEST.api,

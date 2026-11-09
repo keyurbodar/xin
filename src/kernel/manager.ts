@@ -26,10 +26,7 @@ export type RowView = {
 
 export type Changed = { readonly application: Application; readonly row: RowView }
 
-export type Issue =
-  | ManifestProblem
-  | { readonly kind: "failed"; readonly error: string }
-  | { readonly kind: "missing" }
+export type Issue = ManifestProblem | { readonly kind: "failed"; readonly error: string } | { readonly kind: "missing" }
 
 export type Diagnosis = RowView & {
   readonly package: string

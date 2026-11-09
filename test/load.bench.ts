@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
-import { ThreadDoc } from "../src/contracts/threaddoc.ts"
+import { defaultSpaceOf, ThreadDoc } from "../src/contracts/threaddoc.ts"
 import { WorkspaceDoc } from "../src/contracts/workspace.ts"
 import { cmd, fresh } from "./support.ts"
 import { FAUX_MODEL, type Home } from "./worker.ts"
@@ -113,7 +113,11 @@ describe("load", () => {
           thread.status = "working"
           thread.run = 1
           const workspace = await tx.doc(WorkspaceDoc)
-          workspace.projects[projectId]?.threadIds.push(conversation.id)
+          const spaceId = defaultSpaceOf(workspace, projectId)
+          const space = spaceId === undefined ? undefined : workspace.spaces[spaceId]
+          if (spaceId === undefined || space === undefined) throw new Error(`no space for project ${projectId}`)
+          thread.spaceId = spaceId
+          space.threadIds.push(conversation.id)
         }, CONTEXT)
         list.push(conversation.id)
       }

@@ -20,7 +20,8 @@ const StoredSchema = obj({ description: opt(str()), text: str() })
 type StoredPrompt = Static<typeof StoredSchema>
 const storedCheck = compile(map(StoredSchema))
 
-const byName = (left: PromptEntry, right: PromptEntry): number => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0)
+const byName = (left: PromptEntry, right: PromptEntry): number =>
+  left.name < right.name ? -1 : left.name > right.name ? 1 : 0
 
 const json = (entry: PromptEntry) => ({
   name: entry.name,
@@ -77,7 +78,8 @@ export function createPrompts(port: PromptsPort): PromptsModule {
   }
 
   const contribute = (prompt: Prompt, source: string): (() => void) => {
-    if (!PROMPT_NAME.test(prompt.name)) throw new Error(`prompt name "${prompt.name}" must be lowercase letters, digits and hyphens`)
+    if (!PROMPT_NAME.test(prompt.name))
+      throw new Error(`prompt name "${prompt.name}" must be lowercase letters, digits and hyphens`)
     if (prompt.name.length > MAX_PROMPT_NAME) throw new Error(`prompt name "${prompt.name}" is too long`)
     if (prompt.text.length > MAX_PROMPT_TEXT) throw new Error(`prompt "${prompt.name}" text is too long`)
     return contributed.add(source, prompt)

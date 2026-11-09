@@ -304,31 +304,29 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       Promise.resolve<{ plugins?: readonly MarketPlugin[]; summary?: IndexSummary }>({
         plugins: ports.builtin().plugins,
       }),
-      ...config.indexes.map(
-        async (url): Promise<{ plugins?: readonly MarketPlugin[]; summary?: IndexSummary }> => {
-          if (!refresh) {
-            const cached = await cacheRead(url, now)
-            if (cached !== undefined) return { plugins: cached.plugins, summary: { url } }
+      ...config.indexes.map(async (url): Promise<{ plugins?: readonly MarketPlugin[]; summary?: IndexSummary }> => {
+        if (!refresh) {
+          const cached = await cacheRead(url, now)
+          if (cached !== undefined) return { plugins: cached.plugins, summary: { url } }
+        }
+        const document = await fetchJson(fetched, url)
+        if (!document.ok) return { summary: { url, error: failureText(document.error) } }
+        try {
+          const index = parseMarketIndex(document.value, url)
+          await cacheWrite(url, index, now)
+          return {
+            plugins: index.plugins,
+            summary: {
+              url,
+              title: index.title,
+              ...(index.description === undefined ? {} : { description: index.description }),
+            },
           }
-          const document = await fetchJson(fetched, url)
-          if (!document.ok) return { summary: { url, error: failureText(document.error) } }
-          try {
-            const index = parseMarketIndex(document.value, url)
-            await cacheWrite(url, index, now)
-            return {
-              plugins: index.plugins,
-              summary: {
-                url,
-                title: index.title,
-                ...(index.description === undefined ? {} : { description: index.description }),
-              },
-            }
-          } catch (error) {
-            if (error instanceof MarketIndexError) return { summary: { url, error: `${error.path} ${error.reason}` } }
-            throw error
-          }
-        },
-      ),
+        } catch (error) {
+          if (error instanceof MarketIndexError) return { summary: { url, error: `${error.path} ${error.reason}` } }
+          throw error
+        }
+      }),
     ])
     const seen = new Set<string>()
     const plugins: MarketPlugin[] = []

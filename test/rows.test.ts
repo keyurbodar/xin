@@ -22,7 +22,7 @@ const inboundDone = async (home: Home): Promise<boolean> => {
   return rows.length > 0 && rows.every((row) => row.status === "done")
 }
 
-const BASELINE = { written: 89, read: 126 }
+const BASELINE = { written: 18, read: 34 }
 const TOLERANCE = 5
 
 /**

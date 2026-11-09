@@ -77,10 +77,7 @@ const hasTurns = (messages: readonly { readonly role: string }[]): boolean =>
   messages.some((message) => message.role === "user" || message.role === "assistant")
 
 /** The extensions a preset removes: every installed extension whose plugin the preset does not name. */
-const removalsOf = (
-  preset: PresetView | undefined,
-  installed: readonly InstalledExtension[],
-): readonly Extension[] => {
+const removalsOf = (preset: PresetView | undefined, installed: readonly InstalledExtension[]): readonly Extension[] => {
   if (preset === undefined || preset.plugins === "all") return []
   const allowed = new Set(preset.plugins)
   return installed
