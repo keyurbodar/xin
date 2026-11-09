@@ -17,7 +17,7 @@ runs `amp orb provider` as a systemd service and spawns one Docker container per
 | `vm14` | vm14 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots; hosts the live `Merge branches into one` thread |
 | `vm20` | vm20 | unknown | unknown | none | no | no SSH; old dispatch with pause snapshots |
 
-Last verified: 2026-11-09T12:05Z
+Last verified: 2026-11-09T12:15Z
 
 ## Accounts
 
@@ -103,13 +103,23 @@ inconsistent from the first interrupted copy. containerd then crash-looped with
 `freepages: failed to get all reachable pages`. `bbolt` check, compact, freelist
 rebuild, freelist abandon, and meta-page revert all failed. The store was rebuilt
 fresh; the four stale containers were removed. Their workspaces were copied to
-`/var/tmp/dof-recovered/snap-*` before the reset. dof is healthy and took a test
-orb end-to-end after the rebuild.
+`/var/tmp/dof-recovered/snap-*` before the reset, then deleted once all four
+branches were confirmed pushed. dof is healthy and took a test orb end-to-end
+after the rebuild.
+
+Those four threads will cold-start if woken: their containers are gone and
+snapshots are disabled, so they re-clone the repo and rerun `.agents/setup`.
+Snapshots stay disabled because the 20 GiB disks cannot hold a per-orb commit
+alongside the image; `docker start` already resumes a paused container, so a
+snapshot only helps if the container itself is lost.
+
+`bbolt check` against a copy of `meta.db` returned `OK` on all seven Instabox
+hosts on 2026-11-09T12:15Z.
 
 Capacity: 9 providers. `vm14`/`vm20` sizing unknown. The seven Instabox hosts
 are 14 `small` or 21 `tiny` at the ceiling. Six are above the 6 GiB spawn
-threshold (all but `xin-b3`), so today's usable figure is 12 `small` or 18
-`tiny`, minus any of `dof`'s four existing threads that wake and respawn.
+threshold (all but `xin-b3`). Because `xin-b2` already holds one paused
+container, today's usable figure is **11 `small` or 17 `tiny`**.
 
 ## New-host setup (host-4 … host-7)
 
