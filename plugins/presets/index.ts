@@ -1,43 +1,25 @@
 import type { JsonValue } from "@earendil-works/chord"
-import { compile, int, map, obj, opt, str, type Static } from "@earendil-works/pi-schema"
+import type { ConversationId } from "@earendil-works/pi-durable"
+import { int, obj, str } from "@earendil-works/pi-schema"
 import type { PresetView } from "../../src/contracts/presets.ts"
 import { type Context, defineOp, OpRejected, Schema } from "../../src/kernel/index.ts"
-import { serial } from "../../src/serial.ts"
 import { createPresets, MIGRATIONS, type PresetConfig } from "./presets.ts"
+import { createPrompts } from "./prompts.ts"
 
 export const name = "presets"
-export const inject = ["db", "harness", "pi", "ops"]
+export const inject = ["db", "harness", "kernel", "pi", "ops"]
 export const Config = Schema.object({
   default: Schema.string().default("full").description("The preset a new conversation runs until it is changed."),
 })
 
 const SelectArgs = obj({ conversation: int({ minimum: 0 }), preset: str({ minLength: 1 }) })
 
-const PROMPTS_KEY = "prompts"
-const PROMPT_NAME = "^[a-z][a-z0-9-]*$"
-const MAX_PROMPT_NAME = 64
-const MAX_PROMPT_TEXT = 8_000
-
-const PromptSchema = obj({ description: opt(str()), text: str() })
-type Prompt = Static<typeof PromptSchema>
-const promptsCheck = compile(map(PromptSchema))
-const PromptName = str({ pattern: PROMPT_NAME, maxLength: MAX_PROMPT_NAME })
-
-const promptOrder = ([left]: readonly [string, Prompt], [right]: readonly [string, Prompt]): number =>
-  left < right ? -1 : left > right ? 1 : 0
-
-const promptJson = (promptName: string, prompt: Prompt): JsonValue => ({
-  name: promptName,
-  ...(prompt.description === undefined ? {} : { description: prompt.description }),
-  text: prompt.text,
-})
-
 const viewJson = (view: PresetView): JsonValue => ({
   id: view.id,
   ...(view.name === undefined ? {} : { name: view.name }),
   ...(view.description === undefined ? {} : { description: view.description }),
   ...(view.order === undefined ? {} : { order: view.order }),
-  tools: view.tools === "all" ? "all" : [...view.tools],
+  plugins: view.plugins === "all" ? "all" : [...view.plugins],
 })
 
 export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
@@ -45,10 +27,22 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
   const feature = await createPresets({
     db: ctx.db,
     harness: ctx.harness,
-    extensions: () => [...ctx.pi.installed.values()],
+    extensions: () =>
+      [...ctx.pi.installed.values()].map(({ extension, row }) => ({
+        extension,
+        plugin: row === undefined ? undefined : ctx.kernel.pluginOfRow(row),
+      })),
     config,
   })
   ctx.provide("presets", feature.service)
+
+  const prompts = createPrompts({
+    db: ctx.db,
+    presetOf: (conversation) => feature.service.presetOf(conversation as ConversationId),
+    pluginOf: (row) => ctx.kernel.pluginOfRow(row),
+  })
+  ctx.provide("prompts", prompts.service)
+  for (const op of prompts.ops) ctx.ops.define(op)
 
   const report = (): void => {
     void feature.applyAll().catch((error: unknown) => console.warn("presets: apply failed", error))
@@ -70,17 +64,23 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
   ctx.on("plugins/changed", () => report())
 
   ctx.on("ops/before", async (call, next) => {
-    if (call.command.op === "project.create") {
-      const wanted: unknown =
-        typeof call.command.args === "object" && call.command.args !== null
-          ? Reflect.get(call.command.args, "preset")
-          : undefined
-      if (typeof wanted === "string" && !feature.service.list().some((preset) => preset.id === wanted))
-        return { kind: "rejected", code: "bad_args", message: `unknown preset: ${wanted}` }
-    }
+    const op = call.command.op
+    const scoped = op === "project.create" || op === "project.update"
+    const wanted: unknown =
+      scoped && typeof call.command.args === "object" && call.command.args !== null
+        ? Reflect.get(call.command.args, "preset")
+        : undefined
+    if (typeof wanted === "string" && !feature.service.list().some((preset) => preset.id === wanted))
+      return { kind: "rejected", code: "bad_args", message: `unknown preset: ${wanted}` }
     const outcome = await next()
-    if (call.command.op === "project.create" && outcome.kind === "ok")
+    if (outcome.kind === "ok" && (op === "project.create" || (op === "project.update" && wanted !== undefined))) {
+      if (op === "project.update") {
+        const result: unknown = outcome.result
+        const coordinator = typeof result === "object" && result !== null ? Reflect.get(result, "coordinatorId") : undefined
+        if (typeof coordinator === "number") await feature.forget(coordinator)
+      }
       await feature.applyAll().catch((error: unknown) => console.warn("presets: apply failed", error))
+    }
     return outcome
   })
 
@@ -111,75 +111,6 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
             return { conversation: outcome.conversation, preset: outcome.preset.id }
         }
       },
-    }),
-  )
-
-  const readPrompts = async (): Promise<Map<string, Prompt>> => {
-    const row = await ctx.db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", PROMPTS_KEY)
-    if (row === undefined) return new Map()
-    let value: unknown
-    try {
-      value = JSON.parse(row.value)
-    } catch {
-      throw new Error("stored prompts are corrupt")
-    }
-    if (!promptsCheck.check(value)) throw new Error("stored prompts are corrupt")
-    return new Map(Object.entries(value))
-  }
-
-  const writePrompts = (prompts: ReadonlyMap<string, Prompt>): Promise<void> =>
-    ctx.db.run(
-      "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-      PROMPTS_KEY,
-      JSON.stringify(Object.fromEntries(prompts)),
-    )
-
-  ctx.ops.define(
-    defineOp({
-      name: "prompt.list",
-      args: obj({}),
-      actors: ["owner"],
-      run: async () =>
-        [...(await readPrompts()).entries()]
-          .toSorted(promptOrder)
-          .map(([promptName, prompt]) => promptJson(promptName, prompt)),
-    }),
-  )
-
-  const mutatePrompt = serial()
-
-  ctx.ops.define(
-    defineOp({
-      name: "prompt.put",
-      args: obj({
-        name: PromptName,
-        description: opt(str()),
-        text: str({ maxLength: MAX_PROMPT_TEXT }),
-      }),
-      actors: ["owner"],
-      run: async (_api, { name: promptName, description, text }) =>
-        mutatePrompt(async () => {
-          const prompts = await readPrompts()
-          const prompt: Prompt = { text, ...(description === undefined ? {} : { description }) }
-          prompts.set(promptName, prompt)
-          await writePrompts(prompts)
-          return promptJson(promptName, prompt)
-        }),
-    }),
-  )
-
-  ctx.ops.define(
-    defineOp({
-      name: "prompt.delete",
-      args: obj({ name: PromptName }),
-      actors: ["owner"],
-      run: async (_api, { name: promptName }) =>
-        mutatePrompt(async () => {
-          const prompts = await readPrompts()
-          prompts.delete(promptName)
-          await writePrompts(prompts)
-          return { name: promptName }
-        }),
     }),
   )
 

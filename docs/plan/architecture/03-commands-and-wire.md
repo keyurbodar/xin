@@ -35,7 +35,7 @@ reads (owner): history.page(conversationId, before?, limit?) · request.list(lim
                notify.prefs · notify.set(waiting?, finished?, failed?, spend?, schedule?) · notify.quiet · notify.quiet.set(enabled?, start?, end?)
                push.list · push.test · owner.read · owner.set(name?, instructions?)
                session.list · session.close(id?) · session.rotate
-               system.logs · skill.read(name) · mcp.tools(name) · memory.profile.write(markdown) · memory.suggested(conversationId, scope?) · prompt.list/put/delete
+               system.logs · skill.read(name) · mcp.tools(name) · memory.profile.write(markdown) · memory.suggested(conversationId, scope?) · prompt.list(conversation?) / prompt.put / prompt.delete
                market.policy · market.policy.set(autoUpdate) · market.refresh · market.skip/unskip/skipped · market.rollback
 ```
 

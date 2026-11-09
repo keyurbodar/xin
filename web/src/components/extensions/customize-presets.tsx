@@ -236,8 +236,8 @@ function PromptEditor(props: {
   )
 }
 
-function toolsOf(preset: { readonly tools: "all" | readonly string[] }): readonly string[] {
-  return preset.tools === "all" ? [] : preset.tools
+function pluginsOf(preset: { readonly plugins: "all" | readonly string[] }): readonly string[] {
+  return preset.plugins === "all" ? [] : preset.plugins
 }
 
 export function Presets(): JSX.Element {
@@ -282,7 +282,7 @@ export function Presets(): JSX.Element {
                     </Show>
                   </span>
                   <span class="line-clamp-2 block text-[11.5px] leading-snug text-fg-3">
-                    {preset.description ?? (preset.tools === "all" ? "Every tool row." : `${preset.tools.length} tools`)}
+                    {preset.description ?? (preset.plugins === "all" ? "Every plugin." : `${preset.plugins.length} plugins`)}
                   </span>
                 </span>
               </button>
@@ -290,7 +290,7 @@ export function Presets(): JSX.Element {
           </For>
           <Show when={presets.state().kind === "ready" && list().length === 0}>
             <div class="p-3">
-              <Empty title="No presets." detail="Presets bundle tool access for a thread." />
+              <Empty title="No presets." detail="Presets bundle plugin access for a thread." />
             </div>
           </Show>
         </div>
@@ -326,16 +326,16 @@ export function Presets(): JSX.Element {
                   </Show>
                   <Panel>
                     <div class="border-b border-line px-3.5 py-2.5">
-                      <span class="label">Tools</span>
+                      <span class="label">Plugins</span>
                     </div>
                     <div class="px-3.5 py-3">
                       <Show
-                        when={preset().tools !== "all"}
-                        fallback={<span class="text-[12.5px] text-fg-2">Every tool row.</span>}
+                        when={preset().plugins !== "all"}
+                        fallback={<span class="text-[12.5px] text-fg-2">Every plugin.</span>}
                       >
                         <div class="flex flex-wrap gap-1.5">
-                          <For each={toolsOf(preset())}>
-                            {(tool) => <Chip>{tool}</Chip>}
+                          <For each={pluginsOf(preset())}>
+                            {(plugin) => <Chip>{plugin}</Chip>}
                           </For>
                         </div>
                       </Show>                    </div>

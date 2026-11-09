@@ -1,10 +1,12 @@
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable"
+import type { ConversationId } from "@earendil-works/pi-durable"
 import { obj, str } from "@earendil-works/pi-schema"
-import { SKILL_NAME_PATTERN } from "../../src/contracts/skills.ts"
+import { presetAllows } from "../../src/contracts/presets.ts"
+import { SKILL_NAME_PATTERN, type SkillEntry } from "../../src/contracts/skills.ts"
 import { type Context, textResult } from "../../src/kernel/index.ts"
 
 export const name = "tool-skills"
-export const inject = ["pi", "skills"]
+export const inject = ["pi", "skills", "kernel"]
 
 function suggestions(given: string, known: readonly string[]): readonly string[] {
   return known.filter(
@@ -16,8 +18,16 @@ function suggestions(given: string, known: readonly string[]): readonly string[]
 }
 
 export function apply(ctx: Context): void {
-  const skillsSection = section("skills", async () => {
-    const skills = await ctx.skills.list()
+  /** Skills the conversation's preset keeps: a stored or bundled skill always, a row's skill only when its plugin is named. */
+  const visible = async (conversationId: ConversationId): Promise<readonly SkillEntry[]> => {
+    const preset = ctx.get("presets")?.presetOf(conversationId)
+    return (await ctx.skills.list()).filter(
+      (entry) => entry.source.kind !== "row" || presetAllows(preset, ctx.kernel.pluginOfRow(entry.source.row)),
+    )
+  }
+
+  const skillsSection = section("skills", async (input) => {
+    const skills = await visible(input.conversationId)
     if (skills.length === 0) return undefined
     return [
       "Load a skill's full instructions with skill(name).",
@@ -30,8 +40,8 @@ export function apply(ctx: Context): void {
     description: "Load the full instructions of a skill listed in the skills section.",
     parameters: obj({ name: str({ pattern: SKILL_NAME_PATTERN }) }),
     replay: "safe",
-    execute: async ({ name: requested }) => {
-      const skills = await ctx.skills.list()
+    execute: async ({ name: requested }, api) => {
+      const skills = await visible(api.conversationId)
       const skill = skills.find((other) => other.name === requested)
       if (skill !== undefined) return textResult(skill.body)
       const known = skills.map((other) => other.name)

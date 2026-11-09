@@ -44,7 +44,7 @@ describe("preset row", () => {
     const solo: PresetRow = {
       id: "preset-row-solo",
       plugin: "preset",
-      config: { id: "solo", name: "Solo", description: "Memory only.", order: 5, tools: ["tool-memory"] },
+      config: { id: "solo", name: "Solo", description: "Memory only.", order: 5, plugins: ["tool-memory"] },
     }
     expect(await put(stub, "xin-plugin-preset-solo", [solo])).toMatchObject({ application: "applied" })
 
@@ -56,7 +56,7 @@ describe("preset row", () => {
           name: "Solo",
           description: "Memory only.",
           order: 5,
-          tools: ["tool-memory"],
+          plugins: ["tool-memory"],
         }),
       ]),
     })
@@ -65,8 +65,8 @@ describe("preset row", () => {
   it("leaves the later row failed when two rows declare one id", async () => {
     const stub = fresh()
     const result = await put(stub, "xin-plugin-preset-dupe", [
-      { id: "preset-row-first", plugin: "preset", config: { id: "dupe", tools: "all" } },
-      { id: "preset-row-second", plugin: "preset", config: { id: "dupe", tools: "all" } },
+      { id: "preset-row-first", plugin: "preset", config: { id: "dupe", plugins: "all" } },
+      { id: "preset-row-second", plugin: "preset", config: { id: "dupe", plugins: "all" } },
     ])
     expect(result, JSON.stringify(result)).toMatchObject({
       application: "failed",
@@ -82,7 +82,7 @@ describe("preset row", () => {
       {
         id: "preset-row-memory",
         plugin: "preset",
-        config: { id: "memory-only", name: "Memory only", tools: ["tool-memory"] },
+        config: { id: "memory-only", name: "Memory only", plugins: ["tool-memory"] },
       },
     ])
     const project = await makeProject(stub, "memory-only")

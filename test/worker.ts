@@ -19,6 +19,7 @@ import * as piext from "./plugins/piext.ts"
 import * as secretsTest from "./plugins/secrets.ts"
 import * as settled from "./plugins/settled.ts"
 import * as skills from "./plugins/skills.ts"
+import * as contrib from "./plugins/contrib.ts"
 import type { Composition, Catalog } from "../src/kernel/loader.ts"
 import type { Extension } from "@earendil-works/pi-durable"
 import { testPlugin } from "./kernel.ts"
@@ -97,6 +98,7 @@ const TEST_CATALOG: Catalog = {
   ...piext.catalog,
   ...secretsTest.catalog,
   ...settled.catalog,
+  ...contrib.catalog,
 }
 
 const TEST_ROWS = [

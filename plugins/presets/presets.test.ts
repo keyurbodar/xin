@@ -13,14 +13,14 @@ const THREAD_PROMPT = "You are a thread named"
 const PACKAGE = "xin-plugin-presets-test"
 const MINIMAL: readonly string[] = ["tool-memory", "tool-skills"]
 
-type PresetRow = { readonly id: string; readonly plugin: string; readonly config: Record<string, unknown> }
+type PresetRow = { readonly id: string; readonly plugin: string; readonly config?: Record<string, unknown> }
 
-const rows = (tools: "all" | readonly string[] = MINIMAL): readonly PresetRow[] => [
-  { id: "preset-row-all", plugin: "preset", config: { id: "test-all", name: "Test all", tools: "all", order: 1 } },
+const rows = (plugins: "all" | readonly string[] = MINIMAL): readonly PresetRow[] => [
+  { id: "preset-row-all", plugin: "preset", config: { id: "test-all", name: "Test all", plugins: "all", order: 1 } },
   {
     id: "preset-row-minimal",
     plugin: "preset",
-    config: { id: "test-minimal", name: "Test minimal", description: "Memory and skills only.", tools, order: 2 },
+    config: { id: "test-minimal", name: "Test minimal", description: "Memory and skills only.", plugins, order: 2 },
   },
 ]
 
@@ -98,6 +98,66 @@ async function delegateThread(stub: Stub, coordinatorId: number, offers: OfferLo
 const threadOffer = (offers: OfferLog) => offers.seen.find((offer) => offer.system.includes(THREAD_PROMPT))
 
 describe("presets", () => {
+  it("ships the full and minimal presets active", async () => {
+    const stub = fresh()
+    const listed = await cmd(stub, `list-${crypto.randomUUID()}`, "preset.list")
+    expect(listed.result, JSON.stringify(listed)).toMatchObject({
+      presets: expect.arrayContaining([
+        expect.objectContaining({ id: "full", name: "Full", plugins: "all" }),
+        expect.objectContaining({ id: "minimal", name: "Minimal", plugins: ["tool-memory", "tool-skills"] }),
+      ]),
+    })
+  }, 20_000)
+
+  it("keeps or drops a plugin's contributed skill and prompt with the preset", async () => {
+    const stub = fresh()
+    await install(stub, [
+      { id: "contrib", plugin: "contrib" },
+      {
+        id: "preset-row-with-contrib",
+        plugin: "preset",
+        config: { id: "with-contrib", name: "With contributions", plugins: ["tool-skills", "contrib"] },
+      },
+      {
+        id: "preset-row-without-contrib",
+        plugin: "preset",
+        config: { id: "without-contrib", name: "Without contributions", plugins: ["tool-skills"] },
+      },
+    ])
+
+    const withContrib = await makeProject(stub, "with-contrib", "with-contrib")
+    await chooseModel(stub, withContrib.coordinatorId)
+    const shown = recordOffers()
+    await turn(stub, withContrib.coordinatorId, "go", [coordinatorStep(shown)])
+    expect(shown.latest().system).toContain("A contributed skill.")
+
+    const without = await makeProject(stub, "without-contrib", "without-contrib")
+    await chooseModel(stub, without.coordinatorId)
+    const hidden = recordOffers()
+    await turn(stub, without.coordinatorId, "go", [coordinatorStep(hidden)])
+    expect(hidden.latest().system).not.toContain("A contributed skill.")
+
+    const listed = await cmd(stub, `prompts-${crypto.randomUUID()}`, "prompt.list", {
+      conversation: withContrib.coordinatorId,
+    })
+    expect(listed.result, JSON.stringify(listed)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "contrib-prompt",
+          description: "A contributed prompt.",
+          text: "Contributed prompt text.",
+          source: { kind: "row", row: "contrib" },
+        }),
+      ]),
+    )
+    const omitted = await cmd(stub, `prompts-${crypto.randomUUID()}`, "prompt.list", {
+      conversation: without.coordinatorId,
+    })
+    expect(omitted.result, JSON.stringify(omitted)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "contrib-prompt" })]),
+    )
+  }, 20_000)
+
   it("restricts a coordinator created with the minimal preset to its tool rows", async () => {
     const stub = fresh()
     await install(stub, rows())
@@ -171,6 +231,26 @@ describe("presets", () => {
     expect(opened.latest().tools).toEqual(expect.arrayContaining(FILES))
   }, 20_000)
 
+  it("applies a project preset change to the next turn", async () => {
+    const stub = fresh()
+    await install(stub, rows())
+    const project = await makeProject(stub, "update", "test-minimal")
+    await chooseModel(stub, project.coordinatorId)
+    const restricted = recordOffers()
+    await turn(stub, project.coordinatorId, "go", [coordinatorStep(restricted)])
+    for (const name of FILES) expect(restricted.latest().tools, name).not.toContain(name)
+
+    const updated = await cmd(stub, `update-${crypto.randomUUID()}`, "project.update", {
+      id: project.id,
+      preset: "test-all",
+    })
+    expect(updated.result, JSON.stringify(updated)).toMatchObject({ preset: "test-all" })
+
+    const opened = recordOffers()
+    await turn(stub, project.coordinatorId, "go", [coordinatorStep(opened)])
+    expect(opened.latest().tools).toEqual(expect.arrayContaining(FILES))
+  }, 20_000)
+
   it("falls back to the default when the recorded preset is removed", async () => {
     const stub = fresh()
     await install(stub, rows())
@@ -215,8 +295,8 @@ describe("presets", () => {
     const listed = await cmd(stub, `list-${crypto.randomUUID()}`, "preset.list")
     expect(listed.result, JSON.stringify(listed)).toMatchObject({
       presets: expect.arrayContaining([
-        expect.objectContaining({ id: "test-all", name: "Test all", tools: "all" }),
-        expect.objectContaining({ id: "test-minimal", name: "Test minimal", tools: [...MINIMAL] }),
+        expect.objectContaining({ id: "test-all", name: "Test all", plugins: "all" }),
+        expect.objectContaining({ id: "test-minimal", name: "Test minimal", plugins: [...MINIMAL] }),
       ]),
       default: "full",
       conversations: [{ conversation: project.coordinatorId, preset: "test-minimal" }],
@@ -287,14 +367,14 @@ describe("prompts", () => {
     })
 
     expect((await cmd(stub, "prompt-list-1", "prompt.list")).result).toEqual([
-      { name: "format", description: "How to shape a reply.", text: "Use bullets." },
-      { name: "tone", text: "Be brief." },
+      { name: "format", description: "How to shape a reply.", text: "Use bullets.", source: { kind: "stored" } },
+      { name: "tone", text: "Be brief.", source: { kind: "stored" } },
     ])
 
     expect((await cmd(stub, "prompt-delete-1", "prompt.delete", { name: "tone" })).result).toEqual({ name: "tone" })
     expect((await cmd(stub, "prompt-delete-2", "prompt.delete", { name: "tone" })).result).toEqual({ name: "tone" })
     expect((await cmd(stub, "prompt-list-2", "prompt.list")).result).toEqual([
-      { name: "format", description: "How to shape a reply.", text: "Use bullets." },
+      { name: "format", description: "How to shape a reply.", text: "Use bullets.", source: { kind: "stored" } },
     ])
   }, 20_000)
 
