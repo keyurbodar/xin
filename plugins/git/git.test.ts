@@ -140,6 +140,15 @@ const toolTexts = (home: Home, conversationId: ConversationId): Promise<string[]
   })
 
 describe("git tools", () => {
+  it("ships the git row disabled", async () => {
+    const stub = fresh()
+    const listed = await cmd(stub, "git-row-default", "plugin.list")
+    const row = Array.isArray(listed.result)
+      ? listed.result.find((entry) => Reflect.get(entry, "id") === "tool-git")
+      : undefined
+    expect(row).toMatchObject({ disabled: true, state: { kind: "disabled" } })
+  })
+
   it("reads log, show, diff and blame from the thread's project repository", async () => {
     const stub = fresh()
     await setRow(stub, "tool-git", true)

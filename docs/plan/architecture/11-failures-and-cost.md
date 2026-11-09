@@ -28,7 +28,7 @@ Read with: [01 Host](./01-host.md) for the alarm and Harness recovery paths, [03
 | Thread, 20 tool steps | ~3 per step + beats ≈ 80–120 |
 | One owner message → one reply (`src/cost.test.ts`) | 25 written (bound 36), 39 read (bound 64) |
 | One delegate → thread → report → coordinator reply (`src/cost.test.ts`) | 52 written (bound 64), 81 read (bound 104) |
-| One message in a 100-thread home, half with two tool calls (`test/load.bench.ts`) | 26 written, 36 read, 56 statements |
+| One message in a 100-thread home, half with two tool calls (`test/load.bench.ts`) | 26 written, 42 read, 62 statements |
 | One cold message after eviction, in that home | 24 written, 310 read, 105 statements |
 | One idle alarm in that home | 2 written, 7 read, 15 statements |
 | Idle hour | 0 (no alarm armed) |
@@ -40,6 +40,8 @@ Both scenario measurements come from the storage meter (`test/meter.ts`) around 
 **pi's state is a journal, not a table per record.** The harness runs on pi's `MemoryStorage`, so its reads are map lookups and a commit reaches disk as one journal row holding that commit's `StorageWrite`s (`src/kernel/journal.ts`). A flush happens at the commit that settles a submission — the end of a turn — so a two-tool message that runs three model rounds and several tool tasks is still one row. Two other things flush: a commit that changes any document other than `pi.live` (configuration: a model, a thread, a schedule, a project), and a turn that reaches `FLUSH_BYTES` (1 MB) of pending writes. A `pi.live` progress commit is the streamed answer and waits for the turn's boundary, so a long reply does not write one row per second.
 
 A journal alone replays forever, so every `CHECKPOINT_ROWS` (256) journal rows the storage writes the whole state as one commit of `StorageWrite`s — conversations, tasks, submissions, documents, entries — stores it in `pi_checkpoint`, and deletes the journal rows it covers. The rewrite is one transaction, so a crash cannot leave neither the old checkpoint nor the new one, and a replay only reads journal rows newer than the checkpoint's sequence, so a crash before the journal delete does not repeat a commit. A cold start reads that checkpoint and at most 256 journal rows: the 100-thread load's cold message reads about 310 rows, of which ~280 are replaying a near-full journal and 1–3 are the checkpoint's parts. Truncation costs one row per row deleted, so the journal's total is about 5.8 rows a message: the row it writes, its part rows, and the checkpoint rewrite and truncation it amortizes.
+
+The recovery arm is part of that 26: it costs about six rows a message, because an active turn with no nearer deadline writes one alarm row and the turn end moves or deletes it; every later event that finds an alarm inside the 60 s horizon writes nothing.
 
 **What that costs in durability.** Writes are durable at a flush, not at a commit. An eviction during a turn loses that turn's unflushed commits; the harness retries the attempt it was in and the client's retry carries the same request id, so the turn runs again rather than being lost — but it can run again, tool calls included, and any tokens it spent are spent twice. Configuration and a finished turn are durable at once. The state also lives in the object's memory, so a home's whole history has to fit in the 128 MB an object gets; the checkpoint is the recovery path, not an off-heap store.
 

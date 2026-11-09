@@ -5,7 +5,7 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "c
 import { describe, expect, it } from "vitest"
 import type { GoalView } from "../../src/contracts/goals.ts"
 import { respond } from "../../test/plugins/m8.ts"
-import { cmd, fresh, setRow, turn, type Stub } from "../../test/support.ts"
+import { cmd, eventually, fresh, setRow, turn, type Stub } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import * as goalsRow from "./index.ts"
 import * as roundsRow from "./rounds.ts"
@@ -287,8 +287,10 @@ describe("goal rounds", () => {
     await evictDurableObject(stub)
     await mount(stub)
 
-    const read = await runInDurableObject(stub, (home: Home) => home.loader.ctx.goals.get(conversation))
-    expect(read).toMatchObject({ id: goal.id, phase: "active", activation: "disarmed" })
+    await eventually(stub, async (home: Home) => {
+      const read = await home.loader.ctx.goals.get(conversation)
+      return read?.id === goal.id && read.phase === "active" && read.activation === "disarmed"
+    })
 
     await fire(stub)
     expect(await goalNow(stub)).toMatchObject({ rounds: 0, phase: "active", activation: "disarmed" })
