@@ -21,7 +21,8 @@
     "xin-plugin-skills",
     "xin-plugin-time",
     "xin-plugin-watchdog",
-    "xin-plugin-workspace"
+    "xin-plugin-workspace",
+    "xin-plugin-web"
   ],
   "patch": []
 }

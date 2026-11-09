@@ -1,0 +1,22 @@
+{
+  "name": "xin-plugin-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Public web search and page fetch as built-in tools.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "tool-web": {
+        "module": "./index.ts",
+        "title": "Web tools",
+        "description": "Search the public web and fetch a page as readable text."
+      }
+    },
+    "bundle": [
+      {
+        "id": "tool-web",
+        "plugin": "tool-web"
+      }
+    ]
+  }
+}

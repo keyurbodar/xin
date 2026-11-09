@@ -30,7 +30,8 @@ import * as p28 from "../plugins/skills/index.ts"
 import * as p29 from "../plugins/skills/tools.ts"
 import * as p30 from "../plugins/time/index.ts"
 import * as p31 from "../plugins/watchdog/index.ts"
-import * as p32 from "../plugins/workspace/index.ts"
+import * as p32 from "../plugins/web/index.ts"
+import * as p33 from "../plugins/workspace/index.ts"
 import type { Row } from "./kernel/layers.ts"
 import type { Catalog } from "./kernel/loader.ts"
 
@@ -261,8 +262,15 @@ export const CATALOG: Catalog = {
     local: true,
     source: "xin-plugin-watchdog@0.1.0",
   },
-  workspace: {
+  "tool-web": {
     plugin: p32,
+    title: "Web tools",
+    description: "Search the public web and fetch a page as readable text.",
+    local: true,
+    source: "xin-plugin-web@0.1.0",
+  },
+  workspace: {
+    plugin: p33,
     title: "Workspace",
     description: "Projects and thread documents.",
     local: true,
@@ -336,6 +344,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
   ],
   "xin-plugin-time": [{ id: "time", name: "cordis:time", config: { timezone: "UTC" } }],
   "xin-plugin-watchdog": [{ id: "watchdog", name: "cordis:watchdog" }],
+  "xin-plugin-web": [{ id: "tool-web", name: "cordis:tool-web" }],
   "xin-plugin-workspace": [{ id: "workspace", name: "cordis:workspace" }],
 }
 
