@@ -73,7 +73,7 @@ A package name is installed either as a runtime bundle or as compiled code. Inst
 | Plugin | Package | Config | Mirrors |
 | --- | --- | --- | --- |
 | `mcp-server` | `xin-plugin-mcp` | `{ name, url, headers?: { [name]: string } }` | dsh `mcp-client`. `url` and header values may contain `${credential:REF}`, resolved from `ctx.secrets` at connect time; a missing credential leaves the row active and logging `waiting-credentials`, and it connects when `secret.set` writes the value |
-| `preset` | `xin-plugin-presets` | `{ id, name?, description?, order?, tools }` | dsh `agent-preset` (§9 Presets) |
+| `preset` | `xin-plugin-presets` | `{ id, name?, description?, order?, plugins }` | dsh `agent-preset` (§9 Presets) |
 
 Any plugin may have several rows. A second row of a plugin that registers fixed names fails to start and reports `failed`, as a duplicate does in dsh.
 
@@ -81,13 +81,15 @@ Any plugin may have several rows. A second row of a plugin that registers fixed 
 
 The market is a feature plugin, not kernel. It reads market indexes and the npm registry over `fetch`, and installs through `ctx.packages`.
 
+**The default index is the build.** With `indexes: []`, the default, `market.search` still lists every feature package this build compiles, grouped from `plugin.catalog`, with status `provided` and category `first-party`. It needs no setup and sends no request. `market.entry` for a provided package reads the package's rows from the composed tree instead of the npm registry, so a package's presets and row config are visible offline. Configured indexes are appended after it, and a name in both keeps the build's entry. Installing or updating a provided package is refused, because the build already has it.
+
 **Config.**
 
 ```json
 { "registry": "https://registry.npmjs.org", "indexes": [], "cacheTtlMs": 600000 }
 ```
 
-`indexes` holds at most 8 https URLs. A successfully read index is cached for `cacheTtlMs` in the market's own table, and `market.refresh` bypasses the cache (dsh `plugin-market`). There is no background timer.
+`indexes` holds at most 8 https URLs; it is the *additional* set. A successfully read index is cached for `cacheTtlMs` in the market's own table, and `market.refresh` bypasses the cache (dsh `plugin-market`). There is no background timer.
 
 **Indexes** are dsh market index format 1 (`packages/util/plugin-market-index`), parsed by a port of dsh's `parseMarketIndex`, rule for rule:
 
@@ -131,7 +133,7 @@ An invalid index is reported with dsh's error path (`$.plugins[3].versions`) and
 
 | Op | Effect |
 | --- | --- |
-| `market.search` | `{ query?, category? }` entries from every index, with status, title, description and category |
+| `market.search` | `{ query?, category? }` entries from the build index and every configured index, with status, title, description and category |
 | `market.entry` | `{ name }` the entry's versions with compatibility, kind and readme of the offered version, the rows a bundle would add, `requires`, and status |
 | `market.install` | `{ name, version? }` newest compatible version by default. Refused when the package is already installed or `provided` |
 | `market.update` | `{ name, version }` an exact newer version of an installed package; an older version is refused (dsh `updateBundle`) |

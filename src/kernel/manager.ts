@@ -7,6 +7,8 @@ import { FragmentId } from "../rowid.ts"
 import { configSchemaOf, validateConfig } from "./config.ts"
 import { pluginOf, type Layer, type Row } from "./layers.ts"
 import type { RowState, XinLoader } from "./loader.ts"
+import { checkManifest, DEFAULT_MANIFEST, type Manifest, type ManifestProblem } from "./manifest.ts"
+import { sourcePackage, sourceVersion } from "./packages.ts"
 
 export type Application = "applied" | "failed"
 
@@ -19,14 +21,29 @@ export type RowView = {
   readonly disabled: boolean
   readonly config: JsonValue
   readonly state: RowState
+  readonly manifest: Manifest
 }
 
 export type Changed = { readonly application: Application; readonly row: RowView }
+
+export type Issue =
+  | ManifestProblem
+  | { readonly kind: "failed"; readonly error: string }
+  | { readonly kind: "missing" }
+
+export type Diagnosis = RowView & {
+  readonly package: string
+  readonly version: string
+  readonly issues: readonly Issue[]
+}
+
+export type Doctor = { readonly ok: boolean; readonly rows: readonly Diagnosis[] }
 
 export type Manager = {
   list(): Promise<readonly RowView[]>
   catalog(): readonly JsonObject[]
   tree(): JsonObject
+  doctor(): Promise<Doctor>
   enable(id: string, enabled: boolean): Promise<Changed>
   configure(id: string, config: JsonObject): Promise<Changed>
 }
@@ -38,6 +55,13 @@ const isJsonObject = (value: unknown): value is JsonObject =>
 
 const toJson = (value: unknown): JsonValue => (value === undefined ? null : JSON.parse(JSON.stringify(value)))
 
+const packageOf = (loader: XinLoader, row: Row): { package: string; version: string } => {
+  const entry = loader.composition.catalog[pluginOf(row)]
+  return entry === undefined
+    ? { package: pluginOf(row), version: "dev" }
+    : { package: sourcePackage(entry.source), version: sourceVersion(entry.source) }
+}
+
 export function createManager(loader: XinLoader): Manager {
   const { catalog, profile } = loader.composition
   const find = (id: string): Row => {
@@ -48,6 +72,10 @@ export function createManager(loader: XinLoader): Manager {
   const layerAt = (id: string): Layer => {
     const trace = loader.trace.get(id)
     return trace === undefined ? "bundle" : (trace.patchedBy.at(-1) ?? trace.addedBy)
+  }
+  const versionOf = (plugin: string): string | undefined => {
+    const entry = catalog[plugin]
+    return entry === undefined ? undefined : sourceVersion(entry.source)
   }
   const view = async (row: Row): Promise<RowView> => {
     const plugin = pluginOf(row)
@@ -61,6 +89,7 @@ export function createManager(loader: XinLoader): Manager {
       disabled: row.disabled === true,
       config: toJson(row.config),
       state: await loader.state(row.id),
+      manifest: loader.manifestOf(row),
     }
   }
   const changed = async (id: string): Promise<Changed> => {
@@ -80,6 +109,31 @@ export function createManager(loader: XinLoader): Manager {
   const ensurePresent = (id: string): void => {
     if (loader.isMissing(id)) throw new OpRejected("bad_args", `${id} has no code in this build`)
   }
+  const diagnose = async (row: Row): Promise<Diagnosis> => {
+    const plugin = pluginOf(row)
+    const entry = catalog[plugin]
+    const { package: pkg, version } = packageOf(loader, row)
+    const state = await loader.state(row.id)
+    const problem = entry === undefined ? undefined : checkManifest(loader.manifestOf(row), versionOf)
+    const issues: Issue[] = []
+    if (problem !== undefined) issues.push(problem)
+    if (state.kind === "missing") issues.push({ kind: "missing" })
+    if (state.kind === "failed" && problem === undefined) issues.push({ kind: "failed", error: state.error })
+    return {
+      id: row.id,
+      plugin,
+      title: entry?.title ?? plugin,
+      required: entry?.required === true,
+      layer: layerAt(row.id),
+      disabled: row.disabled === true,
+      config: toJson(row.config),
+      state,
+      manifest: loader.manifestOf(row),
+      package: pkg,
+      version,
+      issues,
+    }
+  }
   return {
     list: () => Promise.all(loader.rows().map((row) => view(row))),
     catalog: () =>
@@ -89,6 +143,7 @@ export function createManager(loader: XinLoader): Manager {
         description: entry.description,
         required: entry.required === true,
         source: entry.source,
+        manifest: toJson(entry.manifest ?? DEFAULT_MANIFEST),
         schema: toJson(configSchemaOf(entry.plugin)?.toJSON() ?? null),
       })),
     tree: () => {
@@ -107,6 +162,10 @@ export function createManager(loader: XinLoader): Manager {
         rows: toJson(loader.rows()),
         warnings: [...loader.warnings],
       }
+    },
+    doctor: async () => {
+      const rows = await Promise.all(loader.rows().map((row) => diagnose(row)))
+      return { ok: rows.every((row) => row.issues.length === 0), rows }
     },
     enable: async (id, enabled) => {
       find(id)
@@ -142,6 +201,9 @@ export function apply(ctx: Context): void {
     defineOp({ name: "plugin.catalog", args: obj({}), actors: OWNER, run: async () => toJson(manager.catalog()) }),
   )
   ctx.ops.define(defineOp({ name: "plugin.tree", args: obj({}), actors: OWNER, run: async () => manager.tree() }))
+  ctx.ops.define(
+    defineOp({ name: "plugin.doctor", args: obj({}), actors: OWNER, run: async () => toJson(await manager.doctor()) }),
+  )
   ctx.ops.define(
     defineOp({
       name: "plugin.enable",

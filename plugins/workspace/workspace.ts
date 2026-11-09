@@ -397,6 +397,7 @@ export function create(port: WorkspacePort): WorkspaceFeature {
       id: str({ minLength: 1 }),
       name: opt(str({ minLength: 1, maxLength: 200 })),
       goal: opt(str({ maxLength: 4_000 })),
+      preset: opt(str({ minLength: 1, maxLength: 200 })),
       settings: opt(SettingsPatchSchema),
     }),
     actors: ["owner"],
@@ -407,6 +408,7 @@ export function create(port: WorkspacePort): WorkspaceFeature {
         if (project === undefined) throw new OpRejected("bad_args", `no project ${args.id}`)
         const previousName = project.name
         if (args.name !== undefined) project.name = args.name
+        if (args.preset !== undefined) project.preset = args.preset
         if (args.settings !== undefined) project.settings = mergeSettings(project.settings, args.settings)
         const spaceId = defaultSpaceOf(workspace, args.id)
         const space = spaceId === undefined ? undefined : workspace.spaces[spaceId]

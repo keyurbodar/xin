@@ -9,9 +9,9 @@ export const Config = Schema.object({
   name: Schema.string().description("Display name."),
   description: Schema.string().description("One sentence on what this preset is for."),
   order: Schema.number().description("Position in preset.list; lower comes first."),
-  tools: Schema.union([Schema.const("all"), Schema.array(Schema.string())])
+  plugins: Schema.union([Schema.const("all"), Schema.array(Schema.string())])
     .required()
-    .description('"all", or the tool extensions the preset offers.'),
+    .description('"all", or the plugins whose capabilities the preset offers.'),
 })
 
 type Config = {
@@ -19,7 +19,7 @@ type Config = {
   readonly name?: string
   readonly description?: string
   readonly order?: number
-  readonly tools: "all" | readonly string[]
+  readonly plugins: "all" | readonly string[]
 }
 
 export async function apply(ctx: Context, config: Config): Promise<() => Promise<void>> {
@@ -29,7 +29,7 @@ export async function apply(ctx: Context, config: Config): Promise<() => Promise
       ...(config.name === undefined ? {} : { name: config.name }),
       ...(config.description === undefined ? {} : { description: config.description }),
       ...(config.order === undefined ? {} : { order: config.order }),
-      tools: config.tools,
+      plugins: config.plugins,
     },
     rowId(ctx),
   )

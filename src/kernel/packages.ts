@@ -152,12 +152,17 @@ export function sourcePackage(source: string): string {
   return at > 0 ? source.slice(0, at) : source
 }
 
+/** The version a catalog entry's `source` names, or `dev` for a local source without one. */
+export function sourceVersion(source: string): string {
+  const at = source.lastIndexOf("@")
+  return at > 0 ? source.slice(at + 1) : "dev"
+}
+
 export function installedPackages(catalog: Catalog): readonly InstalledPackage[] {
   const versions = new Map<string, string>()
   for (const entry of Object.values(catalog)) {
     const name = sourcePackage(entry.source)
-    const at = entry.source.lastIndexOf("@")
-    const version = at > 0 ? entry.source.slice(at + 1) : "dev"
+    const version = sourceVersion(entry.source)
     if (!versions.has(name) || versions.get(name) === "dev") versions.set(name, version)
   }
   return [...versions]

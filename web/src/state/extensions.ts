@@ -110,7 +110,7 @@ export type PresetRow = {
   readonly id: string
   readonly name: string
   readonly description?: string | undefined
-  readonly tools: "all" | readonly string[]
+  readonly plugins: "all" | readonly string[]
   readonly isDefault: boolean
 }
 
@@ -404,13 +404,13 @@ export const parsePresets = (value: unknown): PresetList => {
   const presets = records(root["presets"]).flatMap((item): readonly PresetRow[] => {
     const id = strOf(item["id"])
     if (id === undefined) return []
-    const tools = item["tools"]
+    const plugins = item["plugins"]
     return [
       {
         id,
         name: strOf(item["name"]) ?? id,
         description: strOf(item["description"]),
-        tools: tools === "all" ? "all" : stringList(tools),
+        plugins: plugins === "all" ? "all" : stringList(plugins),
         isDefault: fallback === undefined ? false : fallback === id,
       },
     ]

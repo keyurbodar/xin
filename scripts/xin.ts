@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/catalog.ts"
+import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
 
 const ROOT = join(import.meta.dirname, "..")
 const GENERATED = join(ROOT, "src/catalog.gen.ts")
@@ -11,6 +12,7 @@ type Declared = {
   readonly module: string
   readonly title: string
   readonly description: string
+  readonly manifest: Manifest
 }
 type RowSpec = { readonly id: string; readonly name: string; readonly config?: unknown; readonly disabled?: boolean }
 type Found = {
@@ -51,6 +53,13 @@ function parse(path: string, specifier: (module: string) => string, local: boole
       module,
       title: String(field(entry, "title") ?? name),
       description: String(field(entry, "description") ?? field(manifest, "description") ?? ""),
+      manifest: readManifest(
+        {
+          api: field(entry, "api"),
+          requires: field(entry, "requires"),
+        },
+        `${pkg}: xin.plugins.${name}`,
+      ),
     }
   }
   const rows = field(xin, "bundle")
@@ -134,7 +143,7 @@ function render(found: readonly Found[]): string {
       const alias = `p${index++}`
       imports.push(`import * as ${alias} from ${JSON.stringify(entry.specifier(declared.module))}`)
       catalog.push(
-        `  ${JSON.stringify(name)}: { plugin: ${alias}, title: ${JSON.stringify(declared.title)}, description: ${JSON.stringify(declared.description)},${entry.local ? " local: true," : ""} source: ${JSON.stringify(`${entry.pkg}@${entry.version}`)} },`,
+        `  ${JSON.stringify(name)}: { plugin: ${alias}, title: ${JSON.stringify(declared.title)}, description: ${JSON.stringify(declared.description)}, manifest: ${JSON.stringify(declared.manifest)},${entry.local ? " local: true," : ""} source: ${JSON.stringify(`${entry.pkg}@${entry.version}`)} },`,
       )
     }
     bundles.push(`  ${JSON.stringify(entry.pkg)}: ${JSON.stringify(entry.bundle)},`)

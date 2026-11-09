@@ -2,14 +2,14 @@
   "name": "xin-plugin-presets",
   "version": "0.1.0",
   "private": true,
-  "description": "Named agent presets that choose a conversation's tool rows.",
+  "description": "Named agent presets that choose a conversation's plugins.",
   "type": "module",
   "xin": {
     "plugins": {
       "presets": {
         "module": "./index.ts",
         "title": "Presets",
-        "description": "Named agent presets that choose a conversation's tool rows."
+        "description": "Named agent presets that choose a conversation's plugins."
       },
       "preset": {
         "module": "./preset.ts",
@@ -31,8 +31,8 @@
         "config": {
           "id": "full",
           "name": "Full",
-          "description": "Every tool row.",
-          "tools": "all"
+          "description": "Every plugin.",
+          "plugins": "all"
         }
       },
       {
@@ -42,7 +42,7 @@
           "id": "minimal",
           "name": "Minimal",
           "description": "Memory and skills only.",
-          "tools": [
+          "plugins": [
             "tool-memory",
             "tool-skills"
           ]

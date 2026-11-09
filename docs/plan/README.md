@@ -44,7 +44,7 @@ flowchart LR
 - [06 Orchestration](./architecture/06-orchestration.md): orchestrator tools, thread lifecycle, jobs, questions, watchdog.
 - [07 Memory](./architecture/07-memory.md): append-only notes and the single Dreamer writer.
 - [08 Files](./architecture/08-files.md): `R2Env`, pi's file tools, uploads, content-addressed blobs.
-- [09 Plugins](./architecture/09-plugins.md): plugin manifest, reconcile lifecycle, host facade, MCP, trust.
+- [09 Plugins](./architecture/09-plugins.md): plugin manifest, scopes, doctor, MCP, trust.
 - [10 Time](./architecture/10-time.md): schedules as pi tasks and the single owned timer.
 - [11 Failures and cost](./architecture/11-failures-and-cost.md): the failure matrix and the DO row-cost model.
 - [12 Market](./architecture/12-market.md): runtime bundles, contribution rows, discovery and updates on the free plan.

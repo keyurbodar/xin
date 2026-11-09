@@ -44,7 +44,9 @@ export const Config = Schema.object({
   indexes: Schema.array(Schema.string().pattern(/^https:\/\//))
     .default([])
     .max(8)
-    .description("Market index files in dsh's format 1, at most 8 https URLs."),
+    .description(
+      "Additional market index files in dsh's format 1, at most 8 https URLs. This build's packages are always listed first.",
+    ),
   cacheTtlMs: Schema.number().min(1).default(600_000).description("How long a successfully read index stays cached."),
 })
 
@@ -72,6 +74,10 @@ export type MarketPorts = {
   readonly db: SqliteDatabase
   readonly kv: SyncKvStorage
   readonly packages: PackagesPort
+  /** The index this build always offers: its compiled packages, with no setup and no fetch. */
+  readonly builtin: () => MarketIndex
+  /** What a compiled package's rows are, for the entry view of a provided package. */
+  readonly declaration: (pkg: string) => Declaration | undefined
 }
 
 export type MarketFeature = {
@@ -130,7 +136,7 @@ type Policy = Static<typeof PolicySchema>
 type Skipped = Readonly<Record<string, string>>
 type HistoryRow = { readonly version: string }
 
-type Declaration = {
+export type Declaration = {
   readonly rows: readonly BundleRow[]
   readonly patch: readonly BundlePatch[]
   readonly requires: readonly string[]
@@ -294,31 +300,36 @@ export function createMarket(ports: MarketPorts): MarketFeature {
   const load = async (budget: Budget, refresh: boolean): Promise<Loaded> => {
     const now = Date.now()
     const fetched = countingFetch(ports.fetch, budget)
-    const results = await Promise.all(
-      config.indexes.map(async (url): Promise<{ plugins?: readonly MarketPlugin[]; summary: IndexSummary }> => {
-        if (!refresh) {
-          const cached = await cacheRead(url, now)
-          if (cached !== undefined) return { plugins: cached.plugins, summary: { url } }
-        }
-        const document = await fetchJson(fetched, url)
-        if (!document.ok) return { summary: { url, error: failureText(document.error) } }
-        try {
-          const index = parseMarketIndex(document.value, url)
-          await cacheWrite(url, index, now)
-          return {
-            plugins: index.plugins,
-            summary: {
-              url,
-              title: index.title,
-              ...(index.description === undefined ? {} : { description: index.description }),
-            },
-          }
-        } catch (error) {
-          if (error instanceof MarketIndexError) return { summary: { url, error: `${error.path} ${error.reason}` } }
-          throw error
-        }
+    const results = await Promise.all([
+      Promise.resolve<{ plugins?: readonly MarketPlugin[]; summary?: IndexSummary }>({
+        plugins: ports.builtin().plugins,
       }),
-    )
+      ...config.indexes.map(
+        async (url): Promise<{ plugins?: readonly MarketPlugin[]; summary?: IndexSummary }> => {
+          if (!refresh) {
+            const cached = await cacheRead(url, now)
+            if (cached !== undefined) return { plugins: cached.plugins, summary: { url } }
+          }
+          const document = await fetchJson(fetched, url)
+          if (!document.ok) return { summary: { url, error: failureText(document.error) } }
+          try {
+            const index = parseMarketIndex(document.value, url)
+            await cacheWrite(url, index, now)
+            return {
+              plugins: index.plugins,
+              summary: {
+                url,
+                title: index.title,
+                ...(index.description === undefined ? {} : { description: index.description }),
+              },
+            }
+          } catch (error) {
+            if (error instanceof MarketIndexError) return { summary: { url, error: `${error.path} ${error.reason}` } }
+            throw error
+          }
+        },
+      ),
+    ])
     const seen = new Set<string>()
     const plugins: MarketPlugin[] = []
     for (const result of results) {
@@ -328,7 +339,10 @@ export function createMarket(ports: MarketPorts): MarketFeature {
         plugins.push(plugin)
       }
     }
-    return { plugins, summaries: results.map((result) => result.summary) }
+    return {
+      plugins,
+      summaries: results.flatMap((result) => (result.summary === undefined ? [] : [result.summary])),
+    }
   }
 
   const search = async (query: string | undefined, category: string | undefined): Promise<JsonValue> => {
@@ -366,13 +380,15 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     const plugin = loaded.plugins.find((candidate) => candidate.name === name)
     if (plugin === undefined) bad(`${name} is not in any market index`)
     const offered = offeredVersion(plugin.versions, xinVersion)
-    const document = offered === undefined ? undefined : await versionDocument(budget, name, offered)
-    const kind = document === undefined ? null : (kindOf(document.xin) ?? null)
-    const declaration =
-      document === undefined || kind !== "bundle"
+    const facts = await installedFacts()
+    const provided = facts.get(name)?.kind === "provided"
+    const document = provided || offered === undefined ? undefined : await versionDocument(budget, name, offered)
+    const kind = provided ? "code" : document === undefined ? null : (kindOf(document.xin) ?? null)
+    const declaration = provided
+      ? ports.declaration(name)
+      : document === undefined || kind !== "bundle"
         ? undefined
         : maybeDeclaration(document.xin, `${name}@${document.version}`)
-    const facts = await installedFacts()
     const skipped = readSkipped()[name]
     return toJson({
       name,
