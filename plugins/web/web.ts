@@ -247,7 +247,7 @@ async function readCapped(response: Response, cap: number): Promise<Read> {
       chunks.push(value.subarray(0, cap - total))
       total = cap
       truncated = true
-      await reader.cancel()
+      await reader.cancel().catch(() => undefined)
       break
     }
     chunks.push(value)
