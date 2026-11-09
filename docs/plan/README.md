@@ -2,7 +2,7 @@
 
 Design v2, 6 November 2026.
 
-Xin is a personal agent: a Cloudflare Worker in front of one Home Durable Object per owner, with file bytes in R2. It is built on pi-durable, pi-ai and pi-mcp 1.5.0, and exposes a Claude-Projects-style coordinator plus threads. The client is web-only. Xin works with files only and executes no code. No model is hard-coded: the catalog, the credentials and the per-conversation choice all come from the user's configuration at run time.
+Xin is a personal agent: a Cloudflare Worker in front of one Home Durable Object per owner, with file bytes in R2. It is built on pi-durable, pi-ai and pi-mcp 1.5.0, and exposes a Claude-Projects-style coordinator plus threads. The client is web-only. Xin works with files and the public web and executes no code. No model is hard-coded: the catalog, the credentials and the per-conversation choice all come from the user's configuration at run time.
 
 ## Key invariants
 
@@ -11,7 +11,7 @@ Xin is a personal agent: a Cloudflare Worker in front of one Home Durable Object
 - **There are no model ids in Xin's code.** The catalog comes from pi-ai at run time, the credentials are the user's, and the choice is stored in each conversation's `pi.agent`. A switch takes effect at the next model request, so it can land inside a run that is already going (§7).
 - **A child receives only its brief and role, never the parent's history.** Briefs have to be self-contained, threads start cheap and focused, and nothing private leaks into a thread by accident (§8).
 - **The host picks the dispatch mode deterministically from `pi.live`.** The LLM is never asked (§6).
-- **Files only, no code execution.** `exec()` returns `not_supported`, so pi's bash is simply not installed (§14).
+- **Files and the public web, no code execution.** `exec()` returns `not_supported`, so pi's bash is simply not installed. `web_search` and `web_fetch` read the public web and return text; they never write files or run code (§15).
 
 ## System
 
@@ -32,6 +32,7 @@ flowchart LR
   HOME --> R2["R2 blobs"]
   HOME --> LLM["LLM providers via pi-ai"]
   HOME --> MCP["MCP servers via pi-mcp"]
+  HOME --> WEB["public web"]
 ```
 
 ## Index
@@ -49,5 +50,6 @@ flowchart LR
 - [11 Failures and cost](./architecture/11-failures-and-cost.md): the failure matrix and the DO row-cost model.
 - [12 Market](./architecture/12-market.md): runtime bundles, contribution rows, discovery and updates on the free plan.
 - [13 Always-on](./architecture/13-always-on.md): the ambient clock, manual compaction, the loop guard, scheduled tasks and goals.
+- [15 Web](./architecture/15-web.md): public web search and page fetch as built-in tools.
 - [Provenance](./provenance.md): what came from pi-durable, pi-ai, t3code, kiko and the other sources.
 - [Milestones](./milestones.md): build order, each with its proof, dependencies and parallel work.
