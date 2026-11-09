@@ -7,6 +7,7 @@ The Home DO opens pi's Harness inside `blockConcurrencyWhile`, arms its alarm be
 - Status: `{"wake":{"active":false}}` when idle. With no work there is no alarm, so the object hibernates.
 - Eviction mid-turn: the alarm resumes the turn, and it is answered exactly once.
 - Throughput: 10 conversations x 30 tool calls that fetch, in one invocation.
+- Cost: the alarm is written only when it must move, and a 100-thread load counts what each message and wake bills (rows written, rows read, statements). The numbers live in `docs/plan/architecture/11-failures-and-cost.md`.
 
 ## How to get to it (user POV)
 
@@ -22,6 +23,7 @@ Eviction and alarms can't be triggered over HTTP. Prove them through the gate:
 
 ```bash
 id=$(bun scripts/gate.ts submit test --only=src/host.test.ts); bun scripts/gate.ts wait "$id"
+XIN_LOAD=1 bun scripts/gate.ts run test --only=test/load.bench.ts   # 100 threads, per-message rows
 ```
 
 ## Gotchas

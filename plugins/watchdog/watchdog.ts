@@ -31,6 +31,7 @@ export type WatchdogPorts = {
 export const WATCHDOG_KIND = "xin.watchdog"
 export const WATCHDOG_INTERVAL_MS = 30_000
 export const STALL_MS = 120_000
+const BEAT_MS = 30_000
 const PAGE = 200
 
 type Victim =
@@ -105,18 +106,21 @@ export function watchdogTask(ports: WatchdogPorts): WatchdogTask {
 }
 
 export function watchdogExtension(ports: WatchdogPorts, task: WatchdogTask): Extension {
+  // The last beat written per thread, so a run that answers and calls tools in quick succession writes one beat, not
+  // one per step: a beat is only due when the status line changes or the last one is `BEAT_MS` old.
+  const beats = new Map<number, Beat>()
   return defineExtension({
     name: "xin.watchdog",
     tasks: [task],
     hooks: [
       hook(GenerationTask, {
         afterResponse: async (_message, api) => {
-          await beat(ports, api.conversationId)
+          await beat(ports, beats, api.conversationId)
         },
       }),
       hook(ToolTask, {
         afterTool: async (call, _result, api) => {
-          await beat(ports, api.conversationId, call.name)
+          await beat(ports, beats, api.conversationId, call.name)
           return undefined
         },
       }),
@@ -181,9 +185,15 @@ async function jobsOf(ports: WatchdogPorts): Promise<Record<string, JobRecord>> 
   return live
 }
 
+/** Stop at the first working thread: the answer is the same, and a home with many threads reads one document, not all. */
 async function anyWork(ports: WatchdogPorts): Promise<boolean> {
-  const threads = await threadsOf(ports)
-  if (threads.some(({ doc }) => doc.status === "working")) return true
+  const workspace = await ports.harness.snapshot(WorkspaceDoc, context)
+  for (const space of Object.values(workspace?.spaces ?? {})) {
+    for (const id of space.threadIds) {
+      const doc = await ports.harness.snapshot(ThreadDoc, id as ConversationId, context)
+      if (doc?.status === "working") return true
+    }
+  }
   return Object.keys(await jobsOf(ports)).length > 0
 }
 
@@ -262,9 +272,25 @@ async function deliverFailure(ports: WatchdogPorts, victim: Victim): Promise<voi
   }, context)
 }
 
-async function beat(ports: WatchdogPorts, conversationId: ConversationId, line?: string): Promise<void> {
+type Beat = { readonly at: number; readonly line: string | undefined }
+
+async function beat(
+  ports: WatchdogPorts,
+  beats: Map<number, Beat>,
+  conversationId: ConversationId,
+  line?: string,
+): Promise<void> {
+  const now = Date.now()
+  const previous = beats.get(conversationId)
+  // The document keeps its last status line when a response beat names none, so the map does too.
+  const shown = line ?? previous?.line
+  if (previous !== undefined && previous.line === shown && now - previous.at < BEAT_MS) return
   const thread = await ports.harness.snapshot(ThreadDoc, conversationId, context)
-  if (thread === undefined || thread.status !== "working") return
+  if (thread === undefined || thread.status !== "working") {
+    beats.delete(conversationId)
+    return
+  }
+  beats.set(conversationId, { at: now, line: shown })
   await ports.harness.commit(async (tx) => {
     const doc = await tx.doc(ThreadDoc, conversationId)
     if (doc.status !== "working") return

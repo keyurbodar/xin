@@ -31,6 +31,7 @@ import { BUNDLES, CATALOG } from "../src/catalog.ts"
 import { XIN_VERSION } from "../src/catalog.gen.ts"
 import { Home as ProductHome, PROFILE } from "../src/host.ts"
 import type { Env } from "../src/env.ts"
+import { install, sample, setLabel, type Sample } from "./meter.ts"
 
 export { default } from "../src/worker.ts"
 
@@ -122,6 +123,19 @@ export type TestEnv = Omit<Env, "HOME"> & { readonly HOME: DurableObjectNamespac
 export class Home extends ProductHome {
   readonly hanging = Promise.withResolvers<void>()
 
+  constructor(ctx: DurableObjectState, bindings: Env) {
+    install(ctx.storage)
+    super(ctx, bindings)
+  }
+
+  meter(): Sample {
+    return sample()
+  }
+
+  meterLabel(label: string): void {
+    setLabel(label)
+  }
+
   override providers(): readonly Provider[] {
     const faux = fauxProvider()
     faux.setResponses(Array.from({ length: 2000 }, () => this.#step()))
@@ -171,9 +185,10 @@ export class Home extends ProductHome {
   #step(): FauxResponseStep {
     return (context, options) => {
       const prompt = lastOwnerText(context.messages)
-      const pings = /^ping (\d+)$/.exec(prompt)
+      const pings = /\bping (\d+)\b/.exec(prompt)
       if (pings !== null) {
-        const done = context.messages.filter((message) => message.role === "toolResult").length
+        const lastOwner = context.messages.findLastIndex((message) => message.role === "user")
+        const done = context.messages.slice(lastOwner).filter((message) => message.role === "toolResult").length
         const want = Number(pings[1])
         return done < want
           ? fauxAssistantMessage([fauxToolCall("ping", {}, { id: `p${done}` })], { stopReason: "toolUse" })

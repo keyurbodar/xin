@@ -20,7 +20,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.clock.timer({
     due: async () => undefined,
     fire: async () => {
-      await parts.flush()
+      await parts.flushDue()
     },
   })
   await parts.start()

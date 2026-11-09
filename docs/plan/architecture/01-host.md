@@ -68,23 +68,28 @@ webSocketMessage / fetch:
   ops.run(cmd) → ack
 
 alarm():
+  fired()                          // the runtime cleared the alarm it ran
   arm({...wake(), active:true})
   harness.resume()
   gateway.fireDue(now)
+  arm(harness.wake())
 ```
 
-`arm()` folds every deadline into one alarm:
+`arm()` folds every deadline into one alarm, and writes it only when it has to move:
 
 ```text
 arm(wake):
-  hb  = wake.active ? now+60s
   pi  = wake.at
-  deb = min(inbound.fire_at)
-  at  = min(hb, pi, deb)
-  at ? setAlarm(at)
-     : deleteAlarm()
-  failed write → ctx.abort()   // restart, re-arm
+  due = min(pi, ...timer.due())          // the next deadline, if any
+  due = none ? (wake.active ? keep : deleteAlarm())
+             : (armed == due ? keep : setAlarm(due))
+  failed write → ctx.abort()             // restart, re-arm
 ```
+
+Three rules keep the write count down without delaying work:
+
+- **Arms coalesce.** A call that arrives while one is running joins the next round, and the round uses the latest wake, so a burst of wake changes costs one round of `due()` reads, not one per call.
+- **One deadline, one row.** The alarm is written only when the earliest deadline moves, and deleted when an idle home has none. There is no fixed heartbeat: a run in progress holds the alarm it started with, and an eviction during one is recovered by the turn's own retry, not by a periodic wake. `fired()`, called first in `alarm()`, marks the consumed alarm unset so the next arm writes one.
 
 `onWake` fires whenever pi's next-needed time changes (a sleep is created, work starts or ends), and it calls `arm()` again. The 60 s heartbeat runs only while `wake.active`: an eviction mid-run is noticed within 60 s and `resume()` continues from the last checkpoint. The only non-pi timer is the debounce (`inbound.fire_at`), folded into the same `min()`.
 

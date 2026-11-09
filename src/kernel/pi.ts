@@ -10,8 +10,8 @@ import {
   type Report,
 } from "@earendil-works/pi-durable"
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
-import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare"
 import { loaderRow } from "../contributions.ts"
+import { JournalStorage } from "./journal.ts"
 
 export type Installed = {
   readonly extension: Extension
@@ -35,7 +35,7 @@ export class Pi extends Service {
   async [Service.init](): Promise<void> {
     const { state, abort } = this.ctx.host
     const harness = await Harness.open(
-      await openDurableObjectSqliteStorage(state.storage, { prefix: "pi_" }),
+      await JournalStorage.open(state.storage, BACKGROUND_CONTEXT),
       {
         models: () => this.currentModels(),
         registry: this.registry,

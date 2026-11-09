@@ -86,6 +86,8 @@ export type IntakeBatchRow =
       readonly commandId: string
       text: string
       readonly attachments: readonly MessageAttachment[]
+      /** The body stored for this row, so a dispatch that rewrites nothing stores nothing. */
+      readonly stored?: string
     }
   | {
       readonly id: number
@@ -96,6 +98,7 @@ export type IntakeBatchRow =
       readonly title: string
       readonly status: string
       text: string
+      readonly stored?: string
     }
 
 export type IntakeBatch = {

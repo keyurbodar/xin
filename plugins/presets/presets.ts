@@ -152,7 +152,6 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
       projectPreset.set(coordinator, workspace.projects[space.projectId]?.preset)
       for (const threadId of space.threadIds) projectOf.set(threadId, coordinator)
     }
-    }
     return workspace
   }
 

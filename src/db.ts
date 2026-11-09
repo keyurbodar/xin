@@ -62,6 +62,22 @@ export const HOST_MIGRATIONS: readonly SqliteMigration[] = [
     version: 9,
     statements: ["ALTER TABLE notes ADD COLUMN dirty INTEGER NOT NULL DEFAULT 0"],
   },
+  {
+    // Both indexes served queries whose rows are few (pending intake, a day of receipts), so each cost a row on every
+    // write of its table to save a scan of a handful of rows.
+    version: 10,
+    statements: ["DROP INDEX IF EXISTS inbound_target", "DROP INDEX IF EXISTS receipts_at"],
+  },
+  {
+    // The journal took the write bill down by an order of magnitude, so the scans these bound are worth a row again:
+    // intake by target, by batch, and the receipt sweep by age each read the whole table without them.
+    version: 11,
+    statements: [
+      "CREATE INDEX IF NOT EXISTS inbound_target ON inbound (target, status)",
+      "CREATE INDEX IF NOT EXISTS inbound_batch ON inbound (batch_id)",
+      "CREATE INDEX IF NOT EXISTS receipts_at ON receipts (at)",
+    ],
+  },
 ]
 
 export function migrate(db: SqliteDatabase): Promise<void> {

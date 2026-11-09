@@ -87,6 +87,7 @@ export class Home extends DurableObject<Env> {
 
   override async alarm(): Promise<void> {
     const { root } = this.#current
+    root.clock.fired()
     await root.clock.arm()
     root.get("harness")?.resume()
     await root.clock.fire(Date.now())
