@@ -91,7 +91,7 @@ function retryDraft(row: InboundRecord, commandId: string): InboundDraft | undef
 const coordinatorIds = async (harness: Harness): Promise<ReadonlySet<ConversationId>> => {
   const ids = new Set<ConversationId>([ROOT_CONVERSATION_ID])
   const workspace = await harness.snapshot(WorkspaceDoc, context)
-  for (const project of Object.values(workspace?.projects ?? {})) ids.add(project.coordinatorId as ConversationId)
+  for (const space of Object.values(workspace?.spaces ?? {})) ids.add(space.coordinatorId as ConversationId)
   return ids
 }
 

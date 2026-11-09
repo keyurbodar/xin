@@ -8,7 +8,7 @@ import { cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { jobTool, JobsDoc } from "./jobs.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
-import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -105,7 +105,7 @@ const replayTool = jobTool(
 
 const threadOf = async (home: Home, projectId: string) => {
   const workspace = await home.harness.snapshot(WorkspaceDoc, context)
-  const id = workspace?.projects[projectId]?.threadIds[0]
+  const id = threadIdsOfProject(workspace, projectId)[0]
   if (id === undefined) return undefined
   const doc = await home.harness.snapshot(ThreadDoc, id as ConversationId, context)
   return doc === undefined ? undefined : { id, doc }

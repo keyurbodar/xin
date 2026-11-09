@@ -7,7 +7,7 @@ import { cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { STALL_MS, WATCHDOG_KIND } from "./watchdog.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
-import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import { JobsDoc } from "../../src/contracts/jobs.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -43,7 +43,7 @@ async function fireNow(stub: Stub): Promise<void> {
 
 const threads = async (home: Home, projectId: string): Promise<ThreadRow[]> => {
   const workspace = await home.harness.snapshot(WorkspaceDoc, context)
-  const ids = workspace?.projects[projectId]?.threadIds ?? []
+  const ids = threadIdsOfProject(workspace, projectId)
   const found: ThreadRow[] = []
   for (const id of ids) {
     const doc = await home.harness.snapshot(ThreadDoc, id as ConversationId, context)

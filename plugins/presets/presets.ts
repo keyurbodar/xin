@@ -66,10 +66,14 @@ const sameNames = (left: readonly string[], right: readonly string[]): boolean =
 const orderOf = (view: PresetView): number => view.order ?? Number.POSITIVE_INFINITY
 
 const entriesOf = (workspace: WorkspaceState): readonly ConversationEntry[] =>
-  Object.values(workspace.projects).flatMap((project) => [
-    { project, conversationId: project.coordinatorId as ConversationId },
-    ...project.threadIds.map((conversationId) => ({ project, conversationId: conversationId as ConversationId })),
-  ])
+  Object.values(workspace.spaces).flatMap((space) => {
+    const project = workspace.projects[space.projectId]
+    if (project === undefined) return []
+    return [
+      { project, conversationId: space.coordinatorId as ConversationId },
+      ...space.threadIds.map((conversationId) => ({ project, conversationId: conversationId as ConversationId })),
+    ]
+  })
 
 const hasTurns = (messages: readonly { readonly role: string }[]): boolean =>
   messages.some((message) => message.role === "user" || message.role === "assistant")
@@ -136,11 +140,13 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
   const reconcile = async (): Promise<WorkspaceState | undefined> => {
     const workspace = await port.harness.snapshot(WorkspaceDoc, context)
     if (workspace === undefined) return undefined
-    for (const project of Object.values(workspace.projects)) {
-      const coordinator = project.coordinatorId
+    for (const space of Object.values(workspace.spaces)) {
+      const project = workspace.projects[space.projectId]
+      if (project === undefined) continue
+      const coordinator = space.coordinatorId
       await remember(coordinator, project.preset ?? defaultId)
       const inherited = records.get(coordinator) ?? project.preset ?? defaultId
-      for (const threadId of project.threadIds) await remember(threadId, inherited)
+      for (const threadId of space.threadIds) await remember(threadId, inherited)
     }
     return workspace
   }

@@ -7,7 +7,7 @@ import { M5_MODEL } from "../../test/plugins/m5.ts"
 import { cmd, connect, eventually, fresh, owner } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
-import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -16,10 +16,10 @@ type ThreadRow = { readonly id: number; readonly title: string; readonly status:
 type Batch = { readonly rows: readonly unknown[]; readonly text: string }
 type ReportRow = { readonly command_id: string; readonly status: string }
 
-async function makeProject(stub: Stub, slug: string): Promise<{ id: string; coordinatorId: number }> {
+async function makeProject(stub: Stub, slug: string): Promise<{ id: string; coordinatorId: number; spaceId: string }> {
   const created = await cmd(stub, `create-${slug}`, "project.create", { slug, name: slug })
   expect(created.ok, JSON.stringify(created)).toBe(true)
-  return created.result as { id: string; coordinatorId: number }
+  return created.result as { id: string; coordinatorId: number; spaceId: string }
 }
 
 async function chooseModel(stub: Stub, coordinatorId: number): Promise<void> {
@@ -60,7 +60,7 @@ const reports = (home: Home): Promise<ReportRow[]> =>
 
 const threads = async (home: Home, projectId: string): Promise<ThreadRow[]> => {
   const workspace = await home.harness.snapshot(WorkspaceDoc, context)
-  const ids = workspace?.projects[projectId]?.threadIds ?? []
+  const ids = threadIdsOfProject(workspace, projectId)
   const found: ThreadRow[] = []
   for (const id of ids) {
     const doc = await home.harness.snapshot(ThreadDoc, id as ConversationId, context)
@@ -123,6 +123,25 @@ const textsFor = async (home: Home, conversationId: number, role: "user" | "assi
 const read = <T>(stub: Stub, work: (home: Home) => Promise<T>): Promise<T> => runInDurableObject(stub, work)
 
 describe("orchestrator", () => {
+  it("starts a thread in the space that asked", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "spaces")
+    const second = await cmd(stub, "space-2", "space.create", { projectId: project.id, name: "Second" })
+    expect(second.ok, JSON.stringify(second)).toBe(true)
+    const space = second.result as { id: string; coordinatorId: number }
+    await chooseModel(stub, space.coordinatorId)
+    await send(stub, "space-1", space.coordinatorId, "delegate one")
+    await fireNow(stub)
+
+    await eventually(stub, async (home: Home) => {
+      const workspace = await home.harness.snapshot(WorkspaceDoc, context)
+      return (workspace?.spaces[space.id]?.threadIds.length ?? 0) === 1
+    })
+    const workspace = await read(stub, (home) => home.harness.snapshot(WorkspaceDoc, context))
+    expect(workspace?.spaces[space.id]?.threadIds).toHaveLength(1)
+    expect(workspace?.spaces[project.spaceId]?.threadIds).toHaveLength(0)
+  })
+
   it("turns eight finished threads into exactly one coordinator turn", async () => {
     const stub = fresh()
     const project = await makeProject(stub, "eight")

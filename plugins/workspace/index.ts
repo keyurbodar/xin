@@ -15,7 +15,10 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.pi.install(
     defineExtension({
       name: "xin.instructions",
-      sections: [section("owner", () => workspace.instructions())],
+      sections: [
+        section("owner", () => workspace.instructions()),
+        section("space", (input) => workspace.spacePrompt(input.read, input.conversationId)),
+      ],
     }),
   )
   ctx.wire.home(name, workspace.home)

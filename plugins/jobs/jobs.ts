@@ -28,7 +28,7 @@ import {
 } from "../../src/contracts/jobs.ts"
 
 export { JobsDoc, type JobRecord, type JobRun, type JobTool, type JobWork } from "../../src/contracts/jobs.ts"
-import { projectInScope, ThreadDoc } from "../../src/contracts/threaddoc.ts"
+import { spaceInScope, ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -252,9 +252,9 @@ function drop(api: ToolExecutionApi, id: number, callContext: Context): Promise<
 async function deadlineOf(read: DocumentReader, conversationId: ConversationId): Promise<number> {
   const workspace = await read.snapshot(WorkspaceDoc, context)
   if (workspace === undefined) return DEFAULT_DEADLINE_MS
-  for (const project of Object.values(workspace.projects)) {
-    if (project.coordinatorId === conversationId || project.threadIds.includes(conversationId))
-      return project.settings.deadlineMs
+  for (const space of Object.values(workspace.spaces)) {
+    if (space.coordinatorId !== conversationId && !space.threadIds.includes(conversationId)) continue
+    return workspace.projects[space.projectId]?.settings.deadlineMs ?? DEFAULT_DEADLINE_MS
   }
   return DEFAULT_DEADLINE_MS
 }
@@ -279,12 +279,12 @@ export type JobsModule = {
 }
 
 export async function cancelJob(harness: Harness, callerId: ConversationId, jobId: number): Promise<boolean> {
-  const scope = await projectInScope(harness, callerId)
+  const scope = await spaceInScope(harness, callerId)
   if (scope === undefined) return false
   const doc = await harness.snapshot(JobsDoc, context)
   const job = doc?.jobs[String(jobId)]
   if (job === undefined || job.result !== undefined) return false
-  if (job.parentId !== scope.project.coordinatorId && !scope.project.threadIds.includes(job.parentId)) return false
+  if (job.parentId !== scope.space.coordinatorId && !scope.space.threadIds.includes(job.parentId)) return false
   await harness.abortTask(jobId as TaskId, context)
   return true
 }

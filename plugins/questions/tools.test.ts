@@ -8,7 +8,7 @@ import { cmd, eventually, fresh, recordOffers, rowOf, setRow, turn } from "../..
 import type { Home } from "../../test/worker.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { RequestsDoc } from "../../src/contracts/questions.ts"
-import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -16,7 +16,7 @@ type ThreadRow = { readonly id: number; readonly title: string; readonly status:
 
 const threads = async (home: Home, projectId: string): Promise<ThreadRow[]> => {
   const workspace = await home.harness.snapshot(WorkspaceDoc, context)
-  const ids = workspace?.projects[projectId]?.threadIds ?? []
+  const ids = threadIdsOfProject(workspace, projectId)
   const found: ThreadRow[] = []
   for (const id of ids) {
     const doc = await home.harness.snapshot(ThreadDoc, id as ConversationId, context)

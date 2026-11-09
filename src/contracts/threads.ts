@@ -64,7 +64,21 @@ export type DelegateRequest = {
   readonly mode: DelegateMode
   readonly timeoutMs?: number
   readonly clientRequestId: string
+  /** Required from Puck, which names the project; a Space may only omit it or repeat its own. */
+  readonly project?: string
 }
+
+export type CreateThreadRequest = {
+  readonly title: string
+  readonly task: string
+  readonly role?: ThreadRole
+  readonly project?: string
+  readonly spaceId?: string
+}
+
+export type CreateThreadOutcome =
+  | { readonly kind: "ok"; readonly result: JsonValue }
+  | { readonly kind: "rejected"; readonly message: string }
 
 export type DelegateOutcome =
   | { readonly kind: "not_coordinator" }
@@ -105,6 +119,9 @@ export type ListOutcome =
   | { readonly kind: "not_in_project" }
   | { readonly kind: "no_project"; readonly projectId: string }
   | { readonly kind: "threads"; readonly projectId: string; readonly threads: readonly ThreadSummary[] }
+  | { readonly kind: "all"; readonly threads: readonly ListedThread[] }
+
+export type ListedThread = ThreadSummary & { readonly projectId: string }
 
 export type ProjectView = {
   readonly name: string
@@ -112,14 +129,23 @@ export type ProjectView = {
   readonly live: number
 }
 
+export type PuckProject = {
+  readonly id: string
+  readonly slug: string
+  readonly name: string
+  readonly live: number
+}
+
 export type CapabilitiesOutcome = {
   readonly model?: ModelRef
   readonly models: readonly string[]
   readonly project?: ProjectView
+  readonly puck?: { readonly projects: readonly PuckProject[] }
 }
 
 export interface ThreadsService {
   delegate(caller: Caller, request: DelegateRequest, context: ChordContext): Promise<DelegateOutcome>
+  create(caller: Caller, request: CreateThreadRequest): Promise<CreateThreadOutcome>
   status(caller: Caller, threadId: number, context: ChordContext): Promise<StatusOutcome>
   stop(caller: Caller, threadId: number, reason: string | undefined): Promise<StopOutcome>
   send(caller: Caller, threadId: number, text: string, mode: SendMode): Promise<SendOutcome>

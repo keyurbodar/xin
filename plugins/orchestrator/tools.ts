@@ -109,6 +109,13 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
         lines.push(`project: ${viewed.project.name}`)
         lines.push(`threads: ${viewed.project.live} live of ${viewed.project.threadLimit}`)
       }
+      if (viewed.puck !== undefined) {
+        lines.push(
+          viewed.puck.projects.length === 0
+            ? "projects: none"
+            : `projects: ${viewed.puck.projects.map((project) => `${project.slug} (${project.live} live)`).join(", ")}`,
+        )
+      }
       lines.push(
         `plugins: ${plugins.length === 0 ? "none" : plugins.map((plugin) => `${plugin.id} (${plugin.state.kind})`).join(", ")}`,
       )
@@ -119,11 +126,12 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
   const delegate = defineTool({
     name: "delegate_task",
     description:
-      "Delegate a self-contained brief to a background thread in this project. The thread sees only the brief and its role. Its result arrives later as a report.",
+      "Delegate a self-contained brief to a background thread. In a Space the thread runs in the Space's project; Puck must name one with project. The thread sees only the brief and its role. Its result arrives later as a report.",
     parameters: obj({
       task: str({ minLength: 1 }),
       title: str({ minLength: 1, maxLength: 200 }),
       role: opt(RoleSchema),
+      project: opt(str({ minLength: 1, maxLength: 200 })),
       target: opt(obj({ model: ModelRefSchema })),
       mode: ModeSchema,
       timeoutMs: opt(int({ minimum: 1, maximum: MAX_WAIT_MS })),
@@ -140,6 +148,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
             mode: args.mode,
             clientRequestId: args.clientRequestId,
             ...(args.role === undefined ? {} : { role: args.role }),
+            ...(args.project === undefined ? {} : { project: args.project }),
             ...(args.target?.model === undefined ? {} : { model: args.target.model }),
             ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
           },
@@ -251,7 +260,8 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
 
   const threadList = defineTool({
     name: "thread_list",
-    description: "List this project's threads, optionally by status.",
+    description:
+      "List threads. A Space sees its own project; Puck sees every project, optionally filtered by project slug.",
     parameters: obj({ projectId: opt(str({ minLength: 1 })), status: opt(StatusSchema) }),
     replay: "safe",
     execute: async (args, api) => {
@@ -281,11 +291,60 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
           }
           return textResult(lines.length === 0 ? "No threads." : lines.join("\n"), { details: { threads: listed } })
         }
+        case "all": {
+          const lines: string[] = []
+          const listed: JsonValue[] = []
+          for (const record of found.threads) {
+            lines.push(
+              `${record.id} [${record.status}] ${record.projectId} — ${record.title}${record.result === undefined ? "" : ` — ${excerpt(record.result)}`}`,
+            )
+            listed.push({
+              id: record.id,
+              projectId: record.projectId,
+              title: record.title,
+              status: record.status,
+              ...(record.result === undefined ? {} : { result: excerpt(record.result) }),
+            })
+          }
+          return textResult(lines.length === 0 ? "No threads." : lines.join("\n"), { details: { threads: listed } })
+        }
       }
     },
   })
 
-  return [capabilities, delegate, taskStatus, taskCancel, threadSend, threadRead, threadList]
+  const threadCreate = defineTool({
+    name: "thread_create",
+    description:
+      "Start a thread directly in a project's default space or a named space. The owner and Puck use this; a space coordinator uses delegate_task.",
+    parameters: obj({
+      title: str({ minLength: 1, maxLength: 200 }),
+      task: str({ minLength: 1 }),
+      role: opt(RoleSchema),
+      project: opt(str({ minLength: 1 })),
+      spaceId: opt(str({ minLength: 1 })),
+    }),
+    replay: "safe",
+    execute: async (args, api) => {
+      const created = await threads.create(callerOf(api), {
+        title: args.title,
+        task: args.task,
+        ...(args.role === undefined ? {} : { role: args.role }),
+        ...(args.project === undefined ? {} : { project: args.project }),
+        ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }),
+      })
+      if (created.kind === "rejected") return textResult(created.message, { isError: true })
+      const threadId =
+        typeof created.result === "object" && created.result !== null
+          ? Reflect.get(created.result, "threadId")
+          : undefined
+      return textResult(
+        `Started thread ${typeof threadId === "number" ? threadId : "?"}. Its result will arrive as a report.`,
+        { details: created.result },
+      )
+    },
+  })
+
+  return [capabilities, delegate, threadCreate, taskStatus, taskCancel, threadSend, threadRead, threadList]
 }
 
 export const name = "tool-orchestrator"
