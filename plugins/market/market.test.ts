@@ -273,6 +273,53 @@ const installedClock = (stub: Stub, row: string): Promise<boolean> =>
 afterEach(() => vi.restoreAllMocks())
 
 describe("market", () => {
+  it("browses the build's own packages with no index configured and no request", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+
+    const listed = await op(stub, "market.search")
+    expect(entriesOf(listed)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "xin-plugin-presets",
+          title: "Presets",
+          category: "first-party",
+          status: "provided",
+        }),
+        expect.objectContaining({ name: "xin-plugin-memory", status: "provided" }),
+      ]),
+    )
+    expect(transport.urls).toEqual([])
+
+    const entry = await op(stub, "market.entry", { name: "xin-plugin-presets" })
+    expect(entry.result, JSON.stringify(entry)).toMatchObject({
+      name: "xin-plugin-presets",
+      kind: "code",
+      status: "provided",
+    })
+    expect(field(entry.result, "rows")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "preset-full",
+          plugin: "preset",
+          config: { id: "full", name: "Full", description: "Every plugin.", plugins: "all" },
+        }),
+        expect.objectContaining({
+          id: "preset-minimal",
+          plugin: "preset",
+          config: {
+            id: "minimal",
+            name: "Minimal",
+            description: "Memory and skills only.",
+            plugins: ["tool-memory", "tool-skills"],
+          },
+        }),
+      ]),
+    )
+    expect(transport.urls).toEqual([])
+  })
+
   it("reads dsh format-1 indexes and skips a malformed one with its path", async () => {
     const transport = fake()
     serve(transport)
@@ -506,7 +553,7 @@ describe("market", () => {
         { version: "0.9.0", skipped: false },
       ],
     })
-    expect(entriesOf(await op(stub, "market.search", { query: "notes" }))).toMatchObject([
+    expect(entriesOf(await op(stub, "market.search", { query: "take notes" }))).toMatchObject([
       { name: NOTES, skipped: true },
     ])
     expect((await op(stub, "bundle.list")).result).toMatchObject([
