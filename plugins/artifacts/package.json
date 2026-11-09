@@ -1,0 +1,21 @@
+{
+  "name": "xin-plugin-artifacts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Documents attached to a thread.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "artifacts": {
+        "module": "./index.ts",
+        "title": "Artifacts",
+        "description": "Thread documents with a revision."
+      },
+      "tool-artifacts": {
+        "module": "./tools.ts",
+        "title": "Artifact tools",
+        "description": "The model-facing artifact tool. Disable to hide it; the artifacts service keeps running."
+      }
+    }
+  }
+}
