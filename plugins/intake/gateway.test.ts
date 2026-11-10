@@ -52,6 +52,18 @@ async function fireNow(stub: ReturnType<typeof fresh>): Promise<void> {
   await runDurableObjectAlarm(stub)
 }
 
+const transcriptOf = (stub: ReturnType<typeof fresh>): Promise<readonly EntryRecord[]> =>
+  runInDurableObject(
+    stub,
+    async (home: Home) => (await (await home.root()).entries({ order: "ascending" }, 500, undefined, context)).items,
+  )
+
+/** The transcript position of the first entry whose `role` message carries `text`; -1 when none does. */
+const positionOf = (entries: readonly EntryRecord[], role: "user" | "assistant", text: string): number =>
+  entries.findIndex((entry) =>
+    (entry.model ?? []).some((message) => message.role === role && JSON.stringify(message.content).includes(text)),
+  )
+
 describe("gateway intake and dispatch", () => {
   it("refuses a new message once the month's spend reaches the cap, and takes it again once raised", async () => {
     const stub = fresh()
@@ -148,11 +160,11 @@ describe("gateway intake and dispatch", () => {
     expect(last.indexOf("alpha")).toBeLessThan(last.indexOf("beta"))
   })
 
-  it("steers instead once a tool call is live", async () => {
+  it("steers into the running turn instead of waiting for its answer", async () => {
     const stub = fresh()
     await runInDurableObject(stub, async (home: Home) => {
       scriptM2([
-        fauxAssistantMessage([fauxToolCall("hold", {}, { id: "hold-1" })], { stopReason: "toolUse" }),
+        fauxAssistantMessage([fauxToolCall("pause", { ms: 3_000 }, { id: "pause-1" })], { stopReason: "toolUse" }),
         fauxAssistantMessage("done"),
       ])
       await (await home.root()).configure({ model: M2_MODEL }, context)
@@ -161,7 +173,7 @@ describe("gateway intake and dispatch", () => {
     await fireNow(stub)
     await eventually(stub, async (home: Home) => {
       const live = await home.harness.snapshot(LiveDoc, (await home.root()).id, context)
-      return (live?.tools?.length ?? 0) > 0
+      return live?.tools?.some((slot) => slot.name === "pause" && slot.status === "running") === true
     })
     await send(stub, "t2", "beta", 2_000)
     await fireNow(stub)
@@ -172,6 +184,15 @@ describe("gateway intake and dispatch", () => {
       return inspection.submissions.find((submission) => submission.requestId === `batch:${item.batchId}`)?.status
     })
     expect(status).toBe("queued")
+
+    await eventually(stub, async (home: Home) => {
+      const page = await (await home.root()).entries({ order: "ascending" }, 500, undefined, context)
+      return positionOf(page.items, "assistant", "done") >= 0
+    })
+    const entries = await transcriptOf(stub)
+    const beta = positionOf(entries, "user", "beta")
+    expect(beta).toBeGreaterThanOrEqual(0)
+    expect(positionOf(entries, "assistant", "done")).toBeGreaterThan(beta)
   }, 15_000)
 
   it("resubmits a claimed batch after eviction and answers once", async () => {

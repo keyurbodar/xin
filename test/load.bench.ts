@@ -214,9 +214,11 @@ describe("load", () => {
         .slice(0, 15)
         .map(([name, counts]) => [name, `${counts.reads}r/${counts.writes}w`] as [string, string]),
     }
-    // Bounds from the measurement below, on a tree with no other load: 100 threads, 300 messages, half of them with
-    // two tool calls. Almost every written row is a journal row now, so a Xin regression still shows here in the small
-    // part: the intake document's three commits add two rows each, one stored and one truncated.
+    // Bounds are the measurement with about a third of headroom: a cold turn measured 42 calls, 14 reads and 11
+    // writes, an idle alarm 4 reads and 2 writes, and a cold boot 281 reads, with 254 journal rows left to replay.
+    // Almost every written row is a journal row now, so a Xin regression still shows here in the small part: the
+    // intake document's three commits add two rows each, one stored and one truncated. The journal bound fails when
+    // truncation stops, since the rows it should have deleted then survive to the cold start.
     const within = (name: string, value: number, bound: number): void => {
       expect(value, `${name} is ${value}, over ${bound}\n${JSON.stringify(report, null, 2)}`).toBeLessThanOrEqual(bound)
     }
@@ -224,13 +226,14 @@ describe("load", () => {
     within("calls per message", report.turnPerMessage.calls, 65)
     within("writes per message", report.turnPerMessage.writes, 22)
     within("reads per message", report.turnPerMessage.reads, 32)
-    within("calls per cold turn", report.coldTurn.calls, 200)
-    within("reads per cold turn", report.coldTurn.reads, 104)
-    within("writes per cold turn", report.coldTurn.writes, 64)
-    within("reads per idle alarm", report.idleAlarm.total.reads, 20)
+    within("calls per cold turn", report.coldTurn.calls, 54)
+    within("reads per cold turn", report.coldTurn.reads, 18)
+    within("writes per cold turn", report.coldTurn.writes, 14)
+    within("reads per idle alarm", report.idleAlarm.total.reads, 5)
     within("writes per idle alarm", report.idleAlarm.total.writes, 3)
     within("harness reads per message", report.harnessPerTurn.reads, 40)
     within("harness writes per message", report.harnessPerTurn.writes, 24)
-    within("cold boot reads", report.coldBoot.reads, 560)
+    within("cold boot reads", report.coldBoot.reads, 360)
+    within("journal rows at a cold start", report.coldJournalRows, 300)
   }, 900_000)
 })

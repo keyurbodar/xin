@@ -16,7 +16,13 @@ export type BoxRun =
   | { readonly kind: "unavailable"; readonly reason: string }
 
 export function boxes(): readonly Box[] {
-  if (process.env.XIN_GATE_BOX === "0" || process.env.XIN_LIVE === "1" || !existsSync(BOXES_ENV)) return []
+  if (
+    process.env.XIN_GATE_BOX === "0" ||
+    process.env.XIN_LIVE === "1" ||
+    process.env.XIN_LOAD === "1" ||
+    !existsSync(BOXES_ENV)
+  )
+    return []
   return readFileSync(BOXES_ENV, "utf8")
     .split("\n")
     .map((line) => line.trim().split("="))

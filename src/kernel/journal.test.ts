@@ -35,6 +35,8 @@ const ids = async (storage: JournalStorage): Promise<number[]> => {
   return page.items.map((item) => item.id)
 }
 
+const journalRows = (sql: SqlStorage): number => Number(sql.exec("SELECT COUNT(*) AS n FROM pi_journal").one().n)
+
 describe("the journal", () => {
   it("skips journal rows a checkpoint already covers", async () => {
     const stub = fresh()
@@ -55,10 +57,12 @@ describe("the journal", () => {
       const sql = state.storage.sql
       clear(sql)
       const storage = await JournalStorage.open(state.storage, context)
-      storage.prepareCommit([conversation(301)], 1 as Seq).apply()
+      await storage.commit([[conversation(301)]], () => undefined, context)
       await storage.checkpoint(context)
+      expect(journalRows(sql), "the checkpoint kept the journal row it covers").toBe(0)
       journal(sql, 9, [conversation(302)])
       await storage.checkpoint(context)
+      expect(journalRows(sql), "the checkpoint deleted a journal row newer than itself").toBe(1)
 
       const restored = await JournalStorage.open(state.storage, context)
       expect(await ids(restored)).toEqual([301, 302])
