@@ -3,6 +3,12 @@
 Self-hosted Amp orb providers. One Instabox sandbox per account. Each provider
 runs `amp orb provider` as a systemd service and spawns one Docker container per thread.
 
+> **Stopped 2026-11-10.** All seven reachable providers and janitors were
+> disabled, the `xin-b2` runner was disabled, and the `amp-orb-keepalive`
+> Worker was deleted. dof is suspended in cooldown; its services are inactive
+> and will be disabled when it wakes. The sandboxes themselves still exist.
+> No new orb threads will run until these services are re-enabled.
+
 ## Fleet state
 
 | provider | hostname | ram | /data free | cap tiny/small/big | migrated | notes |
