@@ -14,6 +14,7 @@ const TOOLS = "@lahn/xin-tools"
 const CODE = "@lahn/xin-code"
 const BROKEN = "@lahn/xin-broken"
 const FUTURE = "@lahn/xin-future"
+const MIXED = "@lahn/xin-mixed"
 const FLAKY = "@lahn/xin-flaky"
 const PROVIDED = "xin-plugin-time"
 const PATCHY = "@lahn/xin-patchy"
@@ -136,6 +137,13 @@ const SEEDS: readonly Seed[] = [
   {
     name: FUTURE,
     versions: [{ version: "2.0.0", xin: NOTES_1_0, engines: { xin: ">=99.0.0" } }],
+  },
+  {
+    name: MIXED,
+    versions: [
+      { version: "2.0.0", xin: NOTES_1_0, engines: { xin: ">=99.0.0" } },
+      { version: "1.5.0", xin: NOTES_1_0 },
+    ],
   },
   {
     name: PROVIDED,
@@ -412,6 +420,25 @@ describe("market", () => {
     expect(await installedClock(stub, "market-clock")).toBe(true)
     expect(await installedClock(stub, "flaky-time")).toBe(true)
     expect(await installedClock(stub, "flaky-bad")).toBe(false)
+  })
+
+  it("offers the newest version the running xin supports", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+
+    expect((await op(stub, "market.entry", { name: MIXED })).result).toMatchObject({
+      status: "not-installed",
+      versions: [
+        { version: "2.0.0", compatible: false },
+        { version: "1.5.0", compatible: true },
+      ],
+    })
+    expect(await op(stub, "market.install", { name: MIXED })).toMatchObject({
+      ok: true,
+      result: { application: "applied", package: MIXED, version: "1.5.0" },
+    })
   })
 
   it("records a git version and a code package as pending installs", async () => {

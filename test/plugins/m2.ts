@@ -1,6 +1,6 @@
 import { type FauxResponseStep, fauxProvider } from "@earendil-works/pi-ai"
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
-import { obj } from "@earendil-works/pi-schema"
+import { obj, int } from "@earendil-works/pi-schema"
 import type { Provider } from "../../src/module.ts"
 import type { Catalog } from "../../src/kernel/loader.ts"
 import { testPlugin } from "../kernel.ts"
@@ -23,6 +23,17 @@ const hold = defineTool({
   execute: () => new Promise<never>(() => undefined),
 })
 
+const pause = defineTool({
+  name: "pause",
+  description: "Wait for the given time, then finish.",
+  parameters: obj({ ms: int({ minimum: 1 }) }),
+  replay: "safe",
+  execute: async (args) => {
+    await new Promise((resolve) => setTimeout(resolve, args.ms))
+    return { output: [{ type: "text", text: "paused" }] }
+  },
+})
+
 export const catalog: Catalog = {
-  m2: testPlugin("m2", { extensions: [defineExtension({ name: "tool-m2-hold", tools: [hold] })] }),
+  m2: testPlugin("m2", { extensions: [defineExtension({ name: "tool-m2-hold", tools: [hold, pause] })] }),
 }

@@ -68,6 +68,20 @@ describe("credentials", () => {
     expect(await turn(stub, "s_echo_len", "l2")).toBe(`len=${secret.length}`)
   })
 
+  it("redacts the details and structured output channels", async () => {
+    const stub = fresh()
+    const secret = "s3cr3t-value"
+    expect(await cmd(stub, "s4", "secret.set", { ref: "TOKEN", value: secret })).toMatchObject({ ok: true })
+
+    expect(await turn(stub, "s_echo_details", "d1")).toBe("details")
+    const entries = await runInDurableObject(stub, async (home: Home) =>
+      (await home.root()).entries({ order: "ascending" }, 200, undefined, BACKGROUND_CONTEXT),
+    )
+    expect(JSON.stringify(entries.items)).not.toContain(secret)
+
+    expect(await turn(stub, "s_echo_nested", "n1")).toBe("structured=redacted")
+  })
+
   it("denies a plugin row every credential value", async () => {
     const stub = fresh()
     expect(await cmd(stub, "s3", "secret.set", { ref: "TOKEN", value: "s3cr3t-value" })).toMatchObject({ ok: true })

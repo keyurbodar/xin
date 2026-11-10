@@ -5,12 +5,16 @@ import { describe, expect, it } from "vitest"
 import { M6_MODEL } from "../../test/plugins/m6.ts"
 import { cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
-import { STALL_MS, WATCHDOG_KIND } from "./watchdog.ts"
+import { WATCHDOG_KIND } from "./watchdog.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import { JobsDoc } from "../../src/contracts/jobs.ts"
 
 const context = BACKGROUND_CONTEXT
+
+/** Literal bounds of the watchdog's two-minute stall window, so the proof does not move with the constant. */
+const NOT_STALLED_MS = 60_000
+const STALLED_MS = 125_000
 
 type Stub = ReturnType<typeof fresh>
 type ThreadRow = { readonly id: number; readonly title: string; readonly status: string }
@@ -99,12 +103,22 @@ describe("watchdog", () => {
     const thread = await runInDurableObject(stub, (home: Home) => threadOf(home, project.id))
     if (thread === undefined) throw new Error("no thread")
 
-    await runInDurableObject(stub, async (home: Home) => {
-      await home.harness.commit(async (tx) => {
-        const doc = await tx.doc(ThreadDoc, thread.id as ConversationId)
-        doc.beatAt = Date.now() - STALL_MS - 1_000
-      }, context)
-    })
+    const backdate = async (ms: number): Promise<void> => {
+      await runInDurableObject(stub, async (home: Home) => {
+        await home.harness.commit(async (tx) => {
+          const doc = await tx.doc(ThreadDoc, thread.id as ConversationId)
+          doc.beatAt = Date.now() - ms
+        }, context)
+      })
+    }
+
+    await backdate(NOT_STALLED_MS)
+    await restartWatchdog(stub)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const early = await runInDurableObject(stub, (home: Home) => reports(home))
+    expect(early.filter((row) => row.commandId === `report:${thread.id}:1`)).toEqual([])
+
+    await backdate(STALLED_MS)
     await restartWatchdog(stub)
 
     await eventually(stub, async (home: Home) =>

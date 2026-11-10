@@ -41,6 +41,8 @@ type Job = { id: string; root: string; gate: string; steps: Step[]; only: string
 
 const isStep = (value: string): value is Step => ORDER.some((step) => step === value)
 const BOX_STEPS: ReadonlySet<Step> = new Set(["test", "bundle"])
+/** Environment that changes what a step runs, so a pass under one value never caches another. */
+const VARIANT_ENV = ["XIN_LOAD", "XIN_LIVE"] as const
 
 type Args = {
   command: "run" | "submit" | "wait" | "status" | "serve"
@@ -121,6 +123,7 @@ function inputKey(root: string, step: Step, extra: readonly string[]): string {
     .filter((file) => file !== "" && !file.startsWith("docs/") && !file.startsWith(".gate/"))
     .toSorted()
   const hash = createHash("sha256").update(`${step}\0${Bun.version}\0${extra.join(",")}\0`)
+  for (const name of VARIANT_ENV) hash.update(`${name}=${process.env[name] ?? ""}\0`)
   for (const file of files) {
     const path = join(root, file)
     if (existsSync(path)) hash.update(file).update("\0").update(readFileSync(path)).update("\0")
