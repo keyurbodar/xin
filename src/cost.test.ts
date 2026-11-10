@@ -249,5 +249,6 @@ describe("a turn, in what the model bills", () => {
     expect(warm.promptBytes).toBeLessThanOrEqual(50_000)
     expect(warm.freshBytes).toBeLessThanOrEqual(3_100)
     expect(warm.toolResultBytes).toBeLessThanOrEqual(2_800)
+    for (const request of warm.requests) expect(request.systemEntries, "system entries").toBe(1)
   })
 })
