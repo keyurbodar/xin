@@ -219,6 +219,8 @@ function createPlugin(name: string): void {
 
 function setBundle(pkg: string, enabled: boolean): void {
   const profile = readProfile()
+  if (!enabled && !profile.bundles.includes(pkg))
+    return void console.warn(`bundle ${pkg} is not in xin.profile.json; nothing to disable`)
   const others = profile.bundles.filter((name) => name !== pkg)
   writeProfile({ ...profile, bundles: enabled ? [...others, pkg] : others })
   console.warn(`${enabled ? "enabled" : "disabled"} bundle ${pkg} in xin.profile.json`)
