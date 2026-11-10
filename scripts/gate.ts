@@ -37,12 +37,40 @@ const SCRIPT: Record<Step, string> = {
 type Outcome = "pass" | "fail" | "cached" | "missing"
 type StepResult = { step: Step; outcome: Outcome; seconds: number; log: string }
 type JobResult = { id: string; root: string; ok: boolean; at: string; results: StepResult[]; aliases: string[] }
-type Job = { id: string; root: string; gate: string; steps: Step[]; only: string[]; submittedAt: string }
+type Job = {
+  id: string
+  root: string
+  gate: string
+  steps: Step[]
+  only: string[]
+  variant: Variant
+  submittedAt: string
+}
 
 const isStep = (value: string): value is Step => ORDER.some((step) => step === value)
 const BOX_STEPS: ReadonlySet<Step> = new Set(["test", "bundle"])
 /** Environment that changes what a step runs, so a pass under one value never caches another. */
 const VARIANT_ENV = ["XIN_LOAD", "XIN_LIVE"] as const
+/** The variant values a job runs under; the submitter's, carried by the job so the runner cannot substitute its own. */
+type Variant = Readonly<Record<string, string>>
+
+function variantOf(source: unknown): Variant {
+  const values = stringRecord(source)
+  const variant: Record<string, string> = {}
+  for (const name of VARIANT_ENV) {
+    const value = values[name]
+    if (value !== undefined) variant[name] = value
+  }
+  return variant
+}
+
+/** A job's environment: this process's, with the job's variant in place of whatever this runner happens to carry. */
+function variantEnv(variant: Variant): Record<string, string> {
+  const env: Record<string, string | undefined> = { ...process.env }
+  for (const name of VARIANT_ENV) env[name] = variant[name]
+  const kept = Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined)
+  return Object.fromEntries(kept)
+}
 
 type Args = {
   command: "run" | "submit" | "wait" | "status" | "serve"
@@ -134,15 +162,25 @@ function inputKey(root: string, step: Step, extra: readonly string[]): string {
 const slug = (only: readonly string[]) =>
   only.length === 0 ? "" : `-${createHash("sha256").update(only.join(",")).digest("hex").slice(0, 8)}`
 
+/** Keeps each variant's log and cache slot apart, so a benchmark pass is never read as the suite's or the reverse. */
+function variantSlug(): string {
+  const variant = variantOf(process.env)
+  return VARIANT_ENV.flatMap((name) => {
+    const value = variant[name]
+    return value === undefined ? [] : [`-${name.toLowerCase()}-${value.replace(/[^a-z0-9]+/gi, "_")}`]
+  }).join("")
+}
+
 async function runStep(root: string, step: Step, force: boolean, only: readonly string[]): Promise<StepResult> {
   const extra = step === "test" ? only : []
   const out = join(root, ".gate")
   mkdirSync(join(out, "cache"), { recursive: true })
-  const log = join(out, `${step}${slug(extra)}.log`)
+  const suffix = `${slug(extra)}${variantSlug()}`
+  const log = join(out, `${step}${suffix}.log`)
   const script = SCRIPT[step]
   if (packageScripts(root)[script] === undefined) return { step, outcome: "missing", seconds: 0, log }
   const key = inputKey(root, step, extra)
-  const cachePath = join(out, "cache", `${step}${slug(extra)}`)
+  const cachePath = join(out, "cache", `${step}${suffix}`)
   if (!force && existsSync(cachePath) && readFileSync(cachePath, "utf8") === key)
     return { step, outcome: "cached", seconds: 0, log }
   const started = performance.now()
@@ -216,12 +254,17 @@ function commandSubmit(args: Args): void {
     gate: SELF,
     steps: args.steps,
     only: args.only,
+    variant: variantOf(process.env),
     submittedAt: new Date().toISOString(),
   }
   writeFileSync(join(QUEUE, `${Date.now()}-${job.id}.json`), JSON.stringify(job))
   if (!serveAlive()) {
     const logFd = openSync(join(BASE, "serve.log"), "a")
-    spawn(process.execPath, [SELF, "serve"], { detached: true, stdio: ["ignore", logFd, logFd] }).unref()
+    spawn(process.execPath, [SELF, "serve"], {
+      detached: true,
+      stdio: ["ignore", logFd, logFd],
+      env: variantEnv({}),
+    }).unref()
   }
   console.log(job.id)
 }
@@ -235,10 +278,18 @@ function parseJob(value: unknown): Job | undefined {
   if (!Array.isArray(steps) || !Array.isArray(only)) return undefined
   const validSteps = steps.filter((s): s is Step => typeof s === "string" && isStep(s))
   const validOnly = only.filter((s): s is string => typeof s === "string")
-  return { id, root, gate, steps: validSteps, only: validOnly, submittedAt: "" }
+  const variant = variantOf("variant" in value ? value.variant : undefined)
+  return { id, root, gate, steps: validSteps, only: validOnly, variant, submittedAt: "" }
 }
 
-const jobKey = (job: Job) => `${job.root}\0${job.gate}\0${job.steps.join(",")}\0${job.only.join(",")}`
+const jobKey = (job: Job) =>
+  [
+    job.root,
+    job.gate,
+    job.steps.join(","),
+    job.only.join(","),
+    VARIANT_ENV.map((name) => `${name}=${job.variant[name] ?? ""}`).join(","),
+  ].join("\0")
 
 function finish(lead: Job, claimed: readonly Job[], files: readonly string[]): void {
   const resultPath = join(RESULTS, `${lead.id}.json`)
@@ -310,7 +361,9 @@ async function commandServe(): Promise<void> {
         `--root=${lead.root}`,
         `--result=${resultPath}`,
       ],
-      { stdio: ["ignore", "ignore", "ignore"] },
+      // The job's own variant decides both what runs and the cache key it writes, so a load or live submission cannot
+      // be answered by the normal suite, and a normal one cannot be answered by the benchmark.
+      { stdio: ["ignore", "ignore", "ignore"], env: variantEnv(lead.variant) },
     )
     const done: Promise<void> = child.exited.then(() => {
       finish(lead, claimed, files)
