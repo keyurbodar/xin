@@ -154,4 +154,4 @@ Every applied install writes a `market_history { package, version, at }` row, wh
 - Bundle rows are data. They run only code that is already compiled into the build, and their config is checked against that code's schema.
 - A bundle's rows can still steer the model (an MCP server's tools, a preset), so the client shows a bundle's rows before install.
 - Code packages are trusted by installing them, as in §15. Third-party code that should not run in the Home isolate should be an MCP server.
-- dsh has no capability manifest or plugin sandbox, so Xin has none either. Approval for risky tool calls follows dsh: a `tools/pre-execute` gate and a swappable `user-approval` service (P10).
+- dsh has no capability manifest or plugin sandbox, so Xin has none either. Approval for risky tool calls is not built: the `tools/pre-execute` gate and the `user-approval` service were planned as P10 and dropped with the rest of the approval seam (09, Dropped for simplicity). Showing a bundle's rows before install is the only review step, and it happens in the client.

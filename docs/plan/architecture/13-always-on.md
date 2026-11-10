@@ -125,4 +125,4 @@ A goal is a property of a conversation, not a project. The coordinator of a proj
 - **No notifications classifier and no inbox priority.** Xin has no noisy external source yet. The 2 s / 8 s debounce already batches bursts, and the classifier waits until a plugin produces more noise than turns can absorb.
 - **No agent-owned `foldContext` / `dropContext`.** dsh keeps compaction in a threshold policy the model cannot drive, and pi implements it; model-driven context surgery is a larger failure surface for a saving pi's background compaction already gets.
 - **No feedback store feeding the model.** dsh's `message-feedback` is log-only by design. If Xin wants "when did acting pay off" memory, it belongs in the Dreamer's notes over the transcript it already reads, not in a ratings table.
-- **No web row yet.** Owner decision 2026-11-07: not now.
+- **No browser, no page cache.** The 2026-11-07 "no web row yet" decision is superseded: `tool-web` ships in `xin-plugin-web` as a disabled row ([15 Web](./15-web.md)) that searches the public web and fetches a page as text. It renders no JavaScript, keeps no cache and adds no second search provider.

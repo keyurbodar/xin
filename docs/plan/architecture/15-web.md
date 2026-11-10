@@ -37,7 +37,7 @@ The body is capped at 2 MiB and the request at 15 s. HTML is reduced to a title 
 
 ## Row and scoping
 
-The feature is a native Cordis package, `plugins/web`, with one row, `tool-web`, in the `xin-plugin-web` bundle. The row injects `pi` and `jobs` and installs the `tool-web` extension. It ships in `xin.profile.json` with `disabled: true`, the way `tool-plugins` does: web and git access are optional plugins and off by default, as the scope rule requires, but the row is in the tree so `plugin.list` shows it and `plugin.enable` mounts it without a rebuild. A preset can then hide it for one scope.
+The feature is a native Cordis package, `plugins/web`, with one row, `tool-web`, in the `xin-plugin-web` bundle. The row injects `pi` and `jobs` and installs the `tool-web` extension. The bundle declares the row `disabled: true` (`plugins/web/package.json`, carried into `src/catalog.gen.ts`), the way `xin-plugin-git` does: web and git access are optional plugins and off by default, as the scope rule requires, but the row is in the tree so `plugin.list` shows it and `plugin.enable` mounts it without a rebuild. `xin.profile.json` names the bundle and carries no row state; the disabled flag lives on the row. A preset can then hide it for one scope.
 
 The tools follow the same scoping rules as the rest of the agent:
 

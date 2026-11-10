@@ -13,7 +13,7 @@ sequenceDiagram
   participant H as Home DO host
   participant P as pi Harness
   participant D as DO SQLite
-  participant G as Gateway
+  participant T as Clock timers
 
   Note over H: constructor runs inside blockConcurrencyWhile
   E->>H: constructor
@@ -32,9 +32,9 @@ sequenceDiagram
   H->>H: ops.run cmd then ack
 
   E->>H: alarm
-  H->>H: arm with wake and active true
+  H->>H: fired, then arm with wake and active true
   H->>P: harness.resume
-  H->>G: fireDue now
+  H->>T: clock.fire now
 
   E->>H: onWake
   H->>H: arm again
@@ -53,7 +53,8 @@ constructor:
     1 setAlarm(now+60s) fallback
     2 root Context; provide host facts; XinLoader (09 Plugins)
     3 mount rows: db (migrate host steps), clock, pi (opens the Harness, provides harness), ops, http,
-      wire (rehydrates sockets once harness exists), secrets, plugins, system, features (inject harness)
+      wire (rehydrates sockets once harness exists), secrets, plugins, packages, system; the base bundle also
+      carries tool-plugins, off by default
     4 loader.await(); a failed required row stops here as boot_failed; a failed feature row fails alone
     5 clock.arm(harness.wake())
     6 harness.resume() )
@@ -71,7 +72,7 @@ alarm():
   fired()                          // the runtime cleared the alarm it ran
   arm({...wake(), active:true})
   harness.resume()
-  gateway.fireDue(now)
+  clock.fire(now)                  // every timer's fire; intake dispatches its due items
   arm(harness.wake())
 ```
 
@@ -101,7 +102,7 @@ The host is about 120 lines. Feature code lives in plugins, and the host never b
 
 | Runtime fact | Consequence for the design |
 | --- | --- |
-| A DO is single-threaded, and storage calls inside one turn of the event loop are atomic | The gateway's claim can't race. We still use `UPDATE…RETURNING` so the claim is one statement that survives a crash. |
+| A DO is single-threaded, and storage calls inside one turn of the event loop are atomic | The intake claim cannot race. It is one commit on the `xin.intake` document that marks every due item `claimed` with its batch id, and a crash before the submission is replayed from that document (§5), so the claim needs no `UPDATE … RETURNING`. |
 | Eviction or deploy during an LLM stream | pi counts it as a failed attempt and retries. The UI sees the partial text reset. The prompt cache makes the retry cheap. |
 | CPU limit per event (default 30 s) | Set `limits.cpu_ms` to 300000 in wrangler. Streaming JSON parse is light, but compaction plus big tool outputs can spike. The Workers Free plan rejects that key, so `wrangler.free.jsonc` is the same config without it and a free-plan deploy uses `wrangler deploy -c wrangler.free.jsonc --assets ./web/dist`. |
 | Subrequest cap per invocation | **Risk to verify in M0.** Long multi-thread work runs inside whichever event woke the DO. Kiko hit this. The test: 10 threads × 30 tool calls on one wake. If it trips, the fix is to slice work across alarm invocations (pi's retry handles the split). |
