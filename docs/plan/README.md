@@ -54,3 +54,4 @@ flowchart LR
 - [16 Git](./architecture/16-git.md): read-only GitHub history tools scoped to a project.
 - [Provenance](./provenance.md): what came from pi-durable, pi-ai, t3code, kiko and the other sources.
 - [Milestones](./milestones.md): build order, each with its proof, dependencies and parallel work.
+- [Write a plugin](../plugin-authoring.md): the author path, one page: scaffold, edit, test, deploy.

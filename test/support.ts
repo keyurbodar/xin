@@ -169,6 +169,19 @@ export async function turn(
   })
 }
 
+/** The text of every tool result in the root conversation, in order. */
+export const toolTexts = (stub: Stub): Promise<readonly string[]> =>
+  runInDurableObject(stub, async (home: Home) => {
+    const page = await (await home.root()).entries({ order: "ascending" }, 500, undefined, BACKGROUND_CONTEXT)
+    return page.items.flatMap((entry) =>
+      (entry.model ?? []).flatMap((message) =>
+        message.role === "toolResult"
+          ? [message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")]
+          : [],
+      ),
+    )
+  })
+
 export async function eventually(
   stub: DurableObjectStub<Home>,
   check: (home: Home, state: DurableObjectState) => Promise<boolean>,

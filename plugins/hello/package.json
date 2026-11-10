@@ -1,0 +1,23 @@
+{
+  "name": "xin-plugin-hello",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The starter plugin: one tool and one prompt. `bun scripts/xin.ts plugin new <name>` copies it under a new name.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "hello": {
+        "module": "./index.ts",
+        "title": "Hello",
+        "description": "One tool and one prompt: the smallest plugin that adds something you can see.",
+        "api": 1
+      }
+    },
+    "bundle": [
+      {
+        "id": "hello",
+        "plugin": "hello"
+      }
+    ]
+  }
+}

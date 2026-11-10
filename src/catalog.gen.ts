@@ -11,31 +11,32 @@ import * as p9 from "../plugins/goals/index.ts"
 import * as p10 from "../plugins/goals/tools.ts"
 import * as p11 from "../plugins/goals/rounds.ts"
 import * as p12 from "../plugins/guard/index.ts"
-import * as p13 from "../plugins/intake/index.ts"
-import * as p14 from "../plugins/jobs/index.ts"
-import * as p15 from "../plugins/market/index.ts"
-import * as p16 from "../plugins/mcp/index.ts"
-import * as p17 from "../plugins/mcp/tools.ts"
-import * as p18 from "../plugins/mcp/server.ts"
-import * as p19 from "../plugins/memory/index.ts"
-import * as p20 from "../plugins/memory/tools.ts"
-import * as p21 from "../plugins/models/index.ts"
-import * as p22 from "../plugins/models/tools.ts"
-import * as p23 from "../plugins/orchestrator/index.ts"
-import * as p24 from "../plugins/orchestrator/tools.ts"
-import * as p25 from "../plugins/presets/index.ts"
-import * as p26 from "../plugins/presets/preset.ts"
-import * as p27 from "../plugins/push/index.ts"
-import * as p28 from "../plugins/questions/index.ts"
-import * as p29 from "../plugins/questions/tools.ts"
-import * as p30 from "../plugins/schedules/index.ts"
-import * as p31 from "../plugins/schedules/tools.ts"
-import * as p32 from "../plugins/skills/index.ts"
-import * as p33 from "../plugins/skills/tools.ts"
-import * as p34 from "../plugins/time/index.ts"
-import * as p35 from "../plugins/watchdog/index.ts"
-import * as p36 from "../plugins/web/index.ts"
-import * as p37 from "../plugins/workspace/index.ts"
+import * as p13 from "../plugins/hello/index.ts"
+import * as p14 from "../plugins/intake/index.ts"
+import * as p15 from "../plugins/jobs/index.ts"
+import * as p16 from "../plugins/market/index.ts"
+import * as p17 from "../plugins/mcp/index.ts"
+import * as p18 from "../plugins/mcp/tools.ts"
+import * as p19 from "../plugins/mcp/server.ts"
+import * as p20 from "../plugins/memory/index.ts"
+import * as p21 from "../plugins/memory/tools.ts"
+import * as p22 from "../plugins/models/index.ts"
+import * as p23 from "../plugins/models/tools.ts"
+import * as p24 from "../plugins/orchestrator/index.ts"
+import * as p25 from "../plugins/orchestrator/tools.ts"
+import * as p26 from "../plugins/presets/index.ts"
+import * as p27 from "../plugins/presets/preset.ts"
+import * as p28 from "../plugins/push/index.ts"
+import * as p29 from "../plugins/questions/index.ts"
+import * as p30 from "../plugins/questions/tools.ts"
+import * as p31 from "../plugins/schedules/index.ts"
+import * as p32 from "../plugins/schedules/tools.ts"
+import * as p33 from "../plugins/skills/index.ts"
+import * as p34 from "../plugins/skills/tools.ts"
+import * as p35 from "../plugins/time/index.ts"
+import * as p36 from "../plugins/watchdog/index.ts"
+import * as p37 from "../plugins/web/index.ts"
+import * as p38 from "../plugins/workspace/index.ts"
 import type { Row } from "./kernel/layers.ts"
 import type { Catalog } from "./kernel/loader.ts"
 
@@ -145,8 +146,16 @@ export const CATALOG: Catalog = {
     local: true,
     source: "xin-plugin-guard@0.1.0",
   },
-  intake: {
+  hello: {
     plugin: p13,
+    title: "Hello",
+    description: "One tool and one prompt: the smallest plugin that adds something you can see.",
+    manifest: { api: 1, requires: [] },
+    local: true,
+    source: "xin-plugin-hello@0.1.0",
+  },
+  intake: {
+    plugin: p14,
     title: "Intake",
     description: "Inbound debounce, batch claim and dispatch.",
     manifest: { api: 1, requires: [] },
@@ -154,7 +163,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-intake@0.1.0",
   },
   jobs: {
-    plugin: p14,
+    plugin: p15,
     title: "Jobs",
     description: "Slow tools as jobs that report back.",
     manifest: { api: 1, requires: [] },
@@ -162,7 +171,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-jobs@0.1.0",
   },
   market: {
-    plugin: p15,
+    plugin: p16,
     title: "Market",
     description: "Discovery, install and update checks for plugin packages.",
     manifest: { api: 1, requires: [] },
@@ -170,7 +179,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-market@0.1.0",
   },
   mcp: {
-    plugin: p16,
+    plugin: p17,
     title: "MCP",
     description: "MCP servers as deferred tools.",
     manifest: { api: 1, requires: [] },
@@ -178,7 +187,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-mcp@0.1.0",
   },
   "tool-mcp": {
-    plugin: p17,
+    plugin: p18,
     title: "MCP tools",
     description: "The model-facing mcp tools. Disable to hide them; the mcp service keeps running.",
     manifest: { api: 1, requires: [] },
@@ -186,7 +195,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-mcp@0.1.0",
   },
   "mcp-server": {
-    plugin: p18,
+    plugin: p19,
     title: "MCP server",
     description: "One MCP server connection carried by a row, for bundles.",
     manifest: { api: 1, requires: [] },
@@ -194,7 +203,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-mcp@0.1.0",
   },
   memory: {
-    plugin: p19,
+    plugin: p20,
     title: "Memory",
     description: "Notes with FTS recall and the Dreamer.",
     manifest: { api: 1, requires: [] },
@@ -202,7 +211,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-memory@0.1.0",
   },
   "tool-memory": {
-    plugin: p20,
+    plugin: p21,
     title: "Memory tools",
     description: "The model-facing memory tools. Disable to hide them; the memory service keeps running.",
     manifest: { api: 1, requires: [] },
@@ -210,7 +219,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-memory@0.1.0",
   },
   models: {
-    plugin: p21,
+    plugin: p22,
     title: "Models",
     description: "Run-time model catalog, credentials and set_model.",
     manifest: { api: 1, requires: [] },
@@ -218,7 +227,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-models@0.1.0",
   },
   "tool-models": {
-    plugin: p22,
+    plugin: p23,
     title: "Models tools",
     description: "The model-facing models tools. Disable to hide them; the models service keeps running.",
     manifest: { api: 1, requires: [] },
@@ -226,7 +235,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-models@0.1.0",
   },
   orchestrator: {
-    plugin: p23,
+    plugin: p24,
     title: "Orchestrator",
     description: "Coordinator tools and threads.",
     manifest: { api: 1, requires: [] },
@@ -234,7 +243,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-orchestrator@0.1.0",
   },
   "tool-orchestrator": {
-    plugin: p24,
+    plugin: p25,
     title: "Orchestrator tools",
     description: "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running.",
     manifest: { api: 1, requires: [] },
@@ -242,7 +251,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-orchestrator@0.1.0",
   },
   presets: {
-    plugin: p25,
+    plugin: p26,
     title: "Presets",
     description: "Named agent presets that choose a conversation's plugins.",
     manifest: { api: 1, requires: [] },
@@ -250,7 +259,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-presets@0.1.0",
   },
   preset: {
-    plugin: p26,
+    plugin: p27,
     title: "Preset",
     description: "One agent preset carried by a row, for bundles.",
     manifest: { api: 1, requires: [] },
@@ -258,7 +267,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-presets@0.1.0",
   },
   push: {
-    plugin: p27,
+    plugin: p28,
     title: "Web Push",
     description: "Encrypted pushes when no tab is open.",
     manifest: { api: 1, requires: [] },
@@ -266,7 +275,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-push@0.1.0",
   },
   questions: {
-    plugin: p28,
+    plugin: p29,
     title: "Questions",
     description: "ask_user and pending requests.",
     manifest: { api: 1, requires: [] },
@@ -274,7 +283,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-questions@0.1.0",
   },
   "tool-questions": {
-    plugin: p29,
+    plugin: p30,
     title: "Questions tools",
     description: "The model-facing questions tools. Disable to hide them; the questions service keeps running.",
     manifest: { api: 1, requires: [] },
@@ -282,7 +291,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-questions@0.1.0",
   },
   schedules: {
-    plugin: p30,
+    plugin: p31,
     title: "Schedules",
     description: "Scheduled tasks: recurring rules that deliver a prompt to a conversation.",
     manifest: { api: 1, requires: [] },
@@ -290,7 +299,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-schedules@0.1.0",
   },
   "tool-schedules": {
-    plugin: p31,
+    plugin: p32,
     title: "Schedules tools",
     description:
       "The model-facing create, list, view and edit tools for scheduled tasks. Disable to hide them; the schedules service keeps running.",
@@ -299,7 +308,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-schedules@0.1.0",
   },
   skills: {
-    plugin: p32,
+    plugin: p33,
     title: "Skills",
     description: "Markdown skills loaded on demand.",
     manifest: { api: 1, requires: [] },
@@ -307,7 +316,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-skills@0.1.0",
   },
   "tool-skills": {
-    plugin: p33,
+    plugin: p34,
     title: "Skills tools",
     description: "The model-facing skills tools. Disable to hide them; the skills service keeps running.",
     manifest: { api: 1, requires: [] },
@@ -315,7 +324,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-skills@0.1.0",
   },
   time: {
-    plugin: p34,
+    plugin: p35,
     title: "Current time",
     description:
       "A user-role time reading with the owner's zone and the elapsed time before each request, without a tool.",
@@ -324,7 +333,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-time@0.1.0",
   },
   watchdog: {
-    plugin: p35,
+    plugin: p36,
     title: "Watchdog",
     description: "Fails stalled threads and overdue jobs.",
     manifest: { api: 1, requires: [] },
@@ -332,7 +341,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-watchdog@0.1.0",
   },
   "tool-web": {
-    plugin: p36,
+    plugin: p37,
     title: "Web tools",
     description: "Search the public web and fetch a page as readable text.",
     manifest: { api: 1, requires: [] },
@@ -340,7 +349,7 @@ export const CATALOG: Catalog = {
     source: "xin-plugin-web@0.1.0",
   },
   workspace: {
-    plugin: p37,
+    plugin: p38,
     title: "Workspace",
     description: "Projects and thread documents.",
     manifest: { api: 1, requires: [] },
@@ -369,6 +378,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
     { id: "goal-rounds", name: "cordis:goal-rounds" },
   ],
   "xin-plugin-guard": [{ id: "guard", name: "cordis:guard" }],
+  "xin-plugin-hello": [{ id: "hello", name: "cordis:hello" }],
   "xin-plugin-intake": [{ id: "intake", name: "cordis:intake" }],
   "xin-plugin-jobs": [{ id: "jobs", name: "cordis:jobs" }],
   "xin-plugin-market": [{ id: "market", name: "cordis:market" }],

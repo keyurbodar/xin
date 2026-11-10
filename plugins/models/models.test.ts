@@ -2,7 +2,6 @@ import { runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Conversation, ConversationId, EntryRecord } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
-// @ts-expect-error Vite inlines ?raw imports at bundle time
 import source from "./models.ts?raw"
 import { resolveModel } from "../../src/contracts/models.ts"
 import type { CommandId } from "../../src/ids.ts"

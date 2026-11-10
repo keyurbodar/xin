@@ -4,7 +4,7 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { M8_MODEL, respond } from "../../test/plugins/m8.ts"
-import { cmd, fresh, recordOffers, type OfferLog, type Stub } from "../../test/support.ts"
+import { cmd, field, fresh, recordOffers, type OfferLog, type Stub } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -14,6 +14,10 @@ const PACKAGE = "xin-plugin-presets-test"
 const MINIMAL: readonly string[] = ["tool-memory", "tool-skills"]
 
 type PresetRow = { readonly id: string; readonly plugin: string; readonly config?: Record<string, unknown> }
+
+/** The prompts the owner stored; plugins contribute prompts of their own to the same list. */
+const storedPrompts = (result: unknown): readonly unknown[] =>
+  Array.isArray(result) ? result.filter((entry) => field(field(entry, "source"), "kind") === "stored") : []
 
 const rows = (plugins: "all" | readonly string[] = MINIMAL): readonly PresetRow[] => [
   { id: "preset-row-all", plugin: "preset", config: { id: "test-all", name: "Test all", plugins: "all", order: 1 } },
@@ -366,14 +370,14 @@ describe("prompts", () => {
       result: { name: "tone", text: "Be brief." },
     })
 
-    expect((await cmd(stub, "prompt-list-1", "prompt.list")).result).toEqual([
+    expect(storedPrompts((await cmd(stub, "prompt-list-1", "prompt.list")).result)).toEqual([
       { name: "format", description: "How to shape a reply.", text: "Use bullets.", source: { kind: "stored" } },
       { name: "tone", text: "Be brief.", source: { kind: "stored" } },
     ])
 
     expect((await cmd(stub, "prompt-delete-1", "prompt.delete", { name: "tone" })).result).toEqual({ name: "tone" })
     expect((await cmd(stub, "prompt-delete-2", "prompt.delete", { name: "tone" })).result).toEqual({ name: "tone" })
-    expect((await cmd(stub, "prompt-list-2", "prompt.list")).result).toEqual([
+    expect(storedPrompts((await cmd(stub, "prompt-list-2", "prompt.list")).result)).toEqual([
       { name: "format", description: "How to shape a reply.", text: "Use bullets.", source: { kind: "stored" } },
     ])
   }, 20_000)
@@ -393,6 +397,6 @@ describe("prompts", () => {
       ok: false,
       error: { code: "bad_args" },
     })
-    expect((await cmd(stub, "prompt-list-3", "prompt.list")).result).toEqual([])
+    expect(storedPrompts((await cmd(stub, "prompt-list-3", "prompt.list")).result)).toEqual([])
   }, 20_000)
 })

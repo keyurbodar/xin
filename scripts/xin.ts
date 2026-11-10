@@ -1,11 +1,13 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
-import { CORE_BUNDLES, CORE_CATALOG } from "../src/catalog.ts"
+import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
+import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
 
 const ROOT = join(import.meta.dirname, "..")
 const GENERATED = join(ROOT, "src/catalog.gen.ts")
 const PROFILE = join(ROOT, "xin.profile.json")
+const TEMPLATE_DIR = join(ROOT, "plugins", TEMPLATE)
 const NAME = /^[a-z][a-z0-9-]*$/
 
 type Declared = {
@@ -46,7 +48,10 @@ function parse(path: string, specifier: (module: string) => string, local: boole
   if (typeof declared !== "object" || declared === null) throw new Error(`${pkg}: xin.plugins must be an object`)
   const plugins: Record<string, Declared> = {}
   for (const [name, entry] of Object.entries(declared)) {
-    if (!NAME.test(name)) throw new Error(`${pkg}: plugin name ${name} must be kebab-case`)
+    if (!NAME.test(name))
+      throw new Error(
+        `${pkg}: plugin name "${name}" must be lowercase letters, digits and hyphens, starting with a letter, like "hello-world"`,
+      )
     const module = field(entry, "module")
     if (typeof module !== "string") throw new Error(`${pkg}: xin.plugins.${name}.module must be a path`)
     plugins[name] = {
@@ -186,6 +191,32 @@ function generate(): Found[] {
   return found
 }
 
+const readTemplate = (): Template => ({
+  manifest: readFileSync(join(TEMPLATE_DIR, "package.json"), "utf8"),
+  module: readFileSync(join(TEMPLATE_DIR, "index.ts"), "utf8"),
+  test: readFileSync(join(TEMPLATE_DIR, `${TEMPLATE}.test.ts`), "utf8"),
+})
+
+function createPlugin(name: string): void {
+  const files = scaffold(name, readTemplate())
+  const dir = join(ROOT, "plugins", name)
+  const pkg = `xin-plugin-${name}`
+  if (existsSync(dir)) throw new Error(`plugins/${name} already exists; choose another name`)
+  if (Object.hasOwn(CORE_CATALOG, name)) throw new Error(`plugin ${name} is part of the kernel; choose another name`)
+  const owner = discover().find((entry) => entry.pkg === pkg || entry.plugins[name] !== undefined)
+  if (owner !== undefined) throw new Error(`${name} is already declared by ${owner.pkg}; choose another name`)
+  mkdirSync(dir, { recursive: true })
+  for (const file of files) writeFileSync(join(dir, file.path), file.content)
+  generate()
+  setBundle(pkg, true)
+  console.warn(
+    `created plugins/${name} and added ${pkg} to the build. Next:\n` +
+      `  bun scripts/gate.ts submit types test --only=plugins/${name}\n` +
+      "  wrangler deploy\n" +
+      "The author path, from an empty file to a deployed plugin: docs/plugin-authoring.md",
+  )
+}
+
 function setBundle(pkg: string, enabled: boolean): void {
   const profile = readProfile()
   const others = profile.bundles.filter((name) => name !== pkg)
@@ -231,6 +262,7 @@ async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
 
 const usage = `usage: bun scripts/xin.ts plugin <command>
   list                       packages with a xin field, their plugins and whether their bundle is enabled
+  new <name>                 create plugins/<name> from the template package plugins/hello
   generate                   rewrite src/catalog.gen.ts from plugins/* and installed dependencies
   add <spec> [--enable]      bun add <spec>, regenerate, and with --enable append its bundle to the profile
   remove <package>           drop its bundle from the profile, bun remove it, regenerate
@@ -253,6 +285,10 @@ async function main(argv: readonly string[]): Promise<void> {
     }
     case "generate":
       return void generate()
+    case "new": {
+      if (target === undefined) throw new Error("new needs a plugin name")
+      return createPlugin(target)
+    }
     case "add": {
       if (target === undefined) throw new Error("add needs a spec")
       const before = new Set(discover().map((entry) => entry.pkg))
@@ -271,7 +307,8 @@ async function main(argv: readonly string[]): Promise<void> {
     case "enable":
     case "disable": {
       if (target === undefined) throw new Error(`${command} needs a package name`)
-      if (!discover().some((entry) => entry.pkg === target)) throw new Error(`no discovered package ${target}`)
+      if (command === "enable" && !discover().some((entry) => entry.pkg === target))
+        throw new Error(`no discovered package ${target}`)
       return setBundle(target, command === "enable")
     }
     case "sync": {

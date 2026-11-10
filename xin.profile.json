@@ -9,6 +9,7 @@
     "xin-plugin-git",
     "xin-plugin-goals",
     "xin-plugin-guard",
+    "xin-plugin-hello",
     "xin-plugin-intake",
     "xin-plugin-jobs",
     "xin-plugin-market",
@@ -27,5 +28,10 @@
     "xin-plugin-workspace",
     "xin-plugin-git-native"
   ],
-  "patch": []
+  "patch": [
+    {
+      "id": "hello",
+      "disabled": true
+    }
+  ]
 }

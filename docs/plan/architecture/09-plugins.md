@@ -245,7 +245,7 @@ The question is not how many features the plugin system has, but how many words 
 
 1. Write `apply(ctx, config)` and register capabilities.
 2. Add one manifest entry to `package.json`.
-3. Run `bun scripts/xin.ts plugin add <spec> --enable`, then deploy.
+3. Add the package to the build and deploy: `bun scripts/xin.ts plugin new <name>` does all three for a plugin written in this checkout, and `bun scripts/xin.ts plugin add <spec> --enable` does it for a published one.
 
 No profile, no layer, no patch, no bundle unless the package ships more than one plugin. A plugin with no manifest still works.
 
@@ -344,10 +344,14 @@ The agent tool `plugin_manager` is its own row, `tool-plugins` (not required, of
 
 ## Authoring a plugin
 
+The starter is `plugins/hello`: one tool and one prompt, and the package `bun scripts/xin.ts plugin new <name>` copies under a new name, regenerates the catalog and adds to the build. `docs/plugin-authoring.md` is the one-page path from nothing to a deployed plugin, and `test/authoring.test.ts` proves it end to end — scaffold, mount, tool call, `prompt.list` — so the template, the scaffold and the mount cannot drift apart.
+
+A plugin is one module:
+
 ```ts
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
 import { obj } from "@earendil-works/pi-schema"
-import { type Context, Schema } from "../src/kernel/index.ts"
+import { type Context, Schema } from "../../src/kernel/index.ts"
 
 export const name = "hello"
 export const inject = ["pi", "ops"]
@@ -356,7 +360,7 @@ export const Config = Schema.object({ greeting: Schema.string().default("hi") })
 export function apply(ctx: Context, config: { greeting: string }) {
   ctx.pi.install(
     defineExtension({
-      name: "hello",
+      name: `tool-${name}`,
       tools: [
         defineTool({
           name: "hello",
@@ -376,6 +380,8 @@ export function apply(ctx: Context, config: { greeting: string }) {
 ```json
 { "xin": { "plugins": { "hello": { "module": "./index.ts", "title": "Hello" } } } }
 ```
+
+An extension that carries tools is named `tool-*`; the registry refuses one that is not, because a preset tells a tool row from a service row by that prefix.
 
 ## Slices
 
