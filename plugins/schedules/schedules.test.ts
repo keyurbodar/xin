@@ -6,7 +6,16 @@ import type { Notification } from "../../src/contracts/push.ts"
 import type { CommandId } from "../../src/ids.ts"
 import { eventually, field, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
-import { dueOf, runsOf, SCHEDULE_TASK, type SchedulesPort, sendDue, slotKey, type StoredSchedule } from "./schedules.ts"
+import {
+  dueOf,
+  runsOf,
+  SCHEDULE_TASK,
+  type SchedulesPort,
+  SchedulesDoc,
+  sendDue,
+  slotKey,
+  type StoredSchedule,
+} from "./schedules.ts"
 
 type Row = {
   readonly kind: string
@@ -132,6 +141,54 @@ describe("schedules", () => {
       run(home, "p1-parse-bad", "schedule.parse", { text: "whenever", tz: "UTC" }),
     )
     expect(unclear).toMatchObject({ kind: "rejected", code: "bad_args" })
+  })
+
+  it("keeps a run's outcome after a later owner message", async () => {
+    const outcomes = await runInDurableObject(fresh(), async (home: Home) => {
+      const root = await home.root()
+      let current = record({ kind: "this_session", conversationId: root.id })
+      const first = dueOf(current, ANCHOR + 1)
+      if (first === undefined) throw new Error("expected a due window")
+      current = await sendDue(ports(home), current, first, ANCHOR)
+      await root.submit({ type: "input", content: "scheduled prompt", requestId: "run-own" }, BACKGROUND_CONTEXT)
+      await root.submit({ type: "write", requestId: "run-reply", entry: { kind: "pi.assistant" } }, BACKGROUND_CONTEXT)
+      await root.submit({ type: "input", content: "and one more thing", requestId: "run-later" }, BACKGROUND_CONTEXT)
+      return (await runsOf(ports(home), current, new Map())).map((entry) => entry.outcome)
+    })
+    expect(outcomes).toEqual(["done"])
+  })
+
+  it("drops old finished schedules when a new one is created", async () => {
+    const ids = await runInDurableObject(fresh(), async (home: Home) => {
+      await home.harness.commit(async (tx) => {
+        const doc = await tx.doc(SchedulesDoc)
+        for (let index = 0; index < 25; index += 1) {
+          const at = ANCHOR - HOUR * (index + 1)
+          doc.records[`old-${index}`] = record(
+            { kind: "this_session", conversationId: 1 },
+            {
+              id: `old-${index}`,
+              when: { kind: "at", at },
+              anchor: at,
+              cursor: { last: at, index: 1 },
+              updatedAt: new Date(at).toISOString(),
+            },
+          )
+        }
+      }, BACKGROUND_CONTEXT)
+      const created = await run(home, "prune-create", "schedule.create", {
+        id: "new-one",
+        title: "New",
+        at: Date.now() + 60_000,
+        tz: "UTC",
+        prompt: "hi",
+      })
+      expect(created, JSON.stringify(created)).toMatchObject({ kind: "ok" })
+      const state = await home.harness.snapshot(SchedulesDoc, BACKGROUND_CONTEXT)
+      return Object.keys(state?.records ?? {})
+    })
+    expect(ids).toContain("new-one")
+    expect(ids.filter((id) => id.startsWith("old-"))).toHaveLength(20)
   })
 
   it("keeps six runs and resolves each run's outcome only when asked", async () => {

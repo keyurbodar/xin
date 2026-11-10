@@ -121,6 +121,8 @@ const RECORD = compile(ScheduleRecordSchema)
 const SCHEDULES = compile(SchedulesStateSchema)
 
 const RUNS_KEPT = 6
+/** Finished schedules (no future occurrence) kept for the list; older ones drop out so the document stays bounded. */
+const FINISHED_KEPT = 20
 
 export const SchedulesDoc = defineDoc<SchedulesState>({
   kind: "xin.schedules",
@@ -347,11 +349,18 @@ async function outcomeOf(
 ): Promise<ScheduleRunOutcome> {
   const entries = await entriesOf(port, run.conversationId, scans)
   if (entries === undefined) return "failed"
-  let replied = false
+  // The run's own delivered message is the first user entry after the moment it was delivered; only entries above it
+  // can answer it. A message the owner sent later no longer hides the reply and leaves the run "running" forever.
+  let boundary = run.after
   for (const entry of entries) {
     if (entry.id <= run.after) break
     if (entry.id > until) continue
-    if ((entry.model ?? []).some((message) => message.role === "user")) break
+    if ((entry.model ?? []).some((message) => message.role === "user")) boundary = entry.id
+  }
+  let replied = false
+  for (const entry of entries) {
+    if (entry.id <= boundary) break
+    if (entry.id > until) continue
     if (entry.kind === ERROR_KIND) return "failed"
     if (entry.kind === ASSISTANT_KIND) replied = true
   }
@@ -440,6 +449,7 @@ async function createSchedule(
     // A doc draft, and every container in it, expires when the commit settles: project the plain task here.
     if (existing !== undefined) return { created: false, task: taskOf(existing) }
     doc.records[id] = record
+    pruneFinished(doc.records)
     await startTimer(tx, port, record)
     return { created: true, task: taskOf(record) }
   }, context)
@@ -556,6 +566,18 @@ function matches(record: StoredSchedule, active: boolean | undefined): boolean {
 
 function live(record: StoredSchedule): boolean {
   return record.active && nextOf(record) !== undefined
+}
+
+/**
+ * Keeps the schedule document bounded: a schedule with no future occurrence (a delivered one-shot, an exhausted
+ * COUNT) stays listed for the newest `FINISHED_KEPT` of them, then drops out. A paused schedule still has a next
+ * occurrence, so pausing never loses one.
+ */
+function pruneFinished(records: Record<string, StoredSchedule>): void {
+  const finished = Object.entries(records)
+    .filter(([, record]) => nextOf(record) === undefined)
+    .toSorted((left, right) => recent(right[1]).localeCompare(recent(left[1])))
+  for (const [id] of finished.slice(FINISHED_KEPT)) delete records[id]
 }
 
 function compare(left: StoredSchedule, right: StoredSchedule): number {

@@ -48,7 +48,6 @@ type FileEntry = {
   readonly size: number
   readonly type: string
   readonly sha256: string
-  readonly project: string | null
   readonly updated_at: number
 }
 

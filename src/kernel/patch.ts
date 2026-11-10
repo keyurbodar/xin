@@ -15,8 +15,6 @@ const OverrideSchema = obj({
 const PatchSchema = union([InsertSchema, OverrideSchema])
 const patchCheck = compile(PatchSchema)
 
-export const PatchArg = PatchSchema
-
 const OWNER_PATCH = "plugins.patch"
 
 const isPatch = (value: unknown): value is Patch => patchCheck.check(value)

@@ -8,7 +8,7 @@ import { connect, eventually, fresh, owner } from "../../test/support.ts"
 import { decrypt, pushTopic, subscriber, type Subscriber } from "../../test/webpush.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 import { createGateway, enqueue, type IntakeHost } from "./gateway.ts"
-import type { IntakeItem } from "../../src/contracts/intake.ts"
+import { IntakeDoc, type IntakeItem } from "../../src/contracts/intake.ts"
 import type { CommandId } from "../../src/ids.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -65,6 +65,31 @@ const positionOf = (entries: readonly EntryRecord[], role: "user" | "assistant",
   )
 
 describe("gateway intake and dispatch", () => {
+  it("drops done rows past the retention window on the alarm, not only at boot", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      await home.harness.commit(async (tx) => {
+        const doc = await tx.doc(IntakeDoc)
+        doc.items.push({
+          id: 1,
+          target: 1,
+          kind: "user",
+          commandId: "old-row",
+          body: "{}",
+          clientTs: 1,
+          firstAt: 1,
+          fireAt: Date.now() - 8 * 24 * 60 * 60_000,
+          status: "done",
+          batchId: "batch-old",
+        })
+        doc.nextId = 2
+      }, BACKGROUND_CONTEXT)
+      await home.arm(home.harness.wake())
+    })
+    await runDurableObjectAlarm(stub)
+    expect(await rows(stub)).toEqual([])
+  })
+
   it("refuses a new message once the month's spend reaches the cap, and takes it again once raised", async () => {
     const stub = fresh()
     const day = new Date().toISOString().slice(0, 10)

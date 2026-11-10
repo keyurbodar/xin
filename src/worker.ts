@@ -22,19 +22,21 @@ function authorizedByDeploy(request: Request, env: Env): boolean {
   return sameToken(presented, env.OWNER_TOKEN)
 }
 
-/** A token minted by `session.rotate` is checked by the home that minted it, so a rotation takes effect at once. */
-async function authorizedByRotation(request: Request, env: Env): Promise<boolean> {
+/**
+ * A token minted by `session.rotate` is checked by the home that minted it, so a rotation takes effect at once.
+ * Returns the home's reply so its failure mode survives: a home that cannot boot answers 503, not a 401.
+ */
+async function rotationCheck(request: Request, env: Env): Promise<Response | undefined> {
   const presented = bearer(request)
-  if (presented === undefined) return false
+  if (presented === undefined) return undefined
   try {
-    const reply = await home(env).fetch("https://xin.internal/v1/auth", {
+    return await home(env).fetch("https://xin.internal/v1/auth", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ token: presented }),
     })
-    return reply.ok
   } catch {
-    return false
+    return undefined
   }
 }
 
@@ -48,8 +50,13 @@ const home = (env: Env) => env.HOME.get(env.HOME.idFromName("owner"))
 export default {
   async fetch(request, env): Promise<Response> {
     if (new URL(request.url).pathname === "/health") return new Response("ok")
-    if (!authorizedByDeploy(request, env) && !(await authorizedByRotation(request, env)))
-      return new Response("unauthorized", { status: 401 })
+    if (!authorizedByDeploy(request, env)) {
+      const reply = await rotationCheck(request, env)
+      // A home that cannot boot answers 503 for every path: pass that through, so a rotated-token client is told the
+      // home failed to open instead of being sent an auth error it cannot act on.
+      if (reply !== undefined && !reply.ok && reply.status !== 401) return reply
+      if (reply === undefined || !reply.ok) return new Response("unauthorized", { status: 401 })
+    }
     const uploaded = await upload(request, env)
     if (uploaded !== undefined) return uploaded
     const forwarded = new Request(request)

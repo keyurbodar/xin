@@ -191,6 +191,7 @@ describe("workspace", () => {
       { from: "working", event: "unanswered", to: "failed" },
       { from: "working", event: "abort", to: "cancelled" },
       { from: "waiting", event: "answer", to: "working" },
+      { from: "waiting", event: "abort", to: "cancelled" },
       { from: "completed", event: "thread_send", to: "working" },
       { from: "failed", event: "thread_send", to: "working" },
       { from: "cancelled", event: "thread_send", to: "working" },

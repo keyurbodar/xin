@@ -4,7 +4,7 @@
 
 ## Sub-features
 
-- `message.send {conv?, text, clientTs?, attachments?}`: a repeated command id answers `accepted: true` from its existing item and inserts nothing (no receipt row; the item is the receipt). Each attachment is `{path, name, type, size?}` pointing at a `PUT /files/<path>` the Worker already stored; the turn names every file in an `<attachments>` block and, when the conversation's model takes images, sends each image under 5 MB as an `image` part.
+- `message.send {conv?, text, clientTs?, attachments?}`: a repeated command id answers `accepted: true` from its existing item and inserts nothing (no receipt row; the item is the receipt). Each attachment is `{path, name, type, size?}` pointing at a `PUT /files/<path>` the Worker already stored; the turn names every file in an `<attachments>` block and, when the conversation's model takes images, sends each image that fits the turn's 1 MiB budget as an `image` part, checking the stored size before it reads any bytes.
 - `message.withdraw {commandId}`: removes a still-pending item.
 - `conv.stop {conv?}`: aborts the running turn.
 - Socket `{t:"typing", conv, on:true}`: holds the batch, never past first+8 s.

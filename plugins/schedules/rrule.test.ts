@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest"
 import { parseRule, parseWhenText, RuleError, slotsOf } from "./rrule.ts"
 
 const iso = (ms: number): string => new Date(ms).toISOString()
+const berlinHour = (ms: number): string =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Berlin",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(ms))
 const slots = (rrule: string, tz: string, anchor: number) => slotsOf({ kind: "rrule", rrule }, tz, anchor)
 
 describe("plain words", () => {
@@ -48,10 +55,27 @@ describe("rrule next slot", () => {
     expect(second === undefined ? undefined : iso(second.slot)).toBe("2026-03-09T06:30:00.000Z")
   })
 
+  it("keeps an hourly wall time across a spring-forward change", () => {
+    const rule = "FREQ=HOURLY;INTERVAL=2;BYMINUTE=0"
+    const anchor = Date.parse("2026-03-28T00:00:00+01:00")
+    const hours: string[] = []
+    let after = anchor - 1
+    for (let index = 0; index < 17; index += 1) {
+      const next = slots(rule, "Europe/Berlin", anchor).next(after, index)
+      if (next === undefined) break
+      hours.push(berlinHour(next.slot))
+      after = next.slot
+    }
+    // 2026-03-29 removes 02:00 local. The even hours keep their wall time either side of the gap: the 02:00 slot
+    // lands in it at 03:00, and the series continues 04:00, 06:00 rather than drifting to 05:00, 07:00.
+    expect(hours.slice(12)).toEqual(["00:00", "03:00", "04:00", "06:00", "08:00"])
+  })
+
   it("keeps an hourly schedule alive through a half-hour spring-forward", () => {
     const anchor = Date.parse("2026-10-03T15:45:00Z")
     const next = slots("FREQ=HOURLY;BYMINUTE=0", "Australia/Lord_Howe", anchor).next(anchor, 0)
-    expect(next === undefined ? undefined : iso(next.slot)).toBe("2026-10-03T16:30:00.000Z")
+    // 03:00 local is the first wall time after the 02:00 → 02:30 jump, so the slot is 16:00Z at +11.
+    expect(next === undefined ? undefined : iso(next.slot)).toBe("2026-10-03T16:00:00.000Z")
   })
 
   it("walks BYDAY across weeks", () => {

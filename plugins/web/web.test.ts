@@ -56,6 +56,8 @@ describe("web parsing", () => {
   it("refuses private, loopback and non-http URLs", () => {
     for (const url of [
       "http://localhost/",
+      "http://localhost./",
+      "http://foo.localhost./",
       "http://127.0.0.1/",
       "http://10.0.0.1/",
       "http://192.168.1.1/",

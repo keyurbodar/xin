@@ -13,7 +13,7 @@ flowchart LR
   N --> EV
 ```
 
-- **Why there's no locking**: notes are inserts only, and two inserts never conflict. The profile has exactly one writer, a singleton task keyed `xin.dreamer`. Readers read whatever was last committed. Nothing is ever read, modified and written back by two actors.
+- **Why there's no locking**: notes are inserts only, and two inserts never conflict. The profile has exactly one writer, a singleton task keyed `xin.dreamer`. Readers read whatever was last committed. Nothing is ever read, modified and written back by two actors. Finding that live task scans only the statuses a live task can hold (`running`, `waiting`, `sleeping`), so the tasks a past pass finished are never read again.
 - **Dreamer output contract**: `{profile_md, add:[{text,scope}], retire:[noteId]}`, validated against size ≤ 2 KB, no sealed-credential or plugin-secret value, and no instruction-shaped text. `retire` must be a deduplicated subset of the note ids shown in that pass. On an invalid result it retries once, then skips the pass without moving the cursor, so nothing is lost.
 - **Scopes**: `me` and `project:<id>`. A thread recalls `me` plus its own project, and both tools refuse any other scope. `remember` defaults to the caller's project when it has one, else `me`. The profile only holds `me` material.
 - **Forget**: `memory.forget(query)` retires notes matching every word of the query at once and queues a Dreamer pass, so the profile drops the fact within minutes. `memory.forget(id)` retires exactly one note, which is what the Memory pane uses; a note can be longer than a query may be.

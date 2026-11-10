@@ -316,7 +316,6 @@ async function entryOf(path: string, file: Stored): Promise<FileEntry> {
     size: file.bytes.length,
     type: "text/plain",
     sha256,
-    project: null,
     updated_at: file.mtimeMs,
   }
 }

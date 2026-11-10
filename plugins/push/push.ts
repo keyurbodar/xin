@@ -33,6 +33,7 @@ const QUIET_KEY = "notify.quiet"
 const HELD_KEY = "notify.held"
 const HELD_LIMIT = 20
 const WAITING_GRACE_MS = 2 * 60 * 60 * 1000
+const HELD_RETRY_MS = 5 * 60_000
 const TTL_S = 24 * 60 * 60
 const URGENCY = "high"
 const PUSH_HEADERS = { "content-encoding": "aes128gcm", "content-type": "application/octet-stream" }
@@ -113,19 +114,27 @@ export function notifier(port: PushPort, fetcher: Fetcher = send, now: () => num
         const held = await readHeld(port.db)
         const due = held.filter((item) => item.releaseAt <= at)
         if (due.length === 0) return 0
-        await writeHeld(
-          port.db,
-          held.filter((item) => item.releaseAt > at),
-        )
-        if (port.state.getWebSockets().length > 0) return 0
+        // A connected client has the notification already, so its due items are dropped rather than sent late.
+        if (port.state.getWebSockets().length > 0) {
+          await writeHeld(
+            port.db,
+            held.filter((item) => item.releaseAt > at),
+          )
+          return 0
+        }
+        // Send first, then rewrite the held list: a send that throws keeps its notification for a retry instead of
+        // dropping it with the ones that were delivered.
+        const keep = held.filter((item) => item.releaseAt > at)
         let sent = 0
         for (const item of due) {
           try {
             sent += await sendNow(item.notification)
           } catch (failure) {
             console.warn("push: held delivery failed", failure)
+            keep.push({ ...item, releaseAt: at + HELD_RETRY_MS })
           }
         }
+        await writeHeld(port.db, keep)
         return sent
       }),
   }

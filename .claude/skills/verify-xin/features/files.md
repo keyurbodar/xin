@@ -5,7 +5,7 @@ File bytes live in R2 under content addresses (`b/<sha256>`), indexed by the DO'
 ## Sub-features
 
 - Web upload: `PUT /files/<path>` streams to R2, then the Worker commits metadata to the DO.
-- Ops: `file.put` (text), `file.list` (prefix), `file.delete` (row only).
+- Ops: `file.put` (text), `file.list` (prefix, at most 1000 paths), `file.delete` (the file, its revisions and every blob no other row references).
 - Agent tools: `read`, `write`, `edit` over R2. `/me` is coordinator-only and a thread reaches only `/projects/<its project>/`, for reads as well as writes. A leading `@` and unicode spaces are normalised the way pi resolves them.
 - Weekly orphan sweep of unreferenced blobs older than 24 h.
 
@@ -26,7 +26,7 @@ $S call POST /v1/cmd '{"id":"d1","op":"file.delete","args":{"path":"/me/notes.md
 $S stop
 ```
 
-Proof: the `sha256` in the upload reply equals `sha256sum` of the local file, and `file.list` shows the row with `project` set from the path.
+Proof: the `sha256` in the upload reply equals `sha256sum` of the local file, and `file.list` shows the row.
 
 ## Gotchas
 

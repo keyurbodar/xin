@@ -22,6 +22,8 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const CHUNK = 64 * 1024
 const MAX_REVISIONS = 5
+/** One listing returns at most this many paths, so a large tree cannot fill a frame or a model turn. */
+export const MAX_LISTED_FILES = 1000
 
 export type FileRevision = {
   readonly sha256: string
@@ -122,11 +124,12 @@ export class FileIndex {
     return this.db.get<FileRow>(`SELECT ${ROW_COLUMNS} FROM files WHERE path = ?`, path)
   }
 
-  under(prefix: string): Promise<FileRow[]> {
+  under(prefix: string, limit = MAX_LISTED_FILES): Promise<FileRow[]> {
     return this.db.all<FileRow>(
-      `SELECT ${ROW_COLUMNS} FROM files WHERE substr(path, 1, ?) = ? ORDER BY path`,
+      `SELECT ${ROW_COLUMNS} FROM files WHERE substr(path, 1, ?) = ? ORDER BY path LIMIT ?`,
       prefix.length,
       prefix,
+      limit,
     )
   }
 
@@ -189,12 +192,15 @@ export class FileIndex {
     )
   }
 
+  /** Removes the path and every revision of it, so nothing keeps serving a deleted file's old contents. */
   async drop(path: string): Promise<boolean> {
+    await this.db.run("DELETE FROM file_revisions WHERE path = ?", path)
     const rows = await this.db.all<{ path: string }>("DELETE FROM files WHERE path = ? RETURNING path", path)
     return rows.length > 0
   }
 
   async dropUnder(prefix: string): Promise<void> {
+    await this.db.run("DELETE FROM file_revisions WHERE substr(path, 1, ?) = ?", prefix.length, prefix)
     await this.db.run("DELETE FROM files WHERE substr(path, 1, ?) = ?", prefix.length, prefix)
   }
 

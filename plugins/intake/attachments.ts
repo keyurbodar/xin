@@ -28,17 +28,19 @@ async function present(port: AttachmentPort, files: readonly MessageAttachment[]
   return found.flatMap(({ file, entry }) => (entry === undefined ? [] : [{ file, size: entry.size }]))
 }
 
-/** One byte budget for the whole turn, so the stored entry stays far under a Durable Object row. */
+/**
+ * One byte budget for the whole turn, so the stored entry stays far under a Durable Object row.
+ *
+ * The budget is spent against the size storage reports, before any bytes are read: an attachment
+ * too large to fit is named in the list and never loaded into the isolate.
+ */
 async function images(port: AttachmentPort, conversation: ConversationId, files: readonly Present[]) {
   if (!(await port.vision(conversation))) return []
-  const read = await Promise.all(
-    files
-      .filter(({ file }) => file.type.startsWith("image/"))
-      .map(async ({ file }) => ({ file, bytes: await port.readBytes(file.path) })),
-  )
   const parts: ImageContent[] = []
   let budget = INLINE_BUDGET_BYTES
-  for (const { file, bytes } of read) {
+  for (const { file, size } of files) {
+    if (!file.type.startsWith("image/") || size > budget) continue
+    const bytes = await port.readBytes(file.path)
     if (bytes === undefined || bytes.byteLength > budget) continue
     budget -= bytes.byteLength
     parts.push({ type: "image", data: base64(bytes), mimeType: file.type })

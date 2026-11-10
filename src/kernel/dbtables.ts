@@ -4,14 +4,17 @@ export const MIGRATIONS_TABLE_PREFIX = "migrations_"
 export const TABLE_OWNERS: Readonly<Record<string, string>> = {
   kv: KERNEL_OWNER,
   receipts: KERNEL_OWNER,
-  plugins: KERNEL_OWNER,
   credentials: "models",
+  usage_daily: "models",
   files: "files",
+  file_revisions: "files",
   notes: "memory",
   notes_fts: "memory",
   push_subs: "push",
   presets: "presets",
+  conversation_presets: "presets",
   market_indexes: "market",
+  market_history: "market",
 }
 
 export function migrationsTable(owner: string): string {

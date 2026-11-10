@@ -84,6 +84,12 @@ export const HOST_MIGRATIONS: readonly SqliteMigration[] = [
     version: 12,
     statements: ["DROP TABLE IF EXISTS inbound"],
   },
+  {
+    // Plugin rows are the loader's `kv` `plugins.patch`, and their secrets are `credentials`, so the `plugins` table
+    // never had a reader. Homes created before this step still carry it; drop it there.
+    version: 13,
+    statements: ["DROP TABLE IF EXISTS plugins"],
+  },
 ]
 
 export function migrate(db: SqliteDatabase): Promise<void> {

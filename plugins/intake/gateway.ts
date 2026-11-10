@@ -149,25 +149,29 @@ async function batchRows(host: IntakeHost, batchId: string): Promise<readonly In
 }
 
 async function start(host: IntakeHost, replay: Replay): Promise<void> {
+  await expireDone(host, Date.now())
   const items = await snapshot(host)
-  const cutoff = Date.now() - RETENTION_MS
-  const expired = (item: IntakeItem): boolean => item.status === "done" && item.fireAt < cutoff
-  if (items.some(expired)) {
-    await host.harness.commit(async (tx) => {
-      const doc = await tx.doc(IntakeDoc)
-      for (let index = doc.items.length - 1; index >= 0; index -= 1) {
-        const item = doc.items[index]
-        if (item !== undefined && expired(item)) doc.items.splice(index, 1)
-      }
-    }, context)
-  }
   const claimed = new Set<string>()
   for (const item of items) if (item.status === "claimed" && item.batchId !== null) claimed.add(item.batchId)
   for (const batchId of [...claimed].toSorted()) replay.set(batchId as BatchId, Date.now())
-  await prune(
-    host,
-    items.filter((item) => !expired(item)),
-  )
+  await prune(host, items)
+}
+
+/**
+ * Done items stay for `RETENTION_MS` so `intake.batch` can still answer a retry; past that they are dropped on the
+ * alarm as well as at boot, so a long-lived isolate does not keep every message body it ever dispatched.
+ */
+async function expireDone(host: IntakeHost, now: number): Promise<void> {
+  const cutoff = now - RETENTION_MS
+  const expired = (item: IntakeItem): boolean => item.status === "done" && item.fireAt < cutoff
+  if (!(await snapshot(host)).some(expired)) return
+  await host.harness.commit(async (tx) => {
+    const doc = await tx.doc(IntakeDoc)
+    for (let index = doc.items.length - 1; index >= 0; index -= 1) {
+      const item = doc.items[index]
+      if (item !== undefined && expired(item)) doc.items.splice(index, 1)
+    }
+  }, context)
 }
 
 async function prune(host: IntakeHost, items: readonly IntakeItem[]): Promise<void> {
@@ -184,6 +188,7 @@ async function due(host: IntakeHost, replay: Replay): Promise<number | undefined
 }
 
 async function fire(host: IntakeHost, replay: Replay, now: number): Promise<void> {
+  await expireDone(host, now)
   // Deleting or re-setting the entry being visited is safe; the loop never adds one.
   for (const [batchId, at] of replay) {
     if (at > now) continue

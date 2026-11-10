@@ -86,18 +86,19 @@ export type MarketFeature = {
 
 export const MIGRATIONS: readonly SqliteMigration[] = [
   {
+    // Version 1 belonged to the two tables version 2 drops. It is kept as a step because the runner requires
+    // contiguous versions and a home that already recorded it must not see the schema move backwards.
     version: 1,
-    statements: [
-      "CREATE TABLE market_versions (package TEXT PRIMARY KEY, version TEXT NOT NULL, checked_at INTEGER NOT NULL)",
-      "CREATE TABLE market_checks (id TEXT PRIMARY KEY, checked_at INTEGER NOT NULL)",
-    ],
+    statements: [],
   },
   {
+    // A home that stopped at version 1 has the two old tables and no index; this drops them and makes sure the index
+    // exists, so a fresh home and either older version land on the same schema.
     version: 2,
     statements: [
       "DROP TABLE IF EXISTS market_versions",
       "DROP TABLE IF EXISTS market_checks",
-      "CREATE TABLE market_indexes (url TEXT PRIMARY KEY, document TEXT NOT NULL, expires_at INTEGER NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS market_indexes (url TEXT PRIMARY KEY, document TEXT NOT NULL, expires_at INTEGER NOT NULL)",
     ],
   },
 ]

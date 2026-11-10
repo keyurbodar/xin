@@ -37,6 +37,7 @@ const NOTES_BUDGET = 12_000
 const TASKS_PAGE = 100
 const ATTEMPTS = 2
 const MAX_TOKENS = 2048
+const LIVE_STATUSES = ["running", "waiting", "sleeping"] as const
 
 type AnyTask = TaskRecord<JsonValue, JsonValue, JsonValue>
 
@@ -119,16 +120,19 @@ export async function ensurePass(ports: MemoryPorts, at: number): Promise<void> 
   for (const id of stale ?? []) await harness.abortTask(id, context)
 }
 
+/** Scans only the statuses a live task can hold: a finished Dreamer task stays in the log but is never read again. */
 async function liveDreamers(tx: Tx): Promise<readonly AnyTask[]> {
   const found: AnyTask[] = []
-  let cursor: Cursor | undefined
-  while (true) {
-    const page = await tx.scanTasks({ kind: DREAMER_TASK, abortRequested: false }, TASKS_PAGE, cursor)
-    for (const task of page.items)
-      if (task.state.status !== "terminal" && task.state.status !== "completing") found.push(task)
-    if (page.next === undefined) return found
-    cursor = page.next
+  for (const status of LIVE_STATUSES) {
+    let cursor: Cursor | undefined
+    while (true) {
+      const page = await tx.scanTasks({ kind: DREAMER_TASK, status, abortRequested: false }, TASKS_PAGE, cursor)
+      found.push(...page.items)
+      if (page.next === undefined) break
+      cursor = page.next
+    }
   }
+  return found
 }
 
 const dueAt = (task: AnyTask, at: number): boolean => task.state.status !== "sleeping" || task.state.until <= at

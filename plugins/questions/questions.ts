@@ -4,6 +4,7 @@ import type { ConversationId, DocumentReader, Harness, JsonObject, Tx } from "@e
 import { int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
+  type AnsweredRequest,
   type AskInput,
   type AskOutcome,
   type OpenOutcome,
@@ -22,6 +23,8 @@ import { type Actor, type Command, defineOp, type Op, OpRejected, type Outcome }
 const context = BACKGROUND_CONTEXT
 const DEFAULT_LISTED = 50
 const MAX_LISTED = 200
+/** Answers kept for the already-answered lookup: a retried respond arrives seconds after the first, not pages later. */
+const MAX_ANSWERED = 20
 
 type PendingRequest = {
   readonly id: string
@@ -174,6 +177,7 @@ async function pendingRequests(harness: Harness, limit: number, projectId?: stri
               harness.snapshot(ThreadDoc, conversationId as ConversationId, context),
             ])
             if (requests === undefined) return []
+            if (thread?.status !== "waiting") return []
             return Object.entries(requests.open).map(([requestId, request]) => ({
               id: requestId,
               conversationId,
@@ -229,6 +233,7 @@ async function answer(
     answer: reply,
     answeredAt: now,
   }
+  trimAnswered(requests.answered)
   thread.status = "working"
   thread.run = run
   thread.statusLine = "running"
@@ -256,6 +261,7 @@ async function openRequests(read: DocumentReader, threadIds: readonly number[]):
         read.snapshot(RequestsDoc, conversationId, context),
       ])
       if (thread === undefined || requests === undefined) return []
+      if (thread.status !== "waiting") return []
       return Object.entries(requests.open).map(([requestId, request]) => ({
         threadId,
         requestId,
@@ -266,6 +272,13 @@ async function openRequests(read: DocumentReader, threadIds: readonly number[]):
     }),
   )
   return perThread.flat()
+}
+
+function trimAnswered(answered: Record<string, AnsweredRequest>): void {
+  const keys = Object.keys(answered)
+  if (keys.length <= MAX_ANSWERED) return
+  const oldest = keys.toSorted((left, right) => (answered[left]?.answeredAt ?? 0) - (answered[right]?.answeredAt ?? 0))
+  for (const key of oldest.slice(0, keys.length - MAX_ANSWERED)) delete answered[key]
 }
 
 function answerOutcome(value: JsonValue): AnswerOutcome | undefined {

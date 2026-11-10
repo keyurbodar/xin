@@ -20,6 +20,7 @@ import {
 import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
   JobsDoc,
+  type JobsState,
   parseJobs,
   type JobRun,
   type JobsService,
@@ -88,6 +89,7 @@ export function jobTool(tool: JobTool, work: JobWork): ToolRegistration {
           parentId: api.conversationId,
         }
         doc.calls = { ...doc.calls, [String(api.taskId)]: id }
+        trimCalls(doc)
         return { id, detached: false }
       }, callContext)
 
@@ -150,19 +152,14 @@ async function runWork(
   callContext: Context,
 ): Promise<JobSummary> {
   try {
-    return summarize(await work(task.input.args, jobRun(runtime, callContext), callContext))
+    return summarize(await work(task.input.args, jobRun(runtime), callContext))
   } catch (error) {
     return { text: error instanceof Error ? error.message : String(error), isError: true }
   }
 }
 
-function jobRun(runtime: TaskRuntime<JobInput, JobState, JobSummary, object>, callContext: Context): JobRun {
-  return {
-    signal: runtime.signal,
-    models: runtime.models,
-    now: () => runtime.now(),
-    env: () => runtime.env(callContext),
-  }
+function jobRun(runtime: TaskRuntime<JobInput, JobState, JobSummary, object>): JobRun {
+  return { signal: runtime.signal }
 }
 
 function missing(tool: string): JobSummary {
@@ -247,6 +244,17 @@ function drop(api: ToolExecutionApi, id: number, callContext: Context): Promise<
     const doc = await tx.doc(JobsDoc)
     delete doc.jobs[String(id)]
   }, callContext)
+}
+
+/** Task ids only grow, so the newest calls are the ones a replayed tool call can still be deduplicated against. */
+const MAX_CALLS = 128
+
+function trimCalls(doc: JobsState): void {
+  if (doc.calls === undefined) return
+  const keys = Object.keys(doc.calls)
+  if (keys.length <= MAX_CALLS) return
+  const keep = new Set(keys.toSorted((left, right) => Number(left) - Number(right)).slice(-MAX_CALLS))
+  doc.calls = Object.fromEntries(Object.entries(doc.calls).filter(([key]) => keep.has(key)))
 }
 
 async function deadlineOf(read: DocumentReader, conversationId: ConversationId): Promise<number> {

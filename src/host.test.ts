@@ -42,6 +42,20 @@ describe("Home host loop", () => {
     await eventually(stub, heartbeatCleared)
   })
 
+  it("leaves no table without a reader in the schema", async () => {
+    const stub = fresh()
+    const tables = await runInDurableObject(stub, async (_home, state) =>
+      state.storage.sql
+        .exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+        .toArray()
+        .map((row) => row.name),
+    )
+    expect(tables).toContain("market_indexes")
+    expect(tables).not.toContain("plugins")
+    expect(tables).not.toContain("market_versions")
+    expect(tables).not.toContain("market_checks")
+  })
+
   it("answers a turn cut off by an eviction exactly once, after the alarm", async () => {
     const stub = fresh()
     await runInDurableObject(stub, async (home: Home, state) => {

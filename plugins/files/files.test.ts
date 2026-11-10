@@ -9,7 +9,7 @@ import { type Home } from "../../test/worker.ts"
 import { sweep } from "./files.ts"
 import type { CommandId, PluginId } from "../../src/ids.ts"
 import type { Actor, Outcome } from "../../src/ops.ts"
-import { blobKey, FileIndex, type FileRow, R2Env } from "../../src/r2env.ts"
+import { blobKey, FileIndex, type FileRow, MAX_LISTED_FILES, R2Env } from "../../src/r2env.ts"
 
 const rowOf = (path: string): Promise<FileRow | undefined> =>
   runInDurableObject(owner(), (home: Home) => new FileIndex(home.db).row(path))
@@ -329,6 +329,55 @@ describe("files", () => {
 
     const older = await run("rev-3", "file.revision", { path, sha256: sha }, { kind: "owner" })
     expect(older).toMatchObject({ kind: "ok", result: { text: "first pass", sha256: sha } })
+  })
+
+  it("deletes a file, its revisions and its bytes", async () => {
+    const path = `/projects/m4/delete-${crypto.randomUUID()}.md`
+    const one = `first pass ${crypto.randomUUID()}`
+    const two = `second pass ${crypto.randomUUID()}`
+    expect((await put(path, one, { "content-type": "text/markdown" })).status).toBe(200)
+    expect((await put(path, two, { "content-type": "text/markdown" })).status).toBe(200)
+
+    const listed = await run("del-revs", "file.revisions", { path }, { kind: "owner" })
+    const rows = field(listed, "result")
+    const revisions = rows === undefined ? undefined : field(rows, "revisions")
+    const first = Array.isArray(revisions) ? revisions[0] : undefined
+    const sha = typeof first === "object" && first !== null ? field(first, "sha256") : undefined
+    if (typeof sha !== "string") throw new Error("no revision recorded")
+    const row = await rowOf(path)
+    if (row === undefined) throw new Error("upload did not commit a files row")
+
+    expect(await run("del-1", "file.delete", { path }, { kind: "owner" })).toMatchObject({
+      kind: "ok",
+      result: { deleted: true },
+    })
+    expect(await rowOf(path)).toBeUndefined()
+    const after = await run("del-revs-after", "file.revisions", { path }, { kind: "owner" })
+    expect(field(after, "result")).toMatchObject({ revisions: [] })
+    expect(await run("del-rev", "file.revision", { path, sha256: sha }, { kind: "owner" })).toMatchObject({
+      kind: "rejected",
+      code: "bad_args",
+    })
+    expect(await env.FILES.head(row.r2_key)).toBeNull()
+    expect(await env.FILES.head(blobKey(sha))).toBeNull()
+  })
+
+  it("bounds one listing to a page of paths", async () => {
+    const prefix = "/projects/m4/many/"
+    await runInDurableObject(owner(), async (home: Home) => {
+      for (let index = 0; index < MAX_LISTED_FILES + 5; index += 1) {
+        await home.db.run(
+          "INSERT INTO files (path, r2_key, size, type, sha256, project, updated_at) VALUES (?, ?, 1, 'text/plain', ?, 'm4', ?)",
+          `${prefix}${String(index).padStart(4, "0")}.txt`,
+          `b/${index}`,
+          "0".repeat(64),
+          Date.now(),
+        )
+      }
+    })
+    const listed = await run("list-many", "file.list", { prefix }, { kind: "owner" })
+    const files = field(listed, "result")
+    expect(Array.isArray(files) ? files.length : 0).toBe(MAX_LISTED_FILES)
   })
 
   it("sweeps unreferenced blobs and staging objects past the grace window and keeps referenced ones", async () => {

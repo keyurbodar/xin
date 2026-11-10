@@ -118,7 +118,6 @@ function entryOf(row: FileRow): FileEntry {
     size: row.size,
     type: row.type,
     sha256: row.sha256,
-    project: row.project,
     updated_at: row.updated_at,
   }
 }
@@ -155,7 +154,16 @@ export function create(deps: FilesPort, scope: FileScope = projectScoped): Files
     },
     write: async (path, text) =>
       entryOf(await putFile(deps.env.FILES, index, { path: rootedPath(path), content: text })),
-    remove: async (path) => index.drop(rootedPath(path)),
+    remove: async (path) => {
+      const target = rootedPath(path)
+      const row = await index.row(target)
+      if (row === undefined) return false
+      const revisions = await index.revisions(target)
+      await index.drop(target)
+      const keys = new Set([row.r2_key, ...revisions.map((revision) => blobKey(revision.sha256))])
+      for (const key of keys) if (!(await index.referenced(key))) await deps.env.FILES.delete(key)
+      return true
+    },
   }
 
   const list = defineOp({

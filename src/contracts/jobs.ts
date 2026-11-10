@@ -1,5 +1,4 @@
 import type { Context as ChordContext } from "@earendil-works/chord"
-import type { Models } from "@earendil-works/pi-ai"
 import {
   defineDoc,
   type ConversationId,
@@ -7,7 +6,6 @@ import {
   type ToolExecutionResult,
   type ToolRegistration,
 } from "@earendil-works/pi-durable"
-import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
 import { bool, compile, int, map, num, obj, opt, str, type Static } from "@earendil-works/pi-schema"
 
 export const JobSchema = obj({
@@ -36,9 +34,6 @@ export const JobsDoc = defineDoc<JobsState>({
 
 export type JobRun = {
   readonly signal: AbortSignal
-  readonly models: Models
-  now(): number
-  env(): Promise<ExecutionEnv | undefined>
 }
 
 export type JobWork = (args: JsonObject, run: JobRun, context: ChordContext) => Promise<ToolExecutionResult>

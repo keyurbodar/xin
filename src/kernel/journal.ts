@@ -53,9 +53,9 @@ const bytesOf = (value: unknown): Uint8Array => encoder.encode(JSON.stringify(va
  * turn instead of a task row, a document revision and a row per index. A flush happens at a boundary — the turn's
  * answer or a settled submission — so the journal holds at most the turn in flight, or `FLUSH_BYTES` of it.
  *
- * The journal alone would replay forever, so every `CHECKPOINT_TURNS` flushes the state as one commit of plain
- * `StorageWrite`s, stores it in one row, and deletes the journal rows it covers. A cold start reads the checkpoint and
- * at most one checkpoint's worth of journal rows. An eviction loses the commits since the last flush, which the turn
+ * The journal alone would replay forever, so at every `CHECKPOINT_ROWS` commits it flushes the state as one commit of
+ * plain `StorageWrite`s, stores it in one row, and deletes the journal rows it covers. A cold start reads the checkpoint
+ * and at most one checkpoint's worth of journal rows. An eviction loses the commits since the last flush, which the turn
  * re-runs: the harness retries an interrupted attempt, and a submission is deduplicated by its request id.
  */
 export class JournalStorage extends MemoryStorage {

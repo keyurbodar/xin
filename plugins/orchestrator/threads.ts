@@ -39,12 +39,19 @@ import {
 } from "../../src/contracts/threaddoc.ts"
 import { canUseThread, projectByRef, scopeOf } from "../../src/contracts/scope.ts"
 import { detailOf, textOf } from "../../src/transcript.ts"
-import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import { WorkspaceDoc, type SpaceState } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
 export const ANCHOR_KIND = "xin.anchor"
 export const REPORTER_KIND = "xin.reporter"
+
+/**
+ * Threads a space lists before its oldest finished ones drop out. Live threads (working or waiting) are never
+ * dropped, and 100 is far more than one space's UI shows at once; the list bounds every create, list, boot,
+ * watchdog and question read, all of which walk it.
+ */
+export const MAX_SPACE_THREADS = 100
 
 export type CreateThreadArgs = {
   readonly projectId: ProjectId
@@ -293,6 +300,29 @@ async function addThread(tx: Tx, thread: NewThread): Promise<ThreadState> {
   return state
 }
 
+/**
+ * Keeps a space's thread list bounded. Past `MAX_SPACE_THREADS` ids the oldest finished ones drop out of the list, so
+ * the UI, the watchdog and the question list stop walking every thread a space ever ran. A working or waiting thread
+ * is never dropped, and an id whose document this project did not load is left alone. A pruned thread's own document
+ * and conversation stay, so it can still act in its own scope.
+ */
+function trimThreadIds(
+  space: SpaceState,
+  docs: readonly { readonly id: number; readonly doc: Draft<ThreadDocState> }[],
+): void {
+  const overflow = space.threadIds.length - MAX_SPACE_THREADS
+  if (overflow <= 0) return
+  const status = new Map(docs.map(({ id, doc }) => [id, doc.status]))
+  const dropped = new Set<number>()
+  for (const id of [...space.threadIds].toSorted((left, right) => left - right)) {
+    if (dropped.size >= overflow) break
+    const found = status.get(id)
+    if (found === undefined || found === "working" || found === "waiting") continue
+    dropped.add(id)
+  }
+  if (dropped.size > 0) space.threadIds = space.threadIds.filter((id) => !dropped.has(id))
+}
+
 export type SendArgs = {
   readonly threadId: number
   readonly text: string
@@ -442,10 +472,20 @@ const stopThread = defineOp({
     if (doc === undefined) throw new OpRejected("bad_args", `no thread ${args.threadId}`)
     const conversation = await api.harness.conversation(threadId, context)
     if (conversation !== undefined) await conversation.abort(context, { background: true })
+    // A working thread's run ends in the abort; a waiting thread has no run, so its document is the only thing to move.
+    // The Reporter is skipped once the thread is no longer working, so this cannot race a terminal status.
+    const status = await api.harness.commit(async (tx) => {
+      const thread = await tx.doc(ThreadDoc, threadId)
+      const next = transition(thread.status, "abort")
+      if (next.kind !== "ok") return thread.status
+      thread.status = next.status
+      delete thread.statusLine
+      return next.status
+    }, context)
     return {
       threadId: args.threadId,
       stopped: true,
-      status: doc.status,
+      status,
       ...(args.reason === undefined ? {} : { reason: args.reason }),
     }
   },
@@ -484,7 +524,8 @@ export function lifecycle(deps: ThreadDeps): Threads {
       ({ doc }) => doc.clientRequestId === args.clientRequestId && doc.parentId === args.parentId,
     )
     if (existing !== undefined) return { kind: "existing", threadId: existing.id, title: existing.doc.title }
-    const live = docs.filter(({ doc }) => doc.status === "working" || doc.status === "waiting")
+    // A thread waiting on a question costs no model work, so it does not hold a live slot: only runs count.
+    const live = docs.filter(({ doc }) => doc.status === "working")
     if (live.length >= project.settings.threadLimit) {
       return {
         kind: "limit",
@@ -515,6 +556,7 @@ export function lifecycle(deps: ThreadDeps): Threads {
       run: 1,
       clientRequestId: args.clientRequestId,
     })
+    trimThreadIds(space, docs)
     await report(tx, {
       threadId: child.id,
       parentId: args.parentId,

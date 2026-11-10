@@ -101,6 +101,11 @@ const replayTool = jobTool(
   },
 )
 
+const quickTool = jobTool(
+  { name: "quick_job_tool", description: "Returns at once.", parameters: obj({}) },
+  async () => ({ output: [{ type: "text", text: "quick job" }] }),
+)
+
 const threadOf = async (home: Home, projectId: string) => {
   const workspace = await home.harness.snapshot(WorkspaceDoc, context)
   const id = threadIdsOfProject(workspace, projectId)[0]
@@ -250,6 +255,24 @@ describe("jobs", () => {
     expect(found.jobs).toEqual([])
     expect(found.rows).toEqual([])
   }, 40_000)
+
+  it("keeps the replayed-call map bounded", async () => {
+    const stub = fresh()
+    const kept = await runInDurableObject(stub, async (home: Home) => {
+      await home.harness.commit(async (tx) => {
+        const doc = await tx.doc(JobsDoc)
+        const calls: Record<string, number> = {}
+        for (let index = 1; index <= 200; index += 1) calls[String(index)] = index
+        doc.calls = calls
+      }, context)
+      const root = await home.root()
+      const inline = await quickTool.execute({}, heldJobApi(home, root.id, 10_000), context)
+      const doc = await home.harness.snapshot(JobsDoc, context)
+      return { inline: textOfResult(inline), calls: Object.keys(doc?.calls ?? {}).length }
+    })
+    expect(kept.inline).toContain("quick job")
+    expect(kept.calls).toBe(128)
+  })
 
   it("reuses one job when the wrapper call is replayed", async () => {
     const stub = fresh()

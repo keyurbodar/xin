@@ -69,7 +69,7 @@ The client needed owner-only ops the agent never asks for: the reads behind ever
 | `push.test` | `{}` | delivers one notification to every subscribed browser and answers `{ sent }`; it ignores open sockets, because the owner asked to see it arrive |
 | `notify.prefs` | `{}` | `{ waiting, finished, failed, spend, schedule }`; the first four are true and `schedule` is false by default |
 | `notify.set` | `{ waiting?, finished?, failed?, spend?, schedule? }` | the stored prefs after the patch; `announce` skips a kind that is off |
-| `notify.quiet` / `notify.quiet.set` | `{}` / `{ enabled?, start?, end? }` | the quiet window as minutes since UTC midnight, defaults 22:00–07:00 and off; while it is on a report waits until the window ends, and a question waits until it has been paused two hours or the window ends, whichever is first |
+| `notify.quiet` / `notify.quiet.set` | `{}` / `{ enabled?, start?, end? }` | the quiet window as minutes since UTC midnight, defaults 22:00–07:00 and off; while it is on a report waits until the window ends, and a question waits until it has been paused two hours or the window ends, whichever is first. A held notification leaves the held list only after its send returns; one whose send throws is retried five minutes later |
 | `push.list` | `{}` | `[{ endpoint, origin }]`, one row per subscribed browser, for the pane's Other devices list |
 | `owner.read` / `owner.set` | `{}` / `{ name?, instructions? }` | `{ name, instructions }`, trimmed on write; the instructions render as the `<owner>` system section for every conversation |
 | `session.list` / `session.close` | `{}` / `{ id? }` | one row per live socket `{ id, since, origin }`; close drops that socket, or every socket when the id is omitted, and answers `{ closed }` |

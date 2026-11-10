@@ -30,7 +30,7 @@ Both tools are wrapped with `jobs.tool`, so a call that takes longer than the 8 
 
 - only `http:` and `https:`, on the default ports (80 and 443);
 - no credentials in the URL;
-- only public hosts: loopback, private, link-local, CGNAT, multicast, benchmark and IPv6 ULA/link-local ranges are refused, as are numeric and octal/hex host forms that could resolve to them;
+- only public hosts: loopback, private, link-local, CGNAT, multicast, benchmark and IPv6 ULA/link-local ranges are refused, as are numeric and octal/hex host forms that could resolve to them. The host is lowercased and a trailing dot is removed before the check, so `localhost.` is judged as `localhost`;
 - the final URL after redirects is checked again.
 
 The body is capped at 2 MiB and the request at 15 s. HTML is reduced to a title and readable text: comments, scripts, styles, templates, SVG, iframes, objects and embeds are removed; block endings become line breaks; tags are stripped; entities are decoded; whitespace is normalised. Text, JSON and XML are returned as text within `maxChars`. A binary response returns its URL and content type with `text: null`.

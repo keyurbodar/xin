@@ -179,7 +179,13 @@ function isPrivateIpv4(host: string): boolean {
 }
 
 function isPrivateHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "")
+  // A trailing dot names the same host to DNS but not to a string comparison, so it is normalised away first:
+  // `localhost.` and `127.0.0.1.` must be judged as `localhost` and `127.0.0.1`.
+  const host = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.+$/, "")
+  if (host === "") return true
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true
   if (/^\d+$/.test(host) || /^0x[0-9a-f]+$/i.test(host)) return true
   if (/^\d+(\.\d+)*\.?$/.test(host)) {

@@ -348,6 +348,28 @@ describe("quiet hours", () => {
     )
   })
 
+  it("keeps a held notification whose send pass throws, for a later retry", async () => {
+    const stub = fresh()
+    const endpoint = "https://push.example.com/held-retry"
+    await listen(stub, endpoint)
+    await cmd(stub, "queue-retry", "notify.quiet.set", { enabled: true, start: 1320, end: 420 })
+    expect(await holdAt(stub, "2026-11-07T23:30:00Z", message("held-retry"))).toBe(Date.parse("2026-11-08T07:00:00Z"))
+
+    const kept = await runInDurableObject(stub, async (home: Home, state) => {
+      // A storage failure inside the send pass makes it throw, which is the case the ordering has to survive.
+      await home.db.run("DROP TABLE push_subs")
+      const push = notifier(
+        { state, db: home.db },
+        async () => new Response(null, { status: 201 }),
+        () => Date.parse("2026-11-08T07:00:00Z"),
+      )
+      const sent = await push.flush(Date.parse("2026-11-08T07:00:00Z"))
+      return { sent, due: await push.due() }
+    })
+    expect(kept.sent).toBe(0)
+    expect(kept.due).toBe(Date.parse("2026-11-08T07:00:00Z") + 5 * 60_000)
+  })
+
   it("sends a test push even during quiet hours", async () => {
     const stub = fresh()
     const endpoint = "https://push.example.com/test"

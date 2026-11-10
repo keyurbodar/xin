@@ -116,7 +116,8 @@ export type Transition =
 
 const TRANSITIONS: Readonly<Record<ThreadStatus, Partial<Record<ThreadEvent, ThreadStatus>>>> = {
   working: { done: "completed", ask_user: "waiting", unanswered: "failed", abort: "cancelled" },
-  waiting: { answer: "working" },
+  // A waiting thread has no run to abort, so `stop` ends it here: otherwise only an answer could leave this state.
+  waiting: { answer: "working", abort: "cancelled" },
   completed: { thread_send: "working" },
   failed: { thread_send: "working" },
   cancelled: { thread_send: "working" },

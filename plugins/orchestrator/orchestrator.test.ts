@@ -7,6 +7,7 @@ import { M5_MODEL } from "../../test/plugins/m5.ts"
 import { cmd, addThreads, connect, eventually, fresh, owner } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { ThreadDoc, threadInScope } from "../../src/contracts/threaddoc.ts"
+import { MAX_SPACE_THREADS } from "./threads.ts"
 import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -245,6 +246,62 @@ describe("orchestrator", () => {
     expect((await read(stub, reports)).map((row) => row.commandId)).toContain(`report:${thread.id}:2`)
     await eventually(stub, async (home: Home) => (await answerTexts(home, thread.id)).length === 2)
   }, 20_000)
+
+  it("keeps a space's thread list bounded and never drops a live thread", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "threads-cap")
+    await chooseModel(stub, project.coordinatorId)
+    const [live] = await addThreads(stub, project.id, ["live"], "/projects/threads-cap")
+    if (live === undefined) throw new Error("no live thread")
+    const finished = await runInDurableObject(stub, async (home: Home) => {
+      // One commit makes the conversations, the next writes their documents: a pi transaction cannot read after a write.
+      const ids = await home.harness.commit(async (tx) => {
+        const created: number[] = []
+        for (let index = 0; index < MAX_SPACE_THREADS + 20; index += 1) {
+          const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } })
+          created.push(conversation.id)
+        }
+        return created
+      }, context)
+      await home.harness.commit(async (tx) => {
+        const docs = await Promise.all(ids.map((id) => tx.doc(ThreadDoc, id as ConversationId)))
+        const workspace = await tx.doc(WorkspaceDoc)
+        const space = workspace.spaces[project.spaceId]
+        if (space === undefined) throw new Error("no space")
+        const now = Date.now()
+        for (const [index, doc] of docs.entries())
+          Object.assign(doc, {
+            projectId: project.id,
+            spaceId: project.spaceId,
+            title: `finished ${index}`,
+            role: "thread",
+            status: "completed",
+            run: 1,
+            beatAt: now,
+            deadlineAt: now + 60_000,
+            result: "done",
+          })
+        for (const id of ids) space.threadIds.push(id)
+      }, context)
+      return ids
+    })
+
+    const created = await cmd(stub, "threads-cap-create", "thread.create", {
+      title: "new",
+      task: "do the work",
+      project: project.id,
+    })
+    expect(created.ok, JSON.stringify(created)).toBe(true)
+    const listed = await read(
+      stub,
+      async (home) => (await home.harness.snapshot(WorkspaceDoc, context))?.spaces[project.spaceId]?.threadIds ?? [],
+    )
+    expect(listed).toHaveLength(MAX_SPACE_THREADS)
+    expect(listed).toContain(live.id)
+    expect(listed).toContain((created.result as { threadId: number }).threadId)
+    expect(listed).not.toContain(finished[0])
+    expect(listed).toContain(finished.at(-1))
+  }, 30_000)
 
   it("rejects a delegate over threadLimit with limit_reached", async () => {
     const stub = fresh()

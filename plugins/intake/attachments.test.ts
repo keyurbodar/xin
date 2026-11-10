@@ -148,6 +148,19 @@ describe("the attachment policy", () => {
     expect(JSON.stringify(content)).toContain("two.png (image/png, ")
   }, 30_000)
 
+  it("never reads an image that cannot fit the turn budget", async () => {
+    const big = new Uint8Array(INLINE_BUDGET_BYTES + 1)
+    const small = Uint8Array.from([1, 2, 3])
+    const port = portOf({ "/a/big.png": big, "/a/small.png": small }, true)
+    const content = await renderTurn(port, 1 as ConversationId, "look", [
+      file("big.png", "image/png"),
+      file("small.png", "image/png"),
+    ])
+    expect(port.reads).toEqual(["/a/small.png"])
+    const images = Array.isArray(content) ? content.filter((part) => part.type === "image") : []
+    expect(images).toHaveLength(1)
+  }, 30_000)
+
   it("leaves out a file storage does not have", async () => {
     const port = portOf({ "/a/real.txt": new Uint8Array([1, 2, 3]) }, false)
     const content = await renderTurn(port, 1 as ConversationId, "read", [

@@ -48,15 +48,18 @@ stateDiagram-v2
   working --> failed: unanswered
   working --> cancelled: abort
   waiting --> working: answer submitted, new run
+  waiting --> cancelled: thread.stop
   completed --> working: thread_send reopens, run N+1
   failed --> working: thread_send reopens, run N+1
   cancelled --> working: thread_send reopens, run N+1
 ```
 
+- **The thread limit counts runs, not questions.** `threadLimit` (default 8) compares against threads in `working`; a thread `waiting` on a question holds no run and no slot, so abandoned questions cannot block a project. `thread.stop` is how a waiting thread is cleared.
+- **The space's `threadIds` list is bounded** at 100 ids per space: when a new thread takes it past that, the oldest ids whose thread is neither `working` nor `waiting` drop out. The thread document and conversation stay, so a pruned thread can still act in its own scope, but it is no longer listed, reachable through its coordinator, or walked by boot, the watchdog and the question list.
 - **Why an Anchor task**: a child owned by a background task is outside the coordinator's abort and idle boundary. If you stop the coordinator, threads keep going. To stop everything, use `abort({background:true})`. This is pi example 22.
 - **Result text** is the last assistant message of the final run, read from the thread conversation itself. A failed run shows its provider error before any progress text (t3).
 - **Re-opening** a resolved thread with `thread_send` starts run N+1 in the same conversation, sets status back to `working`, bumps `xin.thread.run`, and creates a new Reporter with key `report:th:N+1`. The Reporter's brief and both direct submits use one request key, `thread-send:th:sendKey`, so a replay after a crash places the input once.
-- **`thread.stop` only aborts** the thread's run, in the background. The Reporter is the single writer of a terminal status; the stop op never writes `cancelled` itself, so it cannot race the Reporter.
+- **`thread.stop` ends the thread**, in the background: it aborts the run and commits `working → cancelled` (or `waiting → cancelled`, since a waiting thread has no run to abort) itself. The Reporter is the writer of the status a *finished* run implies, and it skips a thread that is no longer `working`, so the two cannot race. A stopped thread's open question stops being listed and a late answer is refused.
 - **`thread_read`** advances its cursor only past entries it returned. When one entry alone exceeds the bound, it returns a trimmed excerpt of that entry and advances past it, so the next read does not skip it.
 - **Scoping**: every thread tool and both thread ops resolve the caller's space first — the space whose coordinator is the caller, or the space named by the caller's own `xin.thread` — and accept a thread only when it is listed in that space. A thread with another space's id reads as absent.
 - **Limits** (from owner settings, never hidden): live threads per project and per owner. Over the limit, `delegate_task` returns `limit_reached` with the list of live threads, and the coordinator tells you.

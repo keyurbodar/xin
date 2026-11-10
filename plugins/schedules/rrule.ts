@@ -480,16 +480,36 @@ function datedSlots(plan: Plan, tz: string, date: CivilDate): readonly number[] 
   return slots.toSorted((left, right) => left - right)
 }
 
-function hourlySlots(plan: Plan, tz: string, hour: number): readonly number[] {
-  const parts = localParts(hour, tz)
-  if (plan.days !== undefined && !plan.days.includes(weekdayOf(parts))) return []
-  return plan.minutes.map((minute) => hour + minute * 60_000)
+function hourlySlots(plan: Plan, tz: string, start: CivilTime, step: number): readonly number[] {
+  const at = addMinutes(start, step * plan.interval * 60)
+  if (plan.days !== undefined && !plan.days.includes(weekdayOf(at))) return []
+  return plan.minutes.map((minute) => zonedTime(addMinutes(at, minute), tz))
+}
+
+function addMinutes(time: CivilTime, minutes: number): CivilTime {
+  const shifted = new Date(Date.UTC(time.year, time.month - 1, time.day, time.hour, time.minute + minutes))
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+  }
+}
+
+/** The same instant read as wall-clock milliseconds, so a difference is a difference in local hours. */
+function wallClock(ms: number, tz: string): number {
+  const parts = localParts(ms, tz)
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, 0)
 }
 
 function periodIndex(plan: Plan, tz: string, anchor: number, at: number): number {
   switch (plan.freq) {
     case "HOURLY":
-      return Math.max(0, Math.floor((at - zonedHour(anchor, tz)) / (plan.interval * HOUR)))
+      return Math.max(
+        0,
+        Math.floor((wallClock(at, tz) - wallClock(zonedHour(anchor, tz), tz)) / (plan.interval * HOUR)),
+      )
     case "DAILY":
       return Math.max(0, Math.floor(daysBetween(civilDate(anchor, tz), civilDate(at, tz)) / plan.interval))
     case "WEEKLY":
@@ -513,9 +533,9 @@ function* slotStream(plan: Plan, tz: string, anchor: number, from: number): Gene
   const start = civilDate(anchor, tz)
   switch (plan.freq) {
     case "HOURLY": {
-      const base = zonedHour(anchor, tz)
+      const hourStart = { ...civilDate(anchor, tz), hour: localParts(anchor, tz).hour, minute: 0 }
       for (let step = from; step < from + MAX_PERIODS; step++) {
-        for (const slot of hourlySlots(plan, tz, base + step * plan.interval * HOUR)) yield slot
+        for (const slot of hourlySlots(plan, tz, hourStart, step)) yield slot
       }
       return
     }

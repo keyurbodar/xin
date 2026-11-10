@@ -102,11 +102,12 @@ const submitBrief = (
     ? Promise.resolve(undefined)
     : conversation.submit({ type: "input", content: brief, requestId }, callContext)
 
+/** Live slots are running threads: one waiting on a question holds no slot, so it cannot block a project. */
 const liveCount = async (harness: Harness, threadIds: readonly number[]): Promise<number> => {
   let live = 0
   for (const id of threadIds) {
     const doc = await harness.snapshot(ThreadDoc, id as ConversationId, context)
-    if (doc !== undefined && (doc.status === "working" || doc.status === "waiting")) live += 1
+    if (doc?.status === "working") live += 1
   }
   return live
 }

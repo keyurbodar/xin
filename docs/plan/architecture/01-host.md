@@ -60,7 +60,7 @@ constructor:
     6 harness.resume() )
 ```
 
-A step that throws is caught like a failed required row: the home keeps its storage and answers `503 {error:"boot_failed"}` on every route except `POST /v1/repair`, which can drop the journal or the checkpoint and boot again (11).
+A step that throws is caught like a failed required row: the home keeps its storage and answers `503 {error:"boot_failed"}` on every route except `POST /v1/repair`, which can drop the journal or the checkpoint and boot again (11). The Worker passes a non-401 answer from the token check through to the client, so a rotated-token device sees that 503 rather than an `unauthorized` it cannot act on.
 
 The event handlers:
 

@@ -201,6 +201,72 @@ describe("questions", () => {
     expect(asked.find((row) => row.commandId === `question:${requestId}`)?.status).not.toBe("pending")
   }, 20_000)
 
+  it("stops a waiting thread, hides its question and refuses a late answer", async () => {
+    const stub = fresh()
+    const { threadId, requestId } = await askThread(stub, "stop-waiting")
+
+    const stopped = await cmd(stub, "stop-waiting-1", "thread.stop", { threadId, reason: "not needed" })
+    expect(stopped.ok, JSON.stringify(stopped)).toBe(true)
+    expect(stopped.result).toMatchObject({ threadId, stopped: true, status: "cancelled", reason: "not needed" })
+
+    const after = await runInDurableObject(stub, async (home: Home) => ({
+      thread: await home.harness.snapshot(ThreadDoc, threadId as ConversationId, context),
+      requests: await requestsOf(home, threadId),
+    }))
+    expect(after.thread?.status).toBe("cancelled")
+    expect(after.thread?.statusLine).toBeUndefined()
+    expect(after.requests.open).toEqual([{ requestId, question: "Which color?" }])
+
+    expect(listed((await cmd(stub, "stop-waiting-list", "request.list", {})).result)).toEqual([])
+    const late = await cmd(stub, "stop-waiting-answer", "request.respond", {
+      threadId,
+      requestId,
+      answer: "red",
+    })
+    expect(late).toMatchObject({ ok: false, error: { code: "bad_args" } })
+  }, 20_000)
+
+  it("does not count a waiting thread against the project's thread limit", async () => {
+    const stub = fresh()
+    const asked = await askThread(stub, "waiting-limit")
+    const updated = await cmd(stub, "waiting-limit-settings", "project.update", {
+      id: asked.projectId,
+      settings: { threadLimit: 1 },
+    })
+    expect(updated.ok, JSON.stringify(updated)).toBe(true)
+
+    const created = await cmd(stub, "waiting-limit-create", "thread.create", {
+      title: "second",
+      task: "do the work",
+      project: asked.projectId,
+    })
+    expect(created.ok, JSON.stringify(created)).toBe(true)
+  }, 20_000)
+
+  it("keeps the answered map bounded", async () => {
+    const stub = fresh()
+    const { threadId, requestId } = await askThread(stub, "answered-cap")
+    await runInDurableObject(stub, (home: Home) =>
+      home.harness.commit(async (tx) => {
+        const doc = await tx.doc(RequestsDoc, threadId as ConversationId)
+        for (let index = 0; index < 30; index += 1)
+          doc.answered[`old-${index}`] = {
+            kind: "ask_user",
+            question: "old",
+            at: 1,
+            answer: "a",
+            answeredAt: index + 1,
+          }
+      }, context),
+    )
+
+    const answered = await cmd(stub, "answered-cap-1", "request.respond", { threadId, requestId, answer: "red" })
+    expect(answered.ok, JSON.stringify(answered)).toBe(true)
+    const after = await runInDurableObject(stub, (home: Home) => requestsOf(home, threadId))
+    expect(after.answered).toHaveLength(20)
+    expect(after.answered.some((row) => row.requestId === requestId)).toBe(true)
+  }, 20_000)
+
   it("lists pending questions newest first, bounded, and drops answered ones", async () => {
     const stub = fresh()
     const first = await askThread(stub, "list-a")
