@@ -43,6 +43,8 @@ This is the same text whether the coordinator is idle (it starts a turn) or busy
 
 **Crash safety**: one snapshot of the document drives the boot scan. Any `pending` item with `fireAt < now` fires at once, and any `claimed` item whose batch has no pi submission is resubmitted with the same `requestId`, which pi dedupes. Items become `done` after the submission settles, and `done` items are pruned at boot only, once they are 7 days old: `intake.batch` still answers `message.retry` for them, so they cannot be deleted at finish. The batch ledger in `kv` is what stops a replayed claimed batch from running the `intake/batch` waterfall twice.
 
+A dispatch that throws — a listener's `next()`, a submission, a push — keeps its claim and joins the same replay the boot scan uses, scheduled a minute out and logged, so the alarm retries it instead of leaving it stranded until a reboot. The timer isolates each batch: one target that fails does not stop the others, and one timer that throws does not stop the other timers or the alarm's closing arm.
+
 ## 6 · Dispatch: what a batch does to a running turn
 
 t3 has four dispatch modes: start, steer, restart, queue. The host picks the mode deterministically from `pi.live`. The LLM is never asked.

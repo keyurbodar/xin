@@ -32,6 +32,8 @@ All four are read-only and `replay:"safe"`:
 
 `git_blame` needs a named credential `github.token` for the GraphQL API. The other three work unauthenticated on public repositories and use the same token when it exists, for private repositories and higher rate limits. The tools send a `Xin/0.1` user agent and the GitHub API version header, cap output at 100,000 characters and time out at 15 seconds.
 
+A ref is encoded one path segment at a time, and a ref with an empty, `.` or `..` segment, a backslash or a `%` is refused before any request: `git_show` and `git_diff` put the ref in the URL path, so `../..` would otherwise walk out of `/repos/{repo}/` and reach another repository with the home's token.
+
 ## Row and hiding
 
 The feature is a native Cordis package, `plugins/git`, with one row, `tool-git`, in the `xin-plugin-git` bundle. It injects `pi` and `secrets` and installs the `tool-git` extension. The row ships `disabled: true` in `xin.profile.json`: git access is an optional plugin and off by default, but the row is in the tree so `plugin.list` shows it and `plugin.enable` mounts it without a rebuild. Disabling the row again, or a preset that hides it, removes all four tools; a thread inherits its coordinator's preset.

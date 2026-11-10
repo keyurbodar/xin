@@ -6,7 +6,7 @@ File bytes live in R2 under content addresses (`b/<sha256>`), indexed by the DO'
 
 - Web upload: `PUT /files/<path>` streams to R2, then the Worker commits metadata to the DO.
 - Ops: `file.put` (text), `file.list` (prefix), `file.delete` (row only).
-- Agent tools: `read`, `write`, `edit` over R2. `/me` writes are coordinator-only.
+- Agent tools: `read`, `write`, `edit` over R2. `/me` is coordinator-only and a thread reaches only `/projects/<its project>/`, for reads as well as writes. A leading `@` and unicode spaces are normalised the way pi resolves them.
 - Weekly orphan sweep of unreferenced blobs older than 24 h.
 
 ## How to get to it (user POV)

@@ -24,6 +24,7 @@ import { type Batch, decide, probe } from "./dispatch.ts"
 const context = BACKGROUND_CONTEXT
 const DEBOUNCE_MS = 2_000
 const WINDOW_MS = 8_000
+const RETRY_MS = 60_000
 const RETENTION_MS = 7 * 24 * 60 * 60_000
 
 type BatchEntryRow = {
@@ -52,7 +53,12 @@ export type IntakeHost = {
   arm(wake?: Wake): Promise<void>
   push(): PushService | undefined
   batchEvent(batch: IntakeBatch, next: () => Promise<IntakeBatchResult>): Promise<IntakeBatchResult>
+  /** Report a failure that must not stop the alarm: a batch that throws is retried, not lost. */
+  fail(error: unknown): void
 }
+
+/** Claimed batches to try again, with the moment to try: boot recovery and a dispatch that threw both land here. */
+type Replay = Map<BatchId, number>
 
 export type Gateway = {
   readonly intake: IntakeService
@@ -63,7 +69,7 @@ export type Gateway = {
 }
 
 export function createGateway(host: IntakeHost): Gateway {
-  const replay: BatchId[] = []
+  const replay: Replay = new Map()
   return {
     intake: {
       enqueue: (draft) => enqueue(host, draft),
@@ -142,7 +148,7 @@ async function batchRows(host: IntakeHost, batchId: string): Promise<readonly In
     .map(recordOf)
 }
 
-async function start(host: IntakeHost, replay: BatchId[]): Promise<void> {
+async function start(host: IntakeHost, replay: Replay): Promise<void> {
   const items = await snapshot(host)
   const cutoff = Date.now() - RETENTION_MS
   const expired = (item: IntakeItem): boolean => item.status === "done" && item.fireAt < cutoff
@@ -157,7 +163,7 @@ async function start(host: IntakeHost, replay: BatchId[]): Promise<void> {
   }
   const claimed = new Set<string>()
   for (const item of items) if (item.status === "claimed" && item.batchId !== null) claimed.add(item.batchId)
-  for (const batchId of [...claimed].toSorted()) replay.push(batchId as BatchId)
+  for (const batchId of [...claimed].toSorted()) replay.set(batchId as BatchId, Date.now())
   await prune(
     host,
     items.filter((item) => !expired(item)),
@@ -169,15 +175,28 @@ async function prune(host: IntakeHost, items: readonly IntakeItem[]): Promise<vo
   for (const batchId of host.ledger.ids()) if (!live.has(batchId)) host.ledger.forget(batchId)
 }
 
-async function due(host: IntakeHost, replay: readonly BatchId[]): Promise<number | undefined> {
-  if (replay.length > 0) return Date.now()
+async function due(host: IntakeHost, replay: Replay): Promise<number | undefined> {
+  const retry = replay.size === 0 ? undefined : Math.min(...replay.values())
   const pending = (await snapshot(host)).filter((item) => item.status === "pending")
-  return pending.length === 0 ? undefined : Math.min(...pending.map((item) => item.fireAt))
+  const fireAt = pending.length === 0 ? undefined : Math.min(...pending.map((item) => item.fireAt))
+  if (retry === undefined) return fireAt
+  return fireAt === undefined ? retry : Math.min(retry, fireAt)
 }
 
-async function fire(host: IntakeHost, replay: BatchId[], now: number): Promise<void> {
-  for (const batchId of replay.splice(0)) await resume(host, batchId)
-  await fireDue(host, now)
+async function fire(host: IntakeHost, replay: Replay, now: number): Promise<void> {
+  // Deleting or re-setting the entry being visited is safe; the loop never adds one.
+  for (const [batchId, at] of replay) {
+    if (at > now) continue
+    try {
+      await resume(host, batchId)
+      replay.delete(batchId)
+    } catch (error) {
+      // A batch that cannot be delivered keeps its claim and is tried again later, rather than waiting for a reboot.
+      replay.set(batchId, now + RETRY_MS)
+      host.fail(error)
+    }
+  }
+  await fireDue(host, replay, now)
 }
 
 async function resume(host: IntakeHost, batchId: BatchId): Promise<void> {
@@ -232,13 +251,19 @@ async function typing(host: IntakeHost, conversation: ConversationId, on: boolea
   await host.arm()
 }
 
-async function fireDue(host: IntakeHost, now: number): Promise<void> {
+async function fireDue(host: IntakeHost, replay: Replay, now: number): Promise<void> {
   const targets = new Set<number>()
   for (const item of await snapshot(host)) if (item.status === "pending" && item.fireAt <= now) targets.add(item.target)
-  for (const target of targets) await dispatch(host, target, now)
+  for (const target of targets) {
+    try {
+      await dispatch(host, replay, target, now)
+    } catch (error) {
+      host.fail(error)
+    }
+  }
 }
 
-async function dispatch(host: IntakeHost, target: number, now: number): Promise<void> {
+async function dispatch(host: IntakeHost, replay: Replay, target: number, now: number): Promise<void> {
   const batchId = crypto.randomUUID() as BatchId
   const rows = await host.harness.commit(async (tx) => {
     const doc = await tx.doc(IntakeDoc)
@@ -250,18 +275,24 @@ async function dispatch(host: IntakeHost, target: number, now: number): Promise<
     return ready.map(copyItem)
   }, context)
   if (rows.length === 0) return
-  const conversation = await host.harness.conversation(target as ConversationId, context)
-  if (conversation === undefined) {
-    await finish(host, batchId)
-    return
-  }
   const batch = claimedBatch(batchId, target as ConversationId, rows)
-  const result = await host.batchEvent(batch, async () => {
-    await persist(host, batch)
-    await dispatchBatch(host, conversation, batch)
-    return { kind: "dispatched" }
-  })
-  if (result.kind === "dropped") await finish(host, batchId)
+  try {
+    const conversation = await host.harness.conversation(target as ConversationId, context)
+    if (conversation === undefined) {
+      await finish(host, batchId)
+      return
+    }
+    const result = await host.batchEvent(batch, async () => {
+      await persist(host, batch)
+      await dispatchBatch(host, conversation, batch)
+      return { kind: "dispatched" }
+    })
+    if (result.kind === "dropped") await finish(host, batchId)
+  } catch (error) {
+    // The rows stay claimed, so the batch is recovered by the same replay a reboot uses, after a delay.
+    replay.set(batchId, now + RETRY_MS)
+    throw error
+  }
 }
 
 async function persist(host: IntakeHost, batch: IntakeBatch): Promise<void> {

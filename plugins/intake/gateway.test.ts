@@ -7,7 +7,7 @@ import { M2_MODEL, script as scriptM2 } from "../../test/plugins/m2.ts"
 import { connect, eventually, fresh, owner } from "../../test/support.ts"
 import { decrypt, pushTopic, subscriber, type Subscriber } from "../../test/webpush.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
-import { enqueue } from "./gateway.ts"
+import { createGateway, enqueue, type IntakeHost } from "./gateway.ts"
 import type { IntakeItem } from "../../src/contracts/intake.ts"
 import type { CommandId } from "../../src/ids.ts"
 
@@ -320,4 +320,61 @@ describe("dispatch push", () => {
     expect(await payloadOf(target, second)).toMatchObject({ threadTitle: "Replay thread", tag: "report:9:1" })
     await eventually(stub, async (home: Home) => (await home.intake()).every((item) => item.status === "done"))
   })
+})
+
+/** An IntakeHost over a real home, so a test can make one step of the dispatch fail. */
+const hostOf = (home: Home, overrides: Partial<IntakeHost> = {}): IntakeHost => ({
+  harness: home.harness,
+  ledger: { processed: () => false, mark: () => undefined, forget: () => undefined, ids: () => [] },
+  readBytes: async () => undefined,
+  stat: async () => undefined,
+  vision: async () => false,
+  arm: async () => undefined,
+  push: () => undefined,
+  batchEvent: (_batch, next) => next(),
+  fail: () => undefined,
+  ...overrides,
+})
+
+describe("gateway retries", () => {
+  it("retries a claimed batch whose dispatch throws, and reports the failure", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["noted"])
+      await home.chooseModel(FAUX_MODEL)
+      const failures: unknown[] = []
+      let broken = true
+      const gateway = createGateway(
+        hostOf(home, {
+          fail: (error) => failures.push(error),
+          batchEvent: (batch, next) =>
+            broken ? Promise.reject(new Error(`dispatch failed for ${batch.batchId}`)) : next(),
+        }),
+      )
+      const target = (await home.root()).id
+      await gateway.intake.enqueue({
+        target,
+        commandId: "stranded-1",
+        kind: "user",
+        text: "hello",
+        attachments: [],
+        clientTs: 1_000,
+      })
+      const now = Date.now() + 10_000
+
+      await gateway.fire(now)
+      expect(failures).toHaveLength(1)
+      expect((await home.intake()).map((item) => item.status)).toEqual(["claimed"])
+      expect(await gateway.due()).toBe(now + 60_000)
+
+      broken = false
+      await gateway.fire(now + 60_000)
+      expect(failures).toHaveLength(1)
+      for (let attempt = 0; attempt < 300; attempt++) {
+        if ((await home.intake()).every((item) => item.status === "done")) break
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect((await home.intake()).every((item) => item.status === "done")).toBe(true)
+    })
+  }, 30_000)
 })

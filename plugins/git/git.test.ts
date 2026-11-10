@@ -191,6 +191,38 @@ describe("git tools", () => {
     }
   }, 30_000)
 
+  it("refuses a ref that would walk out of the project repository", async () => {
+    const stub = fresh()
+    await setRow(stub, "tool-git", true)
+    const fake = fakeFetch()
+    const original = globalThis.fetch
+    globalThis.fetch = fake.fetch
+    try {
+      const project = await makeProject(stub, "git-escape", { repo: "acme/demo", ref: "main" })
+      const [thread] = await addThreads(stub, project.id, ["escape thread"])
+      if (thread === undefined) throw new Error("no thread")
+      respond([
+        () =>
+          fauxAssistantMessage([fauxToolCall("git_show", { ref: "../../../other/secret/commits" })], {
+            stopReason: "toolUse",
+          }),
+        () =>
+          fauxAssistantMessage([fauxToolCall("git_diff", { base: "..", head: "main" })], {
+            stopReason: "toolUse",
+          }),
+        () => fauxAssistantMessage("done"),
+      ])
+      await turnAt(stub, thread.id, "inspect the repo")
+
+      const texts = await runInDurableObject(stub, (home: Home) => toolTexts(home, thread.id))
+      expect(texts.some((text) => text.includes("git_show failed") && text.includes("is invalid"))).toBe(true)
+      expect(texts.some((text) => text.includes("git_diff failed") && text.includes("is invalid"))).toBe(true)
+      expect(fake.calls.filter((call) => call.url.includes(".."))).toEqual([])
+    } finally {
+      globalThis.fetch = original
+    }
+  }, 30_000)
+
   it("refuses a project without a repository", async () => {
     const stub = fresh()
     await setRow(stub, "tool-git", true)

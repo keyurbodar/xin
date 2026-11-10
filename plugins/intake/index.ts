@@ -29,6 +29,7 @@ export async function apply(ctx: Context): Promise<void> {
       return model === undefined ? false : ctx.models.vision(model)
     },
     batchEvent: (batch, next) => batchEvent(ctx, batch, next),
+    fail: (error) => ctx.logger.error(error),
   }
   const gateway = createGateway(host)
   ctx.provide("intake", gateway.intake)
