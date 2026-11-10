@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-10
 **Branch:** `git/native-worker` (pushed; not for merge)
-**Scope:** answer whether Xin can clone and read a git repository inside the Worker, with numbers, and what it would unlock.
-**Prototype:** `test/git-native/` — a standalone Worker (`wrangler.jsonc`, R2 binding `FILES`) driven over HTTP, plus a Node harness for CPU and heap.
+**Scope:** answer whether Xin can clone and read a git repository inside the Worker, with numbers, and what it would unlock — then build it as the optional row `tool-git-native` (`plugins/git-native/`).
+**Prototype:** `test/git-native/` — a standalone Worker (`wrangler.jsonc`, R2 binding `FILES`) driven over HTTP, plus a Node harness for CPU and heap. The prototype is the experiment; the row is the result, in [The row, as built](#the-row-as-built).
 
 ## Verdict
 
@@ -12,6 +12,53 @@
 - **No, for large repositories, because of memory, not CPU.** A 72 MB pack clones and indexes fine; the 330 MB pack of `vercel/next.js` full history **crashed the workerd runtime** ("The Workers runtime crashed unexpectedly", twice) against the 128 MB isolate limit. Large repos need a partial clone (`filter=blob:none`) or are out.
 
 The cheapest useful shape is: **one smart-HTTP fetch → build a git-format `.idx` with workerd's native zlib → store pack + idx in R2 (3 writes) → read objects straight out of the pack.** No git binary, no checkout, no dependency.
+
+## The row, as built
+
+`tool-git-native` is a native Cordis package in `plugins/git-native/`, one row in the `xin-plugin-git-native` bundle,
+`disabled: true` like `tool-git`. It injects `pi`, `db` and `host`; it owns three tables (`git_native_repo`,
+`git_native_ref`, `git_native_shallow`, applied by its own `git_native` migration) and three R2 objects per repository
+(pack, v2 `.idx`, span table). The GitHub API row is untouched and stays the default path for GitHub.
+
+```text
+git_native_clone { url?, ref?, depth? }   clone or refresh a public remote of any host into R2
+git_native_log   { url?, ref?, path?, limit? }
+git_native_show  { url?, path, ref? }     one file at a revision
+git_native_diff  { url?, base, head?, path? }
+```
+
+`url` defaults to the project's GitHub repository, so a GitHub project needs no new setting. Storage is keyed by project
+slug and URL, so a thread reads only what its own project cloned. A read resolves refs and the shallow boundary from
+SQLite, then reads objects out of the pack by R2 range: a pack up to 2 MB is kept whole in the isolate, a larger one is
+read a few hundred bytes at a time.
+
+Measured on 2026-11-10 with the row's own code, against real hosts, R2 replaced by an in-memory bucket with the same
+range semantics (the same path runs in workerd in `plugins/git-native/live.test.ts`, which passes against GitLab):
+
+| remote | depth | objects | pack | clone | requests | first read | second read, new reader | third read, same reader |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| gitlab.com/gitlab-org/gitlab-runner | 5 | 2,420 | 4.5 MB | 4.9 s | 3 (4.6 MB) | 13 ms, 14 range reads, 92 KB | 4 ms, 12 reads, 5 KB | 0 ms, 0 reads |
+| gitea.com/gitea/act | 5 | 1,222 | 3.2 MB | 6.7 s | 3 (3.2 MB) | 8 ms, 7 reads, 49 KB | 1 ms, 5 reads, 5 KB | 0 ms, 0 reads |
+| gitlab.com/gitlab-org/gitlab-runner | 20 | 4,840 | 5.0 MB | 5.8 s | 3 (5.1 MB) | 21 ms, 12 reads, 176 KB | 3 ms, 10 reads, 5 KB | 0 ms, 0 reads |
+| gitlab.com/gitlab-org/gitlab-runner, history only | 5 | 553 | 96 KB | — | 3 | — | — | — |
+
+A cold read is the index (tens of KB) plus a few hundred bytes per object, never the whole pack. A second read in the
+same isolate is about 5 KB and no network. `diff` is 131 ms for two files on GitLab and 757 ms for 89 files on Gitea —
+the line diff, not the pack, is what costs.
+
+Three other numbers from the row:
+
+- **Refresh with an unchanged head:** 1.4 s, 2 requests, 94 KB, 0 R2 reads, 0 writes. **Refresh with a moved head:**
+  a full clone, because there is no `have`/negotiation yet.
+- **History-only clones work on both hosts.** The same GitLab repository at depth 5 is a 4.5 MB pack as a full clone
+  and a **96 KB** pack with `filter blob:none`; `log` and `diff` still answer (diff without patches) and `show` fetches
+  the one blob it needs — GitLab and Gitea both answer a bare `want <blob>`.
+- **Live test in workerd:** `XIN_LIVE=1` passes against `gitlab.com/gitlab-org/gitlab-runner` in 13.2 s for the whole
+  test (Durable Object boot, clone, three reads, a diff and a file).
+
+Still missing, by decision rather than by surprise: no incremental fetch, no private repositories (no credentials are
+sent), no working-tree diff and no locally computed blame. `diff` on a history-only clone reports which files changed
+and leaves the patch out. A repository too large for even a history-only clone is refused with a message.
 
 ## What the prototype does
 
@@ -129,14 +176,18 @@ Checked against git itself, not against itself:
 4. **No token and no rate limit.** Public repositories read with three unauthenticated requests, then locally. The GitHub API allows 60 requests an hour unauthenticated, and `git_blame` already needs a named credential.
 5. **A base for write.** Read-only was the prototype's limit, not the design's: adding a pack writer plus a `git-receive-pack` call is the missing function, not a new stack. Branch, commit and push become reachable from the same store.
 
-## What a real implementation still needs
+## What is still missing
 
-1. **Incremental fetch.** The prototype always clones from scratch; a refresh costs the full download again. Real code needs `have` lines or `deepen` against the stored refs.
-2. **Range reads.** A cold read loads the whole pack (72 MB for godot). R2 `get(key, { range })` with the idx offsets would make a `log` cost a few KB.
-3. **Refs and shallow state in SQLite** instead of a JSON object, and an object cache keyed by oid with a byte budget instead of a whole-pack LRU.
-4. **A size policy.** Refuse packs over roughly 80 MB, or use `filter=blob:none` (protocol v2 supports it; untested here) so a 330 MB repository becomes ~120 MB of commits and trees with blobs fetched on demand.
-5. **Auth, redirects and retries** for private repositories and for a rate-limited or flaky remote.
-6. **Tests, a catalog row and a spec section** — `docs/plan/architecture/16-git.md` currently says "no clone" under *Not added*.
+Four of the six things the prototype listed are now in the row: range reads, refs and the shallow boundary in SQLite,
+a pack ceiling with a history-only fallback, and tests plus a spec section. What is left:
+
+1. **Incremental fetch.** A moved head re-downloads the pack. `have` lines or a deepen against the stored head would
+   make an update cost the new objects only; nothing in the protocol blocks it, it is simply not written.
+2. **Private repositories.** The row sends no credentials and refuses a URL that carries them. A token would have to
+   come from the `secrets` service, per project, and the row would need to stop being public-only by construction.
+3. **A working-tree diff and local blame.** Both are reads the pack already supports; neither is exposed as a tool.
+4. **A tighter ceiling.** 80 MB is a policy set from the prototype's two data points (72 MB worked, 330 MB crashed
+   workerd), not a measured edge. The streamed cap has only been exercised with a 1.2 KB limit in a test.
 
 ## Where the cost or the limits make it a bad idea
 
@@ -148,9 +199,11 @@ Checked against git itself, not against itself:
 ## Reproducing
 
 ```bash
+bun scripts/gate.ts submit test --only=plugins/git-native          # the row: fixture remote, ceiling, offers
+XIN_LIVE=1 bun scripts/gate.ts submit test --only=plugins/git-native/live   # the row against gitlab.com
+
 cd test/git-native && bunx wrangler dev --config wrangler.jsonc --port 8801   # the prototype Worker, real R2
 curl 'http://127.0.0.1:8801/bench?repo=expressjs/express'                      # clone + log + show + diff, one request
-curl 'http://127.0.0.1:8801/clone?repo=chalk/chalk&mode=loose'                 # the per-object store, for comparison
 node test/git-native/bench-node.ts repo=expressjs/express impl=native          # the same code in Node, with CPU and heap
 ```
 

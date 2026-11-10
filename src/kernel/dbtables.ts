@@ -14,6 +14,9 @@ export const TABLE_OWNERS: Readonly<Record<string, string>> = {
   presets: "presets",
   conversation_presets: "presets",
   market_indexes: "market",
+  git_native_repo: "git-native",
+  git_native_ref: "git-native",
+  git_native_shallow: "git-native",
   market_history: "market",
 }
 

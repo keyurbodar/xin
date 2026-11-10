@@ -1,0 +1,23 @@
+{
+  "name": "xin-plugin-git-native",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native git in the Worker: clone a public repository of any host into R2 and read its history.",
+  "type": "module",
+  "xin": {
+    "plugins": {
+      "tool-git-native": {
+        "module": "./index.ts",
+        "title": "Native git tools",
+        "description": "Clone and read a public git repository of any host inside the Worker: history, a file at a revision, and a diff between two revisions."
+      }
+    },
+    "bundle": [
+      {
+        "id": "tool-git-native",
+        "plugin": "tool-git-native",
+        "disabled": true
+      }
+    ]
+  }
+}
