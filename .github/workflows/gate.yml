@@ -24,6 +24,9 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run fmt:check
       - run: bun run lint
+      # Backend only. web/ is a separate package with its own lockfile and is out of scope for this
+      # workflow: it is not installed or typechecked here, so a web type error does not fail this run.
+      # `bun run typecheck` covers both projects and is what the local gate runs.
       - run: bunx tsgo --noEmit -p tsconfig.json
       - run: bun run test
       - run: bun run bundle
