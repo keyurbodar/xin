@@ -22,10 +22,10 @@ const POLICY =
 
 const CREATE_DESCRIPTION =
   "Create a persisted goal that keeps this conversation working across automatic continuation rounds. " +
-  'Use it when the direct human request is a long-running objective, even if the user did not say "goal"; ' +
+  'Use it for a long-running objective from a direct human request, even without the word "goal"; ' +
   "not for single-turn work."
 
-const GET_DESCRIPTION = "Read the current conversation goal, including the id and revision that update_goal requires."
+const GET_DESCRIPTION = "Read the current goal, with the id and revision update_goal needs."
 
 const UPDATE_ACTIONS = ["edit", "pause", "resume", "complete", "blocked"] as const
 
@@ -59,9 +59,9 @@ export function apply(ctx: Context): void {
             objective: str({
               minLength: 1,
               maxLength: GOAL_OBJECTIVE_MAX,
-              description: "The concrete completion objective inferred from the direct human request.",
+              description: "The completion objective, from the human request.",
             }),
-            max_goal_rounds: opt(int({ minimum: 1, description: "Optional limit on automatic continuation rounds." })),
+            max_goal_rounds: opt(int({ minimum: 1, description: "Cap on automatic continuation rounds." })),
           }),
           execute: async (args, api) =>
             answer(
@@ -76,25 +76,19 @@ export function apply(ctx: Context): void {
         defineTool({
           name: "update_goal",
           description:
-            "Update the current goal. Call get_goal first and pass its exact id and revision. " +
-            "action edit, pause, and resume need a direct human request; complete and blocked are also " +
-            "allowed during an automatic goal round. blocked_reason is required for blocked and ignored otherwise; " +
-            "objective and max_goal_rounds affect only edit.",
+            "Update the current goal; call get_goal first for its id and revision. " +
+            "edit, pause and resume need a direct human request; complete and blocked are also " +
+            "allowed in an automatic goal round.",
           parameters: obj({
-            goal_id: str({ minLength: 1, description: "Exact id returned by get_goal." }),
-            revision: int({ minimum: 1, description: "Exact positive revision returned by get_goal." }),
+            goal_id: str({ minLength: 1, description: "id from get_goal." }),
+            revision: int({ minimum: 1, description: "revision from get_goal." }),
             action: oneOf(UPDATE_ACTIONS),
-            objective: opt(
-              str({
-                maxLength: GOAL_OBJECTIVE_MAX,
-                description: "Replacement objective; valid only with action edit.",
-              }),
-            ),
-            max_goal_rounds: opt(int({ minimum: 0, description: "Replacement cap; valid only with action edit." })),
+            objective: opt(str({ maxLength: GOAL_OBJECTIVE_MAX, description: "Only with edit." })),
+            max_goal_rounds: opt(int({ minimum: 0, description: "Only with edit." })),
             blocked_reason: opt(
               str({
                 maxLength: GOAL_REASON_MAX,
-                description: "Required only with action blocked: the concrete condition that blocks progress.",
+                description: "Required with blocked: the condition that blocks progress.",
               }),
             ),
           }),

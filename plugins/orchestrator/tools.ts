@@ -126,7 +126,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
   const delegate = defineTool({
     name: "delegate_task",
     description:
-      "Delegate a self-contained brief to a background thread. In a Space the thread runs in the Space's project; Puck must name one with project. The thread sees only the brief and its role. Its result arrives later as a report.",
+      "Delegate a self-contained brief to a background thread. A Space runs it in its own project; Puck must name one with project. The thread sees only the brief and its role; its result arrives later as a report.",
     parameters: obj({
       task: str({ minLength: 1 }),
       title: str({ minLength: 1, maxLength: 200 }),
@@ -315,7 +315,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
   const threadCreate = defineTool({
     name: "thread_create",
     description:
-      "Start a thread directly in a project's default space or a named space. The owner and Puck use this; a space coordinator uses delegate_task.",
+      "Start a thread directly in a project's default or named space. The owner and Puck use this; a space coordinator uses delegate_task.",
     parameters: obj({
       title: str({ minLength: 1, maxLength: 200 }),
       task: str({ minLength: 1 }),

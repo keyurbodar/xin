@@ -31,36 +31,29 @@ const MANAGEMENT_AUTHORIZATION =
 const SUBAGENT_REFUSAL = "A delegated subagent cannot use scheduled tasks."
 
 const CREATE_DESCRIPTION =
-  "Create a scheduled task. At each occurrence of rrule, prompt is delivered to the target conversation " +
-  "as a scheduled message from the user. The result includes the task id and the next occurrence as nextAt. " +
-  "After downtime, only the latest missed occurrence is delivered. Delivery can repeat after a crash."
+  "Create a scheduled task: at each occurrence of rrule the prompt arrives in the target as a message from the " +
+  "user. Returns the task id and nextAt. After downtime only the latest missed occurrence is delivered, and " +
+  "delivery can repeat after a crash."
 
-const LIST_DESCRIPTION =
-  "List scheduled tasks, including tasks created from other conversations. Active tasks come first, ordered by nextAt."
+const LIST_DESCRIPTION = "List scheduled tasks, including those from other conversations. Active first, by nextAt."
 
 const VIEW_DESCRIPTION = "View one scheduled task by id."
 
 const EDIT_DESCRIPTION =
-  "Update, pause, resume, or delete one scheduled task by id. Deleting does not retract queued messages."
+  "Update, pause, resume or delete one scheduled task by id. Delete does not retract queued messages."
 
-const TITLE_HELP =
-  `Task name of at most ${MAX_TITLE} characters in the user's language: action plus object. ` +
-  "Omit timing, status, ids, and bracketed suffixes."
+const TITLE_HELP = "Name in the user's language: action plus object. Omit timing, status, ids and bracketed suffixes."
 
 const RRULE_HELP =
-  "One DTSTART line, a newline, and one RRULE line. DTSTART is YYYYMMDDTHHMMSS, ending in Z for UTC or " +
-  "carrying TZID with an IANA time zone, for example DTSTART;TZID=Europe/Berlin:20260901T080000. " +
-  "A TZID rule keeps local clock time across daylight-saving changes. " +
-  "Supported frequencies are HOURLY, DAILY, WEEKLY and MONTHLY. " +
-  "Supported parts are FREQ, INTERVAL, COUNT, UNTIL, BYDAY, BYHOUR and BYMINUTE; HOURLY takes BYMINUTE only, " +
-  "and UNTIL is a UTC instant ending in Z. A one-time delivery is RRULE:FREQ=DAILY;COUNT=1. " +
-  'Example: "DTSTART;TZID=Europe/Berlin:20260901T080000\\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=8;BYMINUTE=0"'
+  "A DTSTART line, a newline, then an RRULE line. DTSTART is YYYYMMDDTHHMMSS, ending in Z for UTC or " +
+  "TZID=<IANA zone>, which keeps local clock time across daylight saving. Frequencies: HOURLY, DAILY, WEEKLY, " +
+  "MONTHLY. Parts: FREQ, INTERVAL, COUNT, UNTIL (a UTC instant ending in Z), BYDAY, BYHOUR, BYMINUTE; HOURLY " +
+  'takes BYMINUTE only. One delivery is RRULE:FREQ=DAILY;COUNT=1. Example: "DTSTART;TZID=Europe/Berlin:20260901T080000\\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=8;BYMINUTE=0"'
 
 const TARGET_HELP =
-  "this_session delivers to this conversation; new_once delivers to the same new conversation every time, " +
-  "opened at the first delivery; new opens a different new conversation for every delivery. " +
-  "Use this_session for reminders and follow-ups to this conversation; use new_once or new for independent work, " +
-  "such as a recurring report, and whenever the user asks for a new conversation."
+  "this_session: this conversation. new_once: one new conversation, reused at every delivery. new: a new " +
+  "conversation per delivery. Use this_session for reminders and follow-ups; new_once or new for independent " +
+  "work such as a recurring report, or when the user asks for a new conversation."
 
 export function apply(ctx: Context): void {
   const schedules = ctx.schedules
@@ -102,19 +95,15 @@ function listTool(schedules: SchedulesService) {
     name: "schedule_list",
     description: LIST_DESCRIPTION,
     parameters: obj({
-      active: opt(
-        bool({
-          description: "true for active tasks only; false for paused and ended tasks only; omitted for all tasks.",
-        }),
-      ),
+      active: opt(bool({ description: "true: active only. false: paused and ended only. Omitted: all." })),
       limit: opt(
         int({
           minimum: 1,
           maximum: MAX_LIST_LIMIT,
-          description: `Page size from 1 to ${MAX_LIST_LIMIT}; defaults to ${DEFAULT_LIST_LIMIT}.`,
+          description: `Page size 1 to ${MAX_LIST_LIMIT}; defaults to ${DEFAULT_LIST_LIMIT}.`,
         }),
       ),
-      offset: opt(int({ minimum: 0, description: "Number of tasks to skip; defaults to 0." })),
+      offset: opt(int({ minimum: 0, description: "Tasks to skip; defaults to 0." })),
     }),
     replay: "safe",
     execute: (args, api, context) =>
@@ -147,25 +136,15 @@ function editTool(schedules: SchedulesService) {
       action: oneOf(["update", "delete"] as const, {
         description: "update applies the provided fields, at least one; delete removes the task.",
       }),
-      title: opt(str({ minLength: 1, maxLength: MAX_TITLE, description: TITLE_HELP })),
-      prompt: opt(
-        str({ minLength: 1, maxLength: MAX_PROMPT, description: "New instruction delivered at each occurrence." }),
-      ),
+      title: opt(str({ minLength: 1, maxLength: MAX_TITLE, description: "As schedule_create." })),
+      prompt: opt(str({ minLength: 1, maxLength: MAX_PROMPT, description: "New instruction." })),
       rrule: opt(
         str({ minLength: 1, maxLength: MAX_RULE, description: "New recurrence in the schedule_create rrule format." }),
       ),
-      target: opt(
-        oneOf(TARGET_CHOICES, {
-          description:
-            "Omit to retain the destination. Providing target replaces it; new_once reserves a different conversation. " +
-            "Choices are the same as schedule_create.",
-        }),
-      ),
+      target: opt(oneOf(TARGET_CHOICES, { description: "Omit to keep the destination; else as schedule_create." })),
       active: opt(
         bool({
-          description:
-            "false pauses the task; true resumes only if its timing has a future occurrence. " +
-            "Otherwise provide a new rrule.",
+          description: "false pauses; true resumes only if a future occurrence remains, else send a new rrule.",
         }),
       ),
       expectedUpdatedAt: opt(
@@ -173,8 +152,7 @@ function editTool(schedules: SchedulesService) {
           minLength: 1,
           maxLength: 100,
           description:
-            "updatedAt from the latest result that returned this task; if the task changed after that result, " +
-            "the result is schedule_conflict and nothing changes.",
+            "updatedAt from this task's latest result; if it changed since, nothing changes and the result is schedule_conflict.",
         }),
       ),
     }),

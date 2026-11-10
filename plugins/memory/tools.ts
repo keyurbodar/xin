@@ -22,7 +22,7 @@ export function apply(ctx: Context): void {
 function remember(memory: MemoryService) {
   return defineTool({
     name: "remember",
-    description: "Save one durable fact about the owner or a project, so later turns can recall it.",
+    description: "Save one durable fact about the owner or a project, for later recall.",
     parameters: obj({
       text: str({ minLength: 1, maxLength: 2000 }),
       scope: opt(str({ pattern: SCOPE_PATTERN })),

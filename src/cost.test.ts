@@ -188,9 +188,9 @@ const TURN_TASKS: readonly TurnTask[] = [
     ],
     bound: {
       modelCalls: 4,
-      promptBytes: 87_000,
-      freshBytes: 24_000,
-      schemaBytes: 16_000,
+      promptBytes: 78_000,
+      freshBytes: 21_500,
+      schemaBytes: 14_500,
       toolResultBytes: 6_000,
       wallMs: 5_000,
     },
@@ -209,7 +209,7 @@ const TURN_TASKS: readonly TurnTask[] = [
       },
       { answer: "they add" },
     ],
-    bound: { modelCalls: 2, promptBytes: 43_000, freshBytes: 26_000, toolResultBytes: 8_400, wallMs: 5_000 },
+    bound: { modelCalls: 2, promptBytes: 38_500, freshBytes: 23_500, toolResultBytes: 8_000, wallMs: 5_000 },
   },
   {
     name: "a call that fails and retries",
@@ -220,7 +220,7 @@ const TURN_TASKS: readonly TurnTask[] = [
       { calls: [{ name: "read", args: { path: "/projects/p/a.ts" } }] },
       { answer: "read it" },
     ],
-    bound: { modelCalls: 3, promptBytes: 54_500, freshBytes: 20_500, toolResultBytes: 3_000, wallMs: 5_000 },
+    bound: { modelCalls: 3, promptBytes: 48_500, freshBytes: 18_300, toolResultBytes: 2_850, wallMs: 5_000 },
   },
 ]
 
@@ -246,9 +246,9 @@ describe("a turn, in what the model bills", () => {
     const warm = await measureTurn(stub, "warm-2", moves, { text: "read it again", carry: first.carry })
 
     expect(warm.modelCalls).toBe(2)
-    expect(warm.promptBytes).toBeLessThanOrEqual(50_000)
-    expect(warm.freshBytes).toBeLessThanOrEqual(3_100)
-    expect(warm.toolResultBytes).toBeLessThanOrEqual(2_800)
+    expect(warm.promptBytes).toBeLessThanOrEqual(45_500)
+    expect(warm.freshBytes).toBeLessThanOrEqual(2_900)
+    expect(warm.toolResultBytes).toBeLessThanOrEqual(2_700)
     for (const request of warm.requests) expect(request.systemEntries, "system entries").toBe(1)
   })
 })
