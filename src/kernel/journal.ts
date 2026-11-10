@@ -68,6 +68,10 @@ export class JournalStorage extends MemoryStorage {
   /** The last commit sequence applied, which the checkpoint and an import continue from. */
   #lastSeq = 0
   #live = false
+  /** The checkpoint in flight, which a commit waits for so the snapshot and its sequence describe the same state. */
+  #checkpointing: Promise<void> | undefined
+  /** Resolved while no checkpoint is in flight; a commit awaits it before applying. */
+  #gate: Promise<void> = Promise.resolve()
 
   private constructor(store: DurableObjectStorage) {
     super()
@@ -89,6 +93,9 @@ export class JournalStorage extends MemoryStorage {
     receive: (index: number, seq: Seq) => void,
     context: Context,
   ): Promise<CommitResult> {
+    // A checkpoint reads the whole state, so no commit may change it meanwhile: otherwise the snapshot can hold a
+    // commit whose sequence the checkpoint recorded earlier, and replaying that commit on a cold start throws.
+    while (this.#checkpointing !== undefined) await this.#gate
     const seqs: Seq[] = []
     const result = await super.commit(
       batches,
@@ -120,7 +127,12 @@ export class JournalStorage extends MemoryStorage {
     // answer and waits for the turn's boundary, or a long reply would write a row per second of streaming.
     if (boundary || config || this.#pendingBytes >= FLUSH_BYTES) {
       this.#flush()
-      if (this.#journalled >= CHECKPOINT_ROWS) await this.checkpoint(context)
+      if (this.#journalled >= CHECKPOINT_ROWS) {
+        // The rows are already durable, so the count restarts before the attempt: a checkpoint that throws must not
+        // make every later commit try it again, which would fail each one.
+        this.#journalled = 0
+        await this.checkpoint(context)
+      }
     }
     return result
   }
@@ -134,25 +146,40 @@ export class JournalStorage extends MemoryStorage {
   }
 
   /** Store the state and drop the journal prefix it covers, so a cold start replays at most one checkpoint's worth. */
-  async checkpoint(context: Context): Promise<void> {
+  checkpoint(context: Context): Promise<void> {
+    return (this.#checkpointing ??= this.#writeCheckpoint(context).finally(() => {
+      this.#checkpointing = undefined
+    }))
+  }
+
+  async #writeCheckpoint(context: Context): Promise<void> {
     this.#flush()
-    const seq = Math.max(this.#lastSeq, 1) as Seq
-    const parts = split(bytesOf({ seq, writes: await snapshot(this, context) }))
-    // One transaction: a crash between the delete and the insert must leave the previous checkpoint and its journal
-    // intact, or the home reopens with neither.
-    this.#store.transactionSync(() => {
-      this.#write("DELETE FROM pi_checkpoint_part", [])
-      this.#write("DELETE FROM pi_checkpoint", [])
-      this.#write("INSERT INTO pi_checkpoint (singleton, seq, parts, bytes) VALUES (1, ?, ?, ?)", [
-        seq,
-        parts.length,
-        parts.reduce((total, part) => total + part.length, 0),
-      ])
-      for (const [index, part] of parts.entries())
-        this.#write("INSERT INTO pi_checkpoint_part (part, data) VALUES (?, ?)", [index, part.buffer as ArrayBuffer])
-      this.#write("DELETE FROM pi_journal WHERE seq <= ?", [seq])
-    })
-    this.#journalled = 0
+    const gate = Promise.withResolvers<void>()
+    this.#gate = gate.promise
+    try {
+      // Captured after the snapshot: with commits gated for its whole length, the sequence and the state it stores
+      // are the same point in the journal.
+      const writes = await snapshot(this, context)
+      const seq = Math.max(this.#lastSeq, 1) as Seq
+      const parts = split(bytesOf({ seq, writes }))
+      // One transaction: a crash between the delete and the insert must leave the previous checkpoint and its journal
+      // intact, or the home reopens with neither.
+      this.#store.transactionSync(() => {
+        this.#write("DELETE FROM pi_checkpoint_part", [])
+        this.#write("DELETE FROM pi_checkpoint", [])
+        this.#write("INSERT INTO pi_checkpoint (singleton, seq, parts, bytes) VALUES (1, ?, ?, ?)", [
+          seq,
+          parts.length,
+          parts.reduce((total, part) => total + part.length, 0),
+        ])
+        for (const [index, part] of parts.entries())
+          this.#write("INSERT INTO pi_checkpoint_part (part, data) VALUES (?, ?)", [index, part.buffer as ArrayBuffer])
+        this.#write("DELETE FROM pi_journal WHERE seq <= ?", [seq])
+      })
+      this.#journalled = 0
+    } finally {
+      gate.resolve()
+    }
   }
 
   /** The journal owns its three tables, as pi's own storage owns its tables; the host migration list is for host data. */
@@ -189,10 +216,12 @@ export class JournalStorage extends MemoryStorage {
       this.#lastSeq = Math.max(this.#lastSeq, envelope.seq)
     }
     // A crash after the checkpoint but before its journal delete leaves rows the checkpoint now covers; replaying them
-    // would repeat a commit sequence, which MemoryStorage refuses.
+    // would repeat a commit sequence, which MemoryStorage refuses. A commit the checkpoint already holds is skipped,
+    // never replayed.
+    const covered = checkpoint?.seq ?? 0
     const rows = this.#read<JournalRow>(
       "SELECT seq, part, parts, bytes, data FROM pi_journal WHERE seq > ? ORDER BY seq, part",
-      [checkpoint?.seq ?? 0],
+      [covered],
     )
     for (const group of groups(rows)) {
       const first = group[0]
@@ -204,6 +233,7 @@ export class JournalStorage extends MemoryStorage {
         ),
       )
       for (const commit of envelope.commits) {
+        if (commit.seq <= covered) continue
         this.prepareCommit(commit.writes, commit.seq).apply()
         this.#learn(commit.writes)
         this.#lastSeq = Math.max(this.#lastSeq, commit.seq)

@@ -66,6 +66,54 @@ describe("Home host loop", () => {
     await eventually(stub, heartbeatCleared)
   })
 
+  it("answers a repair route when its journal cannot be read, then opens once it is dropped", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["noted"])
+      await home.chooseModel(FAUX_MODEL)
+      await home.submit("hello", "repair-1")
+      await home.harness.waitForIdle(context)
+    })
+    await runInDurableObject(stub, async (_home, state) => {
+      const data = new Uint8Array([0xff, 0xfe, 0x00])
+      state.storage.sql.exec(
+        "INSERT INTO pi_journal (seq, part, parts, bytes, data) VALUES (?, 0, 1, ?, ?)",
+        999_999,
+        data.length,
+        data.buffer,
+      )
+    })
+    await evictDurableObject(stub)
+
+    const failed = await stub.fetch("https://xin.test/v1/status")
+    expect(failed.status).toBe(503)
+    expect(await failed.json()).toMatchObject({ error: "boot_failed" })
+
+    const report = await stub.fetch("https://xin.test/v1/repair")
+    expect(report.status).toBe(200)
+    const diagnosis = await report.json<{ failure: string | null; journal: number }>()
+    expect(diagnosis.failure).toEqual(expect.any(String))
+    expect(diagnosis.journal).toBeGreaterThan(0)
+
+    const repaired = await stub.fetch(
+      new Request("https://xin.test/v1/repair", { method: "POST", body: JSON.stringify({ drop: "journal" }) }),
+    )
+    expect(repaired.status).toBe(200)
+    expect(await repaired.json()).toMatchObject({ failure: null, journal: 0 })
+
+    const opened = await stub.fetch("https://xin.test/v1/status")
+    expect(opened.status).toBe(200)
+  }, 30_000)
+
+  it("refuses to drop the journal of a home that is open", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, (home: Home) => home.root())
+    const reply = await stub.fetch(
+      new Request("https://xin.test/v1/repair", { method: "POST", body: JSON.stringify({ drop: "journal" }) }),
+    )
+    expect(reply.status).toBe(409)
+  })
+
   it("runs 10 conversations x 30 subrequesting tool calls inside one invocation", async () => {
     const stub = fresh()
     const threads = 10

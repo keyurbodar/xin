@@ -8,7 +8,7 @@ export type Timer = {
   fire(now: number): Promise<void>
 }
 
-type Batch = { wake: Wake | undefined; waiters: (() => void)[] }
+type Batch = { wake: Wake | undefined; waiters: PromiseWithResolvers<void>[] }
 
 /**
  * One alarm for every deadline: pi's next wake and each timer's due time.
@@ -57,10 +57,10 @@ export class Clock extends Service {
     const queued = this.#next
     if (queued !== undefined) {
       if (wake !== undefined) queued.wake = wake
-      queued.waiters.push(settled.resolve)
+      queued.waiters.push(settled)
       return settled.promise
     }
-    this.#next = { wake, waiters: [settled.resolve] }
+    this.#next = { wake, waiters: [settled] }
     if (!this.#running) {
       this.#running = true
       void this.#drain()
@@ -68,8 +68,16 @@ export class Clock extends Service {
     return settled.promise
   }
 
+  /** One timer that throws must not skip the others, and must not leave the alarm before its closing arm. */
   async fire(now: number): Promise<void> {
-    for (const timer of Array.from(this.timers)) await timer.fire(now)
+    for (const timer of Array.from(this.timers)) {
+      try {
+        await timer.fire(now)
+      } catch (error) {
+        // A timer's failure is its own: it is reported and the rest still fire, so the alarm reaches its closing arm.
+        this.ctx.logger.error(error)
+      }
+    }
   }
 
   async #drain(): Promise<void> {
@@ -78,12 +86,17 @@ export class Clock extends Service {
         const batch = this.#next
         if (batch === undefined) break
         this.#next = undefined
+        let failure: unknown
         try {
           await this.#apply(batch.wake)
-        } catch {
+        } catch (error) {
+          failure = error
           this.ctx.host.abort("alarm write failed")
         }
-        for (const resolve of batch.waiters) resolve()
+        for (const settled of batch.waiters) {
+          if (failure === undefined) settled.resolve()
+          else settled.reject(failure)
+        }
       }
     } finally {
       this.#running = false
@@ -97,7 +110,7 @@ export class Clock extends Service {
   async #apply(wake: Wake | undefined): Promise<void> {
     const harness = this.ctx.get("harness")
     const current = wake ?? (harness === undefined ? { active: true } : { ...harness.wake(), active: true })
-    const owned = harness === undefined ? [] : await Promise.all([...this.timers].map((timer) => timer.due()))
+    const owned = harness === undefined ? [] : await Promise.all([...this.timers].map((timer) => this.#due(timer)))
     const due = [current.at, ...owned].filter((at): at is number => at !== undefined)
     const storage = this.ctx.host.state.storage
     if (this.#armed === undefined) this.#armed = await storage.getAlarm()
@@ -123,5 +136,15 @@ export class Clock extends Service {
     if (this.#armed === at) return
     await storage.setAlarm(at)
     this.#armed = at
+  }
+
+  /** A timer's deadline is its own: one that cannot say when it is due leaves the others' deadlines standing. */
+  async #due(timer: Timer): Promise<number | undefined> {
+    try {
+      return await timer.due()
+    } catch (error) {
+      this.ctx.logger.error(error)
+      return undefined
+    }
   }
 }

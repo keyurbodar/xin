@@ -38,7 +38,7 @@ const Commit = obj({
 })
 const parseCommit = compile(Commit)
 
-export type WriteScope = (write: {
+export type FileScope = (target: {
   readonly actor: Actor
   readonly path: string
   readonly read: DocumentReader
@@ -64,18 +64,18 @@ export type FilesPlugin = {
 
 const isMe = (path: string): boolean => path === "/me" || path.startsWith("/me/")
 
-const coordinatorOnly: WriteScope = ({ actor, path }) => {
+const coordinatorOnly: FileScope = ({ actor, path }) => {
   if (!isMe(path)) return undefined
   if (actor.kind === "owner") return undefined
   if (actor.kind === "agent" && actor.conversationId === ROOT_CONVERSATION_ID) return undefined
-  return "only the coordinator may write /me"
+  return "only the coordinator may use /me"
 }
 
 /**
- * A thread writes only under its own project's folder. A project coordinator, the root chat and the owner
- * keep the older rule: everything except `/me` is open to them.
+ * A thread reaches only its own project's folder. A project coordinator, the root chat and the owner keep the older
+ * rule: everything except `/me` is open to them.
  */
-const projectScoped: WriteScope = async ({ actor, path, read }) => {
+const projectScoped: FileScope = async ({ actor, path, read }) => {
   const blocked = coordinatorOnly({ actor, path, read })
   if (blocked !== undefined) return blocked
   if (actor.kind !== "agent" || actor.conversationId === ROOT_CONVERSATION_ID) return undefined
@@ -85,18 +85,23 @@ const projectScoped: WriteScope = async ({ actor, path, read }) => {
   const project = workspace?.projects[thread.projectId]
   if (project === undefined) return `thread ${actor.conversationId} has no project`
   const prefix = `/projects/${project.slug}/`
-  return path.startsWith(prefix) ? undefined : `a thread writes only under ${prefix}`
+  return path.startsWith(prefix) ? undefined : `a thread may only use ${prefix}`
 }
 
 const agentActor = (conversationId: ConversationId): Actor => ({ kind: "agent", conversationId })
 
-function scoped(scope: WriteScope): Extension {
+/** The path pi resolves for a tool argument: unicode spaces become plain ones and one leading `@` is dropped. */
+function toolPath(path: string): string {
+  return path.replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ").replace(/^@/, "")
+}
+
+function scoped(scope: FileScope): Extension {
   const beforeTool: ToolHooks["beforeTool"] = async (call, api, toolContext) => {
-    if (call.name !== "write" && call.name !== "edit") return undefined
+    if (call.name !== "read" && call.name !== "write" && call.name !== "edit") return undefined
     const path = call.arguments.path
     if (typeof path !== "string") return undefined
     const cwd = (await api.snapshot(AgentDoc, api.conversationId, toolContext))?.cwd ?? "/"
-    const absolute = resolvePath(cwd, path)
+    const absolute = resolvePath(cwd, toolPath(path))
     if (absolute === undefined) return { block: "path escapes the files root" }
     const blocked = await scope({ actor: agentActor(api.conversationId), path: absolute, read: api })
     return blocked === undefined ? undefined : { block: blocked }
@@ -124,7 +129,7 @@ function rootedPath(path: string): string {
   return normalized
 }
 
-export function create(deps: FilesPort, scope: WriteScope = projectScoped): FilesPlugin {
+export function create(deps: FilesPort, scope: FileScope = projectScoped): FilesPlugin {
   const dirs = new Set<string>(["/"])
   const index = new FileIndex(deps.db)
   const envFor = (cwd: string | undefined): R2Env => new R2Env(deps.env.FILES, deps.db, { cwd: cwd ?? "/", dirs })

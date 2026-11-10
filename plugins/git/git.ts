@@ -171,11 +171,14 @@ function repoPath(repo: string): string {
   return `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`
 }
 
+/** A ref is one path segment or more, encoded: `..` would walk out of the repository's commits path. */
 function refPath(ref: string): string {
-  return ref
-    .split("/")
-    .map((part) => encodeURIComponent(part))
-    .join("/")
+  const parts = ref.split("/")
+  for (const part of parts) {
+    if (part === "" || part === "." || part === ".." || part.includes("\\") || part.includes("%"))
+      throw new Error(`the ref "${ref}" is invalid`)
+  }
+  return parts.map((part) => encodeURIComponent(part)).join("/")
 }
 
 function formatCommit(commit: CommitSummary): string {

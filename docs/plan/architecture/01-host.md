@@ -60,6 +60,8 @@ constructor:
     6 harness.resume() )
 ```
 
+A step that throws is caught like a failed required row: the home keeps its storage and answers `503 {error:"boot_failed"}` on every route except `POST /v1/repair`, which can drop the journal or the checkpoint and boot again (11).
+
 The event handlers:
 
 ```text
@@ -72,8 +74,8 @@ alarm():
   fired()                          // the runtime cleared the alarm it ran
   arm({...wake(), active:true})
   harness.resume()
-  clock.fire(now)                  // every timer's fire; intake dispatches its due items
-  arm(harness.wake())
+  clock.fire(now)                  // every timer's fire, each isolated: one that throws is logged, the rest still fire
+  arm(harness.wake())              // in a finally: the closing arm runs even if the body threw
 ```
 
 `arm()` folds every deadline into one alarm, and writes it only when it has to move:
@@ -81,10 +83,10 @@ alarm():
 ```text
 arm(wake):
   pi  = wake.at
-  due = min(pi, ...timer.due())          // the next deadline, if any
+  due = min(pi, ...timer.due())          // the next deadline, if any; a timer whose due() throws is logged and skipped
   due = none ? (wake.active ? keep : deleteAlarm())
              : (armed == due ? keep : setAlarm(due))
-  failed write → ctx.abort()             // restart, re-arm
+  failed write → ctx.abort(), and the caller's arm() rejects  // restart, re-arm
 ```
 
 Three rules keep the write count down without delaying work:

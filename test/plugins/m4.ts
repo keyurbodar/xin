@@ -18,7 +18,17 @@ function toolText(message: Message): string {
 }
 
 const step: FauxResponseStep = (context) => {
-  const match = /^m4 write (\S+)\n([\s\S]*)$/.exec(lastOwnerText(context.messages))
+  const prompt = lastOwnerText(context.messages)
+  const readOnly = /^m4 read (\S+)$/.exec(prompt)?.[1]
+  if (readOnly !== undefined) {
+    const lastOwner = context.messages.findLastIndex((message) => message.role === "user")
+    const results = context.messages.slice(lastOwner).filter((message) => message.role === "toolResult")
+    if (results.length === 0)
+      return fauxAssistantMessage([fauxToolCall("read", { path: readOnly })], { stopReason: "toolUse" })
+    const last = results.at(-1)
+    return fauxAssistantMessage(`read back: ${last === undefined ? "" : toolText(last)}`)
+  }
+  const match = /^m4 write (\S+)\n([\s\S]*)$/.exec(prompt)
   const path = match?.[1]
   const content = match?.[2]
   if (path === undefined || content === undefined) return fauxAssistantMessage("unscripted")

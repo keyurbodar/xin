@@ -128,7 +128,7 @@ describe("files", () => {
     })
 
     const texts = await runInDurableObject(stub, (home: Home) => toolTexts(home, id))
-    expect(texts.some((text) => text.includes("only the coordinator may write /me"))).toBe(true)
+    expect(texts.some((text) => text.includes("only the coordinator may use /me"))).toBe(true)
     expect(await rowOf("/me/escape.txt")).toBeUndefined()
   })
 
@@ -224,8 +224,61 @@ describe("files", () => {
     })
 
     const texts = await runInDurableObject(stub, (home: Home) => toolTexts(home, thread.id))
-    expect(texts.some((text) => text.includes("a thread writes only under /projects/hook/"))).toBe(true)
+    expect(texts.some((text) => text.includes("a thread may only use /projects/hook/"))).toBe(true)
     expect(await rowOf("/projects/outside/escape.txt")).toBeUndefined()
+  })
+
+  it("blocks a thread's pi read of /me and of another project", async () => {
+    const stub = owner()
+    const created = await cmd(stub, "thread-read-project", "project.create", { slug: "reader", name: "Reader" })
+    expect(created.ok, JSON.stringify(created)).toBe(true)
+    const project = created.result as { id: string }
+    const [thread] = await addThreads(stub, project.id, ["reader thread"], "/projects/reader")
+    if (thread === undefined) throw new Error("no thread")
+    expect((await put("/me/owner-only.txt", "owner secret")).status).toBe(200)
+    expect((await put("/projects/other/other-only.txt", "other secret")).status).toBe(200)
+
+    const read = async (path: string): Promise<string[]> => {
+      await runInDurableObject(stub, async (home: Home) => {
+        const conversation = await home.harness.conversation(thread.id, BACKGROUND_CONTEXT)
+        if (conversation === undefined) throw new Error("thread conversation disappeared")
+        await conversation.configure({ model: M4_MODEL }, BACKGROUND_CONTEXT)
+        await conversation.submit(
+          { type: "input", content: `m4 read ${path}`, requestId: `read-${crypto.randomUUID()}` },
+          BACKGROUND_CONTEXT,
+        )
+        await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+      })
+      return runInDurableObject(stub, (home: Home) => toolTexts(home, thread.id))
+    }
+
+    const me = await read("/me/owner-only.txt")
+    expect(me.some((text) => text.includes("only the coordinator may use /me"))).toBe(true)
+    expect(me.some((text) => text.includes("owner secret"))).toBe(false)
+
+    const other = await read("/projects/other/other-only.txt")
+    expect(other.some((text) => text.includes("a thread may only use /projects/reader/"))).toBe(true)
+    expect(other.some((text) => text.includes("other secret"))).toBe(false)
+  }, 30_000)
+
+  it("blocks a write to /me written with a leading @", async () => {
+    const stub = owner()
+    const id = await runInDurableObject(stub, async (home: Home) => {
+      const conversation = await home.harness.createConversation(
+        { ownership: { kind: "ownerless" }, agent: { model: M4_MODEL, cwd: "/projects/a" } },
+        BACKGROUND_CONTEXT,
+      )
+      await conversation.submit(
+        { type: "input", content: "m4 write @/me/at.txt\nblocked", requestId: `at-${crypto.randomUUID()}` },
+        BACKGROUND_CONTEXT,
+      )
+      await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+      return conversation.id
+    })
+
+    const texts = await runInDurableObject(stub, (home: Home) => toolTexts(home, id))
+    expect(texts.some((text) => text.includes("only the coordinator may use /me"))).toBe(true)
+    expect(await rowOf("/me/at.txt")).toBeUndefined()
   })
 
   it("lists a directory that exists only as row prefixes from a cold environment", async () => {
