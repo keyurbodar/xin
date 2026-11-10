@@ -207,7 +207,7 @@ curl 'http://127.0.0.1:8801/bench?repo=expressjs/express'                      #
 node test/git-native/bench-node.ts repo=expressjs/express impl=native          # the same code in Node, with CPU and heap
 ```
 
-`fmt`, `lint`, `types`, `bundle` and `test` all pass through the gate on this branch. The prototype is `test/git-native/` plus this report; the shipped row is `plugins/git-native/` with the `git_native` tables in `src/kernel/dbtables.ts` and the `xin-plugin-git-native` bundle in `xin.profile.json`. The only dependency change is `isomorphic-git` (used as the comparison engine, not as the implementation).
+`fmt`, `lint`, `types`, `bundle` and `test` all pass through the gate on this branch. The prototype is `test/git-native/` plus this report; the shipped row is `plugins/git-native/` with the `git_native` tables in `src/kernel/dbtables.ts` and the `xin-plugin-git-native` bundle in `xin.profile.json`. The only dependency change is the dev dependency `isomorphic-git` (used as the comparison engine, not as the implementation), so nothing in the deployed Worker imports it.
 
 ## Two surprises worth recording
 
