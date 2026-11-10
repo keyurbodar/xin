@@ -130,6 +130,39 @@ Capacity: nine providers total — seven managed Instabox hosts plus `vm14` and
 their dispatch is updated. The seven are **14 `small` or 21 `tiny`**, all above
 the 6 GiB spawn threshold with zero containers on every host.
 
+### How that compares to one boat `small`
+
+A boat `small` sandbox is **2 vCPU / 4 GB** (`boat new --type small`). An
+Instabox free machine is **4 vCPU / 8 GiB**, and free accounts cannot select the
+2/4 shape — that is Pro-only. The provider makes up for it by slicing each
+machine into containers:
+
+| Shape | Per host | Across 7 hosts | vCPU | RAM |
+|---|---:|---:|---:|---:|
+| boat `small` | — | 7 | 14 | 28 GiB |
+| orb `tiny` (1c/2g) | 3 | 21 | 21 | 42 GiB alloc |
+| orb `small` (2c/3g) | 2 | 14 | 28 | 42 GiB alloc |
+| orb at boat-small (2c/4g) | 1 | 7 | 14 | 28 GiB |
+
+Two 2c/4g orbs per host would need 8 GiB; the budget is host RAM − 1 GiB = 7 GiB,
+so only one fits. `small` at 3 GiB is the practical compromise: same CPU as boat
+`small`, 75% of the RAM, twice the count.
+
+Ceilings, in the order they bind:
+
+1. **Disk.** 20 GiB per host, ~5 GiB image, 0.5–2 GiB per orb, plus build cache.
+   Three orbs per host is the edge; `MIN_FREE_GIB=6` refuses past it.
+2. **RAM.** `tiny` at 2 GiB OOMs browser work — dof has 5 OOM kills, xin-b3 has 1.
+   Chrome/Playwright needs ~4 GiB, i.e. one large orb per host.
+3. **`maxRunMinutes: 480`.** Each machine stops after 8 h and needs a wake.
+4. **30-min idle suspend.** Without the keepalive Worker a quiet machine suspends
+   and its orbs pause.
+
+More capacity means more free accounts (one machine each, +2 `small` orbs) or
+restoring the disabled Pro workspace, which already carries `maxMachines: 500`,
+`maxRunning: 100`, `alwaysOn: true`, the 2/4 shape, and the suspended `t3dev`
+(8c/16g) machine.
+
 ## New-host setup (host-4 … host-7)
 
 Installed by `install-provider-on-host.sh`:
