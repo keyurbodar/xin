@@ -2,7 +2,7 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "c
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Conversation, ConversationId, EntryRecord } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
-import { eventually, fresh } from "../test/support.ts"
+import { cmd, eventually, fresh } from "../test/support.ts"
 import { FAUX_MODEL, type Home } from "../test/worker.ts"
 import { HEARTBEAT_MS } from "./host.ts"
 
@@ -55,6 +55,35 @@ describe("Home host loop", () => {
     expect(tables).not.toContain("market_versions")
     expect(tables).not.toContain("market_checks")
   })
+
+  it("drops the plugins table from a home that was created before migration 13", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      // The schema a home at the previous version has: step 2's table, and the singleton version row set back to 12.
+      await home.db.run(
+        "CREATE TABLE IF NOT EXISTS plugins (id TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, config TEXT NOT NULL DEFAULT '{}', sealed TEXT, state TEXT NOT NULL DEFAULT 'pending', error TEXT)",
+      )
+      await home.db.run("UPDATE host_migrations SET version = 12")
+    })
+    await cmd(stub, "upgrade-13", "system.restart", {})
+    // The restart reopens the home through step 13, which drops the table it was carrying.
+    await eventually(stub, async (_home, state) =>
+      state.storage.sql
+        .exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'plugins'")
+        .toArray()
+        .every((row) => row.name !== "plugins"),
+    )
+    const upgraded = await runInDurableObject(stub, async (_home, state) => ({
+      tables: state.storage.sql
+        .exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .toArray()
+        .map((row) => row.name),
+      version: state.storage.sql.exec<{ version: number }>("SELECT MAX(version) AS version FROM host_migrations").one(),
+    }))
+    expect(upgraded.tables).toContain("files")
+    expect(upgraded.version).toEqual({ version: 13 })
+    expect((await stub.fetch(new Request("https://xin.test/v1/status"))).status).toBe(200)
+  }, 20_000)
 
   it("answers a turn cut off by an eviction exactly once, after the alarm", async () => {
     const stub = fresh()

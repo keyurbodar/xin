@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import { type ConversationId, defineTask } from "@earendil-works/pi-durable"
+import { type ConversationId, defineTask, UserEntry } from "@earendil-works/pi-durable"
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import type { Notification } from "../../src/contracts/push.ts"
@@ -150,9 +150,15 @@ describe("schedules", () => {
       const first = dueOf(current, ANCHOR + 1)
       if (first === undefined) throw new Error("expected a due window")
       current = await sendDue(ports(home), current, first, ANCHOR)
+      // The run's own delivered message and its reply, then a later owner message placed above both, which is what the
+      // gateway's input submission writes.
       await root.submit({ type: "input", content: "scheduled prompt", requestId: "run-own" }, BACKGROUND_CONTEXT)
       await root.submit({ type: "write", requestId: "run-reply", entry: { kind: "pi.assistant" } }, BACKGROUND_CONTEXT)
-      await root.submit({ type: "input", content: "and one more thing", requestId: "run-later" }, BACKGROUND_CONTEXT)
+      await home.harness.commit(async (tx) => {
+        await tx.appendEntry(UserEntry, root.id, {
+          model: [{ role: "user", content: "and one more thing", timestamp: ANCHOR }],
+        })
+      }, BACKGROUND_CONTEXT)
       return (await runsOf(ports(home), current, new Map())).map((entry) => entry.outcome)
     })
     expect(outcomes).toEqual(["done"])
