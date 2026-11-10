@@ -96,6 +96,8 @@ describe("the journal", () => {
       const checking = storage.checkpoint(context)
       await storage.commit([[document(402)]], () => undefined, context)
       await checking
+      // The commit applied after the checkpoint's transaction, so its row is newer than the checkpoint and survives.
+      expect(journalRows(state.storage.sql), "the checkpoint truncated a commit that landed during it").toBe(1)
 
       const restored = await JournalStorage.open(state.storage, context)
       expect(await ids(restored)).toEqual([401])
