@@ -1,6 +1,6 @@
 # 20 · The web client
 
-This section decides how the first-party web client is built and what it talks to. The client is a SolidJS app in `web/`, a separate package from the Worker so the backend gate never compiles it.
+This section decides how the first-party web client is built and what it talks to. The client is a SolidJS app in `web/`, a separate package from the Worker: the gate typechecks it (`tsgo -p web/tsconfig.json`) and never bundles it, because the Worker's own bundle step builds `src/worker.ts` alone.
 
 **Hosting.** A deploy serves `web/dist` from the Worker's own origin as static assets, so the client, `/v1`, `/files` and the socket share one origin and no request crosses it. The assets arrive on the deploy command (`wrangler deploy --assets ./web/dist`), not in `wrangler.jsonc`, because the gate's `bundle` step runs on machines where `web/dist` does not exist.
 
@@ -31,8 +31,8 @@ Rows, chips and the sidebar use the **D Grid** family from `I2`: a 3×3 grid of 
 | --- | --- | --- |
 | framework | SolidJS + Vite | the same stack kiko ships, and fine-grained reactivity suits a streaming transcript |
 | styles | Tailwind 4 with `@theme` tokens | one token block generates every utility, so a hex exists once |
-| router | a 40-line hash router in `src/lib/router.ts` | six routes, no dependency, works on any static host |
-| icons | inline Lucide paths in `src/components/ui/icon.tsx` | the design names Lucide; inlining keeps the tree to the icons we use |
+| router | a 40-line hash router in `web/src/lib/router.ts` | six routes, no dependency, works on any static host |
+| icons | inline Lucide paths in `web/src/components/ui/icon.tsx` | the design names Lucide; inlining keeps the tree to the icons we use |
 | deltas | `@earendil-works/chord/delta` `applyImmutable` | the server sends the watch's decoded ops, so the client applies them with the library that defines them instead of a copy |
 | loading | `skullet` (measured skeletons), `torph` (text morph) | the owner's picks; a skeleton the size of the real content stops the layout shifting |
 | syntax | `sugar-high`, the highlighter kiko ships | C12 tints fenced code; it is a few KB, has no dependencies, and escapes the code it marks up |

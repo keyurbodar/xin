@@ -45,7 +45,7 @@ This is the same text whether the coordinator is idle (it starts a turn) or busy
 
 ## 6 · Dispatch: what a batch does to a running turn
 
-t3 has four dispatch modes: start, steer, restart, queue. The host picks the mode deterministically from `pi.live`. The LLM is never asked.
+t3 has four dispatch modes: start, steer, restart, queue. Xin implements start, steer and restart, and answers a batch of nothing but stop words with `stop` instead of queueing it; there is no `queue_after_active` mode in `plugins/intake/dispatch.ts`. The host picks the mode deterministically from `pi.live`. The LLM is never asked.
 
 ```mermaid
 flowchart TD
@@ -56,7 +56,6 @@ flowchart TD
   STOP -->|no| VIS{"0 tool calls AND 0 chars sent to UI?"}
   VIS -->|yes| RESTART["restart_active<br/>abort, resubmit prev and new rows"]
   VIS -->|no| STEER["steer_active<br/>whenBusy steer"]
-  STEER -.->|user chose send after| QUEUE["queue_after_active"]
 ```
 
 Restart is safe only before anything is visible or any side effect has happened. After that it would hide or repeat work, so the batch steers instead. Report and job batches always steer or start, and never restart.

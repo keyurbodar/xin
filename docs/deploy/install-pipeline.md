@@ -43,12 +43,11 @@ Owner ops, over the normal command route:
 
 ## Point the deploy hook at the workflow
 
-`deploy-hook` POSTs `{ "ref": "<ref>", "inputs": { "packages": "{\"add\":[...],\"remove\":[...]}" } }` to its `url` secret. `workflow_dispatch` accepts `inputs` only as a map of strings, so the list is serialised once into the `packages` input. Set the three secrets with owner ops:
+`deploy-hook` POSTs `{ "ref": "<ref>", "inputs": { "packages": "{\"add\":[...],\"remove\":[...]}" } }` to its `url` config. `workflow_dispatch` accepts `inputs` only as a map of strings, so the list is serialised once into the `packages` input. The row's config is set with `plugin.configure`, and any secret in it is a named credential written with `secret.set` and referenced as `${credential:REF}`:
 
 ```json
-{"id":"s1","op":"plugin.secret.set","args":{"id":"deploy-hook","key":"url","value":"https://api.github.com/repos/<owner>/<repo>/actions/workflows/install.yml/dispatches"}}
-{"id":"s2","op":"plugin.secret.set","args":{"id":"deploy-hook","key":"token","value":"<GitHub token with actions:write>"}}
-{"id":"s3","op":"plugin.secret.set","args":{"id":"deploy-hook","key":"ref","value":"main"}}
+{"id":"s1","op":"secret.set","args":{"ref":"deploy-hook.token","value":"<GitHub token with actions:write>"}}
+{"id":"s2","op":"plugin.configure","args":{"id":"deploy-hook","config":{"url":"https://api.github.com/repos/<owner>/<repo>/actions/workflows/install.yml/dispatches","token":"${credential:deploy-hook.token}","ref":"main"}}}
 ```
 
 The dispatch endpoint takes `{ "ref", "inputs" }`, and its `inputs.packages` value is the JSON list. The workflow therefore starts from that input, and falls back to fetching the list from the Worker when the input is empty.
@@ -140,4 +139,4 @@ When a later build boots, the `packages` row clears pending entries that build s
 
 - The workflow deploys the tree it built, not the tree it checked out: `bun.lock`, `src/catalog.gen.ts` and `xin.profile.json` change inside the job. Commit the regenerated files back to the deployed branch if the repository must match the running build; otherwise every dispatch resolves the specs again.
 - `bun scripts/gate.ts run` starts its own runner on the GitHub runner. It serializes the heavy steps on that machine; no box pool is needed.
-- Never put the deploy token, the owner token or the Cloudflare token in a command, a log line or the repository. The secret values above live only in GitHub and in the sealed `deploy-hook` row.
+- Never put the deploy token, the owner token or the Cloudflare token in a command, a log line or the repository. The secret values above live only in GitHub and in the sealed credentials table behind `secret.set`; the deploy-hook row holds only the `${credential:…}` template.

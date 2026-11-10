@@ -75,7 +75,7 @@ A capability is a typed registration on a kernel service. The closed set below i
 
 | Capability | Registration | What it does |
 | --- | --- | --- |
-| MCP server | `mcp-server` row | tools from a remote MCP server |
+| MCP server | `mcp-server` row | tools from a remote MCP server; the plugin is compiled into the build, but no bundle mounts it, so the shipped profile never starts one (see "MCP surface" below) |
 | model provider | `ctx.pi.models(fn)` / host providers | model catalog and credentials |
 | deployer | `ctx.deployer` | how `system.update` ships a build |
 
@@ -324,6 +324,8 @@ Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `
 **Events** are declared on Cordis `Events` with an `@mode` tag: `ops/before` (waterfall), `intake/batch` (waterfall), `thread/settled` (emit), `wire/typing` (parallel), `plugins/changed`, `credentials/updated`, `mcp/changed` (emit; the MCP surface changed, whether tools, resources or prompts). Turn, tool and request interception stays pi-native through extension hooks.
 
 **MCP surface.** `tool-mcp` installs one deferred tool per MCP tool. When a server declares the `resources` capability it also installs `mcp_resources` (list resources and templates) and `mcp_resource` (read one URI); when it declares `prompts` it installs `mcp_prompts` (list) and `mcp_prompt` (render with arguments). All four are read-only, carry the server name in their tool name, and sit behind `tool_search`. `mcp.list` reports the cached tool count and, when the capability is present, the resource, template and prompt counts; `mcp.resources { name }` and `mcp.prompts { name }` read the live lists. Disabling `tool-mcp` hides all of them together, and a preset that hides the row does the same. There is no sampling, elicitation or GET stream.
+
+**`mcp-server` ships unmounted.** The plugin is in the catalog — `xin-plugin-mcp`, module `server.ts`, config `{ name, url, headers? }` — but `xin-plugin-mcp`'s bundle lists only `mcp` and `tool-mcp`, so no row of `mcp-server` is in the composed tree and `plugin.list` never shows one. The shipped profile therefore configures no MCP server: `tool-mcp` is mounted and has nothing to expose, and `mcp.list` answers empty. Mounting a server takes a row, in one of two ways: add `{ "id": "mcp-server", "plugin": "mcp-server", "config": { "name": "…", "url": "…" } }` to `plugins/mcp/package.json`'s `xin.bundle` and regenerate the catalog (`bun scripts/xin.ts plugin generate`), which is a build and a deploy; or install a runtime bundle with `bundle.put { package, rows: [...] }`, which mounts live with no deploy (12).
 
 ## Plugin manager
 

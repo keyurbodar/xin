@@ -34,7 +34,7 @@ All four are read-only and `replay:"safe"`:
 
 ## Row and hiding
 
-The feature is a native Cordis package, `plugins/git`, with one row, `tool-git`, in the `xin-plugin-git` bundle. It injects `pi` and `secrets` and installs the `tool-git` extension. The row ships `disabled: true` in `xin.profile.json`: git access is an optional plugin and off by default, but the row is in the tree so `plugin.list` shows it and `plugin.enable` mounts it without a rebuild. Disabling the row again, or a preset that hides it, removes all four tools; a thread inherits its coordinator's preset.
+The feature is a native Cordis package, `plugins/git`, with one row, `tool-git`, in the `xin-plugin-git` bundle. It injects `pi` and `secrets` and installs the `tool-git` extension. The bundle declares the row `disabled: true` (`plugins/git/package.json`, carried into `src/catalog.gen.ts`): git access is an optional plugin and off by default, but the row is in the tree so `plugin.list` shows it and `plugin.enable` mounts it without a rebuild. `xin.profile.json` names the bundle and carries no row state; the disabled flag lives on the row. Disabling the row again, or a preset that hides it, removes all four tools; a thread inherits its coordinator's preset.
 
 ## Not added
 

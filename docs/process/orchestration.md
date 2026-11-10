@@ -62,4 +62,4 @@ for each wave in docs/plan/goal.md:
 
 ## Lane sizing
 
-A lane is one module plus its test, roughly 100–400 lines of change, with one proof test that the gate can run with `--only`. If the brief needs more than one spec section to explain, split the lane. Shared types (`src/ids.ts`, `src/wire-types.ts`) are written by the lead before a wave starts, so lanes import them rather than inventing their own.
+A lane is one module plus its test, roughly 100–400 lines of change, with one proof test that the gate can run with `--only`. If the brief needs more than one spec section to explain, split the lane. Shared types (`src/ids.ts`, `src/wire.ts`) are written by the lead before a wave starts, so lanes import them rather than inventing their own.

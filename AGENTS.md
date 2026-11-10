@@ -1,6 +1,6 @@
 # Xin
 
-Xin is a personal agent backend on Cloudflare: one Worker, one SQLite-backed Durable Object per owner (`Home`), and R2. It is built on `@earendil-works/pi-durable`, `pi-ai` and `pi-mcp` 1.5.0, and shaped like Claude Projects (a coordinator per project, plus threads). The client is a web app. This repo is the backend only.
+Xin is a personal agent backend on Cloudflare: one Worker, one SQLite-backed Durable Object per owner (`Home`), and R2. It is built on `@earendil-works/pi-durable`, `pi-ai` and `pi-mcp` 1.5.0, and shaped like Claude Projects (a coordinator per project, plus threads). The backend lives in `src/`, `plugins/` and `test/`; the first-party client is the web app in `web/` (102 tracked files), a separate package that the backend's `typecheck` step also covers and the deploy serves as static assets.
 
 **The spec is `docs/plan/`.** Start at `docs/plan/README.md`. When the code and the spec disagree, either fix the code or change the spec in the same commit and log why (see Decision log). Never let them drift silently.
 
@@ -20,7 +20,7 @@ Use these pstack skills. They are part of the workflow, not optional extras.
 |---|---|
 | Any non-trivial task (default entry point) | `/pstack:poteto-mode` |
 | Reading or editing any `.ts` file | `/pstack:typescript-best-practices` |
-| End of M0: create the project verification skill (`.claude/skills/verify-xin/`) that drives the real Worker through `wrangler dev` / vitest-pool-workers | `/pstack:create-verification-skill` |
+| End of M0: create the project verification skill (`.claude/skills/verify-xin/`) that drives the real Worker through `wrangler dev` and the gate | `/pstack:create-verification-skill` |
 | End of every later milestone: keep that skill and its feature map honest | `/pstack:maintain-verification-skill` |
 | Before a milestone counts as done: strict maintainability review of its diff | `/pstack:thermo-nuclear-code-quality-review` |
 | Before a milestone counts as done: remove comment noise | `/pstack:no-comments` |
@@ -32,7 +32,7 @@ Never run `tsc`, `tsgo`, `vitest`, `oxlint`, `biome`, `oxfmt` or `wrangler deplo
 
 ```bash
 id=$(bun scripts/gate.ts submit types test)       # enqueue, returns at once with a job id
-bun scripts/gate.ts submit test --only=src/gateway  # tests under a path
+bun scripts/gate.ts submit test --only=plugins/intake  # tests under a path
 bun scripts/gate.ts wait $id                       # block until that job's result (run it in the background)
 bun scripts/gate.ts status                         # runner, queue, recent results, free disk
 bun scripts/gate.ts [run] [steps]                  # lead only: run now, still behind the same lock
@@ -62,13 +62,13 @@ The full system is in `docs/process/orchestration.md`, and briefs use `docs/proc
 - TypeScript strict, ESM, Bun for scripts, wrangler for the Worker.
 - Schemas: `@earendil-works/pi-schema` builders (`obj`, `str`, `lit`, `union`, `opt`) and `compile()` for tool parameters, op args and wire frames. pi-ai 1.5 has no TypeBox `Type` export. Parse at the boundary (socket frame, HTTP body, tool args, stored JSON), then trust the types.
 - Branded ids (`ConversationId`, `ProjectId`, `ThreadId`, `CommandId`, `BatchId`). Discriminated unions with a `kind` field for states and frames. No `as` casts except right after validation. Exhaustive `switch` with `const _exhaustive: never`.
-- One module per mechanism, matching the spec's sections: `src/host.ts`, `src/db.ts`, `src/ops.ts`, `src/wire.ts`, `plugins/intake/gateway.ts`, `plugins/models/models.ts`, and the kernel services in `src/kernel/*`. `src/catalog.ts` lists only the required kernel rows. Every feature is a native Cordis plugin package under `plugins/<name>/` (or an installed dependency) with a `xin` field: `export const name`, `inject` and `apply(ctx)`. Only the file that declares `inject` reads `ctx.<service>`, and every service it reads is in that list; helpers take narrow ports. No plugin imports another plugin or touches its tables. `bun scripts/boundaries.ts` (in `lint`) enforces all of this (see `docs/plan/architecture/09-plugins.md`).
+- One module per mechanism, matching the spec's sections: `src/host.ts`, `src/db.ts`, `src/ops.ts`, `src/wire.ts`, `plugins/intake/gateway.ts`, `plugins/models/models.ts`, and the kernel services in `src/kernel/*`. `src/catalog.ts` lists the required kernel rows plus `tool-plugins`, which is not required and ships disabled. Every feature is a native Cordis plugin package under `plugins/<name>/` (or an installed dependency) with a `xin` field: `export const name`, `inject` and `apply(ctx)`. Only the file that declares `inject` reads `ctx.<service>`, and every service it reads is in that list; helpers take narrow ports. No plugin imports another plugin or touches its tables. `bun scripts/boundaries.ts` (in `lint`) enforces the last three: a relative import that reaches another plugin, a `ctx.<service>` read in a file without `inject` or without that service listed, and a SQL statement naming another plugin's table. One module per mechanism, the `xin` field, `export const name` and `apply(ctx)` are conventions the gate does not check (see `docs/plan/architecture/09-plugins.md`).
 - Host schema changes append a step to the migration list. Never edit an existing step.
 - Everything that runs after a crash must be safe to run twice. Use the derived idempotency keys from `docs/plan/architecture/02-state.md`.
 
 ## Tests and proof
 
-- Vitest with `@cloudflare/vitest-pool-workers` against the real Worker and DO: `runInDurableObject`, evictions, `runDurableObjectAlarm`. Use the pi-ai faux provider by default.
+- Vitest with `@cloudflare/vitest-plugin` (the Cloudflare Workers pool, `cloudflareTest` in `vitest.config.ts`) against the real Worker and DO: `runInDurableObject`, `evictDurableObject`, `runDurableObjectAlarm`. Use the pi-ai faux provider by default.
 - No mocks of pi, SQLite or the DO runtime. Only the model transport is faked.
 - Tests sit beside the source as `*.test.ts`. Assert observable behaviour (replies, stored state, frames), not internals.
 - **Live tests** (Xin talking to a real model) are opt-in (`XIN_LIVE=1`). They read `OPENCODE_API_KEY` from `.dev.vars` (provider `opencode-go`, a temporary key; use it as is). Model order is in `XIN_LIVE_MODELS`:
