@@ -1,7 +1,7 @@
 # Can a Worker run git itself? — prototype report
 
 **Date:** 2026-11-10
-**Branch:** `git/native-worker` (pushed; not for merge)
+**Branch:** `git/native-worker`, merged into `main` on 2026-11-10
 **Scope:** answer whether Xin can clone and read a git repository inside the Worker, with numbers, and what it would unlock — then build it as the optional row `tool-git-native` (`plugins/git-native/`).
 **Prototype:** `test/git-native/` — a standalone Worker (`wrangler.jsonc`, R2 binding `FILES`) driven over HTTP, plus a Node harness for CPU and heap. The prototype is the experiment; the row is the result, in [The row, as built](#the-row-as-built).
 
@@ -207,7 +207,7 @@ curl 'http://127.0.0.1:8801/bench?repo=expressjs/express'                      #
 node test/git-native/bench-node.ts repo=expressjs/express impl=native          # the same code in Node, with CPU and heap
 ```
 
-`fmt`, `lint`, `types`, `bundle` and `test` all pass through the gate on this branch. Nothing in `src/` or `plugins/` changed: the prototype is `test/git-native/` plus this report, and the only dependency change is `isomorphic-git` (used as the comparison engine, not as the implementation).
+`fmt`, `lint`, `types`, `bundle` and `test` all pass through the gate on this branch. The prototype is `test/git-native/` plus this report; the shipped row is `plugins/git-native/` with the `git_native` tables in `src/kernel/dbtables.ts` and the `xin-plugin-git-native` bundle in `xin.profile.json`. The only dependency change is `isomorphic-git` (used as the comparison engine, not as the implementation).
 
 ## Two surprises worth recording
 
