@@ -4,8 +4,13 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "define": { "import.meta.url": "\"file:///bundle/index.js\"" },
-  "durable_objects": { "bindings": [{ "name": "HOME", "class_name": "Home" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Home"] }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "HOME", "class_name": "Home" },
+      { "name": "PRODUCT", "class_name": "ProductHomeTest" },
+    ],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Home", "ProductHomeTest"] }],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "xin-files" }],
   "vars": { "OWNER_TOKEN": "test-owner-token", "KEK": "dGVzdC1rZWstMzItYnl0ZXMtbG9uZy0xMjM0NTY3ODk=" },
 }

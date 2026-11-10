@@ -4,6 +4,7 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { M5_MODEL } from "../test/plugins/m5.ts"
 import { eventually, fresh } from "../test/support.ts"
+import { freshProduct, measureTurn, type Move, productCmd, type ProductStub, type TurnCost } from "../test/turncost.ts"
 import { FAUX_MODEL, type Home } from "../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -133,5 +134,120 @@ describe("a message, in what the platform bills", () => {
     const readAfter = await read(stub)
     expect(after - before).toBeLessThanOrEqual(DELEGATE_ROW_BOUND)
     expect(readAfter - readBefore).toBeLessThanOrEqual(DELEGATE_READ_BOUND)
+  })
+})
+
+/** A file the edit tasks read and change: long enough that a read result is a real share of the prompt. */
+const source = (name: string): string =>
+  Array.from(
+    { length: 40 },
+    (_, index) => `export const ${name}${index} = (value: number): number => value + ${index}`,
+  ).join("\n")
+
+async function seed(stub: ProductStub, names: readonly string[]): Promise<void> {
+  for (const name of names) {
+    const put = await productCmd(stub, `seed-${name}`, "file.put", { path: `/projects/p/${name}`, text: source(name) })
+    expect(put.ok, JSON.stringify(put)).toBe(true)
+  }
+}
+
+const edit = (name: string): Move => ({
+  calls: [
+    { name: "edit", args: { path: `/projects/p/${name}`, edits: [{ oldText: `${name}0`, newText: `${name}0x` }] } },
+  ],
+})
+
+type TurnTask = {
+  readonly name: string
+  readonly text: string
+  readonly files: readonly string[]
+  readonly moves: readonly Move[]
+  readonly bound: Partial<Record<keyof TurnCost, number>>
+}
+
+/**
+ * What a turn costs the model, and the ceiling each number may not pass. The bounds sit just above the measured
+ * value, so a change that doubles one — a second copy of the prompt, a tool result echoed twice, an extra round
+ * trip, a plugin adding a kilobyte of declarations — fails here instead of on the owner's bill.
+ */
+const TURN_TASKS: readonly TurnTask[] = [
+  {
+    name: "a two-file edit",
+    text: "rename the first constant in a.ts and b.ts",
+    files: ["a.ts", "b.ts"],
+    moves: [
+      {
+        calls: [
+          { name: "read", args: { path: "/projects/p/a.ts" } },
+          { name: "read", args: { path: "/projects/p/b.ts" } },
+        ],
+      },
+      edit("a.ts"),
+      edit("b.ts"),
+      { answer: "renamed both" },
+    ],
+    bound: {
+      modelCalls: 4,
+      promptBytes: 87_000,
+      freshBytes: 24_000,
+      schemaBytes: 16_000,
+      toolResultBytes: 6_000,
+      wallMs: 5_000,
+    },
+  },
+  {
+    name: "a question over three files",
+    text: "what do a.ts, b.ts and c.ts add up to",
+    files: ["a.ts", "b.ts", "c.ts"],
+    moves: [
+      {
+        calls: [
+          { name: "read", args: { path: "/projects/p/a.ts" } },
+          { name: "read", args: { path: "/projects/p/b.ts" } },
+          { name: "read", args: { path: "/projects/p/c.ts" } },
+        ],
+      },
+      { answer: "they add" },
+    ],
+    bound: { modelCalls: 2, promptBytes: 43_000, freshBytes: 26_000, toolResultBytes: 8_400, wallMs: 5_000 },
+  },
+  {
+    name: "a call that fails and retries",
+    text: "read missing.ts",
+    files: ["a.ts"],
+    moves: [
+      { calls: [{ name: "read", args: { path: "/projects/p/missing.ts" } }] },
+      { calls: [{ name: "read", args: { path: "/projects/p/a.ts" } }] },
+      { answer: "read it" },
+    ],
+    bound: { modelCalls: 3, promptBytes: 54_500, freshBytes: 20_500, toolResultBytes: 3_000, wallMs: 5_000 },
+  },
+]
+
+describe("a turn, in what the model bills", () => {
+  for (const task of TURN_TASKS) {
+    it(`keeps ${task.name} within the measured turn bound`, async () => {
+      const stub = freshProduct()
+      await seed(stub, task.files)
+      const cost = await measureTurn(stub, `turn-${task.name.replaceAll(" ", "-")}`, task.moves, { text: task.text })
+
+      expect(cost.modelCalls, "model calls").toBe(task.moves.length)
+      for (const [key, limit] of Object.entries(task.bound))
+        expect(cost[key as keyof TurnCost], key).toBeLessThanOrEqual(limit)
+      for (const request of cost.requests) expect(request.systemEntries, "system entries").toBe(1)
+    })
+  }
+
+  it("adds only the new messages to a turn that follows another", async () => {
+    const stub = freshProduct()
+    await seed(stub, ["a.ts"])
+    const moves: readonly Move[] = [{ calls: [{ name: "read", args: { path: "/projects/p/a.ts" } }] }, { answer: "ok" }]
+    const first = await measureTurn(stub, "warm-1", moves, { text: "read a.ts" })
+    const warm = await measureTurn(stub, "warm-2", moves, { text: "read it again", carry: first.carry })
+
+    expect(warm.modelCalls).toBe(2)
+    expect(warm.promptBytes).toBeLessThanOrEqual(50_000)
+    expect(warm.freshBytes).toBeLessThanOrEqual(3_100)
+    expect(warm.toolResultBytes).toBeLessThanOrEqual(2_800)
   })
 })

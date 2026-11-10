@@ -143,3 +143,25 @@ describe("tool-mcp row", () => {
     expect(await lastToolResult(stub)).toEqual({ isError: false, text: "echo:again" })
   }, 30_000)
 })
+
+describe("tool_search without a deferred tool", () => {
+  it("offers no search tool while no server has connected, and offers it once one has", async () => {
+    const stub = fresh()
+    serve()
+    const offers = recordOffers()
+
+    script([offers.step("nothing to find")])
+    await turn(stub, "search-empty", { text: "find something", model: MCP_MODEL })
+    expect(offers.at(0).tools).not.toContain("tool_search")
+
+    expect(await cmd(stub, "search-add", "mcp.add", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
+      ok: true,
+      result: { name: "demo", tools: 1 },
+    })
+
+    offers.seen.length = 0
+    script([offers.step("found it")])
+    await turn(stub, "search-full", { text: "find something again", model: MCP_MODEL })
+    expect(offers.at(0).tools).toContain("tool_search")
+  }, 30_000)
+})

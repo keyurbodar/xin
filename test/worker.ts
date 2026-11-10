@@ -124,9 +124,35 @@ const TEST_ROWS = [
 
 export const FAUX_MODEL = { provider: "faux", modelId: "faux-1" } as const
 
+/** The shipped profile without the test rows, so a measurement sees the tool surface a real home offers. */
+const productFaux = fauxProvider({ provider: "faux-product", models: [{ id: "product-1" }] })
+
+export const PRODUCT_MODEL = { provider: "faux-product", modelId: "product-1" } as const
+
+export const respondProduct = (steps: readonly FauxResponseStep[]): void => productFaux.setResponses([...steps])
+
+export class ProductHomeTest extends ProductHome {
+  override providers(): readonly Provider[] {
+    return [productFaux.provider]
+  }
+
+  async submit(text: string, requestId: string): Promise<void> {
+    await this.arm({ ...this.harness.wake(), active: true })
+    await (await this.root()).submit({ type: "input", content: text, requestId }, BACKGROUND_CONTEXT)
+  }
+
+  async chooseModel(model: ModelRef): Promise<void> {
+    await (await this.root()).configure({ model }, BACKGROUND_CONTEXT)
+  }
+}
+
 type Script = { readonly responses: readonly string[]; readonly next: number }
 
-export type TestEnv = Omit<Env, "HOME"> & { readonly HOME: DurableObjectNamespace<Home>; readonly ECHO: Fetcher }
+export type TestEnv = Omit<Env, "HOME"> & {
+  readonly HOME: DurableObjectNamespace<Home>
+  readonly PRODUCT: DurableObjectNamespace<ProductHomeTest>
+  readonly ECHO: Fetcher
+}
 
 export class Home extends ProductHome {
   readonly hanging = Promise.withResolvers<void>()

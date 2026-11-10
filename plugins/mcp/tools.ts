@@ -6,10 +6,19 @@ export const name = "tool-mcp"
 export const inject = ["pi", "mcp"]
 
 export function apply(ctx: Context): void {
-  ctx.pi.install(createToolSearchExtension())
+  const search = createToolSearchExtension()
+  let stopSearch: (() => void) | undefined
 
+  /** `tool_search` is offered only while there is a deferred tool to find; with none it could only answer "no match". */
   const publish = (): void => {
-    ctx.pi.install(defineExtension({ name: "tool-mcp", tools: [...ctx.mcp.tools()] }))
+    const tools = [...ctx.mcp.tools()]
+    ctx.pi.install(defineExtension({ name: "tool-mcp", tools }))
+    if (tools.length === 0) {
+      stopSearch?.()
+      stopSearch = undefined
+      return
+    }
+    stopSearch ??= ctx.pi.install(search)
   }
 
   publish()
