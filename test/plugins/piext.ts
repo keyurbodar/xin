@@ -24,7 +24,7 @@ export type Observation = {
   readonly users: readonly string[]
 }
 
-export const observations: Observation[] = []
+const observations: Observation[] = []
 
 const textOf = (content: unknown): string => {
   if (typeof content === "string") return content

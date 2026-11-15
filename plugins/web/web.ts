@@ -293,7 +293,7 @@ async function request(url: string, signal: AbortSignal, accept: string): Promis
   }
 }
 
-export async function searchWeb(query: string, maxResults: number, signal: AbortSignal): Promise<SearchResult[]> {
+async function searchWeb(query: string, maxResults: number, signal: AbortSignal): Promise<SearchResult[]> {
   const url = new URL(SEARCH_URL)
   url.searchParams.set("q", query)
   url.searchParams.set("kl", "wt-wt")
@@ -304,7 +304,7 @@ export async function searchWeb(query: string, maxResults: number, signal: Abort
   return results
 }
 
-export async function fetchPage(raw: string, maxChars: number, signal: AbortSignal): Promise<FetchedPage> {
+async function fetchPage(raw: string, maxChars: number, signal: AbortSignal): Promise<FetchedPage> {
   const url = publicUrl(raw)
   const response = await request(
     url.toString(),

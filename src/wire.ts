@@ -39,7 +39,7 @@ export type Session = { readonly id: string; readonly since: number; readonly or
 
 const NO_ATTACHMENT: Attachment = { subs: [], id: "", since: 0, origin: "" }
 
-export function streamName(stream: Stream): string {
+function streamName(stream: Stream): string {
   return stream.kind === "home" ? "home" : `conv:${stream.id}`
 }
 

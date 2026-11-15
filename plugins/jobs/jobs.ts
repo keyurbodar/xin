@@ -33,8 +33,8 @@ import { spaceInScope, ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
-export const JOB_KIND = "xin.job"
-export const JOB_WAIT_MS = 8_000
+const JOB_KIND = "xin.job"
+const JOB_WAIT_MS = 8_000
 
 export type JobSummary = {
   readonly text: string
@@ -204,7 +204,7 @@ type Outcome =
   | { readonly status: "aborted" }
   | { readonly status: "orphaned"; readonly reason?: string }
 
-export function summaryOf(outcome: Outcome): JobSummary {
+function summaryOf(outcome: Outcome): JobSummary {
   switch (outcome.status) {
     case "completed": {
       const result = outcome.result

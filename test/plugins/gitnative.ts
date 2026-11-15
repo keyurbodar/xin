@@ -9,11 +9,8 @@ const HISTORY =
 
 export const FIXTURE_URL = "https://git.example.test/team/project.git"
 export const FIXTURE_HEAD = "78eb90fa1cc818751f849d8b2d1eea560e659cc3"
-export const FIXTURE_OLD = "ed70aeb3b1dae9513946268a6067bc64f44763cf"
 export const FIXTURE_BASE = "73e0127a380e963a05e1300dccd266eb57078837"
 export const NOTES_LINES = 300
-export const FULL_PACK_BYTES = 1639
-export const HISTORY_PACK_BYTES = 913
 
 const bytes = (base64: string): Uint8Array => Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
 

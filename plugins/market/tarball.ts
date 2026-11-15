@@ -2,8 +2,8 @@ import { compile, obj, opt, unknown } from "@earendil-works/pi-schema"
 import { messageOf } from "../../src/errors.ts"
 import { REQUEST_TIMEOUT_MS } from "./registry.ts"
 
-export const MAX_TARBALL_BYTES = 8 * 1024 * 1024
-export const MAX_UNPACKED_BYTES = 4 * 1024 * 1024
+const MAX_TARBALL_BYTES = 8 * 1024 * 1024
+const MAX_UNPACKED_BYTES = 4 * 1024 * 1024
 
 const BLOCK = 512
 const PACKAGE_PREFIX = "package/"

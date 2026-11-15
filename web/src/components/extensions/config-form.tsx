@@ -15,7 +15,7 @@ export type ConfigField = {
   | { readonly kind: "json"; readonly value: string }
 )
 
-export function humanize(key: string): string {
+function humanize(key: string): string {
   const spaced = key.replace(/([a-z0-9])([A-Z])/gu, "$1 $2").replace(/[_-]+/gu, " ").trim()
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
@@ -98,7 +98,7 @@ function fieldOf(
   }
 }
 
-export function fieldsOf(schema: unknown, config: Readonly<Record<string, unknown>>): readonly ConfigField[] {
+function fieldsOf(schema: unknown, config: Readonly<Record<string, unknown>>): readonly ConfigField[] {
   if (!isRecord(schema)) return []
   const refs = isRecord(schema["refs"]) ? schema["refs"] : undefined
   const uid = schema["uid"]

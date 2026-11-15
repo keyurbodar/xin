@@ -1,7 +1,7 @@
 import { createResource, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { cmd } from "../../lib/api.ts"
 import { setToken, token } from "../../lib/auth.ts"
-import { ago } from "../../lib/format.ts"
+import { ago, originLabel } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import { reauthorize, sessionId } from "../../state/connection.ts"
 import { errorMessage } from "../../state/extensions.ts"
@@ -12,11 +12,6 @@ import { Glyph } from "../extensions/glyph.tsx"
 import { Group, Row } from "./parts.tsx"
 
 /** A socket's only identity is the origin its browser sent; the scheme is noise in a row. */
-function originLabel(origin: string): string {
-  const stripped = origin.replace(/^https?:\/\//u, "").replace(/\/$/u, "")
-  return stripped === "" ? "No origin sent" : stripped
-}
-
 /** `own_••••••••Q7x2`: enough of both ends to recognise a token, nothing to reuse. */
 function masked(value: string): string {
   if (value.length <= 12) return "•".repeat(value.length)

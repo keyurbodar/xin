@@ -594,7 +594,7 @@ async function readSettings(db: SqliteDatabase): Promise<Settings> {
   return { defaults, favorites, recent }
 }
 
-export async function ownerDefaults(db: SqliteDatabase): Promise<ModelDefaults> {
+async function ownerDefaults(db: SqliteDatabase): Promise<ModelDefaults> {
   return (await readSettings(db)).defaults
 }
 

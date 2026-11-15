@@ -13,7 +13,7 @@ export function Wordmark(): JSX.Element {
   )
 }
 
-export function StepRail(props: { items: readonly RailItem[]; onSelect?: ((index: number) => void) | undefined }): JSX.Element {
+function StepRail(props: { items: readonly RailItem[]; onSelect?: ((index: number) => void) | undefined }): JSX.Element {
   const current = (): number => {
     const index = props.items.findIndex((item) => item.state === "current")
     return index === -1 ? 0 : index

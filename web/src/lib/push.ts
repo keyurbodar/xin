@@ -7,7 +7,7 @@ import {
   subscriptionOf,
 } from "../state/settings.ts"
 
-export const SERVICE_WORKER = "/sw.js"
+const SERVICE_WORKER = "/sw.js"
 
 export type PushChange =
   | { readonly kind: "subscribed"; readonly endpoint: string }

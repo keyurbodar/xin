@@ -32,7 +32,7 @@ export type RuntimeBundle = {
 
 export type BundleFailure = { readonly id: string; readonly error: string }
 
-export const BUNDLES_KEY = "plugins.bundles"
+const BUNDLES_KEY = "plugins.bundles"
 
 const SourceSchema = union([
   obj({ kind: lit("registry"), version: str({ minLength: 1 }), integrity: str({ minLength: 1 }) }),
@@ -44,7 +44,7 @@ export const BundleRowArg = obj({
   config: opt(unknown()),
   disabled: opt(bool()),
 })
-export const RuntimeBundleSchema = obj({
+const RuntimeBundleSchema = obj({
   package: str({ minLength: 1 }),
   source: SourceSchema,
   rows: arr(BundleRowArg),
@@ -64,7 +64,7 @@ export function normalizeRow(row: RowInput): BundleRow {
   }
 }
 
-export function toRuntimeBundle(value: unknown): RuntimeBundle | undefined {
+function toRuntimeBundle(value: unknown): RuntimeBundle | undefined {
   if (!bundleCheck.check(value)) return undefined
   const bundle = value as RuntimeBundleInput
   return {

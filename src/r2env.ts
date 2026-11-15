@@ -92,7 +92,7 @@ export function typeOf(path: string): string {
   return MIME[path.slice(dot + 1).toLowerCase()] ?? "application/octet-stream"
 }
 
-export function projectOf(path: string): string | null {
+function projectOf(path: string): string | null {
   const match = /^\/projects\/([^/]+)\//.exec(path)
   return match?.[1] ?? null
 }

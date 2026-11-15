@@ -37,7 +37,7 @@ export interface QuestionsService {
   respond(api: ToolExecutionApi, threadId: number, requestId: string, answer: string): Promise<RespondOutcome>
 }
 
-export const RequestSchema = obj({
+const RequestSchema = obj({
   kind: str({ minLength: 1 }),
   question: str(),
   options: opt(arr(str())),
@@ -51,7 +51,7 @@ export const AnsweredSchema = obj({
   answer: str(),
   answeredAt: num(),
 })
-export const RequestsSchema = obj({ open: map(RequestSchema), answered: map(AnsweredSchema) })
+const RequestsSchema = obj({ open: map(RequestSchema), answered: map(AnsweredSchema) })
 
 export type OpenRequest = Static<typeof RequestSchema>
 export type AnsweredRequest = Static<typeof AnsweredSchema>

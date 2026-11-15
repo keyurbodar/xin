@@ -7,12 +7,12 @@ export const SLUG = "^[a-z0-9]+(?:-[a-z0-9]+)*$"
 export const DEFAULT_DEADLINE_MS = 30 * 60_000
 export const DEFAULT_THREAD_LIMIT = 8
 
-export const RoleModelsSchema = obj({
+const RoleModelsSchema = obj({
   chat: opt(ModelRefSchema),
   thread: opt(ModelRefSchema),
   utility: opt(ModelRefSchema),
 })
-export const GitSettingsSchema = obj({
+const GitSettingsSchema = obj({
   repo: str({ pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" }),
   ref: opt(str({ minLength: 1, maxLength: 200 })),
 })

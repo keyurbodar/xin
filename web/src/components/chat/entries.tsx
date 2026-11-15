@@ -37,7 +37,7 @@ export type EntryItem =
 /** One entry becomes one stable group of items, cached by the entry view `For` keys on. */
 const ITEM_CACHE = new WeakMap<EntryView, readonly EntryItem[]>()
 
-export function entryItems(entry: EntryView): readonly EntryItem[] {
+function entryItems(entry: EntryView): readonly EntryItem[] {
   const cached = ITEM_CACHE.get(entry)
   if (cached !== undefined) return cached
   const items: EntryItem[] = []
@@ -154,7 +154,7 @@ function QuestionItem(props: {
 }
 
 /** One item of a transcript, shared by the project chat and a thread's own body. */
-export function EntryItemView(props: { item: EntryItem; context: ItemContext }): JSX.Element {
+function EntryItemView(props: { item: EntryItem; context: ItemContext }): JSX.Element {
   const glyph = (): JSX.Element => (
     <Show when={props.context.project} fallback={<span class="h-6 w-6 shrink-0" />}>
       {(project) => <ProjectGlyph slug={project().slug} name={project().name} goal={project().goal} class="mt-0.5" />}

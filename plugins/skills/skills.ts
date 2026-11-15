@@ -4,7 +4,7 @@ import { createContributions } from "../../src/contributions.ts"
 import { SKILL_NAME_PATTERN, type Skill, type SkillEntry, type SkillsService } from "../../src/contracts/skills.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
 
-export const BUNDLED_SKILLS: readonly string[] = []
+const BUNDLED_SKILLS: readonly string[] = []
 
 const NAME = new RegExp(SKILL_NAME_PATTERN)
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/
@@ -18,7 +18,7 @@ const unquote = (value: string): string =>
 
 export type ParsedSkill = { readonly ok: true; readonly skill: Skill } | { readonly ok: false; readonly error: string }
 
-export function parseSkill(markdown: string): ParsedSkill {
+function parseSkill(markdown: string): ParsedSkill {
   const match = FRONTMATTER.exec(markdown)
   if (match === null) return invalid("skill markdown must start with a --- frontmatter block")
   const fields = new Map<string, string>()
@@ -38,7 +38,7 @@ export function parseSkill(markdown: string): ParsedSkill {
 
 const invalid = (error: string): ParsedSkill => ({ ok: false, error })
 
-export function skillOf(markdown: string): Skill {
+function skillOf(markdown: string): Skill {
   const parsed = parseSkill(markdown)
   if (!parsed.ok) throw new Error(parsed.error)
   return parsed.skill
@@ -50,7 +50,7 @@ function parsePut(markdown: string): Skill {
   return parsed.skill
 }
 
-export function skillsFrom(markdowns: readonly string[]): readonly Skill[] {
+function skillsFrom(markdowns: readonly string[]): readonly Skill[] {
   const skills = new Map<string, Skill>()
   for (const markdown of markdowns) {
     const skill = skillOf(markdown)

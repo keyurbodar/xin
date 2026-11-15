@@ -94,7 +94,7 @@ export class RepoIndex {
 }
 
 /** A pack small enough to keep whole in the isolate, so a read inside it costs no R2 operation at all. */
-export const WHOLE_PACK_BYTES = 2 * 1048576
+const WHOLE_PACK_BYTES = 2 * 1048576
 const INDEX_CACHE = 8
 const PACK_CACHE = 4
 

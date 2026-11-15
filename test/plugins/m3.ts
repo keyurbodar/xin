@@ -4,7 +4,6 @@ import type { Catalog } from "../../src/kernel/loader.ts"
 import { lastOwnerText } from "../support.ts"
 
 export const WIDE_MODEL = { provider: "faux-alt", modelId: "alt-wide" } as const
-export const NARROW_MODEL = { provider: "faux-alt", modelId: "alt-narrow" } as const
 
 const alt = fauxProvider({
   provider: "faux-alt",

@@ -73,10 +73,6 @@ export function forgetProvider(): void {
   setConnectedProvider(undefined)
 }
 
-export function resetPush(): void {
-  setPushOutcome({ kind: "idle" })
-}
-
 export async function connectProvider(input: ProviderInput): Promise<ProviderResult> {
   switch (input.kind) {
     case "key":

@@ -3,7 +3,7 @@ import { Button as SharedButton } from "../ui/button.tsx"
 
 export { EmptyState } from "../ui/state.tsx"
 
-export function errorMessage(failure: unknown): string {
+function errorMessage(failure: unknown): string {
   return failure instanceof Error ? failure.message : String(failure)
 }
 

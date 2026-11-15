@@ -68,12 +68,3 @@ export function StatusGlyph(props: { state: VisualState; size?: number; class?: 
     </svg>
   )
 }
-
-/** The state word in its own colour, mono, for dense rows. */
-export function StateWord(props: { state: VisualState }): JSX.Element {
-  return (
-    <span class="font-mono text-[10px] uppercase tracking-[0.06em]" style={{ color: STATE_COLOR[props.state] }}>
-      {props.state}
-    </span>
-  )
-}

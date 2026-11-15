@@ -27,7 +27,7 @@ export function parseProfilePatch(value: unknown): Patch[] {
   })
 }
 
-export function parseOwnerPatch(value: unknown, warn: (message: string) => void): Patch[] {
+function parseOwnerPatch(value: unknown, warn: (message: string) => void): Patch[] {
   if (value === undefined) return []
   if (!Array.isArray(value)) {
     warn("stored owner patch is not a list; ignored")

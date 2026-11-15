@@ -53,7 +53,7 @@ const priceOf = (value: unknown): ModelPrice | undefined => {
   return { input, output }
 }
 
-export const parseModels = (value: unknown): ModelsList => {
+const parseModels = (value: unknown): ModelsList => {
   const root: Readonly<Record<string, unknown>> = isRecord(value) ? value : {}
   const listed: readonly unknown[] = Array.isArray(root["models"]) ? root["models"] : []
   return {
@@ -181,7 +181,7 @@ function bucketOf(entry: unknown): UsageBucket {
   }
 }
 
-export const parseUsage = (value: unknown): UsageSummary => {
+const parseUsage = (value: unknown): UsageSummary => {
   if (!isRecord(value)) return { recorded: false }
   const spend = numberFrom(value, ["spend"])
   if (spend === undefined) return { recorded: false }
@@ -261,7 +261,7 @@ export type SystemVersion = {
   readonly rows: readonly { readonly id: string; readonly state: string }[]
 }
 
-export const parseSystemVersion = (value: unknown): SystemVersion => {
+const parseSystemVersion = (value: unknown): SystemVersion => {
   const root: Readonly<Record<string, unknown>> = isRecord(value) ? value : {}
   const rowList: readonly unknown[] = Array.isArray(root["rows"]) ? root["rows"] : []
   const bundleList: readonly unknown[] = Array.isArray(root["bundles"]) ? root["bundles"] : []
@@ -305,7 +305,7 @@ export type SystemMetrics = {
   readonly pushDevices: number
 }
 
-export const parseSystemMetrics = (value: unknown): SystemMetrics => {
+const parseSystemMetrics = (value: unknown): SystemMetrics => {
   const root = isRecord(value) ? value : {}
   const rows = isRecord(root["rows"]) ? root["rows"] : {}
   const count = (candidate: unknown): number => (typeof candidate === "number" ? candidate : 0)
@@ -338,7 +338,7 @@ export async function systemLogs(): Promise<readonly LogEntry[]> {
 
 export type Session = { readonly id: string; readonly since: number; readonly origin: string }
 
-export const parseSessions = (value: unknown): readonly Session[] =>
+const parseSessions = (value: unknown): readonly Session[] =>
   (Array.isArray(value) ? value : []).flatMap((entry) => {
     if (!isRecord(entry)) return []
     const id = entry["id"]
@@ -389,7 +389,7 @@ export type NotifyKind = "waiting" | "finished" | "failed" | "spend" | "schedule
 
 export type NotifyPrefs = Readonly<Record<NotifyKind, boolean>>
 
-export const parseNotifyPrefs = (value: unknown): NotifyPrefs => {
+const parseNotifyPrefs = (value: unknown): NotifyPrefs => {
   const root = isRecord(value) ? value : {}
   return {
     waiting: root["waiting"] !== false,
@@ -402,7 +402,7 @@ export const parseNotifyPrefs = (value: unknown): NotifyPrefs => {
 
 export const notifyPrefs: RemoteHandle<NotifyPrefs> = remote(() => cmd("notify.prefs"), parseNotifyPrefs)
 
-export const DEFAULT_NOTIFY: NotifyPrefs = { waiting: true, finished: true, failed: true, spend: true, schedule: false }
+const DEFAULT_NOTIFY: NotifyPrefs = { waiting: true, finished: true, failed: true, spend: true, schedule: false }
 
 /** The prefs a switch shows: the server's once they arrive, all on until then. */
 export function notifyNow(): NotifyPrefs {
@@ -419,7 +419,7 @@ export type PushSubscriptionKeys = { readonly p256dh: string; readonly auth: str
 
 export type OwnerSettings = { readonly name: string; readonly instructions: string }
 
-export const parseOwner = (value: unknown): OwnerSettings => {
+const parseOwner = (value: unknown): OwnerSettings => {
   const root = isRecord(value) ? value : {}
   return {
     name: typeof root["name"] === "string" ? root["name"] : "",
@@ -444,9 +444,9 @@ export function ownerName(): string {
 
 export type QuietHours = { readonly enabled: boolean; readonly start: number; readonly end: number }
 
-export const DEFAULT_QUIET: QuietHours = { enabled: false, start: 1320, end: 420 }
+const DEFAULT_QUIET: QuietHours = { enabled: false, start: 1320, end: 420 }
 
-export const parseQuiet = (value: unknown): QuietHours => {
+const parseQuiet = (value: unknown): QuietHours => {
   const root = isRecord(value) ? value : {}
   const start = root["start"]
   const end = root["end"]
@@ -466,7 +466,7 @@ export async function setQuietHours(patch: Partial<QuietHours>): Promise<void> {
 
 export type PushDevice = { readonly endpoint: string; readonly origin: string }
 
-export const parsePushDevices = (value: unknown): readonly PushDevice[] =>
+const parsePushDevices = (value: unknown): readonly PushDevice[] =>
   (Array.isArray(value) ? value : []).flatMap((entry) => {
     if (!isRecord(entry)) return []
     const endpoint = entry["endpoint"]

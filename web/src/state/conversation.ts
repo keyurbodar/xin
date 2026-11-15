@@ -170,7 +170,7 @@ function contentText(content: unknown): string {
   return text
 }
 
-export function messageText(message: ChatMessage): string {
+function messageText(message: ChatMessage): string {
   return contentText(message.content)
 }
 
@@ -208,7 +208,7 @@ export function delegatedThreads(entries: readonly EntryView[]): ReadonlyMap<str
   return links
 }
 
-export function parseAttachments(value: unknown): readonly Attachment[] {
+function parseAttachments(value: unknown): readonly Attachment[] {
   return listOf(value).flatMap((entry) => {
     const raw = recordOf(entry)
     const path = strOf(raw?.path)

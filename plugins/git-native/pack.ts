@@ -23,9 +23,6 @@ export const memorySource = (pack: Uint8Array): ByteSource => ({
 
 export type Sha1 = (data: Uint8Array) => Promise<string>
 
-/** SHA-1 through Node's binding, for scripts and tests. A Worker passes `crypto.subtle` instead. */
-export const nodeSha1: Sha1 = async (data) => createHash("sha1").update(data).digest("hex")
-
 export const subtleSha1: Sha1 = async (data) => {
   const digest = await crypto.subtle.digest("SHA-1", data)
   let out = ""
@@ -73,8 +70,8 @@ export type Entry = {
   readonly baseOid: string | undefined
 }
 
-export const PACK_HEADER = 12
-export const PACK_TRAILER = 20
+const PACK_HEADER = 12
+const PACK_TRAILER = 20
 
 /** How many bytes of the pack a zlib stream occupies, without keeping its output. */
 function streamLength(pack: Uint8Array, start: number): number {
@@ -87,7 +84,7 @@ function streamLength(pack: Uint8Array, start: number): number {
 }
 
 /** Reads every object header in one sequential pass, without keeping any object. */
-export function scan(pack: Uint8Array): Entry[] {
+function scan(pack: Uint8Array): Entry[] {
   const view = new DataView(pack.buffer, pack.byteOffset, pack.byteLength)
   if (view.getUint32(0) !== 0x5041434b) throw new Error("not a git packfile")
   const count = view.getUint32(8)

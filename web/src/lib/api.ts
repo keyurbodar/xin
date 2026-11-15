@@ -52,7 +52,6 @@ export class Streams {
   #ws: WebSocket | undefined
   #subs = new Map<string, Set<Subscription>>()
   #retry = 0
-  #closed = false
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
   readonly #onSession: (socket: string | undefined) => void
 
@@ -79,7 +78,7 @@ export class Streams {
   }
 
   open(): void {
-    if (this.#ws !== undefined || this.#closed) return
+    if (this.#ws !== undefined) return
     this.#onStatus("connecting")
     const url = new URL("/v1/socket", location.href)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
@@ -100,12 +99,6 @@ export class Streams {
     socket.addEventListener("error", () => socket.close())
   }
 
-  close(): void {
-    this.#closed = true
-    this.#ws?.close()
-    this.#ws = undefined
-  }
-
   /** Drops the socket so the next handshake carries the current token; subscriptions survive the bounce. */
   reconnectNow(): void {
     this.#retry = 0
@@ -113,10 +106,15 @@ export class Streams {
   }
 
   #reconnect(): void {
-    if (this.#closed) return
     const delay = Math.min(15_000, 500 * 2 ** this.#retry)
     this.#retry += 1
-    setTimeout(() => this.open(), delay)
+    setTimeout(() => this.#openWhenVisible(), delay)
+  }
+
+  /** A hidden tab waits to be seen before it dials again, so a dead socket in a background tab costs no requests. */
+  #openWhenVisible(): void {
+    if (document.visibilityState === "visible") this.open()
+    else document.addEventListener("visibilitychange", () => this.#openWhenVisible(), { once: true })
   }
 
   #send(frame: Record<string, unknown>): void {

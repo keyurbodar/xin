@@ -5,12 +5,12 @@ const TOKEN_BYTES = 32
 const encoder = new TextEncoder()
 
 /** A fresh owner token: the prefix marks what it is, the body is 32 random bytes in URL-safe base64. */
-export function mintToken(): string {
+function mintToken(): string {
   return `own_${base64url(crypto.getRandomValues(new Uint8Array(TOKEN_BYTES)))}`
 }
 
 /** What the store keeps: the digest, never the token. */
-export async function hashToken(token: string): Promise<string> {
+async function hashToken(token: string): Promise<string> {
   return base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(token))))
 }
 

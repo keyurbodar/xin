@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js"
 import { cmd, OpError } from "../lib/api.ts"
-import { isRecord, listOf, numOf, strOf } from "../lib/parse.ts"
+import { isRecord, listOf, numOf, stringsOf, strOf } from "../lib/parse.ts"
 
 export { isRecord }
 
@@ -183,7 +183,7 @@ function layerOf(value: unknown): Layer {
   }
 }
 
-export function rowStateOf(value: unknown): RowState {
+function rowStateOf(value: unknown): RowState {
   if (!isRecord(value)) return { kind: "pending" }
   const error = strOf(value["error"])
   switch (value["kind"]) {
@@ -217,13 +217,13 @@ function parseRow(item: Readonly<Record<string, unknown>>): PluginRow | undefine
   }
 }
 
-export const parseRows = (value: unknown): readonly PluginRow[] =>
+const parseRows = (value: unknown): readonly PluginRow[] =>
   records(value).flatMap((item) => {
     const row = parseRow(item)
     return row === undefined ? [] : [row]
   })
 
-export const parseCatalog = (value: unknown): readonly CatalogEntry[] =>
+const parseCatalog = (value: unknown): readonly CatalogEntry[] =>
   records(value).flatMap((item) => {
     const name = strOf(item["name"])
     if (name === undefined) return []
@@ -251,7 +251,7 @@ function parseBundle(item: Readonly<Record<string, unknown>>): BundleView | unde
   return {
     package: name,
     source: sourceOf(item["source"]),
-    requires: stringList(item["requires"]),
+    requires: stringsOf(item["requires"]),
     rows: records(item["rows"]).flatMap((row) => {
       const id = strOf(row["id"])
       return id === undefined ? [] : [{ id, state: rowStateOf(row["state"]) }]
@@ -263,7 +263,7 @@ function parseBundle(item: Readonly<Record<string, unknown>>): BundleView | unde
   }
 }
 
-export const parsePackages = (value: unknown): Packages => {
+const parsePackages = (value: unknown): Packages => {
   const root: Readonly<Record<string, unknown>> = isRecord(value) ? value : {}
   const pending: Readonly<Record<string, unknown>> = isRecord(root["pending"]) ? root["pending"] : {}
   return {
@@ -273,20 +273,14 @@ export const parsePackages = (value: unknown): Packages => {
       return [{ package: name, version: strOf(item["version"]) ?? "dev" }]
     }),
     pending: {
-      add: stringList(pending["add"]),
-      remove: stringList(pending["remove"]),
+      add: stringsOf(pending["add"]),
+      remove: stringsOf(pending["remove"]),
     },
     bundles: records(root["bundles"]).flatMap((item) => {
       const bundle = parseBundle(item)
       return bundle === undefined ? [] : [bundle]
     }),
   }
-}
-
-function stringList(value: unknown): readonly string[] {
-  if (!Array.isArray(value)) return []
-  const list: readonly unknown[] = value
-  return list.flatMap((entry) => strOf(entry) ?? [])
 }
 
 function marketStatusOf(value: unknown): MarketStatus {
@@ -325,7 +319,7 @@ function repositoryOf(value: unknown): string | undefined {
   return strOf(value)
 }
 
-export const parseMarket = (value: unknown): readonly MarketSummary[] => {
+const parseMarket = (value: unknown): readonly MarketSummary[] => {
   const root: Readonly<Record<string, unknown>> = isRecord(value) ? value : {}
   return records(root["entries"]).flatMap((item) => {
     const summary = parseSummary(item)
@@ -333,7 +327,7 @@ export const parseMarket = (value: unknown): readonly MarketSummary[] => {
   })
 }
 
-export const parseMarketDetail = (value: unknown): MarketDetail | undefined => {
+const parseMarketDetail = (value: unknown): MarketDetail | undefined => {
   if (!isRecord(value)) return undefined
   const name = strOf(value["name"])
   if (name === undefined) return undefined
@@ -356,7 +350,7 @@ export const parseMarketDetail = (value: unknown): MarketDetail | undefined => {
       ]
     }),
     readme: strOf(value["readme"]),
-    requires: stringList(value["requires"]),
+    requires: stringsOf(value["requires"]),
     rows: records(value["rows"]).flatMap((item) => {
       const id = strOf(item["id"])
       const plugin = strOf(item["plugin"])
@@ -366,7 +360,7 @@ export const parseMarketDetail = (value: unknown): MarketDetail | undefined => {
   }
 }
 
-export const parseInstall = (value: unknown): InstallResult => {
+const parseInstall = (value: unknown): InstallResult => {
   const root: Readonly<Record<string, unknown>> = isRecord(value) ? value : {}
   const raw = root["application"]
   const application = raw === "applied" || raw === "pending" || raw === "failed" ? raw : "failed"
@@ -383,7 +377,7 @@ export const parseInstall = (value: unknown): InstallResult => {
   }
 }
 
-export const parseSkills = (value: unknown): readonly SkillRow[] =>
+const parseSkills = (value: unknown): readonly SkillRow[] =>
   records(value).flatMap((item) => {
     const name = strOf(item["name"])
     if (name === undefined) return []
@@ -398,7 +392,7 @@ export type PresetList = {
   readonly conversations: readonly PresetSelection[]
 }
 
-export const parsePresets = (value: unknown): PresetList => {
+const parsePresets = (value: unknown): PresetList => {
   const root: Readonly<Record<string, unknown>> = isRecord(value) ? value : {}
   const fallback = strOf(root["default"])
   const presets = records(root["presets"]).flatMap((item): readonly PresetRow[] => {
@@ -410,7 +404,7 @@ export const parsePresets = (value: unknown): PresetList => {
         id,
         name: strOf(item["name"]) ?? id,
         description: strOf(item["description"]),
-        plugins: plugins === "all" ? "all" : stringList(plugins),
+        plugins: plugins === "all" ? "all" : stringsOf(plugins),
         isDefault: fallback === undefined ? false : fallback === id,
       },
     ]
@@ -423,7 +417,7 @@ export const parsePresets = (value: unknown): PresetList => {
   return { presets, default: fallback, conversations }
 }
 
-export const parseServers = (value: unknown): readonly McpServer[] =>
+const parseServers = (value: unknown): readonly McpServer[] =>
   records(value).flatMap((item) => {
     const name = strOf(item["name"])
     if (name === undefined) return []
@@ -472,7 +466,7 @@ function parsedVersion(text: string): ParsedVersion {
   return { numbers, prerelease: tail.length > 0 }
 }
 
-export function compareVersions(left: string, right: string): number {
+function compareVersions(left: string, right: string): number {
   const a = parsedVersion(left)
   const b = parsedVersion(right)
   for (let index = 0; index < 3; index += 1) {
@@ -539,7 +533,7 @@ export async function refreshMarket(): Promise<RefreshResult> {
 
 export type Prompt = { readonly name: string; readonly description?: string | undefined; readonly text: string }
 
-export const parsePrompts = (value: unknown): readonly Prompt[] =>
+const parsePrompts = (value: unknown): readonly Prompt[] =>
   (Array.isArray(value) ? value : []).flatMap((entry) => {
     if (!isRecord(entry)) return []
     const name = strOf(entry["name"])
@@ -656,7 +650,7 @@ export async function removeSkill(name: string): Promise<void> {
   await skills.reload()
 }
 
-export function frontmatterName(markdown: string): string {
+function frontmatterName(markdown: string): string {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(markdown.trimStart())
   if (match === null) return ""
   const name = /^name:\s*(.+)$/mu.exec(match[1] ?? "")

@@ -302,7 +302,7 @@ export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly O
   ]
 }
 
-export async function readPrefs(db: SqliteDatabase): Promise<NotifyPrefs> {
+async function readPrefs(db: SqliteDatabase): Promise<NotifyPrefs> {
   const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", PREFS_KEY)
   if (row === undefined) return DEFAULT_PREFS
   let parsed: unknown
@@ -322,7 +322,7 @@ export async function readPrefs(db: SqliteDatabase): Promise<NotifyPrefs> {
   }
 }
 
-export async function readQuiet(db: SqliteDatabase): Promise<QuietHours> {
+async function readQuiet(db: SqliteDatabase): Promise<QuietHours> {
   const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", QUIET_KEY)
   if (row === undefined) return DEFAULT_QUIET
   const parsed: unknown = parseJson(row.value)
