@@ -85,6 +85,11 @@ describe("a batch that throws, and the home revision", () => {
     expect((await after.json<{ result: unknown }>()).result).toBe(11)
   })
 
+  it("lets the home, not the client, decide what is a read", async () => {
+    const claimed = await post({ id: `w-${crypto.randomUUID()}`, op: "test.bump", args: { by: 1 }, read: true })
+    expect(claimed.headers.get("x-ingle-rev")).toEqual(expect.any(String))
+  })
+
   it("announces a mutating batch to home subscribers in a frame, and a read-only batch not at all", async () => {
     const socket = await connect()
     socket.send({ t: "sub", stream: "home" })
@@ -97,7 +102,7 @@ describe("a batch that throws, and the home revision", () => {
     expect(changed).toEqual({ t: "changed", stream: "home", rev })
     expect(new TextEncoder().encode(JSON.stringify(changed)).byteLength).toBeLessThan(80)
 
-    const read = await post([{ id: `r-${crypto.randomUUID()}`, op: "plugin.list", args: {}, read: true }])
+    const read = await post([{ id: `r-${crypto.randomUUID()}`, op: "plugin.list", args: {} }])
     expect(read.headers.get("x-ingle-rev")).toBeNull()
 
     await post({ id: `w-${crypto.randomUUID()}`, op: "test.bump", args: { by: 1 } })

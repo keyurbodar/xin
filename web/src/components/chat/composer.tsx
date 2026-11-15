@@ -3,7 +3,7 @@ import { Show, createEffect, createSignal, onCleanup, onMount, type JSX } from "
 import { pendingDraftFor, takePendingDraft } from "../../lib/draft.ts"
 import { handleAttachShortcut } from "../../lib/attach-shortcut.ts"
 import type { UploadedFile } from "../../lib/api.ts"
-import type { ThinkingLevel } from "../../state/conversation.ts"
+import type { ThinkingLevel } from "../../lib/thinking.ts"
 import type { PresetRow } from "../../state/extensions.ts"
 import type { ProjectSummary } from "../../state/home.ts"
 import type { ModelInfo, ModelRef } from "../../state/settings.ts"
@@ -154,8 +154,8 @@ export function Composer(props: {
   presetId: string | undefined
   presetLocked: boolean
   effort: ThinkingLevel | undefined
-  reasoning: boolean
-  onPickModel: (model: ModelRef) => Promise<void>
+  efforts: readonly ThinkingLevel[]
+  onPickModel: (model: ModelInfo) => Promise<void>
   onPickPreset: (id: string) => Promise<void>
   onPickEffort: (level: ThinkingLevel) => Promise<void>
   onSearch: (query: string) => void
@@ -330,7 +330,7 @@ export function Composer(props: {
               onPick={(model) => void run(() => props.onPickModel(model))}
             />
             <ReasoningMenu
-              reasoning={props.reasoning}
+              levels={props.efforts}
               level={props.effort}
               presets={props.presets}
               presetId={props.presetId}

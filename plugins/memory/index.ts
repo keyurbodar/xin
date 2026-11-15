@@ -2,7 +2,7 @@ import type { Context } from "../../src/kernel/index.ts"
 import { create } from "./memory.ts"
 
 export const name = "memory"
-export const inject = ["host", "db", "pi", "harness", "ops", "clock", "models"]
+export const inject = ["host", "db", "pi", "harness", "ops", "clock", "models", "wire"]
 
 export async function apply(ctx: Context): Promise<void> {
   const memory = create({
@@ -11,6 +11,7 @@ export async function apply(ctx: Context): Promise<void> {
     models: ctx.models,
     kek: ctx.host.env.KEK,
     arm: () => ctx.clock.arm(),
+    changed: () => void ctx.wire.announce(),
   })
   ctx.provide("memory", memory.service)
   ctx.pi.install(memory.extension)

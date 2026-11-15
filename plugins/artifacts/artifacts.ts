@@ -33,6 +33,7 @@ function totalOf(items: Record<string, { markdown: string }>, except?: string): 
 export function artifactOps(port: { readonly harness: Harness }): readonly Op[] {
   const list = defineOp({
     name: "artifact.list",
+    read: true,
     args: obj({ threadId: ThreadArg }),
     actors: ["owner", "agent"],
     run: async (api, args) => {
@@ -54,6 +55,7 @@ export function artifactOps(port: { readonly harness: Harness }): readonly Op[] 
 
   const read = defineOp({
     name: "artifact.read",
+    read: true,
     args: obj({ threadId: ThreadArg, id: str({ minLength: 1 }) }),
     actors: ["owner", "agent"],
     run: async (api, args) => {
