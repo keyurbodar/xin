@@ -7,6 +7,8 @@ import { createConversationView } from "../state/conversation.ts"
 import { homeLoaded, projectThreads, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
 import { captainSpace, routeCaptain, routeCrewThreadId, type CaptainRow } from "../state/captains.ts"
 import { models } from "../state/settings.ts"
+import { presets, prompts } from "../state/extensions.ts"
+import { refreshRequests } from "../state/requests.ts"
 import { openThreadTab, paneOpen, projectTabs, pruneThreadTabs, sidebarHidden, toggleSidebar, wideShell } from "../state/tabs.ts"
 import { ICON_BUTTON } from "../components/shell/menu.ts"
 import { ConversationTabs, type ConversationAction } from "../components/shell/conversation-tabs.tsx"
@@ -50,21 +52,19 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
     if (current !== undefined) openThreadTab(props.space.id, current.id)
   })
   createEffect(() => pruneThreadTabs(props.space.id, new Set(threads().keys())))
+  onMount(() => {
+    void prompts.reload()
+    void presets.reload()
+  })
+  createEffect(() => {
+    void props.space.openRequests
+    void refreshRequests()
+  })
 
   const openThread = (id: number): void => {
     openThreadTab(props.space.id, id)
     navigate(`${base()}/t/${id}`)
   }
-  const pane = (): JSX.Element => (
-    <ProjectPane
-      project={props.space}
-      captain={props.captain}
-      expanded={expanded()}
-      onExpand={setExpanded}
-      onOpenThread={openThread}
-    />
-  )
-
   return (
     <div class="relative flex min-h-0 flex-1 gap-2">
       <Show when={!(expanded() && paneOpen())}>
@@ -95,21 +95,34 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
         </section>
       </Show>
       <Show when={paneOpen()}>
-        <Show
-          when={docked() || expanded()}
-          fallback={
-            <div class="drawer-in absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay">
-              {pane()}
-            </div>
-          }
-        >
-          <div
-            class="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-lg bg-panel shadow-ring"
-            classList={{ "w-[var(--w-pane)]": !expanded(), "flex-1": expanded() }}
-          >
-            {pane()}
-          </div>
-        </Show>
+        {(_open) => {
+          const pane = (
+            <ProjectPane
+              project={props.space}
+              captain={props.captain}
+              expanded={expanded()}
+              onExpand={setExpanded}
+              onOpenThread={openThread}
+            />
+          )
+          return (
+            <Show
+              when={docked() || expanded()}
+              fallback={
+                <div class="drawer-in absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay">
+                  {pane}
+                </div>
+              }
+            >
+              <div
+                class="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-lg bg-panel shadow-ring"
+                classList={{ "w-[var(--w-pane)]": !expanded(), "flex-1": expanded() }}
+              >
+                {pane}
+              </div>
+            </Show>
+          )
+        }}
       </Show>
       <CaptainSettings captain={props.captain} open={settingsOpen()} onClose={() => setSettingsOpen(false)} />
       <SideThreadDialog

@@ -17,9 +17,25 @@ export type FileEntry = {
   readonly updated_at: number
 }
 
-export async function projectFiles(slug: string): Promise<readonly FileEntry[]> {
-  const rows = await cmd<readonly FileEntry[]>("file.list", { prefix: `/projects/${slug}` })
-  return rows.toSorted((left, right) => right.updated_at - left.updated_at)
+const FILES_FRESH_MS = 60_000
+const listed = new Map<string, { readonly at: number; readonly rows: Promise<readonly FileEntry[]> }>()
+
+export function projectFiles(slug: string): Promise<readonly FileEntry[]> {
+  const rows = cmd<readonly FileEntry[]>("file.list", { prefix: `/projects/${slug}` }).then((found) =>
+    found.toSorted((left, right) => right.updated_at - left.updated_at),
+  )
+  listed.set(slug, { at: Date.now(), rows })
+  rows.catch(() => listed.delete(slug))
+  return rows
+}
+
+export function forgetProjectFiles(slug: string): void {
+  listed.delete(slug)
+}
+
+export function recentProjectFiles(slug: string): Promise<readonly FileEntry[]> {
+  const cached = listed.get(slug)
+  return cached !== undefined && Date.now() - cached.at < FILES_FRESH_MS ? cached.rows : projectFiles(slug)
 }
 
 export function fileName(path: string): string {

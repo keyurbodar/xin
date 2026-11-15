@@ -23,7 +23,7 @@ import {
 } from "../state/conversation.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
 import { recordOf, numOf } from "../lib/parse.ts"
-import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
+import { openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
 import { modelName, models, searchModels, type ModelInfo, type ModelRef } from "../state/settings.ts"
 import { presets as presetStore, prompts } from "../state/extensions.ts"
 import { Archive, GitFork, Menu, Settings } from "lucide-solid"
@@ -48,6 +48,7 @@ import { ConversationTabs, type ConversationAction } from "../components/shell/c
 import { SideThreadDialog } from "../components/shell/side-thread.tsx"
 import { openNewThread } from "../components/shell/new-thread.tsx"
 import { ProjectMark } from "../components/chat/project-glyph.tsx"
+import { forgetProjectFiles } from "../components/pane/bodies.tsx"
 import { ProjectPane } from "../components/pane/pane.tsx"
 import { ProjectSettings } from "../components/project/settings.tsx"
 import { FileScreen } from "./file.tsx"
@@ -61,16 +62,6 @@ export function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot
   const [older, setOlder] = createSignal<readonly EntryView[]>([])
   const [olderBefore, setOlderBefore] = createSignal<number | undefined>(undefined)
   const [olderDone, setOlderDone] = createSignal(false)
-  onMount(() => {
-    loadRequests()
-    void prompts.reload()
-    void presetStore.reload()
-  })
-  createEffect(() => {
-    void props.project.openRequests
-    void refreshRequests()
-  })
-
   const projectRequests = (): readonly RequestRow[] => spaceRequests(props.project, openRequests())
 
   const answer = async (request: RequestRow, text: string): Promise<void> => {
@@ -217,7 +208,11 @@ export function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot
             onPickEffort={async (thinking: ThinkingLevel) => {
               await cmd("conv.configure", { conv: props.project.coordinatorId, thinking })
             }}
-            onAttach={(file, onProgress) => uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress)}
+            onAttach={async (file, onProgress) => {
+              const uploaded = await uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress)
+              forgetProjectFiles(props.project.slug)
+              return uploaded
+            }}
             onSend={async (text, key, attachments) => {
               const loaded = prompts.state()
               const expanded = expandSlash(text, loaded.kind === "ready" ? loaded.value : [])
@@ -286,6 +281,14 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     if (current !== undefined) openThreadTab(props.project.id, current.id)
   })
   createEffect(() => pruneThreadTabs(props.project.id, new Set(threads().keys())))
+  onMount(() => {
+    void prompts.reload()
+    void presetStore.reload()
+  })
+  createEffect(() => {
+    void props.project.openRequests
+    void refreshRequests()
+  })
 
   const openThread = (id: number): void => {
     openThreadTab(props.project.id, id)
@@ -304,9 +307,6 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     const parsed = Number(param(3))
     return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined
   }
-  const pane = (): JSX.Element => (
-    <ProjectPane project={props.project} expanded={expanded()} onExpand={setExpanded} onOpenThread={openThread} />
-  )
 
   return (
     <div class="relative flex min-h-0 flex-1 gap-2">
@@ -358,21 +358,28 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
         </section>
       </Show>
       <Show when={paneOpen()}>
-        <Show
-          when={docked() || expanded()}
-          fallback={
-            <div class="drawer-in absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay">
-              {pane()}
-            </div>
-          }
-        >
-          <div
-            class="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-lg bg-panel shadow-ring"
-            classList={{ "w-[var(--w-pane)]": !expanded(), "flex-1": expanded() }}
-          >
-            {pane()}
-          </div>
-        </Show>
+        {(_open) => {
+          const pane = (
+            <ProjectPane project={props.project} expanded={expanded()} onExpand={setExpanded} onOpenThread={openThread} />
+          )
+          return (
+            <Show
+              when={docked() || expanded()}
+              fallback={
+                <div class="drawer-in absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay">
+                  {pane}
+                </div>
+              }
+            >
+              <div
+                class="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-lg bg-panel shadow-ring"
+                classList={{ "w-[var(--w-pane)]": !expanded(), "flex-1": expanded() }}
+              >
+                {pane}
+              </div>
+            </Show>
+          )
+        }}
       </Show>
       <ProjectSettings
         project={props.project}

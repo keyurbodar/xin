@@ -6,7 +6,7 @@ import { homeRequests, projectThreads, spaceRequests, type ProjectSummary } from
 import type { CaptainProfile } from "../../state/captains.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { ICON_BUTTON } from "../shell/menu.ts"
-import { fileName, openFile, PANE_ROW, projectFiles, ThreadLine } from "./bodies.tsx"
+import { fileName, openFile, PANE_ROW, recentProjectFiles, ThreadLine } from "./bodies.tsx"
 
 const DRIVE_ROWS = 4
 
@@ -92,7 +92,7 @@ export function ThreadsSection(props: PaneContext & { label: string }): JSX.Elem
 }
 
 export function DriveSection(props: PaneContext & { label: string }): JSX.Element {
-  const [files] = createResource(() => props.project.slug, projectFiles)
+  const [files] = createResource(() => props.project.slug, recentProjectFiles)
   return (
     <Section
       label={props.label}

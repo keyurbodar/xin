@@ -52,3 +52,7 @@ Because the switch applies at the next request, "switch to X and answer this" wo
 | Utility work (memory pass, titles) | Uses `defaults.utility`. If that isn't set, it uses the model of the conversation that produced the work. It is never hard-coded. |
 
 **Credentials**: `SealedCredentialStore implements CredentialStore` over the `credentials` table (seal/unseal with the `KEK` secret). pi's `modify()` serializes OAuth refresh, so subscription logins work. Custom OpenAI-compatible endpoints use `createProvider()` from a stored `{baseUrl, key, api}`, so any model with an HTTP API counts.
+
+## Context usage
+
+`conv.context { conv? }` (owner and agent, same scope as `conv.configure`) answers the composer's Context popover: `{ conversation, model | null, contextWindow, used, measured, categories: [system, tools, conversation] (each { key, tokens }), compactAt }`. `used` is the newest assistant usage in the active context (input + cacheRead + cacheWrite + output) with `measured: true`; before any reply it is an estimate of the whole prompt with `measured: false`. `system` and `tools` estimate the resolved agent's rendered sections and tool declarations with pi-ai's `estimateTextTokens`; `conversation` is `used - system - tools`, floored at 0. `compactAt` is `contextWindow` minus pi-durable's `DEFAULT_COMPACTION_POLICY.reserveTokens`, because Ingle sets no harness compaction settings or model overrides. The op reads the harness's committed context and agent and writes only its command receipt.
