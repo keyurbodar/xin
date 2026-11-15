@@ -20,13 +20,14 @@
     "ingle-plugin-presets",
     "ingle-plugin-push",
     "ingle-plugin-questions",
-    "ingle-plugin-schedules",
+    "ingle-plugin-automations",
     "ingle-plugin-skills",
     "ingle-plugin-time",
     "ingle-plugin-watchdog",
     "ingle-plugin-web",
     "ingle-plugin-workspace",
-    "ingle-plugin-git-native"
+    "ingle-plugin-git-native",
+    "ingle-plugin-drive"
   ],
   "patch": [
     {

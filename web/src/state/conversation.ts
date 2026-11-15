@@ -326,6 +326,42 @@ export function parseRequestList(value: unknown): readonly RequestRow[] {
   return rows
 }
 
+const entriesOf = (value: unknown): readonly unknown[] => {
+  const entries = recordOf(value)?.entries
+  return Array.isArray(entries) ? entries : []
+}
+
+const idOf = (entry: unknown): number | undefined => {
+  const id = recordOf(entry)?.id
+  return typeof id === "number" ? id : undefined
+}
+
+const entryIds = (value: unknown): readonly number[] =>
+  entriesOf(value).flatMap((entry) => {
+    const id = idOf(entry)
+    return id === undefined ? [] : [id]
+  })
+
+/**
+ * Rebuilds the server's shared window from a resume: the entries this tab already had from the window's `start` up to
+ * the cursor, then the ones the server sent, with the server's documents. Later deltas index into exactly that window.
+ */
+function resumed(
+  held: unknown,
+  value: unknown,
+  start: number | undefined,
+  sent: { readonly start: number; readonly from: number },
+): unknown {
+  const kept =
+    start === undefined
+      ? []
+      : entriesOf(held).filter((entry) => {
+          const id = idOf(entry)
+          return id !== undefined && id >= start && id < sent.from
+        })
+  return { ...recordOf(value), entries: [...kept, ...entriesOf(value)] }
+}
+
 /**
  * Subscribe to one conversation's stream and expose the parsed snapshot. Passing a new id resubscribes; passing
  * `undefined` releases it. Solid owns the effect, so the screen's scope cleans it up.
@@ -336,6 +372,7 @@ export function createConversationView(
 ): Accessor<Snapshot | undefined> {
   const [snapshot, setSnapshot] = createSignal<Snapshot | undefined>()
   let current: unknown = undefined
+  let sent: { readonly start: number; readonly from: number } = { start: 0, from: 0 }
   let subscribed: number | undefined
   let unsubscribe: (() => void) | undefined
 
@@ -356,6 +393,17 @@ export function createConversationView(
       delta: (events) => {
         current = applyImmutable(current, parseOps(events))
         setSnapshot(parseSnapshot(current))
+      },
+      resume: {
+        cursor: () => {
+          const ids = entryIds(current)
+          sent = ids.length === 0 ? { start: 0, from: 0 } : { start: ids[0] ?? 0, from: (ids.at(-1) ?? 0) + 1 }
+          return sent
+        },
+        apply: (value, start) => {
+          current = resumed(current, value, start, sent)
+          setSnapshot(parseSnapshot(current))
+        },
       },
     })
   })

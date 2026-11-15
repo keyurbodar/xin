@@ -1,4 +1,4 @@
-import type { EnvTarget } from "@earendil-works/pi-durable"
+import type { ConversationId, DocumentReader, EnvTarget } from "@earendil-works/pi-durable"
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
 
 export type FileEntry = {
@@ -9,6 +9,20 @@ export type FileEntry = {
   readonly updated_at: number
 }
 
+export type FileVersion = {
+  readonly sha256: string
+  readonly size: number
+  readonly type: string
+  readonly at: number
+}
+
+/** Lets a thread use a path outside its project folder. `/me` stays the coordinator's whatever a grant says. */
+export type FileGrant = (target: {
+  readonly conversationId: ConversationId
+  readonly path: string
+  readonly read: DocumentReader
+}) => boolean | Promise<boolean>
+
 export interface FilesService {
   env(target: EnvTarget): ExecutionEnv | undefined
   list(prefix?: string): Promise<FileEntry[]>
@@ -17,6 +31,15 @@ export interface FilesService {
   stat(path: string): Promise<FileEntry | undefined>
   write(path: string, text: string): Promise<FileEntry>
   remove(path: string): Promise<boolean>
+  /** Earlier versions, newest first. The current one is the file itself. */
+  revisions(path: string): Promise<readonly FileVersion[]>
+  /** Makes an earlier version current again; the replaced one becomes a version. Undefined when there is no such version. */
+  restore(path: string, sha256: string): Promise<FileEntry | undefined>
+  /** Moves a file with its versions. False when the source is missing or the destination exists. */
+  move(from: string, to: string): Promise<boolean>
+  /** Called with each changed path, or a prefix ending in `/`, after any write, move or delete through any route. */
+  watch(listener: (path: string) => void | Promise<void>): () => void
+  grant(rule: FileGrant): () => void
 }
 
 declare module "@deepseek-ai/cordis" {
