@@ -20,6 +20,7 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy"
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy"
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy"
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models"
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
 import {
   ROOT_CONVERSATION_ID,
@@ -47,6 +48,7 @@ import { defineOp, type Actor, type Command, type Op, OpRejected, type Outcome }
 import { Sealer, SealedSchema } from "../../src/seal.ts"
 
 const MAX_LISTED = 40
+const MAX_CATALOG = 200
 const MAX_RECENT = 8
 
 type UsageBucket = {
@@ -351,6 +353,7 @@ type Settings = {
   readonly defaults: ModelDefaults
   readonly favorites: readonly ModelRef[]
   readonly recent: readonly ModelRef[]
+  readonly disabled: readonly ModelRef[]
 }
 
 const label = (providerId: string): string => `credentials:${providerId}`
@@ -591,7 +594,8 @@ async function readSettings(db: SqliteDatabase): Promise<Settings> {
   const defaults = (await readKv(db, "owner.defaults", defaultsCheck.check)) ?? {}
   const favorites = (await readKv(db, "owner.favorites", refsCheck.check)) ?? []
   const recent = (await readKv(db, "owner.recent", refsCheck.check)) ?? []
-  return { defaults, favorites, recent }
+  const disabled = (await readKv(db, "owner.disabled", refsCheck.check)) ?? []
+  return { defaults, favorites, recent, disabled }
 }
 
 async function ownerDefaults(db: SqliteDatabase): Promise<ModelDefaults> {
@@ -688,6 +692,34 @@ function describe(model: Model<Api>, keyed: boolean): JsonValue {
   }
 }
 
+function catalogEntry(model: Model<Api>, keyed: boolean, settings: Settings): JsonValue {
+  const ref = refOf(model)
+  return {
+    provider: model.provider,
+    modelId: model.id,
+    name: model.name,
+    contextWindow: model.contextWindow,
+    maxTokens: model.maxTokens,
+    vision: model.input.includes("image"),
+    reasoning: model.reasoning,
+    thinking: getSupportedThinkingLevels(model),
+    cost: {
+      input: model.cost.input,
+      output: model.cost.output,
+      cacheRead: model.cost.cacheRead,
+      cacheWrite: model.cost.cacheWrite,
+    },
+    keyed,
+    enabled: !settings.disabled.some((entry) => same(entry, ref)),
+    favorite: settings.favorites.some((entry) => same(entry, ref)),
+  }
+}
+
+const toggled = (refs: readonly ModelRef[], model: ModelRef, on: boolean): ModelRef[] => [
+  ...refs.filter((entry) => !same(entry, model)),
+  ...(on ? [model] : []),
+]
+
 function ranked(
   catalog: readonly Model<Api>[],
   settings: Settings,
@@ -751,13 +783,19 @@ export function create(deps: ModelsPort): ModelsParts {
         const found = registry.models.getModel(args.model.provider, args.model.modelId)
         if (found === undefined)
           throw new OpRejected("bad_args", `unknown model ${args.model.provider}/${args.model.modelId}`)
+        if ((await readSettings(db)).disabled.some((entry) => same(entry, refOf(found))))
+          throw new OpRejected("bad_args", `model ${args.model.provider}/${args.model.modelId} is disabled`)
         change.model = { provider: args.model.provider, modelId: args.model.modelId }
         if (!found.reasoning) change.thinkingLevel = null
       }
       if (args.thinking !== undefined) {
         const target = args.model ?? (await conversation.agent(BACKGROUND_CONTEXT)).model
         const found = target === undefined ? undefined : registry.models.getModel(target.provider, target.modelId)
-        if (found?.reasoning === true) change.thinkingLevel = args.thinking
+        if (found?.reasoning === true) {
+          if (!getSupportedThinkingLevels(found).includes(args.thinking))
+            throw new OpRejected("bad_args", `${found.provider}/${found.id} does not support thinking ${args.thinking}`)
+          change.thinkingLevel = args.thinking
+        }
       }
       await conversation.configure(change satisfies AgentChange, BACKGROUND_CONTEXT)
       if (change.model !== undefined && change.model !== null) await remember(db, change.model)
@@ -791,6 +829,84 @@ export function create(deps: ModelsPort): ModelsParts {
         models: listed.map((model) => describe(model, hasKey(model))),
         omittedModels: arranged.length - listed.length,
       }
+    },
+  })
+
+  const catalogOp = defineOp({
+    name: "models.catalog",
+    args: obj({
+      query: opt(str({ maxLength: 200 })),
+      provider: opt(str({ minLength: 1, maxLength: 64 })),
+      keyedOnly: opt(bool()),
+      enabledOnly: opt(bool()),
+    }),
+    actors: ["owner"],
+    run: async (api, args) => {
+      const keyed = await available(registry)
+      const settings = await readSettings(db)
+      const keyedIds = new Set(keyed.map((model) => `${model.provider}/${model.id}`))
+      const hasKey = (model: Model<Api>): boolean => keyedIds.has(`${model.provider}/${model.id}`)
+      const isEnabled = (model: Model<Api>): boolean => !settings.disabled.some((entry) => same(entry, refOf(model)))
+      const everything = registry.models.getModels()
+      const providers = registry.models
+        .getProviders()
+        .map((provider) => {
+          const own = everything.filter((model) => model.provider === provider.id)
+          return {
+            id: provider.id,
+            name: provider.name,
+            keyed: own.some(hasKey),
+            custom: registry.custom.has(provider.id),
+            models: own.length,
+            enabled: own.filter(isEnabled).length,
+          }
+        })
+        .filter((provider) => provider.models > 0 || provider.custom)
+        .toSorted((left, right) => Number(right.keyed) - Number(left.keyed) || left.id.localeCompare(right.id))
+      const scoped = everything.filter(
+        (model) =>
+          (args.provider === undefined || model.provider === args.provider) &&
+          (args.keyedOnly !== true || hasKey(model)) &&
+          (args.enabledOnly !== true || isEnabled(model)),
+      )
+      const ordered = ranked(scoped, settings, await currentModel(api.harness, api.actor), args.query)
+      const arranged = [...ordered.filter(hasKey), ...ordered.filter((model) => !hasKey(model))]
+      const listed = arranged.slice(0, MAX_CATALOG)
+      return {
+        providers,
+        models: listed.map((model) => catalogEntry(model, hasKey(model), settings)),
+        omittedModels: arranged.length - listed.length,
+        favorites: [...settings.favorites],
+        defaults: { ...settings.defaults },
+      }
+    },
+  })
+
+  const favoriteOp = defineOp({
+    name: "models.favorite",
+    args: obj({ model: ModelRefSchema, favorite: bool() }),
+    actors: ["owner"],
+    run: async (_api, { model, favorite }) => {
+      if (favorite && registry.models.getModel(model.provider, model.modelId) === undefined)
+        throw new OpRejected("bad_args", `unknown model ${model.provider}/${model.modelId}`)
+      const settings = await readSettings(db)
+      const ref = { provider: model.provider, modelId: model.modelId }
+      const favorites = toggled(settings.favorites, ref, favorite)
+      await writeKv(db, "owner.favorites", favorites)
+      return { favorites }
+    },
+  })
+
+  const enableOp = defineOp({
+    name: "models.enable",
+    args: obj({ model: ModelRefSchema, enabled: bool() }),
+    actors: ["owner"],
+    run: async (_api, { model, enabled }) => {
+      const settings = await readSettings(db)
+      const ref = { provider: model.provider, modelId: model.modelId }
+      const disabled = toggled(settings.disabled, ref, !enabled)
+      await writeKv(db, "owner.disabled", disabled)
+      return { model: ref, enabled }
     },
   })
 
@@ -935,7 +1051,10 @@ export function create(deps: ModelsPort): ModelsParts {
     credentialSecrets: () => credentialSecrets(db, store),
     spend: async () => ({ month: (await datedUsage(db)).month.spend, cap: await readCap(db) }),
     search: async (query) => {
-      const catalog = await available(registry)
+      const { disabled } = await readSettings(db)
+      const catalog = (await available(registry)).filter(
+        (model) => !disabled.some((entry) => same(entry, refOf(model))),
+      )
       return { catalog, matches: search(catalog, query) }
     },
     switchModel: ({ conversation, caller, model, thinking, callId }) =>
@@ -952,6 +1071,9 @@ export function create(deps: ModelsPort): ModelsParts {
   const ops: readonly Op[] = [
     configure,
     list,
+    catalogOp,
+    favoriteOp,
+    enableOp,
     setCredential,
     deleteCredential,
     setDefaults,

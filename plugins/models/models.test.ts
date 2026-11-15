@@ -362,6 +362,69 @@ describe("models", () => {
     }
   })
 
+  it("serves the picker catalog with providers, prices, reasoning levels, favourites and enabled models", async () => {
+    const stub = fresh()
+    type Entry = {
+      provider: string
+      modelId: string
+      contextWindow: number
+      thinking: string[]
+      cost: { input: number; output: number; cacheRead: number; cacheWrite: number }
+      keyed: boolean
+      enabled: boolean
+      favorite: boolean
+    }
+    type Catalog = {
+      providers: { id: string; keyed: boolean; models: number; enabled: number }[]
+      models: Entry[]
+      favorites: unknown[]
+    }
+    const catalog = async (id: string, args: object = {}): Promise<Catalog> => {
+      const reply = await call(stub, id, "models.catalog", args)
+      expect(reply.ok, JSON.stringify(reply)).toBe(true)
+      return reply.result as Catalog
+    }
+    const entry = (found: Catalog, ref: { provider: string; modelId: string }): Entry | undefined =>
+      found.models.find((model) => model.provider === ref.provider && model.modelId === ref.modelId)
+
+    const first = await catalog("catalog-1", { provider: WIDE_MODEL.provider })
+    const wide = entry(first, WIDE_MODEL)
+    expect(wide).toMatchObject({
+      contextWindow: 128_000,
+      thinking: ["off"],
+      keyed: true,
+      enabled: true,
+      favorite: false,
+    })
+    expect(typeof wide?.cost.cacheRead).toBe("number")
+    expect(first.providers.find((provider) => provider.id === WIDE_MODEL.provider)).toMatchObject({
+      keyed: true,
+      models: 2,
+      enabled: 2,
+    })
+
+    expect(await call(stub, "catalog-fav", "models.favorite", { model: WIDE_MODEL, favorite: true })).toMatchObject({
+      ok: true,
+      result: { favorites: [WIDE_MODEL] },
+    })
+    expect(await call(stub, "catalog-off", "models.enable", { model: WIDE_MODEL, enabled: false })).toMatchObject({
+      ok: true,
+    })
+    const second = await catalog("catalog-2", { query: "alt" })
+    expect(second.models[0]).toMatchObject({ ...WIDE_MODEL, favorite: true, enabled: false })
+    expect(second.favorites).toEqual([WIDE_MODEL])
+    const enabledOnly = await catalog("catalog-3", { provider: WIDE_MODEL.provider, enabledOnly: true })
+    expect(entry(enabledOnly, WIDE_MODEL)).toBeUndefined()
+    expect(enabledOnly.providers.find((provider) => provider.id === WIDE_MODEL.provider)).toMatchObject({ enabled: 1 })
+
+    expect(await call(stub, "catalog-pick", "conv.configure", { model: WIDE_MODEL })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    await call(stub, "catalog-on", "models.enable", { model: WIDE_MODEL, enabled: true })
+    expect(await call(stub, "catalog-pick-2", "conv.configure", { model: WIDE_MODEL })).toMatchObject({ ok: true })
+  })
+
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {
     const original = globalThis.fetch
     globalThis.fetch = async () =>

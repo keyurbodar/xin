@@ -1,5 +1,6 @@
 import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai"
 import type { ConversationId, ModelRef } from "@earendil-works/pi-durable"
+import { MODEL_THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema"
 import { obj, oneOf, str } from "@earendil-works/pi-schema"
 import type { Outcome } from "../ops.ts"
 
@@ -25,7 +26,7 @@ export function resolveModel(input: {
 
 export const ModelRefSchema = obj({ provider: str({ minLength: 1 }), modelId: str({ minLength: 1 }) })
 
-export const ThinkingSchema = oneOf(["off", "low", "medium", "high"] as const)
+export const ThinkingSchema = oneOf(MODEL_THINKING_LEVELS)
 
 export type ModelMatch = {
   readonly model: Model<Api>
