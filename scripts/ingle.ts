@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, watch, writeFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
@@ -260,10 +260,11 @@ const readTemplate = (): Template => ({
   manifest: readFileSync(join(TEMPLATE_DIR, "package.json"), "utf8"),
   module: readFileSync(join(TEMPLATE_DIR, "index.ts"), "utf8"),
   test: readFileSync(join(TEMPLATE_DIR, `${TEMPLATE}.test.ts`), "utf8"),
+  client: readFileSync(join(TEMPLATE_DIR, "client.tsx"), "utf8"),
 })
 
-function createPlugin(name: string): void {
-  const files = scaffold(name, readTemplate())
+function createPlugin(name: string, client: boolean): void {
+  const files = scaffold(name, readTemplate(), { client })
   const dir = join(ROOT, "plugins", name)
   const pkg = `ingle-plugin-${name}`
   if (existsSync(dir)) throw new Error(`plugins/${name} already exists; choose another name`)
@@ -278,7 +279,8 @@ function createPlugin(name: string): void {
     `created plugins/${name} and added ${pkg} to the build. Next:\n` +
       `  bun scripts/gate.ts submit types test --only=plugins/${name}\n` +
       "  wrangler deploy\n" +
-      "The author path, from an empty file to a deployed plugin: docs/plugin-authoring.md",
+      "  bun scripts/ingle.ts plugin dev     (Worker and web with live reload)\n" +
+      "The author path, from an empty file to a deployed plugin: docs/plugins/authoring.md",
   )
 }
 
@@ -346,9 +348,68 @@ async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
   generate()
 }
 
+const DEV_TOKEN = "dev-owner-token"
+const DEV_KEK = "ZGV2LWtlay1vbmx5LWZvci1sb2NhbC1kZXYtMzJieQ=="
+
+/** What `plugin generate` reads: a package manifest, or a client module appearing or going away. */
+const regenerates = (path: string): boolean => path.endsWith("package.json") || path.endsWith("client.tsx")
+
+/**
+ * The author's dev loop: regenerate once, run `wrangler dev` and the web dev server side by side, and regenerate
+ * whenever a plugin manifest or client module changes. Wrangler reloads the Worker on the new catalog and Vite
+ * hot-reloads the client, so editing a plugin never needs a restart. Without `.dev.vars` it runs with a throwaway
+ * owner token and KEK.
+ */
+async function dev(args: readonly string[]): Promise<void> {
+  const at = args.indexOf("--port")
+  const port = at === -1 ? 8799 : Number(args[at + 1])
+  if (!Number.isInteger(port) || port <= 0) throw new Error("dev --port needs a port number")
+  generate()
+  const local = existsSync(join(ROOT, ".dev.vars"))
+  const vars = local ? [] : ["--var", `OWNER_TOKEN:${DEV_TOKEN}`, "--var", `KEK:${DEV_KEK}`]
+  const children = [
+    Bun.spawn(["bunx", "wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", ...vars], {
+      cwd: ROOT,
+      stdout: "inherit",
+      stderr: "inherit",
+    }),
+    Bun.spawn(["bun", "x", "vite", "--host", "127.0.0.1"], {
+      cwd: join(ROOT, "web"),
+      env: { ...process.env, INGLE_DEV_URL: `http://127.0.0.1:${port}` },
+      stdout: "inherit",
+      stderr: "inherit",
+    }),
+  ]
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const watcher = watch(join(ROOT, "plugins"), { recursive: true }, (_event, file) => {
+    if (file === null || !regenerates(file)) return
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      try {
+        generate()
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error))
+      }
+    }, 200)
+  })
+  const stop = (): void => {
+    watcher.close()
+    for (const child of children) child.kill()
+  }
+  process.on("SIGINT", stop)
+  process.on("SIGTERM", stop)
+  console.warn(
+    `plugin dev: Worker on http://127.0.0.1:${port}, web on the Vite URL below` +
+      (local ? "; the owner token is the one in .dev.vars" : `; sign in with the owner token ${DEV_TOKEN}`),
+  )
+  await Promise.race(children.map((child) => child.exited))
+  stop()
+}
+
 const usage = `usage: bun scripts/ingle.ts plugin <command>
   list                       packages with a ingle field, their plugins and whether their bundle is enabled
-  new <name>                 create plugins/<name> from the template package plugins/hello
+  new <name> [--client]      create plugins/<name> from the template package plugins/hello; --client adds its web module
+  dev [--port N]             generate, then run wrangler dev and the web dev server, regenerating when a manifest changes
   generate                   rewrite src/catalog.gen.ts from plugins/* and installed dependencies
   add <spec> [--enable]      bun add <spec>, regenerate, and with --enable append its bundle to the profile
   remove <package>           drop its bundle from the profile, bun remove it, regenerate
@@ -371,9 +432,11 @@ async function main(argv: readonly string[]): Promise<void> {
     }
     case "generate":
       return void generate()
+    case "dev":
+      return dev([target ?? "", ...flags])
     case "new": {
       if (target === undefined) throw new Error("new needs a plugin name")
-      return createPlugin(target)
+      return createPlugin(target, flags.includes("--client"))
     }
     case "add": {
       if (target === undefined) throw new Error("add needs a spec")

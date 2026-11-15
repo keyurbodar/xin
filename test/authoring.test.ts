@@ -3,24 +3,45 @@ import { describe, expect, it } from "vitest"
 import helloModule from "../plugins/hello/index.ts?raw"
 import helloTest from "../plugins/hello/hello.test.ts?raw"
 import helloManifest from "../plugins/hello/package.json?raw"
+import helloClient from "../plugins/hello/client.tsx?raw"
 import { readManifest } from "../src/kernel/manifest.ts"
 import { scaffold, TEMPLATE, type Template } from "../scripts/scaffold.ts"
 import { answer, respond } from "./plugins/m8.ts"
 import { cmd, field, fresh, rowState, toolTexts, turn } from "./support.ts"
 
-const SOURCE: Template = { manifest: helloManifest, module: helloModule, test: helloTest }
+const SOURCE: Template = { manifest: helloManifest, module: helloModule, test: helloTest, client: helloClient }
 
-const fileOf = (name: string, path: string): string => {
-  const file = scaffold(name, SOURCE).find((candidate) => candidate.path === path)
+const fileOf = (name: string, path: string, client = false): string => {
+  const file = scaffold(name, SOURCE, { client }).find((candidate) => candidate.path === path)
   if (file === undefined) throw new Error(`the scaffold wrote no ${path}`)
   return file.content
 }
 
 describe("plugin authoring", () => {
-  it("scaffolds the template package as it stands", () => {
-    const files = scaffold(TEMPLATE, SOURCE)
-    expect(files.map((file) => file.path)).toEqual(["package.json", "index.ts", "hello.test.ts"])
-    expect(files.map((file) => file.content)).toEqual([helloManifest, helloModule, helloTest])
+  it("scaffolds the template package as it stands with --client", () => {
+    const files = scaffold(TEMPLATE, SOURCE, { client: true })
+    expect(files.map((file) => file.path)).toEqual(["package.json", "index.ts", "hello.test.ts", "client.tsx"])
+    expect(files.map((file) => file.content)).toEqual([helloManifest, helloModule, helloTest, helloClient])
+  })
+
+  it("writes a server-only package without --client, and a client module that fills its declared slots with it", () => {
+    expect(scaffold("greeting", SOURCE, { client: false }).map((file) => file.path)).toEqual([
+      "package.json",
+      "index.ts",
+      "greeting.test.ts",
+    ])
+    const server = field(field(field(JSON.parse(fileOf("greeting", "package.json")), "ingle"), "plugins"), "greeting")
+    expect(field(server, "client")).toBeUndefined()
+    expect(field(server, "slots")).toBeUndefined()
+
+    const withClient = field(
+      field(field(JSON.parse(fileOf("greeting", "package.json", true)), "ingle"), "plugins"),
+      "greeting",
+    )
+    expect(field(withClient, "client")).toBe("./client.tsx")
+    expect(field(withClient, "slots")).toEqual(["palette.command"])
+    expect(fileOf("greeting", "client.tsx", true)).toContain('name: "greeting"')
+    expect(fileOf("greeting", "client.tsx", true)).toContain('"palette.command"')
   })
 
   it("writes a package this build accepts, under the new name", () => {
@@ -50,7 +71,7 @@ describe("plugin authoring", () => {
   })
 
   it("refuses a name that is not kebab-case and says what one looks like", () => {
-    expect(() => scaffold("Weather", SOURCE)).toThrow(
+    expect(() => scaffold("Weather", SOURCE, { client: false })).toThrow(
       'plugin name "Weather" must be lowercase letters, digits and hyphens, starting with a letter, like "hello-world"',
     )
   })

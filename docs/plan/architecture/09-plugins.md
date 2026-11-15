@@ -386,7 +386,7 @@ The agent tool `plugin_manager` is its own row, `tool-plugins` (not required, of
 
 ## Authoring a plugin
 
-The starter is `plugins/hello`: one tool and one prompt, and the package `bun scripts/ingle.ts plugin new <name>` copies under a new name, regenerates the catalog and adds to the build. `docs/plugin-authoring.md` is the one-page path from nothing to a deployed plugin, and `test/authoring.test.ts` proves it end to end — scaffold, mount, tool call, `prompt.list` — so the template, the scaffold and the mount cannot drift apart.
+The starter is `plugins/hello`: one tool and one prompt, and the package `bun scripts/ingle.ts plugin new <name>` copies under a new name, regenerates the catalog and adds to the build. `docs/plugins/authoring.md` is the one-page path from nothing to a deployed plugin, and `test/authoring.test.ts` proves it end to end — scaffold, mount, tool call, `prompt.list` — so the template, the scaffold and the mount cannot drift apart.
 
 A plugin is one module:
 

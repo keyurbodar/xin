@@ -194,7 +194,9 @@
       "package": "ingle-plugin-hello",
       "version": "0.1.0",
       "permissions": [],
-      "slots": [],
+      "slots": [
+        "palette.command"
+      ],
       "rows": [
         "hello"
       ]
