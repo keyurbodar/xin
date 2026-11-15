@@ -195,11 +195,20 @@ export type IssueGroup = { readonly state: IssueState; readonly issues: readonly
 
 const PRIORITY_RANK: Readonly<Record<Priority, number>> = { urgent: 0, high: 1, normal: 2, low: 3 }
 
-/** Open issues under their open state, Needs you first and then the owner's state order; inside a state, by priority, keeping the list's newest-first order. */
+/**
+ * Open issues under their open state, Needs you first and then the owner's state order; inside a state, by priority,
+ * keeping the list's newest-first order. An issue in a state the client has not read yet is never dropped: it waits in
+ * a group named by its state id, after the known ones, until the states are read again.
+ */
 export function openGroups(states: readonly IssueState[], issues: readonly IssueSummary[]): readonly IssueGroup[] {
-  const order = states
-    .filter((state) => !state.closed)
-    .toSorted((left, right) => Number(right.id === NEEDS_YOU) - Number(left.id === NEEDS_YOU) || left.position - right.position)
+  const known = new Set(states.map((state) => state.id))
+  const unknown = [...new Set(issues.map((issue) => issue.state).filter((id) => !known.has(id)))]
+  const order = [
+    ...states
+      .filter((state) => !state.closed)
+      .toSorted((left, right) => Number(right.id === NEEDS_YOU) - Number(left.id === NEEDS_YOU) || left.position - right.position),
+    ...unknown.map((id): IssueState => ({ id, name: id, closed: false, position: Number.MAX_SAFE_INTEGER, isDefault: false })),
+  ]
   return order.flatMap((state) => {
     const members = issues
       .filter((issue) => issue.state === state.id)

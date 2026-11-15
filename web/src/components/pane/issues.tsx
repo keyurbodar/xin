@@ -16,8 +16,8 @@ import {
   type Names,
   type Priority,
 } from "../../lib/issues.ts"
-import { homeIssuesRev, projectThreads, type ProjectSummary } from "../../state/home.ts"
-import { createIssue, issueStates, openProjectIssues } from "../../state/issues.ts"
+import { projectThreads, type ProjectSummary } from "../../state/home.ts"
+import { createIssue, issuesRev, projectIssueList } from "../../state/issues.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { createPaneAction } from "../chat/ui.tsx"
 import { Button } from "../ui/button.tsx"
@@ -38,18 +38,14 @@ export function issueNames(project: ProjectSummary): Names {
   }
 }
 
-/** Re-keys on the home's issue revision, so the list reads once on open and once per change, never on a timer. */
-function revKey(project: () => string): () => string {
-  return () => `${homeIssuesRev()}:${project()}`
-}
-
-const afterRev = (key: string): string => key.slice(key.indexOf(":") + 1)
-
 export function IssuesSection(props: PaneContext & { label: string }): JSX.Element {
-  const [data] = createResource(revKey(() => props.project.id), async (key) => {
-    const [states, issues] = await Promise.all([issueStates(), openProjectIssues(afterRev(key))])
-    return { states, issues }
-  })
+  const [data] = createResource(
+    () => `${issuesRev()}:${props.project.id}`,
+    (key) => {
+      const cut = key.indexOf(":")
+      return projectIssueList(key.slice(cut + 1), Number(key.slice(0, cut)))
+    },
+  )
   const groups = createMemo(() => {
     const loaded = data.latest
     return loaded === undefined ? [] : openGroups(loaded.states, loaded.issues)

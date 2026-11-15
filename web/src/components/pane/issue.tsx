@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, For, on, Show, untrack, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
 import { Check, ChevronDown, GitPullRequest } from "lucide-solid"
@@ -22,8 +22,7 @@ import {
 } from "../../lib/issues.ts"
 import { ago } from "../../lib/format.ts"
 import { firstLoad } from "../../lib/loading.ts"
-import { homeIssuesRev } from "../../state/home.ts"
-import { commentOnIssue, issueDetail, issueStates, updateIssue } from "../../state/issues.ts"
+import { commentOnIssue, issueScreen, issuesRev, updateIssue } from "../../state/issues.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { createPaneAction, ResourceError } from "../chat/ui.tsx"
 import { Button } from "../ui/button.tsx"
@@ -41,12 +40,10 @@ const LABEL = "px-2 pb-1 pt-3 text-xs text-ink-3"
 
 export function IssueView(props: PaneContext & { id: number }): JSX.Element {
   const [data, { mutate, refetch }] = createResource(
-    () => `${homeIssuesRev()}:${props.id}`,
-    async () => {
-      const [states, detail] = await Promise.all([issueStates(), issueDetail(props.id)])
-      return { states, detail }
-    },
+    () => props.id,
+    (id) => issueScreen(id, untrack(issuesRev)),
   )
+  createEffect(on(issuesRev, () => void refetch(), { defer: true }))
   const names = createMemo(() => issueNames(props.project))
   const action = createPaneAction()
   const stateOf = (id: string): IssueState | undefined => data.latest?.states.find((state) => state.id === id)
