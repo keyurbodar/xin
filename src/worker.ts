@@ -1,67 +1,40 @@
 import type { Env } from "./env.ts"
 
 export { Home } from "./host.ts"
+import { bearer, sameToken } from "./kernel/token.ts"
 import { serveShare } from "./share.ts"
 import { upload } from "./upload.ts"
 
-const encoder = new TextEncoder()
-
-function bearer(request: Request): string | undefined {
-  const header = request.headers.get("authorization") ?? ""
-  if (header.startsWith("Bearer ")) return header.slice("Bearer ".length)
-  const protocol = request.headers.get("sec-websocket-protocol") ?? ""
-  const token = protocol
-    .split(",")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith("bearer."))
-  return token?.slice("bearer.".length)
-}
-
-function authorizedByDeploy(request: Request, env: Env): boolean {
-  const presented = bearer(request)
-  if (presented === undefined || env.OWNER_TOKEN === "") return false
-  return sameToken(presented, env.OWNER_TOKEN)
-}
+const home = (env: Env) => env.HOME.get(env.HOME.idFromName("owner"))
 
 /**
- * A token minted by `session.rotate` is checked by the home that minted it, so a rotation takes effect at once.
- * Returns the home's reply so its failure mode survives: a home that cannot boot answers 503, not a 401.
+ * An upload writes to R2 before the home sees it, so it is the one path the Worker authorizes itself: the deploy token
+ * here, a rotated token by asking the home. A home that cannot boot answers 503, and that reply is passed through.
  */
-async function rotationCheck(request: Request, env: Env): Promise<Response | undefined> {
-  const presented = bearer(request)
-  if (presented === undefined) return undefined
-  try {
-    return await home(env).fetch("https://ingle.internal/v1/auth", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: presented }),
-    })
-  } catch {
-    return undefined
-  }
+async function uploadRefusal(request: Request, env: Env, presented: string): Promise<Response | undefined> {
+  if (env.OWNER_TOKEN !== "" && sameToken(presented, env.OWNER_TOKEN)) return undefined
+  const reply = await home(env).fetch("https://ingle.internal/v1/auth", {
+    method: "POST",
+    headers: { authorization: `Bearer ${presented}` },
+  })
+  return reply.ok ? undefined : reply
 }
 
-function sameToken(a: string, b: string): boolean {
-  const [left, right] = [encoder.encode(a), encoder.encode(b)]
-  return left.byteLength === right.byteLength && crypto.subtle.timingSafeEqual(left, right)
-}
-
-const home = (env: Env) => env.HOME.get(env.HOME.idFromName("owner"))
+const isUpload = (request: Request, url: URL) => request.method === "PUT" && url.pathname.startsWith("/files/")
 
 export default {
   async fetch(request, env): Promise<Response> {
-    if (new URL(request.url).pathname === "/health") return new Response("ok")
+    const url = new URL(request.url)
+    if (url.pathname === "/health") return new Response("ok")
     const shared = await serveShare(request, env)
     if (shared !== undefined) return shared
-    if (!authorizedByDeploy(request, env)) {
-      const reply = await rotationCheck(request, env)
-      // A home that cannot boot answers 503 for every path: pass that through, so a rotated-token client is told the
-      // home failed to open instead of being sent an auth error it cannot act on.
-      if (reply !== undefined && !reply.ok && reply.status !== 401) return reply
-      if (reply === undefined || !reply.ok) return new Response("unauthorized", { status: 401 })
+    const presented = bearer(request)
+    if (presented === undefined || presented === "") return new Response("unauthorized", { status: 401 })
+    if (isUpload(request, url)) {
+      const refused = await uploadRefusal(request, env, presented)
+      if (refused !== undefined) return refused
+      return (await upload(request, env, presented)) ?? new Response("not found", { status: 404 })
     }
-    const uploaded = await upload(request, env)
-    if (uploaded !== undefined) return uploaded
     const forwarded = new Request(request)
     const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((part) => part.trim())
     if (protocols.includes("ingle")) forwarded.headers.set("x-ingle-protocol", "ingle")

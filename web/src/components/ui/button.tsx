@@ -4,19 +4,19 @@ export type ButtonVariant = "primary" | "ghost" | "quiet" | "danger"
 export type ButtonSize = "sm" | "md" | "lg"
 
 const BASE =
-  "inline-flex items-center justify-center whitespace-nowrap rounded-[2px] font-medium disabled:opacity-40"
+  "inline-flex items-center justify-center whitespace-nowrap rounded-sm font-medium disabled:opacity-40"
 
 const SIZES: Readonly<Record<ButtonSize, string>> = {
-  sm: "h-7 gap-1.5 px-2.5 text-[12.5px]",
-  md: "h-10 gap-2 px-3.5 text-[13.5px]",
-  lg: "h-11 gap-2 px-4 text-[14.5px]",
+  sm: "h-7 gap-1.5 px-2.5 text-sm",
+  md: "h-10 gap-2 px-3.5 text-base",
+  lg: "h-11 gap-2 px-4 text-base",
 }
 
 const VARIANTS: Readonly<Record<ButtonVariant, string>> = {
-  primary: "border border-accent bg-accent text-ink hover:opacity-90",
-  ghost: "border border-line-inner bg-raised text-fg hover:border-line-strong hover:bg-hover",
-  quiet: "border border-transparent bg-transparent text-fg-2 hover:text-fg",
-  danger: "border border-bad/40 bg-bad-bg text-bad hover:border-bad",
+  primary: "border border-primary bg-primary text-on-primary hover:opacity-90",
+  ghost: "border border-line-2 bg-card text-ink hover:border-line-3 hover:bg-secondary",
+  quiet: "border border-transparent bg-transparent text-ink-2 hover:text-ink",
+  danger: "border border-failed/40 bg-failed-soft text-failed hover:border-failed",
 }
 
 export function Button(props: {

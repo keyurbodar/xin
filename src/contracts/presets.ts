@@ -1,4 +1,4 @@
-import type { ConversationId } from "@earendil-works/pi-durable"
+import type { ConversationId, Extension } from "@earendil-works/pi-durable"
 
 export type PresetPlugins = "all" | readonly string[]
 
@@ -18,6 +18,8 @@ export type ConversationPresetView = {
 export interface PresetsService {
   list(): readonly PresetView[]
   presetOf(conversation: ConversationId): PresetView | undefined
+  /** The extensions a new thread of `coordinator` starts without, so its first request is already lean. */
+  threadRemovals(coordinator: ConversationId): readonly Extension[]
   contribute(preset: PresetView, source: string): Promise<() => Promise<void>>
 }
 

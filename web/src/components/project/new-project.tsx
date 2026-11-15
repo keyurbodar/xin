@@ -70,22 +70,22 @@ export function NewProjectDialog(props: { open: boolean; onClose: () => void }):
       onSubmit={() => void create()}
       footer={
         <>
-          <span class="mr-auto text-[11.5px] text-fg-3">You can change all of this later in project settings</span>
+          <span class="mr-auto text-xs text-ink-3">You can change all of this later in project settings</span>
           <button
             type="button"
             disabled={busy()}
             onClick={props.onClose}
-            class="h-8 rounded-[2px] px-3 text-[12.5px] text-fg-2 hover:text-fg disabled:opacity-50"
+            class="h-8 rounded-sm px-3 text-sm text-ink-2 hover:text-ink disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={!ready()}
-            class="flex h-8 items-center gap-1.5 rounded-[2px] bg-accent px-3 text-[12.5px] font-medium text-ink disabled:opacity-40"
+            class="flex h-8 items-center gap-1.5 rounded-sm bg-primary px-3 text-sm font-medium text-on-primary disabled:opacity-40"
           >
             {busy() ? "Creating…" : "Create project"}
-            <span class="kbd border-ink/30 text-ink">⌘↵</span>
+            <span class="kbd border-on-primary/30 text-on-primary">⌘↵</span>
           </button>
         </>
       }
@@ -123,7 +123,7 @@ export function NewProjectDialog(props: { open: boolean; onClose: () => void }):
       </Field>
 
       <Show when={failure()}>
-        {(text) => <div class="text-[12px] text-bad">{text()}</div>}
+        {(text) => <div class="text-sm text-failed">{text()}</div>}
       </Show>
     </Dialog>
   )

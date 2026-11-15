@@ -9,7 +9,7 @@ import {
 import { LATEST_PROTOCOL_VERSION } from "@earendil-works/pi-mcp"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { MCP_MODEL, requests, script } from "../../test/plugins/mcp.ts"
-import { cmd, eventually, fresh, turn } from "../../test/support.ts"
+import { cmd, eventually, fresh, OWNER_HEADERS, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -207,6 +207,31 @@ describe("mcp servers", () => {
     })
   })
 
+  it("shows the model only the first 8,000 characters of a long tool result and keeps the rest in details", async () => {
+    const stub = fresh()
+    serve(fakeServer())
+    await cmd(stub, "mcp-add-cap", "mcp.add", { name: "demo", url: "https://mcp.test/mcp" })
+
+    const big = "y".repeat(20_000)
+    script([
+      fauxAssistantMessage([fauxToolCall("tool_search", { query: "echo" })], { stopReason: "toolUse" }),
+      fauxAssistantMessage([fauxToolCall("mcp__demo__echo", { text: big })], { stopReason: "toolUse" }),
+      fauxAssistantMessage("done"),
+    ])
+    await turn(stub, "mcp-turn-cap", { text: "echo a lot", model: MCP_MODEL })
+
+    expect(await lastToolResult(stub)).toEqual({
+      isError: false,
+      text: `echo:${big}`.slice(0, 8_000) + "\n[Result cut at 8,000 of 20,005 characters.]",
+    })
+    const details = await runInDurableObject(stub, async (home: Home) => {
+      const page = await (await home.root()).entries({ order: "ascending" }, 500, undefined, context)
+      return page.items.flatMap((entry) => entry.model ?? []).findLast((message) => message.role === "toolResult")
+        ?.details
+    })
+    expect(details).toEqual({ content: [{ type: "text", text: `echo:${big}` }] })
+  })
+
   it("registers the cached tool list after an eviction without reaching the server", async () => {
     const stub = fresh()
     const fake = fakeServer()
@@ -379,6 +404,7 @@ describe("mcp servers", () => {
       await home.fetch(
         new Request("https://ingle.test/v1/cmd", {
           method: "POST",
+          headers: OWNER_HEADERS,
           body: JSON.stringify({ id: "mcp-remove-2", op: "mcp.remove", args: { name: "demo" } }),
         }),
       )

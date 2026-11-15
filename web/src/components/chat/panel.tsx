@@ -55,8 +55,8 @@ function Group(props: { label: string; count: number; tint?: boolean; children: 
   return (
     <section>
       <div class="flex items-center gap-1.5 px-3 pb-1 pt-3.5">
-        <Icon name="chevron-down" size={12} class="text-fg-4" />
-        <span class="label" classList={{ "text-accent-text": props.tint === true }}>
+        <Icon name="chevron-down" size={12} class="text-icon" />
+        <span class="label" classList={{ "text-primary-ink": props.tint === true }}>
           {props.label}
         </span>
         <span class="mono-meta">{props.count}</span>
@@ -137,9 +137,9 @@ function FilesTab(props: { slug: string }): JSX.Element {
             when={rows().length > 0}
             fallback={<EmptyState pictogram="folder" title="No files yet" detail="Files a thread writes land here under the project folder." />}
           >
-            <div class="flex items-center gap-2 border-b border-line px-3 py-2.5">
+            <div class="flex items-center gap-2 border-b border-line-1 px-3 py-2.5">
               <span class="label flex-1">{rows().length} files</span>
-              <span class="truncate font-mono text-[10.5px] text-fg-4">{root()}</span>
+              <span class="truncate font-mono text-2xs text-icon">{root()}</span>
             </div>
             <div class="flex flex-col">
               <For each={rows().toSorted((left, right) => right.updated_at - left.updated_at)}>
@@ -147,12 +147,12 @@ function FilesTab(props: { slug: string }): JSX.Element {
                   <button
                     type="button"
                     onClick={() => navigate(`/p/${props.slug}/files/${encodeURIComponent(entry.path)}`)}
-                    class="flex items-center gap-2.5 border-b border-line px-3 py-2.5 text-left hover:bg-hover"
+                    class="flex items-center gap-2.5 border-b border-line-1 px-3 py-2.5 text-left hover:bg-secondary"
                   >
-                    <Icon name="file" size={15} class="shrink-0 text-fg-3" />
+                    <Icon name="file" size={15} class="shrink-0 text-ink-3" />
                     <span class="min-w-0 flex-1">
-                      <span class="block truncate text-[13px] text-fg">{name(entry.path)}</span>
-                      <span class="block truncate text-[11.5px] text-fg-3">
+                      <span class="block truncate text-base text-ink">{name(entry.path)}</span>
+                      <span class="block truncate text-xs text-ink-3">
                         {folder(entry.path)} · {ago(entry.updated_at)}
                       </span>
                     </span>
@@ -200,19 +200,19 @@ function JobsTab(): JSX.Element {
             <div class="flex flex-col">
               <For each={data().jobs}>
                 {(job) => (
-                  <div class="flex flex-col gap-1.5 border-b border-line px-3 py-3">
+                  <div class="flex flex-col gap-1.5 border-b border-line-1 px-3 py-3">
                     <div class="flex items-center gap-2">
                       <StatusGlyph state={job.state === "running" ? "working" : job.state === "failed" ? "failed" : "done"} size={16} />
-                      <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{job.title}</span>
+                      <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{job.title}</span>
                       <span class="mono-meta shrink-0">{job.state}</span>
                     </div>
-                    <div class="flex items-center gap-1.5 text-[12px] text-fg-3">
+                    <div class="flex items-center gap-1.5 text-sm text-ink-3">
                       <Icon name="clock" size={12} />
                       <span class="truncate">{job.tool}</span>
-                      <span class="ml-auto shrink-0 font-mono text-[10.5px] text-fg-4">{ago(job.startedAt)}</span>
+                      <span class="ml-auto shrink-0 font-mono text-2xs text-icon">{ago(job.startedAt)}</span>
                     </div>
                     <Show when={job.result}>
-                      {(text) => <p class="line-clamp-3 text-[12px] leading-[1.55] text-fg-2">{text()}</p>}
+                      {(text) => <p class="line-clamp-3 text-sm leading-[1.55] text-ink-2">{text()}</p>}
                     </Show>
                   </div>
                 )}
@@ -263,7 +263,7 @@ function ThreadBody(props: {
       </For>
       <EntryList items={itemsOf(props.snapshot.entries)} context={context} />
       <Show when={live().busy}>
-        <div class="text-[12.5px] text-fg-3">
+        <div class="text-sm text-ink-3">
           <span class="shimmer">Working…</span>
         </div>
       </Show>
@@ -290,34 +290,34 @@ function ThreadDetail(props: {
 
   return (
     <div class="flex min-h-0 flex-1 flex-col">
-      <div class="flex h-12 shrink-0 items-center gap-2 border-b border-line px-2">
+      <div class="flex h-12 shrink-0 items-center gap-2 border-b border-line-1 px-2">
         <button
           type="button"
           onClick={() => props.onBack()}
           aria-label="Back to panel"
-          class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
+          class="grid h-7 w-7 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink"
         >
           <Icon name="chevron-left" size={16} />
         </button>
         <StatusGlyph state={state()} size={16} />
-        <span class="min-w-0 flex-1 truncate text-[13.5px] font-medium text-fg">{props.thread.title}</span>
+        <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.thread.title}</span>
         <button
           type="button"
           onClick={() => props.onBack()}
           aria-label="Close thread"
-          class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
+          class="grid h-7 w-7 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink"
         >
           <Icon name="x" size={15} />
         </button>
       </div>
       <div
-        class="flex items-center gap-2 border-b border-line px-3 py-2 text-[12px]"
+        class="flex items-center gap-2 border-b border-line-1 px-3 py-2 text-sm"
         style={{ color: STATE_COLOR[state()] }}
       >
         <span class="min-w-0 flex-1 truncate">
           {props.thread.statusLine ?? STATE_WORD[state()]}
         </span>
-        <span class="shrink-0 font-mono text-[10.5px] text-fg-4">{ago(props.thread.beatAt)}</span>
+        <span class="shrink-0 font-mono text-2xs text-icon">{ago(props.thread.beatAt)}</span>
       </div>
       <div class="min-h-0 flex-1 overflow-y-auto">
         <Skullet loading={snapshot() === undefined} sample={() => <PanelGhost rows={6} />} label="Loading thread">
@@ -401,10 +401,10 @@ export function ProjectPanel(props: {
   return (
     <Show when={props.open}>
       <aside
-        class="flex min-h-0 shrink-0 flex-col bg-surface"
+        class="flex min-h-0 shrink-0 flex-col bg-panel"
         classList={{
-          "w-[400px] border-l border-line min-[1440px]:w-[440px]": docked() && props.thread === undefined,
-          "w-[520px] border-l border-line": docked() && props.thread !== undefined,
+          "w-[400px] border-l border-line-1 min-[1440px]:w-[440px]": docked() && props.thread === undefined,
+          "w-[520px] border-l border-line-1": docked() && props.thread !== undefined,
           "w-full": props.variant === "drawer",
           "w-full flex-1 border-l-0": props.variant === "sheet",
         }}
@@ -413,7 +413,7 @@ export function ProjectPanel(props: {
           when={props.thread}
           fallback={
             <>
-              <div class="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
+              <div class="flex h-12 shrink-0 items-center gap-2 border-b border-line-1 px-3">
                 <div
                   ref={(element) => {
                     strip = element
@@ -422,7 +422,7 @@ export function ProjectPanel(props: {
                 >
                   <span
                     aria-hidden="true"
-                    class="absolute top-0 left-0 h-7 rounded-[2px] bg-selected transition-[transform,width] duration-200 ease-[var(--ease-standard)]"
+                    class="absolute top-0 left-0 h-7 rounded-sm bg-hover transition-[transform,width] duration-200 ease-[var(--ease-in-out)]"
                     style={{ transform: `translateX(${pill().left}px)`, width: `${pill().width}px` }}
                   />
                   <For each={TABS}>
@@ -431,15 +431,15 @@ export function ProjectPanel(props: {
                         type="button"
                         onClick={() => setTab(entry.id)}
                         data-tab-active={tab() === entry.id}
-                        class="relative z-10 flex h-7 items-center gap-1.5 whitespace-nowrap rounded-[2px] px-2 text-[12.5px]"
+                        class="relative z-10 flex h-7 items-center gap-1.5 whitespace-nowrap rounded-sm px-2 text-sm"
                         classList={{
-                          "text-fg": tab() === entry.id,
-                          "text-fg-3 hover:text-fg-2": tab() !== entry.id,
+                          "text-ink": tab() === entry.id,
+                          "text-ink-3 hover:text-ink-2": tab() !== entry.id,
                         }}
                       >
                         {entry.label}
                         <Show when={entry.id === "threads" && threadCount() > 0}>
-                          <span class="font-mono text-[10px] text-fg-4">{threadCount()}</span>
+                          <span class="font-mono text-2xs text-icon">{threadCount()}</span>
                         </Show>
                       </button>
                     )}
@@ -451,7 +451,7 @@ export function ProjectPanel(props: {
                       type="button"
                       onClick={close()}
                       aria-label="Close the panel"
-                      class="grid h-7 w-7 shrink-0 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
+                      class="grid h-7 w-7 shrink-0 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink"
                     >
                       <Icon name="x" size={14} />
                     </button>

@@ -8,15 +8,15 @@ Read with: [06 Orchestration](./06-orchestration.md) for the job wrapper, [08 Fi
 tool-web row (bundle ingle-plugin-web, row id tool-web)
   installs the tool-web extension with two tools
   web_search(query, maxResults?)  -> titles, URLs, snippets
-  web_fetch(url, maxChars?)       -> title, content type, readable text
+  web_fetch(url, maxChars?, offset?) -> title, content type, one window of readable text
 ```
 
 ## Tools
 
-| Tool | Input | Result |
-| --- | --- | --- |
-| `web_search` | `query` (1–500 chars), `maxResults` (1–10, default 5) | A numbered list of title, URL and snippet; `details.results` carries the same array. |
-| `web_fetch` | `url` (public http or https), `maxChars` (1,000–100,000, default 20,000) | Title, content type and readable text; non-text responses return metadata only. |
+| Tool         | Input                                                                                                      | Result                                                                                                               |
+| ------------ | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `web_search` | `query` (1–500 chars), `maxResults` (1–10, default 5)                                                      | A numbered list of title, URL and snippet; `details.results` carries the same array.                                 |
+| `web_fetch`  | `url` (public http or https), `maxChars` (1,000–100,000, default 8,000), `offset` (integer ≥ 0, default 0) | Title, content type and the readable text in `[offset, offset + maxChars)`; non-text responses return metadata only. |
 
 Both tools are wrapped with `jobs.tool`, so a call that takes longer than the 8 s inline wait becomes a job and reports its result later. In a thread the wrapper waits inline until the thread's deadline. They are read-only: no file is written and no project data is read.
 
@@ -33,7 +33,8 @@ Both tools are wrapped with `jobs.tool`, so a call that takes longer than the 8 
 - only public hosts: loopback, private, link-local, CGNAT, multicast, benchmark and IPv6 ULA/link-local ranges are refused, as are numeric and octal/hex host forms that could resolve to them. The host is lowercased and a trailing dot is removed before the check, so `localhost.` is judged as `localhost`;
 - the final URL after redirects is checked again.
 
-The body is capped at 2 MiB and the request at 15 s. HTML is reduced to a title and readable text: comments, scripts, styles, templates, SVG, iframes, objects and embeds are removed; block endings become line breaks; tags are stripped; entities are decoded; whitespace is normalised. Text, JSON and XML are returned as text within `maxChars`. A binary response returns its URL and content type with `text: null`.
+The body is capped at 2 MiB and the request at 15 s. HTML is reduced to a title and readable text: comments, scripts, styles, templates, SVG, iframes, objects and embeds are removed; block endings become line breaks; tags are stripped; entities are decoded; whitespace is normalised. Text, JSON and XML are returned as text the same way.
+The model sees one window of that text per call, 8,000 characters by default, because a tool result stays in the prompt on every later request of the conversation. When more text remains, the result ends with one line, `[Showing characters 0–8000 of 23,410. Call web_fetch again with offset 8000 for more.]`, and `details` carries `offset`, `nextOffset` (`null` on the last window) and `totalChars`. An `offset` at or past the end returns empty text and `[Offset 30000 is past the end: the page has 23,410 characters.]`. The total is measured on the text read within the 2 MiB body cap. A binary response returns its URL and content type with `text: null`.
 
 ## Row and scoping
 

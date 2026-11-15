@@ -20,10 +20,10 @@ export function Advanced(props: { initialRowId?: string | undefined }): JSX.Elem
 
   return (
     <>
-      <div class="flex w-[380px] shrink-0 flex-col border-r border-line">
-        <div class="flex items-center gap-2 border-b border-line px-3.5 py-3">
+      <div class="flex w-[380px] shrink-0 flex-col border-r border-line-1">
+        <div class="flex items-center gap-2 border-b border-line-1 px-3.5 py-3">
           <span class="label">Plugin rows</span>
-          <span class="ml-auto text-[11.5px] text-fg-3">{list().length}</span>
+          <span class="ml-auto text-xs text-ink-3">{list().length}</span>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto">
           <Show when={rows.state().kind === "loading"}>
@@ -41,12 +41,12 @@ export function Advanced(props: { initialRowId?: string | undefined }): JSX.Elem
               <button
                 type="button"
                 onClick={() => setSelected(row.id)}
-                class="flex w-full items-center gap-2.5 border-b border-line px-3.5 py-2.5 text-left hover:bg-hover"
-                classList={{ "bg-hover": selected() === row.id }}
+                class="flex w-full items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5 text-left hover:bg-secondary"
+                classList={{ "bg-secondary": selected() === row.id }}
               >
                 <span class="min-w-0 flex-1">
-                  <span class="block truncate text-[12.5px] font-medium text-fg">{row.title}</span>
-                  <span class="block truncate font-mono text-[10.5px] text-fg-3">
+                  <span class="block truncate text-sm font-medium text-ink">{row.title}</span>
+                  <span class="block truncate font-mono text-2xs text-ink-3">
                     {row.id} · {row.plugin}
                   </span>
                 </span>
@@ -71,10 +71,10 @@ export function Advanced(props: { initialRowId?: string | undefined }): JSX.Elem
         >
           {(row) => (
             <>
-              <header class="flex items-center gap-3 border-b border-line px-6 py-4">
+              <header class="flex items-center gap-3 border-b border-line-1 px-6 py-4">
                 <div class="min-w-0 flex-1">
-                  <span class="block truncate text-[16px] font-medium text-fg">{row().title}</span>
-                  <span class="block truncate text-[12px] text-fg-3">
+                  <span class="block truncate text-lg font-medium text-ink">{row().title}</span>
+                  <span class="block truncate text-sm text-ink-3">
                     {row().plugin} · {row().layer} · <span class="font-mono">{row().id}</span>
                   </span>
                 </div>
@@ -104,7 +104,7 @@ export function Advanced(props: { initialRowId?: string | undefined }): JSX.Elem
                           shown read-only.
                         </Note>
                         <Panel>
-                          <pre class="max-h-[320px] overflow-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed text-fg-2">
+                          <pre class="max-h-[320px] overflow-auto px-3 py-2.5 font-mono text-2xs leading-relaxed text-ink-2">
                             {JSON.stringify(row().config, null, 2)}
                           </pre>
                         </Panel>
@@ -118,7 +118,7 @@ export function Advanced(props: { initialRowId?: string | undefined }): JSX.Elem
                           <div class="flex flex-col gap-3">
                             <Note>This plugin declares no config schema. Its row config is shown read-only.</Note>
                             <Panel>
-                              <pre class="max-h-[320px] overflow-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed text-fg-2">
+                              <pre class="max-h-[320px] overflow-auto px-3 py-2.5 font-mono text-2xs leading-relaxed text-ink-2">
                                 {JSON.stringify(row().config, null, 2)}
                               </pre>
                             </Panel>
