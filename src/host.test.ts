@@ -120,7 +120,8 @@ describe("Home host loop", () => {
     await runInDurableObject(stub, async (_home, state) => {
       const data = new Uint8Array([0xff, 0xfe, 0x00])
       state.storage.sql.exec(
-        "INSERT INTO pi_journal (seq, part, parts, bytes, data) VALUES (?, 0, 1, ?, ?)",
+        "INSERT INTO pi_journal_ring (slot, part, seq, parts, bytes, data) VALUES (?, 0, ?, 1, ?, ?)",
+        999_999,
         999_999,
         data.length,
         data.buffer,
