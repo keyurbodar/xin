@@ -4,11 +4,12 @@ import { navigate } from "../lib/router.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { connect } from "../state/connection.ts"
 import { agentModelOf, createConversationView, type Snapshot } from "../state/conversation.ts"
-import { homeLoaded, projectThreads, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
+import { homeLoaded, homeRequests, projectThreads, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
 import { captainSpace, routeCaptain, routeCrewThreadId } from "../state/captains.ts"
 import { offersSideThread, type CaptainRow } from "../lib/captains.ts"
 import { models } from "../state/settings.ts"
 import { presets, prompts } from "../state/extensions.ts"
+import { requestsKey } from "../lib/requests.ts"
 import { refreshRequests } from "../state/requests.ts"
 import { openThreadTab, openThreadTabs, paneOpen, pruneThreadTabs, sidebarHidden, toggleSidebar, wideShell } from "../state/tabs.ts"
 import { ICON_BUTTON } from "../components/shell/menu.ts"
@@ -54,8 +55,8 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
     if (current !== undefined) openThreadTab(props.space.id, current.id)
   })
   createEffect(() => pruneThreadTabs(props.space.id, new Set(threads().keys())))
-  const openRequestCount = createMemo(() => props.space.openRequests)
-  createEffect(on(openRequestCount, () => void refreshRequests()))
+  const requestsDependOn = createMemo(() => requestsKey(props.space, homeRequests()))
+  createEffect(on(requestsDependOn, () => void refreshRequests()))
 
   const openThread = (id: number): void => {
     openThreadTab(props.space.id, id)

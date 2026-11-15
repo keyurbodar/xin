@@ -2,6 +2,7 @@ import { createEffect, createMemo, on, createResource, createSignal, onMount, Sh
 import { connect } from "../state/connection.ts"
 import {
   homeLoaded,
+  homeRequests,
   projectThreads,
   routeProject,
   routeThreadId,
@@ -21,6 +22,7 @@ import {
   type ThinkingLevel,
 } from "../state/conversation.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
+import { requestsKey } from "../lib/requests.ts"
 import { spaceRequests } from "../lib/spaces.ts"
 import { recordOf, numOf } from "../lib/parse.ts"
 import { openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
@@ -296,8 +298,8 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     void prompts.reload()
     void presetStore.reload()
   })
-  const openRequestCount = createMemo(() => props.project.openRequests)
-  createEffect(on(openRequestCount, () => void refreshRequests()))
+  const requestsDependOn = createMemo(() => requestsKey(props.project, homeRequests()))
+  createEffect(on(requestsDependOn, () => void refreshRequests()))
 
   const openThread = (id: number): void => {
     openThreadTab(props.project.id, id)
