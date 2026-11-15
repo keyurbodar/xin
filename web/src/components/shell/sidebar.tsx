@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { Dynamic, Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
-import { Blocks, CalendarClock, Check, ChevronsUpDown, Flower2, Moon, PanelLeft, Plus, Search, Settings, SquarePen, Sun, X } from "lucide-solid"
+import { Blocks, CalendarClock, Check, ChevronsUpDown, Flower2, HardDrive, Moon, PanelLeft, Plus, Search, Settings, SquarePen, Sun, X } from "lucide-solid"
 import { activeProjects, projectThreads, routeProject, routeThreadId, type ProjectSummary } from "../../state/home.ts"
 import { homeCaptains, routeCaptain } from "../../state/captains.ts"
 import type { CaptainRow } from "../../lib/captains.ts"
@@ -12,7 +12,7 @@ import { stagger } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { theme } from "../../lib/theme.ts"
 import { applyTheme, SlotList } from "../../plugins/slots.tsx"
-import { openThreadTab } from "../../state/tabs.ts"
+import { openThreadTab, paneOpen, projectTabs, setSidebarDrawer, showPaneView } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
 import { BrandMark } from "../ui/brand-mark.tsx"
 import { Signal } from "../ui/signal.tsx"
@@ -60,6 +60,19 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
       <nav class="flex flex-col gap-px px-2 pt-1">
         <NavRow label="New thread" disabled={routeProject() === undefined} onClick={openNewThread}>
           <SquarePen {...ICON} />
+        </NavRow>
+        <NavRow
+          label="Drive"
+          disabled={routeProject() === undefined}
+          active={paneOpen() && projectTabs(routeProject()?.id ?? "").view === "files"}
+          onClick={() => {
+            const project = routeProject()
+            if (project === undefined) return
+            showPaneView(project.id, "files")
+            setSidebarDrawer(false)
+          }}
+        >
+          <HardDrive {...ICON} />
         </NavRow>
         <NavRow label="Automations" active={first() === "automations"} onClick={() => navigate("/automations")}>
           <CalendarClock {...ICON} />
