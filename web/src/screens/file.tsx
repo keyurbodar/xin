@@ -80,16 +80,18 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
   }
 
   const ask = (): void => {
-    setPendingDraft(`About ${name(props.path)}: `)
+    setPendingDraft(props.project.coordinatorId, `About ${name(props.path)}: `)
     navigate(`/p/${props.project.slug}`)
   }
 
   const upload = async (dropped: FileList): Promise<void> => {
     const list = Array.from(dropped)
-    await Promise.all(list.map((file) => uploadFile(file, root().replace(/\/$/u, ""))))
+    const results = await Promise.allSettled(list.map((file) => uploadFile(file, root().replace(/\/$/u, ""))))
     forgetProjectFiles(props.project.slug)
     setVersion((value) => value + 1)
     await refetchFiles()
+    const failed = results.find((result) => result.status === "rejected")
+    if (failed !== undefined) throw failed.reason
   }
 
   return (

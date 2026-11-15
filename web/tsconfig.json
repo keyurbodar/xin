@@ -3,8 +3,14 @@
     "target": "es2024",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "lib": ["es2024", "dom", "dom.iterable"],
-    "types": ["vite/client"],
+    "lib": [
+      "es2024",
+      "dom",
+      "dom.iterable"
+    ],
+    "types": [
+      "vite/client"
+    ],
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "strict": true,
@@ -18,5 +24,11 @@
     "isolatedModules": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": [
+    "src",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
+  ]
 }

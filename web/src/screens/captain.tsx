@@ -3,7 +3,7 @@ import { GitFork, Menu, Settings } from "lucide-solid"
 import { navigate } from "../lib/router.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { connect } from "../state/connection.ts"
-import { createConversationView } from "../state/conversation.ts"
+import { createConversationView, type Snapshot } from "../state/conversation.ts"
 import { homeLoaded, projectThreads, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
 import { captainSpace, routeCaptain, routeCrewThreadId, type CaptainRow } from "../state/captains.ts"
 import { models } from "../state/settings.ts"
@@ -46,6 +46,8 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
       return found === undefined ? [] : [found]
     })
   const snapshot = createConversationView(streams, () => thread()?.id ?? props.captain.coordinatorId)
+  const onCoordinator = (): boolean => thread() === undefined
+  const coordinatorSnapshot = createMemo<Snapshot | undefined>((last) => (thread() === undefined ? snapshot() : last))
 
   createEffect(() => {
     const current = thread()
@@ -79,11 +81,7 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
             actions={CAPTAIN_ACTIONS}
             onAction={(value) => (value === "side" ? setSideOpen(true) : setSettingsOpen(true))}
           />
-          <Show
-            when={thread()?.id}
-            keyed
-            fallback={<ProjectChat project={props.space} snapshot={snapshot()} onOpenThread={openThread} />}
-          >
+          <Show when={thread()?.id} keyed>
             {(_id) => (
               <Show when={thread()}>
                 {(current) => (
@@ -92,6 +90,9 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
               </Show>
             )}
           </Show>
+          <div class="flex min-h-0 flex-1 flex-col" classList={{ hidden: !onCoordinator() }}>
+            <ProjectChat project={props.space} snapshot={coordinatorSnapshot()} active={onCoordinator()} onOpenThread={openThread} />
+          </div>
         </section>
       </Show>
       <Show when={paneOpen()}>
