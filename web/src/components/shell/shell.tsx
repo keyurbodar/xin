@@ -12,7 +12,7 @@ import { Toasts } from "../../plugins/slots.tsx"
 import { ProjectScreen } from "../../screens/project.tsx"
 import { ExtensionsScreen } from "../../screens/extensions.tsx"
 import { SettingsScreen } from "../../screens/settings.tsx"
-import { SchedulesScreen } from "../../screens/schedules.tsx"
+import { AutomationsScreen } from "../../screens/automations.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
 
@@ -110,8 +110,8 @@ export function Shell(): JSX.Element {
                   <Match when={first() === "settings"}>
                     <SettingsScreen />
                   </Match>
-                  <Match when={first() === "schedules"}>
-                    <SchedulesScreen />
+                  <Match when={first() === "automations"}>
+                    <AutomationsScreen />
                   </Match>
                 </Switch>
               </section>

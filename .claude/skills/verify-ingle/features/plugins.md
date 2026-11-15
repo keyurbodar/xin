@@ -16,7 +16,7 @@ Ingle's plugin layer is dsh's Cordis stack. Every part of Home is a loader row, 
 - Agent tool `plugin_manager` (`tool-plugins`): the row is disabled by default. When enabled, the agent can `list`, `catalog`, `tree`, `enable {id, enabled}` and `configure {id, config}`; approval of those mutations follows the P10 `tools/pre-execute` gate.
 - CLI (build time): `bun scripts/ingle.ts plugin list | generate | add <spec> [--enable] | remove | enable | disable`.
 - Example package: `plugins/time` (`timezone` and `refreshIntervalMs` config, dsh `context/time-context`). It offers no tool: it installs extension `clock-<row>`, which appends a user-role reading starting `Time sampled while preparing turn ` to each model request when due. A bundle can add a second `time` row with its own zone, which installs its own `clock-<row>` extension. A second row of a plugin that registers a fixed extension name fails to start and reports `failed`, as a duplicate does in dsh.
-- Tool rows: each feature package ships `tool-<name>` next to its service row (`tool-files`, `tool-models`, `tool-memory`, `tool-questions`, `tool-skills`, `tool-schedules`, `tool-orchestrator`, `tool-mcp`, kernel `tool-plugins`). Disabling one hides those tools; the service row stays `active`.
+- Tool rows: each feature package ships `tool-<name>` next to its service row (`tool-files`, `tool-models`, `tool-memory`, `tool-questions`, `tool-skills`, `tool-automations`, `tool-orchestrator`, `tool-mcp`, kernel `tool-plugins`). Disabling one hides those tools; the service row stays `active`.
 
 ## How to get to it (user POV)
 

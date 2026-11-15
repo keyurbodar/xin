@@ -125,10 +125,16 @@ export class Home extends DurableObject<Env> {
     return this.harness.root(BACKGROUND_CONTEXT)
   }
 
-  /** The home is the auth boundary: the Worker forwards a request unchecked, so every route is gated here. */
+  /**
+   * The home is the auth boundary: the Worker forwards a request unchecked, so every route is gated here except a
+   * webhook, whose secret in the path is its credential.
+   */
   override async fetch(request: Request): Promise<Response> {
-    if (!(await this.#auth.authorizes(request))) return new Response("unauthorized", { status: 401 })
-    if (new URL(request.url).pathname === REPAIR) return this.#repair(request)
+    const path = new URL(request.url).pathname
+    const hook = path.startsWith("/hooks/")
+    if (hook && this.#failure !== undefined) return new Response(null, { status: 503 })
+    if (!hook && !(await this.#auth.authorizes(request))) return new Response("unauthorized", { status: 401 })
+    if (path === REPAIR) return this.#repair(request)
     if (this.#failure !== undefined)
       return Response.json({ error: "boot_failed", failure: this.#failure }, { status: 503 })
     const { root } = this.#current
