@@ -101,6 +101,37 @@ describe("drive", () => {
     expect(field(field(history, "versions"), "0")).not.toMatchObject({ at: 1 })
   })
 
+  it("writes over a matching base, refuses a stale or vanished base, and writes without one, at no extra row read", async () => {
+    const stub = fresh()
+    const scope = { kind: "project", id: await project(stub, "acme") }
+    await ok(stub, "b0", "drive.write", { scope, path: "other.md", text: "one" })
+    const opened = field(await ok(stub, "b1", "drive.write", { scope, path: "plan.md", text: "one" }), "sha256")
+
+    const before = await reads(stub)
+    await ok(stub, "b2", "drive.write", { scope, path: "other.md", text: "two" })
+    const plainReads = (await reads(stub)) - before
+
+    const mid = await reads(stub)
+    const matched = await ok(stub, "b3", "drive.write", { scope, path: "plan.md", text: "three", base: opened })
+    expect((await reads(stub)) - mid).toBe(plainReads)
+    expect(matched).toMatchObject({ size: 5 })
+
+    const stale = await cmd(stub, "b4", "drive.write", { scope, path: "plan.md", text: "four", base: opened })
+    expect(stale.ok).toBe(false)
+    expect(JSON.stringify(stale)).toContain("bad_args")
+    expect(JSON.stringify(stale)).toContain("stale base: plan.md changed since")
+    expect(await ok(stub, "b5", "drive.read", { scope, path: "plan.md" })).toMatchObject({ text: "three" })
+
+    await ok(stub, "b6", "drive.delete", { scope, path: "plan.md" })
+    const gone = await cmd(stub, "b7", "drive.write", {
+      scope,
+      path: "plan.md",
+      text: "four",
+      base: field(matched, "sha256"),
+    })
+    expect(JSON.stringify(gone)).toContain("(now deleted)")
+  })
+
   it("rejects paths that leave the scope and scopes that do not exist", async () => {
     const stub = fresh()
     expect(await cmd(stub, "e1", "drive.write", { scope: { kind: "user" }, path: "../x", text: "" })).toMatchObject({
