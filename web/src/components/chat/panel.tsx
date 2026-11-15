@@ -1,12 +1,13 @@
-import { createEffect, createSignal, onMount, Show, type JSX } from "solid-js"
+import { createEffect, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { cmd } from "../../lib/api.ts"
 import { visualState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { parseHistoryPage, type AnsweredView, type EntryView, type RequestRow, type Snapshot } from "../../state/conversation.ts"
-import { loadRequests, openRequests, respondToQuestion } from "../../state/requests.ts"
+import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../../state/requests.ts"
 import { Skullet } from "../ui/skeleton.tsx"
 import { Transcript, TranscriptSkeleton } from "./transcript.tsx"
 import { SteerComposer } from "./composer.tsx"
+import { OpenQuestionCard } from "./cards.tsx"
 
 /** A thread tab: the thread's own transcript in the centre column, with the steer composer under it. */
 export function ThreadConversation(props: {
@@ -25,6 +26,10 @@ export function ThreadConversation(props: {
     openRequests().filter((request) => request.conversationId === props.thread.id)
 
   onMount(loadRequests)
+  createEffect(() => {
+    void props.project.openRequests
+    void refreshRequests()
+  })
 
   createEffect(() => {
     void props.thread.id
@@ -80,6 +85,19 @@ export function ThreadConversation(props: {
         </Show>
       </Skullet>
       <div class="mx-auto w-full max-w-[var(--w-column)]">
+        <For each={requests()}>
+          {(request) => (
+            <div class="px-3 pt-3">
+              <OpenQuestionCard
+                title={props.thread.title}
+                request={request}
+                onAnswer={async (_requestId, text) => {
+                  await answer(request, text)
+                }}
+              />
+            </div>
+          )}
+        </For>
         <SteerComposer
           threadTitle={props.thread.title}
           busy={busy()}

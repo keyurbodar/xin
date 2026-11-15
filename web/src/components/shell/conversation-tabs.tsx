@@ -1,4 +1,4 @@
-import { createSignal, For, Show, type JSX } from "solid-js"
+import { createEffect, createSignal, For, Show, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
 import { Archive, Ellipsis, Menu as MenuIcon, PanelRight, Plus, Settings, X } from "lucide-solid"
@@ -46,10 +46,10 @@ export function ConversationTabs(props: {
 
   const close = (id: number): void => {
     const index = props.threads.findIndex((thread) => thread.id === id)
-    closeThreadTab(props.project.id, id)
-    if (props.activeThreadId !== id) return
     const neighbour = props.threads[index - 1] ?? props.threads[index + 1]
-    openTab(neighbour?.id)
+    const active = props.activeThreadId === id
+    closeThreadTab(props.project.id, id)
+    if (active) openTab(neighbour?.id)
   }
 
   const down = (event: PointerEvent, id: number, index: number): void => {
@@ -101,7 +101,7 @@ export function ConversationTabs(props: {
           <MenuIcon {...ICON} />
         </button>
       </Show>
-      <div role="tablist" class="flex min-w-0 items-center gap-1 overflow-hidden">
+      <div role="tablist" class="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
         <button
           type="button"
           role="tab"
@@ -122,7 +122,12 @@ export function ConversationTabs(props: {
             const lifted = (): boolean => drag()?.id === thread.id && moved
             return (
               <div
-                ref={(element) => refs.set(thread.id, element)}
+                ref={(element) => {
+                  refs.set(thread.id, element)
+                  createEffect(() => {
+                    if (active()) element.scrollIntoView({ block: "nearest", inline: "nearest" })
+                  })
+                }}
                 role="tab"
                 tabIndex={0}
                 aria-selected={active()}

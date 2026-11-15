@@ -25,7 +25,17 @@ import { recordOf, numOf } from "../lib/parse.ts"
 import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
 import { modelName, models, searchModels, type ModelInfo, type ModelRef } from "../state/settings.ts"
 import { presets as presetStore, prompts } from "../state/extensions.ts"
-import { openThreadTab, paneOpen, projectTabs, pruneThreadTabs } from "../state/tabs.ts"
+import { Menu } from "lucide-solid"
+import {
+  openThreadTab,
+  paneOpen,
+  projectTabs,
+  pruneThreadTabs,
+  sidebarHidden,
+  toggleSidebar,
+  wideShell,
+} from "../state/tabs.ts"
+import { ICON_BUTTON } from "../components/shell/menu.ts"
 import { expandSlash } from "../lib/slash.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { navigate, param } from "../lib/router.ts"
@@ -306,12 +316,21 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
                 when={runId()}
                 fallback={
                   <Show
-                    when={thread()}
+                    when={thread()?.id}
                     keyed
                     fallback={<ProjectChat project={props.project} snapshot={snapshot()} onOpenThread={openThread} />}
                   >
-                    {(current) => (
-                      <ThreadConversation project={props.project} thread={current} snapshot={snapshot()} onOpenThread={openThread} />
+                    {(_id) => (
+                      <Show when={thread()}>
+                        {(current) => (
+                          <ThreadConversation
+                            project={props.project}
+                            thread={current()}
+                            snapshot={snapshot()}
+                            onOpenThread={openThread}
+                          />
+                        )}
+                      </Show>
                     )}
                   </Show>
                 }
@@ -328,7 +347,7 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
         <Show
           when={docked() || expanded()}
           fallback={
-            <div class="drawer-in absolute inset-y-0 right-0 z-[var(--z-sheet)] flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay">
+            <div class="drawer-in absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay">
               {pane()}
             </div>
           }
@@ -355,10 +374,17 @@ export function ProjectScreen(): JSX.Element {
   onMount(() => void models.reload())
   return (
     <Show
-      when={routeProject()}
+      when={routeProject()?.id}
       keyed
       fallback={
         <section class="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg bg-panel shadow-ring">
+          <Show when={!wideShell() || sidebarHidden()}>
+            <div class="flex h-[var(--h-topbar)] shrink-0 items-center border-b border-line-1 px-2">
+              <button type="button" class={ICON_BUTTON} aria-label="Open the sidebar" onClick={toggleSidebar}>
+                <Menu size={16} stroke-width={1.5} />
+              </button>
+            </div>
+          </Show>
           <Skullet loading={!homeLoaded()} sample={() => <TranscriptSkeleton />} label="Loading project">
             <div class="pt-16">
               <Show
@@ -388,7 +414,7 @@ export function ProjectScreen(): JSX.Element {
         </section>
       }
     >
-      {(project) => <ProjectWorkspace project={project} />}
+      {(_id) => <Show when={routeProject()}>{(project) => <ProjectWorkspace project={project()} />}</Show>}
     </Show>
   )
 }

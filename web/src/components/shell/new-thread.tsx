@@ -3,12 +3,13 @@ import { cmd } from "../../lib/api.ts"
 import { navigate } from "../../lib/router.ts"
 import { numOf, recordOf } from "../../lib/parse.ts"
 import { routeProject } from "../../state/home.ts"
-import { openThreadTab } from "../../state/tabs.ts"
+import { openThreadTab, setSidebarDrawer } from "../../state/tabs.ts"
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
 
 const [open, setOpen] = createSignal(false)
 
 export function openNewThread(): void {
+  setSidebarDrawer(false)
   setOpen(true)
 }
 

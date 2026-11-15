@@ -54,8 +54,8 @@ export function Shell(): JSX.Element {
         <Sidebar drawer={false} onSearch={search} onCollapse={toggleSidebar} />
       </Show>
       <Show when={!wide() && sidebarDrawer()}>
-        <div class="fade-in fixed inset-0 z-[var(--z-sheet)] bg-scrim" onClick={() => setSidebarDrawer(false)} />
-        <div class="drawer-in fixed inset-y-0 left-0 z-[var(--z-sheet)] flex shadow-overlay">
+        <div class="fade-in fixed inset-0 z-40 bg-scrim" onClick={() => setSidebarDrawer(false)} />
+        <div class="drawer-in fixed inset-y-0 left-0 z-40 flex shadow-overlay">
           <Sidebar drawer onSearch={search} onCollapse={toggleSidebar} />
         </div>
       </Show>
