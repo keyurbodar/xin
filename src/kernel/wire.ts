@@ -4,21 +4,17 @@ import { obj, opt, str } from "@earendil-works/pi-schema"
 import { defineOp } from "../ops.ts"
 import { ack, decodeCommand, Sockets } from "../wire.ts"
 import { hidden } from "./hidden.ts"
-import type { IngleLoader } from "./loader.ts"
 
 type HomePart = () => Promise<JsonObject>
 
 const OWNER = ["owner"] as const
 
 type State = {
-  readonly own: Context
   readonly parts: Map<string, HomePart>
   sockets: Sockets | undefined
 }
 
 const state = hidden<Wire, State>()
-
-const kernelOf = (wire: Wire): IngleLoader | undefined => state.get(wire).own.get("kernel")
 
 const socketsOf = (wire: Wire): Sockets | undefined => state.get(wire).sockets
 
@@ -27,7 +23,7 @@ export class Wire extends Service {
 
   constructor(ctx: Context) {
     super(ctx, "wire")
-    state.set(this, { own: ctx, parts: new Map(), sockets: undefined })
+    state.set(this, { parts: new Map(), sockets: undefined })
     ctx.http.route("POST /v1/cmd", async (request) => {
       const command = decodeCommand(await request.json().catch(() => undefined))
       if (command === undefined) return Response.json({ error: "bad command frame" }, { status: 400 })
@@ -105,12 +101,10 @@ export class Wire extends Service {
 
   /** A frame from an accepted socket. The host alone delivers these: a frame runs its command as the owner. */
   async message(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
-    kernelOf(this)?.kernelOnly(this.ctx.fiber, "deliver socket frames")
     await socketsOf(this)?.message(ws, raw)
   }
 
   async closed(ws: WebSocket): Promise<void> {
-    kernelOf(this)?.kernelOnly(this.ctx.fiber, "close sockets")
     await socketsOf(this)?.closed(ws)
   }
 }

@@ -1,7 +1,9 @@
 import { type Context, Service } from "@deepseek-ai/cordis"
 import { loaderRow } from "../contributions.ts"
-import { type Actor, type Command, Commands, type Op, type Outcome } from "../ops.ts"
+import type { Harness } from "@earendil-works/pi-durable"
+import { type Actor, type Command, Commands, type Op, type Outcome, redacted } from "../ops.ts"
 import { hidden } from "./hidden.ts"
+import { grants } from "./manifest.ts"
 import type { IngleLoader } from "./loader.ts"
 
 type State = {
@@ -14,6 +16,15 @@ type State = {
 const state = hidden<Ops, State>()
 
 const kernelOf = (ops: Ops): IngleLoader | undefined => state.get(ops).own.get("kernel")
+
+/** An op from a row that does not declare `conversations`: its handler gets a harness that refuses every use. */
+function withoutHarness(op: Op, row: string | undefined): Op {
+  const refused = (): never => {
+    throw new Error(`${row} uses the harness without declaring the conversations permission`)
+  }
+  const harness = new Proxy<Harness>(Object.create(null), { get: refused, has: refused, ownKeys: refused })
+  return { ...op, invoke: (api, args) => op.invoke({ ...api, harness }, args) }
+}
 
 export class Ops extends Service {
   static readonly inject = ["db"]
@@ -29,7 +40,8 @@ export class Ops extends Service {
         db: ctx.db,
         op: (name) => defined.get(name),
         harness: () => ctx.get("harness"),
-        around: (command, actor, invoke) => ctx.waterfall("ops/before", { command, actor }, invoke),
+        around: (command, actor, invoke) =>
+          ctx.waterfall("ops/before", { command: redacted(command, defined.get(command.op)), actor }, invoke),
       }),
     })
   }
@@ -47,24 +59,19 @@ export class Ops extends Service {
       if (defined.has(op.name)) throw new Error(`op ${op.name} is already defined`)
       const undeclared = kernel?.undeclared(row, "ops", op.name)
       if (undeclared !== undefined) throw new Error(undeclared)
-      defined.set(op.name, op)
+      const permissions = row === undefined ? undefined : kernel?.permissionsOf(row)
+      const held = permissions === undefined || grants(permissions, "conversations") ? op : withoutHarness(op, row)
+      defined.set(op.name, held)
       rows.set(op.name, row)
       return () => {
-        if (defined.get(op.name) !== op) return
+        if (defined.get(op.name) !== held) return
         defined.delete(op.name)
         rows.delete(op.name)
       }
     }, `ops.define(${op.name})`)
   }
 
-  /** Run one command. A plugin row acts for an agent, or as the owner when its manifest declares `owner`: that lets it run any op. */
   run(command: Command, actor: Actor): Promise<Outcome> {
-    const kernel = kernelOf(this)
-    const row = kernel?.pluginRow(this.ctx.fiber)
-    const asOwner =
-      actor.kind === "owner" && row !== undefined && kernel?.permissionsOf(row)?.includes("owner") === true
-    if (actor.kind !== "agent" && row !== undefined && !asOwner)
-      return Promise.reject(new Error(`${row} may run ops only as an agent, not as ${actor.kind}`))
     return state.get(this).commands.run(command, actor)
   }
 

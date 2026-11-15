@@ -16,6 +16,13 @@ describe("the build check on what plugin source reaches", () => {
     expect(check("await import(`cloudflare:workers`)")).toHaveLength(2)
     expect(check(`ctx.get(name)`)).toEqual([expect.stringContaining("computed name")])
     expect(check(`ctx.get("secrets")`)).toEqual([expect.stringContaining("without the secrets permission")])
+    expect(check(`const c = ctx; c.get(name)`)).toEqual([expect.stringContaining("aliases ctx")])
+    expect(check(`ctx["get"](name)`)).toEqual([expect.stringContaining("computed key")])
+    expect(check(`const { get } = ctx; get("host")`)).toEqual([expect.stringContaining("destructures ctx")])
+    expect(check(`Reflect.get(ctx.ops, Symbol.for("cordis.original"))`)).toEqual([
+      expect.stringContaining("cordis.original"),
+    ])
+    expect(check(`ctx.ops[symbols.original].ctx`)).toEqual([expect.stringContaining("cordis.original")])
   })
 
   it("passes what the declared permissions cover", () => {

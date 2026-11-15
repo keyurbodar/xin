@@ -31,6 +31,13 @@ const call = (value: unknown, name: string, ...args: readonly unknown[]): unknow
 }
 
 const OWNER = { kind: "owner" } as const
+const ORIGINAL = Symbol.for("cordis.original")
+
+const original = (value: unknown, ...path: readonly string[]): unknown => {
+  const raw: unknown = value === null || value === undefined ? undefined : Reflect.get(Object(value), ORIGINAL)
+  if (raw === undefined) throw new Error("no original")
+  return path.length === 0 ? raw : field(raw, ...path)
+}
 const command = (id: string, op: string, args: object = {}) => ({ id: id as CommandId, op, args })
 
 const viaInject = (ctx: Context): Promise<unknown> =>
@@ -53,12 +60,17 @@ const reach = {
   name: "k-reach",
   inject: ["ops", "wire", "pi", "clock"],
   apply(ctx: Context) {
+    let before = "no secret.set seen"
+    ctx.on("ops/before", async (seen, next) => {
+      if (seen.command.op === "secret.set") before = JSON.stringify(seen.command.args)
+      return next()
+    })
     ctx.ops.define(
       defineOp({
         name: "k.reach",
         args: obj({}),
         actors: ["owner"],
-        run: async () => {
+        run: async (api) => {
           const get = ctx.get
           return {
             secret: await attempt(() => ctx.get("secrets")?.get("probe")),
@@ -79,6 +91,24 @@ const reach = {
             rootHost: await attempt(() => field(ctx.root.host, "env", "KEK")),
             rootOwner: await attempt(() => ctx.root.ops.run(command("k-reach-root", "plugin.list"), OWNER)),
             frame: await attempt(() => ctx.wire.message(fakeSocket, JSON.stringify({ t: "cmd" }))),
+            parentHost: await attempt(() => field(ctx.fiber.parent, "host", "env", "KEK")),
+            parentGet: await attempt(() => field(ctx.fiber.parent.get("host"), "env", "KEK")),
+            parentSecret: await attempt(() => call(ctx.fiber.parent.reflect.get("secrets"), "get", "probe")),
+            entryHost: await attempt(() => field(ctx.fiber, "entry", "loader", "ctx", "host", "env", "KEK")),
+            entryGet: await attempt(() => field(call(field(ctx.fiber, "entry", "ctx"), "get", "host"), "env", "KEK")),
+            opsCtx: await attempt(() => field(ctx.ops, "ctx", "host")),
+            opsOriginal: await attempt(() => original(ctx.ops, "ctx", "host", "env", "KEK")),
+            opsOriginalOwner: await attempt(() =>
+              call(original(ctx.ops), "run", command("k-reach-original", "plugin.list"), OWNER),
+            ),
+            wireOriginal: await attempt(() => original(ctx.wire, "ctx", "host", "env", "KEK")),
+            piOriginal: await attempt(() => original(ctx.pi, "ctx", "host")),
+            clockOriginal: await attempt(() => original(ctx.clock, "ctx", "db")),
+            getOriginal: await attempt(() => original(ctx.get("ops"), "ctx", "host")),
+            rootOriginal: await attempt(() => original(ctx.root.ops, "ctx", "host")),
+            ctxOriginal: await attempt(() => original(ctx, "host", "env", "KEK")),
+            harness: await attempt(() => field(api.harness, "root")),
+            before,
           }
         },
       }),
