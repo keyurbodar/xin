@@ -1,6 +1,6 @@
 import { createSignal, For, Show, type JSX } from "solid-js"
 import { isDefinitive } from "../../lib/api.ts"
-import { createArgs, cronInWords, draftReady, TARGET_WORD, type Automation, type AutomationDraft } from "../../lib/automations.ts"
+import { createArgs, cronInWords, cronProblem, draftReady, TARGET_WORD, type Automation, type AutomationDraft } from "../../lib/automations.ts"
 import { createAutomation } from "../../state/automations.ts"
 import { activeProjects } from "../../state/home.ts"
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
@@ -45,10 +45,11 @@ export function AutomationDialog(props: { open: boolean; project?: string | unde
     },
   )
 
-  const ready = (): boolean => !busy() && draftReady(draft())
+  const ready = (): boolean => !busy() && draftReady(draft(), browserZone())
+  const problem = (): string | undefined => (draft().cron.trim() === "" ? undefined : cronProblem(draft().cron, browserZone()))
   const words = (): string | undefined => {
     const cron = draft().cron.trim()
-    if (cron === "") return undefined
+    if (cron === "" || problem() !== undefined) return undefined
     const said = cronInWords(cron)
     return said === cron ? undefined : said
   }
@@ -127,6 +128,7 @@ export function AutomationDialog(props: { open: boolean; project?: string | unde
             disabled={busy()}
             placeholder="0 9 * * 1-5"
             spellcheck={false}
+            aria-invalid={problem() !== undefined}
             onInput={(event) => set({ cron: event.currentTarget.value })}
           />
         </Field>
@@ -145,7 +147,8 @@ export function AutomationDialog(props: { open: boolean; project?: string | unde
             )}
           </For>
           <span class="ml-auto truncate text-xs text-ink-3">
-            <Show when={words()} fallback={<>5-field cron · {browserZone()}</>}>
+            <Show when={problem()}>{(text) => <span class="text-failed">{text()}</span>}</Show>
+            <Show when={problem() === undefined && words()} fallback={problem() === undefined ? <>5-field cron · {browserZone()}</> : null}>
               {(said) => (
                 <>
                   <span class="text-ink-2">{said()}</span> · {browserZone()}

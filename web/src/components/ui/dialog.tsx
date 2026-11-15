@@ -1,4 +1,5 @@
 import { Show, createEffect, onCleanup, onMount, type Accessor, type JSX } from "solid-js"
+import { returnTarget } from "../../lib/focus.ts"
 import { createPresence } from "../shell/presence.ts"
 import { Icon } from "./icon.tsx"
 
@@ -89,12 +90,29 @@ function Frame(props: {
     }
   }
 
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+  let escaped: HTMLElement | undefined
+  const focusInitial = (): void => {
+    panel.querySelector<HTMLElement>("[autofocus], input, textarea")?.focus()
+  }
+  /** A menu that opened this dialog restores focus to its trigger after the dialog mounts; pull it back in and remember the trigger. */
+  const onFocusIn = (event: FocusEvent): void => {
+    const target = event.target
+    if (!(target instanceof HTMLElement) || panel.contains(target) || target.closest('[data-part="positioner"]') !== null) return
+    escaped = target
+    focusInitial()
+  }
+
   onMount(() => {
-    const first = panel.querySelector<HTMLElement>("[autofocus], input, textarea")
-    first?.focus()
+    focusInitial()
     document.addEventListener("keydown", onKey)
+    document.addEventListener("focusin", onFocusIn)
   })
-  onCleanup(() => document.removeEventListener("keydown", onKey))
+  onCleanup(() => {
+    document.removeEventListener("keydown", onKey)
+    document.removeEventListener("focusin", onFocusIn)
+    returnTarget([escaped, opener])?.focus()
+  })
 
   return (
     <div

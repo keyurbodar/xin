@@ -3,6 +3,7 @@ import {
   automationsRevisionOf,
   createArgs,
   cronInWords,
+  cronProblem,
   describeTriggers,
   draftReady,
   nextLabel,
@@ -64,6 +65,9 @@ test.each([
   ["0 8 1 1 *", "0 8 1 1 *"],
   ["0 25 * * *", "0 25 * * *"],
   ["0 9 * *", "0 9 * *"],
+  ["*/45 * * * *", "*/45 * * * *"],
+  ["0 */5 * * *", "0 */5 * * *"],
+  ["*/0 * * * *", "*/0 * * * *"],
 ])("cron %s reads as %s", (cron, words) => {
   expect(cronInWords(cron)).toBe(words)
 })
@@ -99,9 +103,10 @@ test("next run reads paused, on webhook, minutes away, a weekday this week, then
 
 test("the dialog creates one schedule trigger in the browser zone, trimmed", () => {
   const draft = { title: " Digest ", prompt: " Summarise ", cron: " 0  9 * * 1 ", project: "prj_1", target: "fresh" as const }
-  expect(draftReady(draft)).toBe(true)
-  expect(draftReady({ ...draft, project: "" })).toBe(false)
-  expect(draftReady({ ...draft, cron: "  " })).toBe(false)
+  expect(draftReady(draft, "UTC")).toBe(true)
+  expect(draftReady({ ...draft, project: "" }, "UTC")).toBe(false)
+  expect(draftReady({ ...draft, cron: "  " }, "UTC")).toBe(false)
+  expect(draftReady({ ...draft, cron: "*/60 * * * *" }, "UTC")).toBe(false)
   expect(createArgs(draft, "Asia/Kolkata")).toEqual({
     title: "Digest",
     prompt: "Summarise",
@@ -109,4 +114,16 @@ test("the dialog creates one schedule trigger in the browser zone, trimmed", () 
     target: { kind: "fresh" },
     triggers: [{ kind: "schedule", cron: "0 9 * * 1", tz: "Asia/Kolkata" }],
   })
+})
+
+test("the dialog refuses exactly the crons the server's parser refuses, in its words", () => {
+  for (const bad of ["* * * *", "60 * * * *", "* 24 * * *", "5-1 * * * *", "*/0 * * * *", "x * * * *"]) {
+    expect(cronProblem(bad, "UTC")).toBeString()
+  }
+  expect(cronProblem("*/0 * * * *", "UTC")).toBe("0 is outside 1-59")
+  expect(cronProblem("*/60 * * * *", "UTC")).toBe("60 is outside 1-59")
+  expect(cronProblem("0 */24 * * *", "UTC")).toBe("24 is outside 1-23")
+  expect(cronProblem("0 0 31 2 *", "UTC")).toBe('"0 0 31 2 *" never fires')
+  expect(cronProblem("*/45 * * * *", "UTC")).toBeUndefined()
+  expect(cronProblem("0 9 * * MON-FRI", "UTC")).toBeUndefined()
 })

@@ -2,7 +2,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import type { CommandId } from "../../src/ids.ts"
 import type { Actor } from "../../src/ops.ts"
-import { runInDurableObject } from "cloudflare:test"
+import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { M5_MODEL } from "../../test/plugins/m5.ts"
 import { addThreads, cmd, eventually, fresh } from "../../test/support.ts"
@@ -358,5 +358,31 @@ describe("automations", () => {
     expect(current.runs[0]?.inputs).toBe(2)
     expect(current.runs[0]?.input?.length ?? Infinity).toBeLessThanOrEqual(32 * 1024 + 200)
     expect(current.batches.map((batch) => batch.count)).toEqual([1])
+  }, 30_000)
+
+  it("never repeats the home revision across an eviction, so a client that saw it still reloads", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "revision")
+    const revision = () => runInDurableObject(stub, (home: Home) => home.loader.ctx.automations.revision)
+    const seen: number[] = [await revision()]
+    const created = await op<AutomationView>(stub, "r1", "automation.create", {
+      title: "Rev",
+      prompt: "Count",
+      project: project.id,
+      triggers: [],
+    })
+    seen.push(await revision())
+    await op<AutomationView>(stub, "r2", "automation.update", { id: created.id, enabled: false })
+    seen.push(await revision())
+
+    await evictDurableObject(stub)
+    seen.push(await revision())
+    await op<AutomationView>(stub, "r3", "automation.update", { id: created.id, enabled: true })
+    seen.push(await revision())
+    await op<{ deleted: boolean }>(stub, "r4", "automation.delete", { id: created.id })
+    seen.push(await revision())
+
+    for (let index = 1; index < seen.length; index += 1)
+      expect(seen[index]).toBeGreaterThan(seen[index - 1] ?? Infinity)
   }, 30_000)
 })
