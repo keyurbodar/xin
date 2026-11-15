@@ -27,7 +27,8 @@
     "ingle-plugin-web",
     "ingle-plugin-workspace",
     "ingle-plugin-git-native",
-    "ingle-plugin-issues"
+    "ingle-plugin-issues",
+    "ingle-plugin-drive"
   ],
   "patch": [
     {

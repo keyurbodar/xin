@@ -43,7 +43,8 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
         prs TEXT NOT NULL DEFAULT '[]',
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
-        closed_at INTEGER
+        closed_at INTEGER,
+        agent_hops INTEGER NOT NULL DEFAULT 0
       )`,
       "CREATE INDEX issues_updated ON issues (updated_at DESC, id DESC)",
       "CREATE INDEX issues_project ON issues (project, updated_at DESC, id DESC) WHERE project IS NOT NULL",
@@ -70,6 +71,7 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
         reply_to INTEGER
       )`,
       "CREATE INDEX issue_events_issue ON issue_events (issue_id, id)",
+      "CREATE TABLE issue_meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL) WITHOUT ROWID",
       `CREATE TABLE issue_wakes (
         command_id TEXT PRIMARY KEY,
         issue_id INTEGER NOT NULL,
@@ -78,13 +80,13 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
         status TEXT NOT NULL,
         text TEXT NOT NULL
       ) WITHOUT ROWID`,
-      "CREATE VIRTUAL TABLE issues_fts USING fts5(title, description, content='issues', content_rowid='id', prefix='3')",
+      "CREATE VIRTUAL TABLE issues_fts USING fts5(title, description, project, content='issues', content_rowid='id', prefix='3')",
       `CREATE TRIGGER issues_fts_insert AFTER INSERT ON issues BEGIN
-        INSERT INTO issues_fts (rowid, title, description) VALUES (new.id, new.title, new.description);
+        INSERT INTO issues_fts (rowid, title, description, project) VALUES (new.id, new.title, new.description, new.project);
       END`,
       `CREATE TRIGGER issues_fts_update AFTER UPDATE OF title, description ON issues BEGIN
-        INSERT INTO issues_fts (issues_fts, rowid, title, description) VALUES ('delete', old.id, old.title, old.description);
-        INSERT INTO issues_fts (rowid, title, description) VALUES (new.id, new.title, new.description);
+        INSERT INTO issues_fts (issues_fts, rowid, title, description, project) VALUES ('delete', old.id, old.title, old.description, old.project);
+        INSERT INTO issues_fts (rowid, title, description, project) VALUES (new.id, new.title, new.description, new.project);
       END`,
     ],
   },
