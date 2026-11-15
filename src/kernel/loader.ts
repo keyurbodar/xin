@@ -1,4 +1,4 @@
-import { Context, type Fiber, type Plugin } from "@deepseek-ai/cordis"
+import { Context, type Fiber, type Plugin, symbols } from "@deepseek-ai/cordis"
 import { Loader } from "@deepseek-ai/cordis-plugin-loader"
 import { normalizePatch } from "./bundlepatch.ts"
 import { configSchemaOf } from "./config.ts"
@@ -115,9 +115,22 @@ export class IngleLoader extends Loader {
     this.missing = applied.rows.filter((row) => !this.has(row))
     this.persistPatch = config.persist
     ctx.on("internal/get", (target: Context, service: string, _error: Error, next: () => unknown) => {
-      const refusal = this.refusal(target.fiber, service)
-      if (refusal !== undefined) throw new Error(refusal)
+      this.refuse(target.fiber, service)
       return next()
+    })
+    const reflect: Context["reflect"] = Reflect.get(ctx.reflect, symbols.original)
+    const get = reflect.get
+    const refuse = (fiber: Fiber, service: string): void => this.refuse(fiber, service)
+    reflect.get = function (this: Context["reflect"], name: string, strict?: boolean): unknown {
+      refuse(this.ctx.fiber, name)
+      return get.call(this, name, strict)
+    }
+    const root = ctx.root
+    const pluginRow = (fiber: Fiber): string | undefined => this.pluginRow(fiber)
+    Object.defineProperty(this.ctx, "root", {
+      get(this: Context): Context {
+        return pluginRow(this.fiber) === undefined ? root : root.extend({ fiber: this.fiber })
+      },
     })
   }
 
@@ -179,14 +192,25 @@ export class IngleLoader extends Loader {
     return plugin === undefined ? undefined : this.composition.catalog[plugin]?.manifest?.permissions
   }
 
-  /** Why the code running in `fiber` may not use `service`: it runs in a plugin row that does not declare the permission. */
-  refusal(fiber: Fiber, service: string): string | undefined {
-    const permission = permissionFor(service)
-    if (permission === undefined) return undefined
+  /** The plugin row the code running in `fiber` belongs to, when that row's plugin has a manifest to hold it to. */
+  pluginRow(fiber: Fiber): string | undefined {
     const id = this.locate(fiber)
-    const permissions = id === undefined ? undefined : this.permissionsOf(id)
-    if (permissions === undefined || permissions.includes(permission)) return undefined
-    return `${id} uses the ${service} service without declaring the ${permission} permission`
+    return id === undefined || this.permissionsOf(id) === undefined ? undefined : id
+  }
+
+  /** Throws when the code running in `fiber` may not use `service`: it runs in a plugin row that does not declare the permission. */
+  refuse(fiber: Fiber, service: string): void {
+    const permission = permissionFor(service)
+    if (permission === undefined) return
+    const id = this.pluginRow(fiber)
+    if (id === undefined || this.permissionsOf(id)?.includes(permission) === true) return
+    throw new Error(`${id} uses the ${service} service without declaring the ${permission} permission`)
+  }
+
+  /** Throws when the code running in `fiber` is a plugin row: `what` is for the kernel alone. */
+  kernelOnly(fiber: Fiber, what: string): void {
+    const id = this.pluginRow(fiber)
+    if (id !== undefined) throw new Error(`${id} may not ${what}; only the kernel may`)
   }
 
   /** Why a row may not register this tool or op: its plugin declares `contributes` and leaves the name out. */

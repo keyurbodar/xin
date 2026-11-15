@@ -12,6 +12,7 @@ import {
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
 import { loaderRow } from "../contributions.ts"
 import { JournalStorage } from "./journal.ts"
+import { hidden } from "./hidden.ts"
 import type { IngleLoader } from "./loader.ts"
 
 export type Installed = {
@@ -20,6 +21,8 @@ export type Installed = {
   readonly row: string | undefined
 }
 type EnvProvider = (target: EnvTarget) => ExecutionEnv | undefined
+
+const own = hidden<Pi, Context>()
 
 export class Pi extends Service {
   static readonly inject = ["host", "clock"]
@@ -31,6 +34,7 @@ export class Pi extends Service {
 
   constructor(ctx: Context) {
     super(ctx, "pi")
+    own.set(this, ctx)
   }
 
   async [Service.init](): Promise<void> {
@@ -63,7 +67,7 @@ export class Pi extends Service {
     const previous = this.installed.get(extension.name)
     if (previous !== undefined && previous.owner !== owner)
       throw new Error(`extension ${extension.name} is installed by another plugin`)
-    const kernel: IngleLoader | undefined = this.ctx.get("kernel")
+    const kernel: IngleLoader | undefined = own.get(this).get("kernel")
     for (const tool of extension.tools ?? []) {
       const undeclared = kernel?.undeclared(row, "tools", tool.name)
       if (undeclared !== undefined) throw new Error(undeclared)

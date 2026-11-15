@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
+import { reachViolations } from "./reach.ts"
 import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
 
 const ROOT = join(import.meta.dirname, "..")
@@ -240,9 +241,37 @@ const readProfile = (): Profile => {
 
 const writeProfile = (profile: Profile) => writeFileSync(PROFILE, `${JSON.stringify(profile, null, 2)}\n`)
 
+const SOURCE = /\.(?:[cm]?[jt]s|tsx)$/
+const TEST = /\.test\.[cm]?[jt]sx?$/
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name)
+    if (statSync(path).isDirectory()) return name === "node_modules" ? [] : sourceFiles(path)
+    return SOURCE.test(path) && !path.endsWith(".d.ts") && !TEST.test(path) ? [path] : []
+  })
+}
+
+/** Refuses an npm code package whose source reaches past the permissions its plugins declare: lint never sees it. */
+function assertWithinPermissions(found: readonly Found[]): void {
+  const violations = found
+    .filter((entry) => !entry.local)
+    .flatMap((entry) =>
+      sourceFiles(entry.dir).flatMap((file) =>
+        reachViolations(
+          `${entry.pkg}/${relative(entry.dir, file)}`,
+          readFileSync(file, "utf8"),
+          new Set(Object.values(entry.plugins).flatMap((plugin) => plugin.manifest.permissions)),
+        ),
+      ),
+    )
+  if (violations.length > 0) throw new Error(`code packages reach past their permissions:\n${violations.join("\n")}`)
+}
+
 function generate(): Found[] {
   const found = discover()
   assertCoreFree(found)
+  assertWithinPermissions(found)
   const client = renderClient(found)
   writeFileSync(GENERATED, render(found))
   writeFileSync(CLIENT_GENERATED, client.module)
