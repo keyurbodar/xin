@@ -21,6 +21,7 @@ import * as secretsTest from "./plugins/secrets.ts"
 import * as settled from "./plugins/settled.ts"
 import * as skills from "./plugins/skills.ts"
 import * as contrib from "./plugins/contrib.ts"
+import * as drivescopes from "./plugins/drivescopes.ts"
 import type { Composition, Catalog } from "../src/kernel/loader.ts"
 import type { Profile } from "../src/kernel/layers.ts"
 import type { Extension } from "@earendil-works/pi-durable"
@@ -122,6 +123,7 @@ const TEST_CATALOG: Catalog = {
   ...reach.catalog,
   ...settled.catalog,
   ...contrib.catalog,
+  ...drivescopes.catalog,
 }
 
 const TEST_ROWS = [
@@ -146,6 +148,7 @@ const TEST_ROWS = [
   ...secretsTest.rows,
   ...reach.rows,
   ...settled.rows,
+  ...drivescopes.rows,
 ]
 
 export const FAUX_MODEL = { provider: "faux", modelId: "faux-1" } as const
