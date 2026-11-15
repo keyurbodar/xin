@@ -80,9 +80,9 @@ describe("a batch that throws, and the home revision", () => {
     const after = await stub.fetch("https://ingle.internal/v1/cmd", {
       method: "POST",
       headers: OWNER_HEADERS,
-      body: JSON.stringify(bump("d", 0)),
+      body: JSON.stringify(bump("d", 10)),
     })
-    expect((await after.json<{ result: unknown }>()).result).toBe(1)
+    expect((await after.json<{ result: unknown }>()).result).toBe(11)
   })
 
   it("announces a mutating batch to home subscribers in a frame, and a read-only batch not at all", async () => {
