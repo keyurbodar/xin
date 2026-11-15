@@ -20,7 +20,7 @@ const served = (manifest: Manifest, object: R2Object): Headers =>
     "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(manifest.name)}`,
     "content-security-policy": "sandbox",
     "x-content-type-options": "nosniff",
-    "cache-control": "private, max-age=60",
+    "cache-control": "private, no-cache",
     "accept-ranges": "bytes",
     "last-modified": object.uploaded.toUTCString(),
     etag: object.httpEtag,

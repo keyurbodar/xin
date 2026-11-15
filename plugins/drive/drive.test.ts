@@ -276,6 +276,31 @@ describe("drive", () => {
     expect((await get("/s/not-an-id")).status).toBe(401)
   })
 
+  it("makes a browser revalidate a share link on every view, so Stop sharing takes effect at once", async () => {
+    const stub = fresh()
+    const user = { kind: "user" }
+    await ok(stub, "w1", "drive.write", { scope: user, path: "notes.md", text: "hello" })
+    const url = field(await ok(stub, "sh1", "drive.share", { scope: user, path: "notes.md" }), "url")
+    if (typeof url !== "string") throw new Error("no url")
+
+    const first = await get(url)
+    expect(first.status).toBe(200)
+    expect(first.headers.get("cache-control")).toBe("private, no-cache")
+    const etag = first.headers.get("etag")
+    if (etag === null) throw new Error("no etag")
+    await first.arrayBuffer()
+
+    const revalidated = await get(url, { "if-none-match": etag })
+    expect(revalidated.status).toBe(304)
+    expect(revalidated.headers.get("cache-control")).toBe("private, no-cache")
+    await revalidated.arrayBuffer()
+
+    await ok(stub, "u1", "drive.unshare", { scope: user, path: "notes.md" })
+    const gone = await get(url, { "if-none-match": etag })
+    expect(gone.status).toBe(404)
+    await gone.arrayBuffer()
+  })
+
   it("answers a share link's conditional and ranged reads with 304, 412, 206 and 416, and honours If-Range", async () => {
     const stub = fresh()
     const user = { kind: "user" }
