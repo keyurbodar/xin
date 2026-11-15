@@ -45,6 +45,7 @@ export type ThreadSummary = {
   readonly title: string
   readonly role: ThreadRole
   readonly status: ThreadStatus
+  readonly run: number
   readonly statusLine?: string
   readonly result?: string
   readonly beatAt?: number
@@ -192,6 +193,7 @@ function threadSummary(id: ConversationId, thread: ThreadState): ThreadSummary {
     title: thread.title,
     role: thread.role,
     status: thread.status,
+    run: thread.run ?? 1,
     ...(thread.statusLine === undefined ? {} : { statusLine: thread.statusLine }),
     ...(thread.result === undefined ? {} : { result: thread.result }),
     ...(thread.beatAt === undefined ? {} : { beatAt: thread.beatAt }),

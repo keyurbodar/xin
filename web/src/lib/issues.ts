@@ -385,3 +385,8 @@ export function newIssueArgs(input: NewIssue): Record<string, unknown> | undefin
     ...(input.state === undefined ? {} : { state: input.state }),
   }
 }
+
+/** Issues are scoped by project; a Captain's pane carries its space as the project, so it reads its project's issues. */
+export function issueScope(pane: { readonly id: string }, captain: { readonly projectId: string } | undefined): string {
+  return captain?.projectId ?? pane.id
+}

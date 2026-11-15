@@ -5,6 +5,7 @@ import {
   dueLabel,
   eventLine,
   initials,
+  issueScope,
   localDay,
   newIssueArgs,
   openGroups,
@@ -192,4 +193,9 @@ test("new issue args need a title and carry only the options that were picked", 
     priority: "high",
     state: "needs-you",
   })
+})
+
+test("a project pane lists its own issues, and a Captain pane lists its project's", () => {
+  expect(issueScope({ id: "prj_1" }, undefined)).toBe("prj_1")
+  expect(issueScope({ id: "spc_9" }, { projectId: "prj_1" })).toBe("prj_1")
 })

@@ -4,6 +4,7 @@ import { Popover } from "@ark-ui/solid/popover"
 import { MessagesSquare, Plus } from "lucide-solid"
 import {
   assigneeName,
+  issueScope,
   dueLabel,
   localDay,
   newIssueArgs,
@@ -18,6 +19,7 @@ import {
 } from "../../lib/issues.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { createIssue, issuesRev, projectIssueList } from "../../state/issues.ts"
+import { homeCaptains } from "../../state/captains.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { createPaneAction } from "../chat/ui.tsx"
 import { Button } from "../ui/button.tsx"
@@ -34,13 +36,17 @@ export function issueNames(project: ProjectSummary): Names {
   const titles = new Map(projectThreads(project).map((thread) => [thread.id, thread.title]))
   return {
     thread: (id) => titles.get(id),
-    captain: (id) => (id === project.coordinatorId ? project.name : undefined),
+    captain: (id) => homeCaptains().find((captain) => captain.coordinatorId === id)?.name ?? (id === project.coordinatorId ? project.name : undefined),
   }
+}
+
+function issueProjectId(context: PaneContext): string {
+  return issueScope(context.project, context.captain)
 }
 
 export function IssuesSection(props: PaneContext & { label: string }): JSX.Element {
   const [data] = createResource(
-    () => `${issuesRev()}:${props.project.id}`,
+    () => `${issuesRev()}:${issueProjectId(props)}`,
     (key) => {
       const cut = key.indexOf(":")
       return projectIssueList(key.slice(cut + 1), Number(key.slice(0, cut)))
@@ -62,7 +68,7 @@ export function IssuesSection(props: PaneContext & { label: string }): JSX.Eleme
     <Section
       label={props.label}
       count={total()}
-      action={<NewIssue project={props.project} states={data.latest?.states ?? []} />}
+      action={<NewIssue project={props.project} projectId={issueProjectId(props)} states={data.latest?.states ?? []} />}
     >
       <For each={groups()} fallback={<span class="px-2 py-1.5 text-sm text-ink-3">{empty()}</span>}>
         {(group) => (
@@ -136,7 +142,7 @@ function chipClass(on: boolean): string {
 }
 
 /** Title first; priority and state are optional and fall back to the contract's defaults (Normal, the default open state). */
-function NewIssue(props: { project: ProjectSummary; states: readonly IssueState[] }): JSX.Element {
+function NewIssue(props: { project: ProjectSummary; projectId: string; states: readonly IssueState[] }): JSX.Element {
   const [open, setOpen] = createSignal(false)
   const [title, setTitle] = createSignal("")
   const [priority, setPriority] = createSignal<Priority>()
@@ -145,7 +151,7 @@ function NewIssue(props: { project: ProjectSummary; states: readonly IssueState[
   const args = () =>
     newIssueArgs({
       title: title(),
-      project: props.project.id,
+      project: props.projectId,
       priority: priority(),
       state: state(),
     })

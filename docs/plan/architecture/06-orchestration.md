@@ -20,7 +20,7 @@ The coordinator gets this tool surface. Threads get a narrower version (no `dele
 | `thread_read` | `{threadId, after?}` | entries after a cursor, text only, bounded at 4k tokens |
 | `thread_list` | `{projectId?, status?}` | projection of the workspace and thread docs |
 | `pending_request` | `{action:"list"\|"read"\|"respond", threadId?, requestId?, answer?}` | §11 |
-| `schedule_create` / `schedule_list` / `schedule_view` / `schedule_edit` | dsh `tool-schedule` | §16, [§19](./13-always-on.md) |
+| `automation_save` / `automation_list` / `automation_trigger` | Capy automations | [§19](./13-always-on.md) |
 | `get_goal` / `create_goal` / `update_goal` | dsh `tool-goal` | [`goal.set`](13-always-on.md), controlled by the `goal-rounds` row |
 | `set_model` | §7 | |
 

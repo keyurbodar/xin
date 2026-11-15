@@ -162,6 +162,8 @@ describe("workspace", () => {
         await move(completed, "done", "all good")
         await move(failed, "unanswered", "provider failed")
         await move(cancelled, "abort")
+        const rerun = await tx.doc(ThreadDoc, completed)
+        rerun.run = 2
         const requests = await tx.doc(RequestsDoc, waiting)
         requests.open["q1"] = { kind: "question", question: "Pick one", at: Date.now() }
       }, BACKGROUND_CONTEXT)
@@ -178,7 +180,8 @@ describe("workspace", () => {
     const found = projectsOf(snapshot.value).find((entry) => entry.id === project.id)
     expect(found?.threads.working.map((thread) => thread.title)).toEqual(["Working"])
     expect(found?.threads.waiting.map((thread) => thread.title)).toEqual(["Waiting"])
-    expect(found?.threads.completed).toMatchObject([{ title: "Completed", result: "all good" }])
+    expect(found?.threads.completed).toMatchObject([{ title: "Completed", result: "all good", run: 2 }])
+    expect(found?.threads.working).toMatchObject([{ title: "Working", run: 1 }])
     expect(found?.threads.failed).toMatchObject([{ title: "Failed", result: "provider failed" }])
     expect(found?.threads.cancelled.map((thread) => thread.title)).toEqual(["Cancelled"])
     expect(found?.openRequests).toBe(1)
