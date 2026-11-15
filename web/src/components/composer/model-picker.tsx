@@ -113,6 +113,7 @@ export function ModelPicker(props: {
                 const entry = collection().find(details.value)
                 if (entry === null) return
                 props.onPick({ provider: entry.model.provider, modelId: entry.model.modelId })
+                props.onSearch("")
                 setOpen(false)
               }}
               class="flex flex-col"

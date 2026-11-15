@@ -114,18 +114,30 @@ export function isFavorite(ref: ModelRef): boolean {
   return favoriteKeys().includes(modelKey(ref))
 }
 
-/** Favourites the capped `models.list` reply left out, each looked up by its own id so it never drops from the group. */
+const favoriteLookups = new Map<string, Promise<ModelInfo | undefined>>()
+
+/** Favourites the capped `models.list` reply left out, each looked up once per session so reopening the picker sends nothing. */
 export async function missingFavorites(present: readonly ModelInfo[]): Promise<readonly ModelInfo[]> {
   const listed = new Set(present.map(modelKey))
-  const missing = favoriteKeys().filter((key) => !listed.has(key))
   const found = await Promise.all(
-    missing.map(async (key) => {
-      const cut = key.indexOf("/")
-      const provider = key.slice(0, cut)
-      const modelId = key.slice(cut + 1)
-      const reply = await searchModels(modelId).catch(() => undefined)
-      return reply?.models.find((model) => model.provider === provider && model.modelId === modelId)
-    }),
+    favoriteKeys()
+      .filter((key) => !listed.has(key))
+      .map((key) => {
+        const known = favoriteLookups.get(key)
+        if (known !== undefined) return known
+        const cut = key.indexOf("/")
+        const provider = key.slice(0, cut)
+        const modelId = key.slice(cut + 1)
+        const lookup = searchModels(modelId).then(
+          (reply) => reply.models.find((model) => model.provider === provider && model.modelId === modelId),
+          () => {
+            favoriteLookups.delete(key)
+            return undefined
+          },
+        )
+        favoriteLookups.set(key, lookup)
+        return lookup
+      }),
   )
   return found.filter((model): model is ModelInfo => model !== undefined)
 }
