@@ -114,6 +114,22 @@ export function isFavorite(ref: ModelRef): boolean {
   return favoriteKeys().includes(modelKey(ref))
 }
 
+/** Favourites the capped `models.list` reply left out, each looked up by its own id so it never drops from the group. */
+export async function missingFavorites(present: readonly ModelInfo[]): Promise<readonly ModelInfo[]> {
+  const listed = new Set(present.map(modelKey))
+  const missing = favoriteKeys().filter((key) => !listed.has(key))
+  const found = await Promise.all(
+    missing.map(async (key) => {
+      const cut = key.indexOf("/")
+      const provider = key.slice(0, cut)
+      const modelId = key.slice(cut + 1)
+      const reply = await searchModels(modelId).catch(() => undefined)
+      return reply?.models.find((model) => model.provider === provider && model.modelId === modelId)
+    }),
+  )
+  return found.filter((model): model is ModelInfo => model !== undefined)
+}
+
 export function toggleFavorite(ref: ModelRef): void {
   const key = modelKey(ref)
   const next = isFavorite(ref) ? favoriteKeys().filter((entry) => entry !== key) : [...favoriteKeys(), key]

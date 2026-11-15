@@ -203,6 +203,17 @@ export function Composer(props: {
     })
   }
 
+  const applyPrompt = (name: string): void => {
+    const command = `/${name} `
+    const rest = draft().replace(/^\/[a-z][a-z0-9-]*(?:\s+|$)/u, "").trimStart()
+    setDraft(`${command}${rest}`)
+    queueMicrotask(() => {
+      textarea.focus()
+      textarea.setSelectionRange(command.length, command.length)
+      grow.resize()
+    })
+  }
+
   const run = async (work: () => Promise<void>): Promise<void> => {
     setError(undefined)
     try {
@@ -285,7 +296,13 @@ export function Composer(props: {
           />
           <AttachmentGrid items={attachments.items()} onRemove={attachments.remove} />
           <div class="flex items-center gap-0.5 px-2 pb-2 pt-1">
-            <PlusMenu project={props.project} disabled={sending()} onUpload={pickFiles} onInsert={insert} />
+            <PlusMenu
+              project={props.project}
+              disabled={sending()}
+              onUpload={pickFiles}
+              onInsert={insert}
+              onPrompt={applyPrompt}
+            />
             <input
               ref={fileInput}
               type="file"

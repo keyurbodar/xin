@@ -87,7 +87,7 @@ export function ContextMeter(props: { conversation: number; busy: boolean }): JS
           </Popover.Trigger>
           <Portal>
             <Popover.Positioner>
-              <Popover.Content class={`${SURFACE} w-[340px] p-3`}>
+              <Popover.Content class={`${SURFACE} w-[min(340px,calc(100vw-16px))] p-3`}>
                 <div class="flex items-baseline justify-between gap-3">
                   <Popover.Title class="text-sm font-medium text-ink">Context</Popover.Title>
                   <span class="text-xs tabular-nums text-ink-3">

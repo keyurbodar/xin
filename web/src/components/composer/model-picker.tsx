@@ -4,7 +4,7 @@ import { Popover } from "@ark-ui/solid/popover"
 import { Check, ChevronDown, Star } from "lucide-solid"
 import { For, Show, createMemo, createSignal, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
-import { isFavorite, toggleFavorite, type ModelInfo, type ModelRef } from "../../state/settings.ts"
+import { isFavorite, missingFavorites, toggleFavorite, type ModelInfo, type ModelRef } from "../../state/settings.ts"
 import { GROUP_LABEL, ITEM, SURFACE, TOOL } from "./styles.ts"
 
 const FAVORITES = "favorites"
@@ -49,12 +49,15 @@ export function ModelPicker(props: {
   onPick: (model: ModelRef) => void
 }): JSX.Element {
   const [open, setOpen] = createSignal(false)
+  const [extra, setExtra] = createSignal<readonly ModelInfo[]>([])
+  const [highlighted, setHighlighted] = createSignal<string | null>(null)
+  let navigating = false
   let list: HTMLDivElement | undefined
 
   const providerIds = createMemo(() => [...new Set(props.models.map((model) => model.provider))])
   const entries = createMemo<readonly Entry[]>(() => [
-    ...props.models
-      .filter((model) => isFavorite(model))
+    ...[...props.models, ...(props.query.trim() === "" ? extra() : [])]
+      .filter((model, index, all) => isFavorite(model) && all.findIndex((other) => refKey(other) === refKey(model)) === index)
       .map((model) => ({ value: `${FAVORITES}:${refKey(model)}`, group: FAVORITES, model })),
     ...props.models.map((model) => ({ value: refKey(model), group: model.provider, model })),
   ])
@@ -84,7 +87,9 @@ export function ModelPicker(props: {
       open={open()}
       onOpenChange={(details) => {
         setOpen(details.open)
-        if (details.open) props.onSearch("")
+        if (!details.open) return
+        props.onSearch("")
+        void missingFavorites(props.models).then(setExtra)
       }}
       positioning={{ placement: "top-start", gutter: 8 }}
       lazyMount
@@ -97,10 +102,11 @@ export function ModelPicker(props: {
       </Popover.Trigger>
       <Portal>
         <Popover.Positioner>
-          <Popover.Content class={`${SURFACE} w-[440px]`} aria-label="Choose a model">
+          <Popover.Content class={`${SURFACE} w-[min(440px,calc(100vw-16px))]`} aria-label="Choose a model">
             <Listbox.Root
               collection={collection()}
               value={selected()}
+              onHighlightChange={(details) => setHighlighted(details.highlightedValue)}
               onSelect={(details) => {
                 const entry = collection().find(details.value)
                 if (entry === null) return
@@ -111,7 +117,19 @@ export function ModelPicker(props: {
             >
               <Listbox.Input
                 value={props.query}
-                onInput={(event) => props.onSearch(event.currentTarget.value)}
+                onInput={(event) => {
+                  navigating = false
+                  props.onSearch(event.currentTarget.value)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") navigating = true
+                  if (event.key !== "f" || !navigating || event.metaKey || event.ctrlKey || event.altKey) return
+                  const value = highlighted()
+                  const entry = value === null ? null : collection().find(value)
+                  if (entry === null) return
+                  event.preventDefault()
+                  toggleFavorite(entry.model)
+                }}
                 placeholder="Search models"
                 aria-label="Search models"
                 class="h-11 w-full border-b border-line-1 bg-transparent px-3.5 text-sm text-ink outline-none placeholder:text-placeholder"
@@ -179,7 +197,7 @@ function ModelRow(props: { entry: Entry }): JSX.Element {
   const model = (): ModelInfo => props.entry.model
   const favorite = (): boolean => isFavorite(model())
   return (
-    <Listbox.Item item={props.entry} class={`${ITEM} group/model pr-1`}>
+    <Listbox.Item item={props.entry} aria-keyshortcuts="f" class={`${ITEM} group/model pr-1`}>
       <ProviderMark provider={model().provider} />
       <Listbox.ItemText class="min-w-0 flex-1 truncate" classList={{ "text-ink-3": !model().keyed }}>
         {model().name}

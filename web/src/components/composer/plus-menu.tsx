@@ -1,6 +1,6 @@
 import { Menu } from "@ark-ui/solid/menu"
 import { Brain, ChevronRight, Files, MessagesSquare, Paperclip, Plus, Sparkles, SquareSlash } from "lucide-solid"
-import { For, Show, createSignal, type JSX } from "solid-js"
+import { For, Show, createEffect, createSignal, on, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { cmd } from "../../lib/api.ts"
 import { listOf, numOf, recordOf, strOf } from "../../lib/parse.ts"
@@ -35,7 +35,7 @@ function allThreads(project: ProjectSummary): readonly ThreadSummary[] {
   return [...groups.working, ...groups.waiting, ...groups.completed, ...groups.failed, ...groups.cancelled]
 }
 
-const SUBMENU = `${SURFACE} max-h-[320px] w-[300px] overflow-y-auto p-1`
+const SUBMENU = `${SURFACE} max-h-[320px] w-[min(300px,calc(100vw-16px))] overflow-y-auto p-1`
 
 function Submenu(props: { label: string; icon: JSX.Element; children: JSX.Element }): JSX.Element {
   return (
@@ -71,20 +71,46 @@ export function PlusMenu(props: {
   disabled: boolean
   onUpload: () => void
   onInsert: (text: string) => void
+  onPrompt: (name: string) => void
 }): JSX.Element {
   const [files, setFiles] = createSignal<readonly ContextFile[]>([])
   const [notes, setNotes] = createSignal<readonly MemoryNote[]>([])
   const root = (): string => `/projects/${props.project.slug}/`
 
+  createEffect(
+    on(
+      () => props.project.slug,
+      () => {
+        setFiles([])
+        setNotes([])
+      },
+    ),
+  )
+
   const load = (): void => {
     void skills.reload()
     void prompts.reload()
-    cmd<unknown>("file.list", { prefix: `/projects/${props.project.slug}` })
-      .then((value) => setFiles(parseFiles(value, root()).filter((file) => !file.folder.startsWith("attachments"))))
-      .catch(() => setFiles([]))
+    const slug = props.project.slug
+    const current = (): boolean => props.project.slug === slug
+    cmd<unknown>("file.list", { prefix: `/projects/${slug}` })
+      .then((value) => {
+        if (!current()) return
+        setFiles(
+          parseFiles(value, root()).filter(
+            (file) => file.folder !== "attachments" && !file.folder.startsWith("attachments/"),
+          ),
+        )
+      })
+      .catch(() => {
+        if (current()) setFiles([])
+      })
     cmd<unknown>("memory.list", { scope: `project:${props.project.id}` })
-      .then((value) => setNotes(parseNotes(value)))
-      .catch(() => setNotes([]))
+      .then((value) => {
+        if (current()) setNotes(parseNotes(value))
+      })
+      .catch(() => {
+        if (current()) setNotes([])
+      })
   }
 
   const threads = (): readonly ThreadSummary[] => allThreads(props.project)
@@ -111,7 +137,7 @@ export function PlusMenu(props: {
       </Menu.Trigger>
       <Portal>
         <Menu.Positioner>
-          <Menu.Content class={`${SURFACE} w-[260px] p-1`}>
+          <Menu.Content class={`${SURFACE} w-[min(260px,calc(100vw-16px))] p-1`}>
             <Menu.Item value="upload" onSelect={() => props.onUpload()} class={ITEM}>
               <Paperclip size={16} stroke-width={1.5} class={ITEM_ICON} />
               <span class="flex-1">Upload attachment</span>
@@ -175,7 +201,7 @@ export function PlusMenu(props: {
                       value={`prompt:${prompt.name}`}
                       label={`/${prompt.name}`}
                       detail={prompt.description}
-                      onSelect={() => props.onInsert(`/${prompt.name} `)}
+                      onSelect={() => props.onPrompt(prompt.name)}
                     />
                   )}
                 </For>
