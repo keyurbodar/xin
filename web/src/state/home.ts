@@ -1,5 +1,6 @@
-import { createSignal } from "solid-js"
+import { batch, createSignal } from "solid-js"
 import type { Streams } from "../lib/api.ts"
+import { parseIssuesRev } from "../lib/issues.ts"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
 import { route } from "../lib/router.ts"
 import { parseRequestList, type RequestRow } from "./conversation.ts"
@@ -37,10 +38,13 @@ export type ProjectSummary = {
 const [projects, setProjects] = createSignal<readonly ProjectSummary[]>([])
 const [requests, setRequests] = createSignal<readonly RequestRow[]>([])
 const [loaded, setLoaded] = createSignal(false)
+const [issuesRev, setIssuesRev] = createSignal(0)
 
 export const homeProjects = projects
 export const homeLoaded = loaded
 export const homeRequests = requests
+/** Moves on every issue change, so an open issue list or detail re-reads once per change and never polls. */
+export const homeIssuesRev = issuesRev
 
 function threadsOf(value: unknown): readonly ThreadSummary[] {
   return listOf(value).flatMap((entry) => {
@@ -110,11 +114,13 @@ function parse(value: unknown): readonly ProjectSummary[] {
 
 export function subscribeHome(streams: Streams): () => void {
   return streams.subscribe("home", {
-    value: (value) => {
-      setProjects(parse(value))
-      setRequests(parseRequestList(value))
-      setLoaded(true)
-    },
+    value: (value) =>
+      batch(() => {
+        setProjects(parse(value))
+        setRequests(parseRequestList(value))
+        setIssuesRev(parseIssuesRev(value))
+        setLoaded(true)
+      }),
     delta: () => undefined,
   })
 }

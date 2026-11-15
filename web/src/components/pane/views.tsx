@@ -1,8 +1,10 @@
 import { For, type JSX } from "solid-js"
-import { Brain, CalendarClock, Folder, LayoutList, ListTree, Timer, type LucideProps } from "lucide-solid"
+import { Brain, CalendarClock, CircleDot, Folder, LayoutList, ListTree, Timer, type LucideProps } from "lucide-solid"
 import { MemoryTab } from "../chat/memory.tsx"
 import { SchedulesTab } from "../chat/schedules.tsx"
 import { FilesView, JobsView, ThreadsView } from "./bodies.tsx"
+import { IssueView } from "./issue.tsx"
+import { IssuesSection } from "./issues.tsx"
 import { DriveSection, InProgressSection, NeedsYouSection, ThreadsSection, type PaneContext } from "./overview.tsx"
 
 export type { PaneContext }
@@ -28,6 +30,7 @@ function section(
 export const OVERVIEW_SECTIONS: readonly OverviewSection[] = [
   section("needs", "Needs you", NeedsYouSection),
   section("progress", "In progress", InProgressSection),
+  section("issues", "Issues", IssuesSection),
   section("threads", "Threads", ThreadsSection),
   section("drive", "Drive", DriveSection),
 ]
@@ -60,8 +63,25 @@ export const PANE_VIEWS: readonly PaneEntry[] = [
   { id: "threads", label: "All threads", icon: ListTree, render: (context) => <ThreadsView {...context} /> },
 ]
 
+const issueEntries = new Map<string, PaneEntry>()
+
+/** An issue opens as its own pane view, `issue:<id>`, outside the + menu's fixed list. One entry per id, so a home update never remounts it. */
+function issueEntry(id: string): PaneEntry | undefined {
+  const match = /^issue:(\d+)$/u.exec(id)
+  if (match === null) return undefined
+  const issue = Number(match[1])
+  const entry = issueEntries.get(id) ?? {
+    id,
+    label: `Issue #${issue}`,
+    icon: CircleDot,
+    render: (context: PaneContext) => <IssueView {...context} id={issue} />,
+  }
+  issueEntries.set(id, entry)
+  return entry
+}
+
 export function paneEntry(id: string): PaneEntry | undefined {
-  return PANE_VIEWS.find((entry) => entry.id === id)
+  return PANE_VIEWS.find((entry) => entry.id === id) ?? issueEntry(id)
 }
 
 export function paneView(id: string): PaneEntry {
