@@ -1,5 +1,5 @@
 import { createSignal, onMount, type JSX } from "solid-js"
-import { setToken, verifyToken } from "../lib/auth.ts"
+import { probe, setToken } from "../lib/auth.ts"
 import { OnboardingTopBar, type RailItem } from "../components/onboarding/chrome.tsx"
 
 const STEPS: readonly RailItem[] = [
@@ -29,10 +29,14 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
     if (busy()) return
     setBusy(true)
     setError(undefined)
-    const accepted = await verifyToken(value().trim())
+    const answer = await probe(value().trim())
     setBusy(false)
-    if (!accepted) {
+    if (answer.kind === "unauthorized") {
       setError("That token doesn’t match this instance.")
+      return
+    }
+    if (answer.kind === "unreachable") {
+      setError("This instance didn’t answer. Check the network and try again.")
       return
     }
     setToken(value().trim())
@@ -43,7 +47,7 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
     <div class="flex h-full flex-col bg-bg text-ink">
       <OnboardingTopBar items={STEPS} />
       <div class="atmos flex min-h-0 flex-1 justify-center overflow-y-auto px-6 pb-16 pt-[22vh]">
-        <form onSubmit={submit} class="enter w-full max-w-[440px]">
+        <form onSubmit={submit} class="im-content w-full max-w-[440px]">
           <div class="label">Owner access</div>
           <h1 class="mt-3 text-2xl font-light leading-[1.15] tracking-[-0.03em]">Sign in to your workspace</h1>
           <p class="mt-3 text-base leading-[1.6] text-ink-3">
