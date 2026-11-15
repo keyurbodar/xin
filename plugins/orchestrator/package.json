@@ -16,9 +16,11 @@
         ],
         "contributes": {
           "ops": [
+            "captain.*",
             "thread.archive",
             "thread.create",
             "thread.send",
+            "thread.side",
             "thread.stop"
           ]
         }
@@ -33,6 +35,7 @@
         "contributes": {
           "tools": [
             "capabilities",
+            "captain_notes",
             "delegate_task",
             "task_cancel",
             "task_status",

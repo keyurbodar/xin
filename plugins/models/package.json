@@ -19,6 +19,7 @@
         "contributes": {
           "ops": [
             "conv.configure",
+            "conv.context",
             "credential.delete",
             "credential.set",
             "models.list",

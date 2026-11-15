@@ -330,6 +330,7 @@ export const CATALOG: Catalog = {
         tools: [],
         ops: [
           "conv.configure",
+          "conv.context",
           "credential.delete",
           "credential.set",
           "models.list",
@@ -366,7 +367,10 @@ export const CATALOG: Catalog = {
       api: 1,
       requires: [],
       permissions: ["conversations", "models"],
-      contributes: { tools: [], ops: ["thread.archive", "thread.create", "thread.send", "thread.stop"] },
+      contributes: {
+        tools: [],
+        ops: ["captain.*", "thread.archive", "thread.create", "thread.send", "thread.side", "thread.stop"],
+      },
     },
     local: true,
     source: "ingle-plugin-orchestrator@0.1.0",
@@ -382,6 +386,7 @@ export const CATALOG: Catalog = {
       contributes: {
         tools: [
           "capabilities",
+          "captain_notes",
           "delegate_task",
           "task_cancel",
           "task_status",
