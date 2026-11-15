@@ -2,6 +2,7 @@ import { createSignal, Match, onMount, Show, Switch, type JSX } from "solid-js"
 import { probe, setToken, token } from "./lib/auth.ts"
 import { connect, connectionState, reauthorize } from "./state/connection.ts"
 import { subscribeHome } from "./state/home.ts"
+import { subscribeCaptains } from "./state/captains.ts"
 import { navigate, route } from "./lib/router.ts"
 import { Shell } from "./components/shell/shell.tsx"
 import { BootLoader } from "./components/ui/loaders.tsx"
@@ -35,7 +36,9 @@ export function App(): JSX.Element {
       return
     }
     entered = true
-    subscribeHome(connect())
+    const streams = connect()
+    subscribeHome(streams)
+    subscribeCaptains(streams)
     // A push only goes out when no socket is open, so hearing one means this tab should try again now.
     navigator.serviceWorker?.addEventListener("message", (event: MessageEvent) => {
       if (isPushMessage(event.data) && connectionState() !== "open") reauthorize()
