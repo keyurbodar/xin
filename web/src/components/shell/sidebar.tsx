@@ -12,6 +12,7 @@ import { visualState } from "../../lib/status.ts"
 import { setTheme, theme, themeOf } from "../../lib/theme.ts"
 import { openThreadTab } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
+import { BrandMark } from "../ui/brand-mark.tsx"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
 import { openNewThread } from "./new-thread.tsx"
 import { CaptainAvatar } from "../captain/avatar.tsx"
@@ -38,8 +39,7 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
   return (
     <aside class="flex h-full w-[var(--w-sidebar)] shrink-0 flex-col bg-bg">
       <div class="flex h-[var(--h-strip)] shrink-0 items-center gap-1 px-3">
-        <span class="grid h-6 w-6 place-items-center rounded-sm bg-inverse text-xs font-semibold text-on-inverse">I</span>
-        <span class="ml-1.5 text-sm font-medium text-ink">Ingle</span>
+        <BrandMark class="ml-1 h-5 w-5 text-ink" />
         <button type="button" class={`${ICON_BUTTON} ml-auto`} aria-label="Search (⌘K)" title="Search ⌘K" onClick={props.onSearch}>
           <Search {...ICON} />
         </button>
