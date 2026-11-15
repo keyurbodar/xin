@@ -347,6 +347,11 @@ function createFiles(store: MemoryStore): FilesService {
       return entryOf(key, store.fileOf(key))
     },
     remove: async (path) => store.files.delete(normalize(path)),
+    revisions: async () => [],
+    restore: async () => undefined,
+    move: async () => false,
+    watch: () => () => {},
+    grant: () => () => {},
   }
 }
 
