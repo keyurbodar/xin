@@ -800,11 +800,15 @@ export function create(deps: ModelsPort): ModelsParts {
         agent.tools.map((tool) => `${tool.name}${tool.description}${JSON.stringify(tool.parameters)}`).join(""),
       )
       const transcript = view.messages.filter((message) => message.role !== "system")
-      const usage = view.messages.findLast((message) => message.role === "assistant" && message.usage !== undefined)
+      const afterHead = view.head?.id ?? Number.NEGATIVE_INFINITY
+      const reply = view.entries.flatMap((entry, index) =>
+        entry.id > afterHead ? (view.contributions[index] ?? []).filter((message) => message.role === "assistant") : [],
+      )
+      const usage = reply.findLast((message) => message.usage.input + message.usage.output > 0)
       const measured =
-        usage?.role === "assistant"
-          ? usage.usage.input + usage.usage.cacheRead + usage.usage.cacheWrite + usage.usage.output
-          : 0
+        usage === undefined
+          ? 0
+          : usage.usage.input + usage.usage.cacheRead + usage.usage.cacheWrite + usage.usage.output
       const used =
         measured > 0 ? measured : system + tools + transcript.reduce((sum, m) => sum + estimateMessageTokens(m), 0)
       const model =

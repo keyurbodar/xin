@@ -6,6 +6,7 @@ import {
   type ConversationId,
   type EntryRecord,
 } from "@earendil-works/pi-durable"
+import { arr, bool, compile, int, lit, obj, str, union } from "@earendil-works/pi-schema"
 import { describe, expect, it } from "vitest"
 import source from "./models.ts?raw"
 import { resolveModel } from "../../src/contracts/models.ts"
@@ -131,17 +132,22 @@ function summaryOf(value: unknown): Summary {
   }
 }
 
+const ContextSchema = obj({
+  conversation: int({ minimum: 0 }),
+  model: union([obj({ provider: str(), modelId: str() }), lit(null)]),
+  contextWindow: int({ minimum: 0 }),
+  used: int({ minimum: 0 }),
+  measured: bool(),
+  categories: arr(obj({ key: str(), tokens: int({ minimum: 0 }) })),
+  compactAt: int({ minimum: 0 }),
+})
+const contextCheck = compile(ContextSchema)
+
 const readContext = async (stub: ReturnType<typeof fresh>, id: string) => {
   const reply = await call(stub, id, "conv.context", {})
   expect(reply.ok, JSON.stringify(reply)).toBe(true)
-  return reply.result as {
-    model: { provider: string; modelId: string } | null
-    contextWindow: number
-    used: number
-    measured: boolean
-    categories: { key: string; tokens: number }[]
-    compactAt: number
-  }
+  if (!contextCheck.check(reply.result)) throw new Error(`bad conv.context result ${JSON.stringify(reply.result)}`)
+  return reply.result
 }
 
 describe("models", () => {
@@ -458,6 +464,17 @@ describe("models", () => {
     const after = await readContext(stub, "ctx-2")
     expect(after.measured).toBe(true)
     expect(after.used).toBe(usage.input + usage.cacheRead + usage.cacheWrite + usage.output)
+
+    await runInDurableObject(stub, async (home: Home) => {
+      await home.submit("context ".repeat(24_000), "ctx-turn-2")
+      await home.harness.waitForIdle(context)
+      await home.submit("one more", "ctx-turn-3")
+      await home.harness.waitForIdle(context)
+      const task = await (await home.root()).compact(undefined, context)
+      await home.harness.waitForTask(task, context)
+    })
+    const compacted = await readContext(stub, "ctx-3")
+    expect(compacted.measured).toBe(false)
   })
 
   it("rejects an unknown model and keeps owner defaults", async () => {
