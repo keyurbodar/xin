@@ -13,7 +13,7 @@ import {
 } from "@earendil-works/pi-durable"
 import { bool, compile, int, map, obj, opt, str, type Static } from "@earendil-works/pi-schema"
 import { ModelRefSchema } from "../../src/contracts/models.ts"
-import { ThreadDoc, defaultSpaceOf, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
+import { ThreadDoc, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
 import type { WatchdogService } from "../../src/contracts/watchdog.ts"
 import { SLUG, WorkspaceDoc, type SpaceState, type WorkspaceState } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
@@ -36,7 +36,6 @@ const CaptainSchema = obj({
   alias: str({ pattern: SLUG, minLength: 1, maxLength: 40 }),
   avatarSeed: str({ minLength: 1, maxLength: 120 }),
   description: str({ maxLength: 200 }),
-  projectId: str({ minLength: 1 }),
   spaceId: str({ minLength: 1 }),
   coordinatorId: int({ minimum: 0 }),
   notes: FileText,
@@ -161,16 +160,26 @@ async function crewView(harness: Harness, captain: CaptainState, now: number): P
   return members.toSorted((left, right) => left.idleMs - right.idleMs)
 }
 
-const profileOf = (id: string, captain: CaptainState) => ({
+/**
+ * The Captain's space is the source of truth for where it runs and whether it is live: `space.update` can move it to
+ * another project, and `space.archive` or `project.archive` can retire it without going through `captain.archive`.
+ */
+function isLive(workspace: WorkspaceState | undefined, captain: CaptainState): boolean {
+  const space = workspace?.spaces[captain.spaceId]
+  const project = space === undefined ? undefined : workspace?.projects[space.projectId]
+  return !captain.archived && space !== undefined && !space.archived && project !== undefined && !project.archived
+}
+
+const profileOf = (id: string, captain: CaptainState, workspace: WorkspaceState | undefined) => ({
   id,
   name: captain.name,
   alias: captain.alias,
   avatarSeed: captain.avatarSeed,
   description: captain.description,
-  projectId: captain.projectId,
+  projectId: workspace?.spaces[captain.spaceId]?.projectId ?? "",
   spaceId: captain.spaceId,
   coordinatorId: captain.coordinatorId,
-  archived: captain.archived,
+  archived: !isLive(workspace, captain),
   createdAt: captain.createdAt,
 })
 
@@ -199,8 +208,8 @@ export async function captainsHome(harness: Harness): Promise<JsonObject> {
   ])
   const captains = []
   for (const [id, captain] of Object.entries(doc?.captains ?? {})) {
-    if (captain.archived) continue
-    captains.push({ ...profileOf(id, captain), crew: await countsOf(harness, workspace, captain) })
+    if (!isLive(workspace, captain)) continue
+    captains.push({ ...profileOf(id, captain, workspace), crew: await countsOf(harness, workspace, captain) })
   }
   return { captains: captains.toSorted((left, right) => left.createdAt - right.createdAt) }
 }
@@ -219,7 +228,7 @@ function mustFind(doc: CaptainsState, id: string): CaptainState {
 
 function liveSpace(workspace: WorkspaceState, captain: CaptainState): SpaceState {
   const space = workspace.spaces[captain.spaceId]
-  if (captain.archived || space === undefined || space.archived)
+  if (space === undefined || !isLive(workspace, captain))
     throw new OpRejected("bad_args", `captain ${captain.alias} is archived`)
   return space
 }
@@ -230,7 +239,7 @@ function homeSpaceOf(workspace: WorkspaceState, doc: CaptainsState, projectId: s
   const found = Object.entries(workspace.spaces).find(
     ([id, space]) => space.projectId === projectId && !space.archived && !captainSpaces.has(id),
   )
-  return found?.[0] ?? defaultSpaceOf(workspace, projectId)
+  return found?.[0]
 }
 
 async function moveThread(tx: Tx, workspace: WorkspaceState, threadId: number, toSpaceId: string): Promise<void> {
@@ -286,8 +295,8 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
       ])
       const found = []
       for (const [id, captain] of Object.entries(doc?.captains ?? {})) {
-        if (captain.archived && args.archived !== true) continue
-        found.push({ ...profileOf(id, captain), crew: await countsOf(harness, workspace, captain) })
+        if (!isLive(workspace, captain) && args.archived !== true) continue
+        found.push({ ...profileOf(id, captain, workspace), crew: await countsOf(harness, workspace, captain) })
       }
       return found.toSorted((left, right) => left.createdAt - right.createdAt)
     },
@@ -298,13 +307,16 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
     args: obj({ id: str({ minLength: 1 }) }),
     actors: ["owner"],
     run: async (_api, args) => {
-      const doc = await harness.snapshot(CaptainsDoc, context)
+      const [doc, workspace] = await Promise.all([
+        harness.snapshot(CaptainsDoc, context),
+        harness.snapshot(WorkspaceDoc, context),
+      ])
       const captain = doc?.captains[args.id]
       if (captain === undefined) throw new OpRejected("bad_args", `no captain ${args.id}`)
       const conversation = await harness.conversation(captain.coordinatorId as ConversationId, context)
       const model = conversation === undefined ? undefined : (await conversation.agent(context)).model
       return {
-        ...profileOf(args.id, captain),
+        ...profileOf(args.id, captain, workspace),
         model: model ?? null,
         notes: captain.notes,
         rules: captain.rules,
@@ -323,9 +335,9 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
       const id = captainIdOf(api.commandId)
       const created = await harness.commit(async (tx) => {
         const doc = await tx.doc(CaptainsDoc)
-        const existing = doc.captains[id]
-        if (existing !== undefined) return profileOf(id, existing)
         const workspace = await tx.doc(WorkspaceDoc)
+        const existing = doc.captains[id]
+        if (existing !== undefined) return profileOf(id, existing, workspace)
         const project = workspace.projects[args.projectId]
         if (project === undefined || project.archived)
           throw new OpRejected("bad_args", `no live project ${args.projectId}`)
@@ -349,7 +361,6 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
           alias,
           avatarSeed: args.avatarSeed ?? alias,
           description: args.description ?? "",
-          projectId: args.projectId,
           spaceId,
           coordinatorId: conversation.id,
           notes: args.notes ?? "",
@@ -359,7 +370,7 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
           createdAt: Date.now(),
         }
         doc.captains[id] = captain
-        return profileOf(id, captain)
+        return profileOf(id, captain, workspace)
       }, context)
       return published(created)
     },
@@ -376,9 +387,9 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
         const captain = mustFind(doc, args.id)
         if (args.alias !== undefined && liveAliasTaken(doc, args.alias, args.id))
           throw new OpRejected("bad_args", `alias @${args.alias} is taken`)
+        const workspace = await tx.doc(WorkspaceDoc)
         if (args.name !== undefined) {
           captain.name = args.name
-          const workspace = await tx.doc(WorkspaceDoc)
           const space = workspace.spaces[captain.spaceId]
           if (space !== undefined) space.name = args.name
         }
@@ -390,7 +401,7 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
         if (args.crewRules !== undefined) captain.crewRules = args.crewRules
         if (args.model !== undefined)
           await configure(tx, captain.coordinatorId as ConversationId, { model: args.model })
-        return profileOf(args.id, captain)
+        return profileOf(args.id, captain, workspace)
       }, context)
       return published(updated)
     },
@@ -411,7 +422,7 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
         const workspace = await tx.doc(WorkspaceDoc)
         const space = workspace.spaces[captain.spaceId]
         if (space !== undefined) space.archived = archived
-        return profileOf(args.id, captain)
+        return profileOf(args.id, captain, workspace)
       }, context)
       return published(changed)
     },

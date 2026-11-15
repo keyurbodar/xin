@@ -7,7 +7,7 @@ import { addThreads, cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
-import { captainPrompt, CaptainsDoc } from "./captains.ts"
+import { captainPrompt, CaptainsDoc, captainsHome } from "./captains.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -105,6 +105,39 @@ describe("captains", () => {
     await ok(stub, "archive", "captain.archive", { id: captain.id })
     expect(await ok(stub, "list-2", "captain.list", {})).toEqual([])
     expect(((await ok(stub, "list-3", "captain.list", { archived: true })) as unknown[]).length).toBe(1)
+  })
+
+  it("follows its space when the space moves project or is archived outside the Captain ops", async () => {
+    const stub = fresh()
+    const { captain } = await setup(stub, "drift")
+    const other = (await ok(stub, "project-other", "project.create", { slug: "other", name: "other" })) as Project
+    await ok(stub, "move-space", "space.update", { id: captain.spaceId, projectId: other.id })
+    expect(await ok(stub, "drift-get", "captain.get", { id: captain.id })).toMatchObject({ projectId: other.id })
+
+    await ok(stub, "archive-project", "project.archive", { id: other.id })
+    expect(await ok(stub, "drift-list", "captain.list", {})).toEqual([])
+    expect(await ok(stub, "drift-get-2", "captain.get", { id: captain.id })).toMatchObject({ archived: true })
+    const home = await read(stub, (h) => captainsHome(h.harness))
+    expect(home).toEqual({ captains: [] })
+  })
+
+  it("never returns a removed crew member to another Captain's crew", async () => {
+    const stub = fresh()
+    const { project, captain } = await setup(stub, "return")
+    const second = (await ok(stub, "captain-return-2", "captain.create", {
+      projectId: project.id,
+      name: "Second",
+    })) as Captain
+    const [thread] = await addThreads(stub, project.id, ["member"])
+    if (thread === undefined) throw new Error("no thread")
+    await ok(stub, "join", "captain.crew.add", { id: second.id, threadId: thread.id })
+    await ok(stub, "archive-default", "space.archive", { id: project.spaceId })
+
+    const removed = await cmd(stub, "leave", "captain.crew.remove", { id: second.id, threadId: thread.id })
+    expect(removed.ok).toBe(false)
+    const doc = await read(stub, (home) => home.harness.snapshot(ThreadDoc, thread.id, context))
+    expect(doc).toMatchObject({ spaceId: second.spaceId, parentId: second.coordinatorId })
+    expect(doc?.spaceId).not.toBe(captain.spaceId)
   })
 
   it("gives the Captain its rules and notes, and every crew thread its crew rules", async () => {
