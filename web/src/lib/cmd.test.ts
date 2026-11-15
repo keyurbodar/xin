@@ -84,10 +84,11 @@ describe("cmd batching and the read cache", () => {
 
   it("never lets a read drop the cache, live or cached", async () => {
     await cmd("owner.read")
-    await Promise.all([cmd("automation.list"), cmd("memory.profile"), cmd("system.logs"), cmd("history.page", { conv: 1 })])
+    const reads = ["automation.list", "memory.profile", "system.logs", "history.page", "drive.scopes", "drive.list", "drive.read", "drive.history"]
+    await Promise.all(reads.map((op) => cmd(op)))
     await cmd("owner.read")
-    expect(ops()).toEqual([["owner.read"], ["automation.list", "memory.profile", "system.logs", "history.page"]])
-    expect(posts[1]?.map((frame) => frame.read)).toEqual([true, true, true, true])
+    expect(ops()).toEqual([["owner.read"], reads])
+    expect(posts[1]?.map((frame) => frame.read)).toEqual(reads.map(() => true))
   })
 
   it("splits more commands than a batch holds across requests", async () => {

@@ -96,7 +96,7 @@ export function noteHomeRev(rev: string): void {
 
 /**
  * The ops that change nothing, in one place. A `cached` read is served from the cache, because only a command changes
- * it, and the TTL covers the rest. A `live` read changes without a command (sessions, metrics, logs, an agent's files)
+ * it, and the TTL covers the rest. A `live` read changes without a command (sessions, metrics, logs, files and drive entries an agent writes)
  * and is never cached. Neither one drops the cache, and both carry `read`, so the home does not bump its revision for
  * them. Any other op may write.
  */
@@ -128,6 +128,10 @@ const READS: Readonly<Record<string, "cached" | "live">> = {
   "captain.get": "live",
   "captain.list": "live",
   "conv.context": "live",
+  "drive.history": "live",
+  "drive.list": "live",
+  "drive.read": "live",
+  "drive.scopes": "live",
   "file.list": "live",
   "file.read": "live",
   "file.revision": "live",
