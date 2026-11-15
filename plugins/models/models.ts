@@ -1208,6 +1208,7 @@ export function create(deps: ModelsPort): ModelsParts {
       await registry.sync()
       await seedUsage(db, harness)
       await budget.load()
+      await budget.record()
       // A fresh process records nothing until the ledger has had time to move; the first alarm after boot is usually
       // an eviction recovery, not new spend, and a full pass reads every conversation.
       flushedAt = Date.now()
