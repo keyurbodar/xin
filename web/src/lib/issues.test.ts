@@ -5,6 +5,7 @@ import {
   dueLabel,
   eventLine,
   initials,
+  latestIssue,
   issueScope,
   localDay,
   newIssueArgs,
@@ -198,4 +199,13 @@ test("new issue args need a title and carry only the options that were picked", 
 test("a project pane lists its own issues, and a Captain pane lists its project's", () => {
   expect(issueScope({ id: "prj_1" }, undefined)).toBe("prj_1")
   expect(issueScope({ id: "spc_9" }, { projectId: "prj_1" })).toBe("prj_1")
+})
+
+test("a delayed ack never replaces a newer rename the rev already showed", () => {
+  const base = { ...issue(1, "todo"), description: "" }
+  const ack = { ...base, title: "Alpha one", priority: "low" as const, updatedAt: 100 }
+  const renamed = { ...base, title: "Alpha one newest", priority: "low" as const, updatedAt: 160 }
+  expect(latestIssue(renamed, ack)).toBe(renamed)
+  expect(latestIssue({ ...base, updatedAt: 90 }, ack)).toBe(ack)
+  expect(latestIssue(ack, { ...ack })).toEqual(ack)
 })

@@ -390,3 +390,8 @@ export function newIssueArgs(input: NewIssue): Record<string, unknown> | undefin
 export function issueScope(pane: { readonly id: string }, captain: { readonly projectId: string } | undefined): string {
   return captain?.projectId ?? pane.id
 }
+
+/** A write's ack only replaces the shown issue when it is not older, so a slow ack cannot undo a newer change the rev already showed. */
+export function latestIssue(shown: Issue, incoming: Issue): Issue {
+  return incoming.updatedAt >= shown.updatedAt ? incoming : shown
+}

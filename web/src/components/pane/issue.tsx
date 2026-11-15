@@ -9,6 +9,7 @@ import {
   dueLabel,
   eventLine,
   initials,
+  latestIssue,
   localDay,
   PRIORITIES,
   PRIORITY_LABEL,
@@ -54,7 +55,9 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
   const change = (key: string, fields: Record<string, unknown>): void => {
     void action.run(key, async () => {
       const issue = await updateIssue(props.id, fields)
-      mutate((current) => (current === undefined ? current : { ...current, detail: { ...current.detail, issue } }))
+      mutate((current) =>
+        current === undefined ? current : { ...current, detail: { ...current.detail, issue: latestIssue(current.detail.issue, issue) } },
+      )
     })
   }
 
