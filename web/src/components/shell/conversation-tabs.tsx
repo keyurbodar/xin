@@ -114,6 +114,7 @@ export function ConversationTabs(props: {
         undo: () => {
           reopenThreadTabs(projectId, removed)
           if (activeClosed) navigate(`/p/${slug}/t/${active}`)
+          focusTab(activeClosed ? active : first.id)
         },
       })
     }
