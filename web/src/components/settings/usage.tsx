@@ -278,7 +278,7 @@ function SpendChart(props: { days: readonly UsageDay[]; alert: number }): JSX.El
           <Show when={hover()}>
             {(index) => (
               <div
-                class="pointer-events-none absolute bottom-[calc(100%-132px)] z-10 -translate-x-1/2 rounded-sm border border-line-2 bg-panel px-2 py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
+                class="pointer-events-none absolute bottom-[calc(100%-132px)] z-10 -translate-x-1/2 rounded-sm bg-panel px-2 py-1.5 shadow-[var(--shadow-popover)]"
                 style={{ left: `${((index() + 0.5) / props.days.length) * 100}%` }}
               >
                 <span class="block font-mono text-2xs text-ink-3">{props.days[index()]?.day}</span>
