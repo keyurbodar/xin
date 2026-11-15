@@ -111,7 +111,7 @@ export function ProviderStep(): JSX.Element {
   }
 
   return (
-    <div class="enter px-6 pb-16 pt-12 md:pt-[72px]">
+    <div class="im-content px-6 pb-16 pt-12 md:pt-[72px]">
       <div class="mx-auto flex w-full max-w-[560px] flex-col gap-[18px]">
         <StepHeading
           step="Step 1 of 4"

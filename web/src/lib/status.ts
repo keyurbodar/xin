@@ -1,15 +1,5 @@
 export type VisualState = "queued" | "working" | "waiting" | "done" | "failed" | "paused" | "cancelled"
 
-export const STATE_COLOR: Readonly<Record<VisualState, string>> = {
-  queued: "var(--color-ink-3)",
-  working: "var(--color-working)",
-  waiting: "var(--color-needs)",
-  done: "var(--color-done)",
-  failed: "var(--color-failed)",
-  paused: "var(--color-working)",
-  cancelled: "var(--color-icon)",
-}
-
 export const STATE_WORD: Readonly<Record<VisualState, string>> = {
   queued: "Queued",
   working: "Working",

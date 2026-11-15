@@ -13,12 +13,13 @@ import { ExtensionsScreen } from "../../screens/extensions.tsx"
 import { SettingsScreen } from "../../screens/settings.tsx"
 import { SchedulesScreen } from "../../screens/schedules.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
-import "./overlay.css"
+import { createPresence } from "./presence.ts"
 
 export function Shell(): JSX.Element {
   const first = () => route().parts[0]
   const [palette, setPalette] = createSignal(false)
   const project = (): boolean => first() === undefined || first() === "p" || first() === "new"
+  const drawer = createPresence(() => !wide() && sidebarDrawer(), 180)
 
   createEffect(() => {
     route()
@@ -53,9 +54,18 @@ export function Shell(): JSX.Element {
       <Show when={wide() && !sidebarHidden()}>
         <Sidebar drawer={false} onSearch={search} onCollapse={toggleSidebar} />
       </Show>
-      <Show when={!wide() && sidebarDrawer()}>
-        <div class="fade-in fixed inset-0 z-40 bg-scrim" onClick={() => setSidebarDrawer(false)} />
-        <div class="drawer-in fixed inset-y-0 left-0 z-40 flex shadow-overlay">
+      <Show when={drawer.mounted()}>
+        <div
+          class="im-scrim fixed inset-0 z-40 bg-scrim"
+          data-state={drawer.leaving() ? "closed" : "open"}
+          onClick={() => setSidebarDrawer(false)}
+        />
+        <div
+          class="im-sheet fixed inset-y-0 left-0 z-40 flex shadow-overlay"
+          classList={{ "pointer-events-none": drawer.leaving() }}
+          data-side="left"
+          data-state={drawer.leaving() ? "closed" : "open"}
+        >
           <Sidebar drawer onSearch={search} onCollapse={toggleSidebar} />
         </div>
       </Show>
