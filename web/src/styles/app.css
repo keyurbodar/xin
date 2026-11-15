@@ -3,6 +3,7 @@
 @import "tailwindcss";
 @import "./tokens.css";
 @import "./motion.css";
+@import "./ingle-motion.css";
 
 @layer base {
   :root {

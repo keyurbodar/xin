@@ -204,9 +204,6 @@ export function General(): JSX.Element {
       </Group>
 
       <Group title="Workspace">
-        <Row title="Workspace name" detail="In the tab title and notifications">
-          <span class="text-sm text-ink-2">Not stored yet</span>
-        </Row>
         <Row title="Your name" detail="How the coordinator greets you">
           <div class="flex items-center gap-2">
             <input

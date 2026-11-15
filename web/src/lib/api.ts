@@ -54,13 +54,16 @@ export class Streams {
   #retry = 0
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
   readonly #onSession: (socket: string | undefined) => void
+  readonly #onRetry: (at: number) => void
 
   constructor(
     onStatus: (status: "connecting" | "open" | "closed") => void,
     onSession: (socket: string | undefined) => void,
+    onRetry: (at: number) => void,
   ) {
     this.#onStatus = onStatus
     this.#onSession = onSession
+    this.#onRetry = onRetry
   }
 
   subscribe(stream: string, subscription: Subscription): () => void {
@@ -99,15 +102,17 @@ export class Streams {
     socket.addEventListener("error", () => socket.close())
   }
 
-  /** Drops the socket so the next handshake carries the current token; subscriptions survive the bounce. */
+  /** Drops the socket so the next handshake carries the current token, or dials at once when none is open. */
   reconnectNow(): void {
     this.#retry = 0
-    this.#ws?.close()
+    if (this.#ws === undefined) this.open()
+    else this.#ws.close()
   }
 
   #reconnect(): void {
     const delay = Math.min(15_000, 500 * 2 ** this.#retry)
     this.#retry += 1
+    this.#onRetry(Date.now() + delay)
     setTimeout(() => this.#openWhenVisible(), delay)
   }
 
@@ -150,6 +155,37 @@ function parseFrame(raw: string): ServerFrame | undefined {
   const t = Reflect.get(value, "t")
   if (t === "snap" || t === "ev" || t === "ack" || t === "error" || t === "hello") return value as ServerFrame
   return undefined
+}
+
+export type RepairReport = { readonly failure: string | null; readonly journal: number; readonly checkpoint: number }
+
+export type RepairAnswer =
+  | { readonly kind: "report"; readonly report: RepairReport }
+  | { readonly kind: "open" }
+  | { readonly kind: "refused"; readonly status: number }
+
+/** The one route a home that cannot boot still answers. Without `drop` it only reports what is stored. */
+export async function repair(drop?: "journal" | "all"): Promise<RepairAnswer> {
+  const response = await fetch("/v1/repair", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token()}` },
+    ...(drop === undefined ? {} : { body: JSON.stringify({ drop }) }),
+  })
+  if (response.status === 409) return { kind: "open" }
+  if (!response.ok) return { kind: "refused", status: response.status }
+  const body: unknown = await response.json()
+  if (typeof body !== "object" || body === null) throw new OpError("http", "repair: unreadable reply")
+  const failure = Reflect.get(body, "failure")
+  const journal = Reflect.get(body, "journal")
+  const checkpoint = Reflect.get(body, "checkpoint")
+  return {
+    kind: "report",
+    report: {
+      failure: typeof failure === "string" ? failure : null,
+      journal: typeof journal === "number" ? journal : 0,
+      checkpoint: typeof checkpoint === "number" ? checkpoint : 0,
+    },
+  }
 }
 
 export type UploadedFile = {
