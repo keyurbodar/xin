@@ -132,6 +132,7 @@ export type ThreadDeps = {
   readonly watchdog: WatchdogService
   threadRemovals(parent: ConversationId): readonly Extension[]
   settled(event: ThreadSettled): void
+  disabled(ref: ModelRef): Promise<boolean>
 }
 
 const Anchor: AnchorTask = defineTask<null, { readonly phase: "done" }, null>({
@@ -637,7 +638,8 @@ export function lifecycle(deps: ThreadDeps): Threads {
         scope?.kind === "puck" && callerId !== undefined ? callerId : (space.coordinatorId as ConversationId)
       const parent = await api.harness.conversation(parentId, context)
       const model = parent === undefined ? undefined : (await parent.agent(context)).model
-      if (model === undefined) throw new OpRejected("bad_args", "the target space has no model; pick one first")
+      if (model === undefined || (await deps.disabled(model)))
+        throw new OpRejected("bad_args", "the target space has no usable model; pick one first")
       const requestId = `thread-create:${api.commandId}`
       const created = await api.harness.commit(
         (tx) =>
@@ -689,7 +691,8 @@ export function lifecycle(deps: ThreadDeps): Threads {
       if (scope.space.archived) throw new OpRejected("bad_args", `space ${scope.spaceId} is archived`)
       const parent = await api.harness.conversation(parentId, context)
       const model = parent === undefined ? undefined : (await parent.agent(context)).model
-      if (model === undefined) throw new OpRejected("bad_args", "the conversation has no model; pick one first")
+      if (model === undefined || (await deps.disabled(model)))
+        throw new OpRejected("bad_args", "the conversation has no usable model; pick one first")
       const requestId = `thread-side:${api.commandId}`
       const created = await api.harness.commit(
         (tx) =>

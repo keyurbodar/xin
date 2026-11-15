@@ -221,7 +221,8 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
       return { kind: "model", model: resolved.model }
     const parent = await deps.harness.conversation(callerId, callContext)
     const parentModel = parent === undefined ? undefined : (await parent.agent(callContext)).model
-    if (parentModel !== undefined) return { kind: "model", model: parentModel }
+    if (parentModel !== undefined && !(await deps.models.disabled(parentModel)))
+      return { kind: "model", model: parentModel }
     return {
       kind: "none",
       reason:
