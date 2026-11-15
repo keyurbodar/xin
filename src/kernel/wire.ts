@@ -2,33 +2,71 @@ import { type Context, Service } from "@deepseek-ai/cordis"
 import type { JsonObject } from "@earendil-works/pi-durable"
 import { obj, opt, str } from "@earendil-works/pi-schema"
 import { defineOp } from "../ops.ts"
-import { ack, decodeCommand, Sockets } from "../wire.ts"
+import { messageOf } from "../errors.ts"
+import { ack, decodeCommand, type ServerFrame, Sockets } from "../wire.ts"
 import { hidden } from "./hidden.ts"
 
 type HomePart = () => Promise<JsonObject>
 
 const OWNER = ["owner"] as const
 
+/** Commands one `POST /v1/cmd` may carry; they run in order, each with its own receipt. */
+export const MAX_BATCH = 32
+
 type State = {
   readonly parts: Map<string, HomePart>
   sockets: Sockets | undefined
+  /** The home revision: in memory only, with a per-instance epoch so a fresh instance never repeats an old value. */
+  readonly epoch: string
+  changes: number
 }
 
 const state = hidden<Wire, State>()
 
 const socketsOf = (wire: Wire): Sockets | undefined => state.get(wire).sockets
 
+/** A batch that may have written moved the home on: announce it to every home subscriber and answer the new rev. */
+function bump(wire: Wire): string {
+  const held = state.get(wire)
+  held.changes += 1
+  const rev = `${held.epoch}.${held.changes}`
+  held.sockets?.publishChanged(rev)
+  return rev
+}
+
 export class Wire extends Service {
   static readonly inject = ["host", "ops", "http", "clock", "db"]
 
   constructor(ctx: Context) {
     super(ctx, "wire")
-    state.set(this, { parts: new Map(), sockets: undefined })
+    state.set(this, { parts: new Map(), sockets: undefined, epoch: crypto.randomUUID().slice(0, 8), changes: 0 })
     ctx.http.route("POST /v1/cmd", async (request) => {
-      const command = decodeCommand(await request.json().catch(() => undefined))
-      if (command === undefined) return Response.json({ error: "bad command frame" }, { status: 400 })
+      const body: unknown = await request.json().catch(() => undefined)
+      const batch = Array.isArray(body)
+      const frames: readonly unknown[] = Array.isArray(body) ? body : [body]
+      if (frames.length === 0 || frames.length > MAX_BATCH)
+        return Response.json({ error: `a batch holds 1 to ${MAX_BATCH} commands` }, { status: 400 })
+      const commands = frames.flatMap((frame) => decodeCommand(frame) ?? [])
+      if (commands.length !== frames.length) return Response.json({ error: "bad command frame" }, { status: 400 })
       await ctx.clock.arm()
-      return Response.json(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
+      const acks: ServerFrame[] = []
+      let wrote = false
+      let broken: string | undefined
+      for (const command of commands) {
+        if (broken !== undefined) {
+          acks.push({ t: "ack", id: command.id, ok: false, error: { code: "not_run", message: broken } })
+          continue
+        }
+        if (!command.read) wrote = true
+        try {
+          acks.push(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
+        } catch (error) {
+          broken = `an earlier command threw: ${messageOf(error)}`
+          acks.push({ t: "ack", id: command.id, ok: false, error: { code: "failed", message: messageOf(error) } })
+        }
+      }
+      const headers = wrote ? { "x-ingle-rev": bump(this) } : undefined
+      return Response.json(batch ? acks : acks[0], headers === undefined ? {} : { headers })
     })
     ctx.http.route("POST /v1/auth", async () => new Response(null, { status: 204 }))
     ctx.http.route("GET /v1/socket", async (request) => {

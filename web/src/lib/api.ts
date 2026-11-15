@@ -25,19 +25,157 @@ type Ack<T> =
 /** A caller that may retry passes its own command id: the host dedupes on it, so a replay lands once. */
 export type CmdOptions = { readonly id?: string }
 
-export async function cmd<T>(op: string, args: Record<string, unknown> = {}, options: CmdOptions = {}): Promise<T> {
-  const response = await fetch("/v1/cmd", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${token()}`,
-    },
-    body: JSON.stringify({ id: options.id ?? crypto.randomUUID(), op, args }),
+/** Commands one `POST /v1/cmd` may carry; the host refuses more. */
+export const MAX_BATCH = 32
+
+type Frame = { readonly id: string; readonly op: string; readonly args: Record<string, unknown>; readonly read?: true }
+
+type Queued = {
+  readonly frame: Frame
+  resolve(ack: Ack<unknown>): void
+  reject(error: unknown): void
+}
+
+let queue: Queued[] = []
+
+/** The newest home revision this tab knows of; a different one means owner state changed somewhere. */
+let seenRev: string | undefined
+
+/** Commands issued in the same task go out as one request: one Worker request and one home request for all of them. */
+async function flush(): Promise<void> {
+  const batch = queue.splice(0, MAX_BATCH)
+  if (queue.length > 0) queueMicrotask(() => void flush())
+  if (batch.length === 0) return
+  const single = batch.length === 1
+  try {
+    const response = await fetch("/v1/cmd", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token()}` },
+      body: JSON.stringify(single ? batch[0]?.frame : batch.map((queued) => queued.frame)),
+    })
+    if (!response.ok) throw new OpError("http", `${batch.map((queued) => queued.frame.op).join(", ")}: HTTP ${response.status}`)
+    seenRev = response.headers.get("x-ingle-rev") ?? seenRev
+    const body: unknown = await response.json()
+    const acks = (Array.isArray(body) ? body : [body]) as Ack<unknown>[]
+    const byId = new Map(acks.map((ack) => [ack.id, ack]))
+    for (const queued of batch) {
+      const ack = byId.get(queued.frame.id)
+      if (ack === undefined) queued.reject(new OpError("http", `${queued.frame.op}: no ack`))
+      else queued.resolve(ack)
+    }
+  } catch (error: unknown) {
+    for (const queued of batch) queued.reject(error)
+  }
+}
+
+function send<T>(op: string, args: Record<string, unknown>, options: CmdOptions & { readonly read?: true }): Promise<T> {
+  const frame: Frame = { id: options.id ?? crypto.randomUUID(), op, args, ...(options.read ? { read: true } : {}) }
+  return new Promise<Ack<unknown>>((resolve, reject) => {
+    if (queue.length === 0) queueMicrotask(() => void flush())
+    queue.push({ frame, resolve, reject })
+  }).then((ack) => {
+    if (!ack.ok) throw new OpError(ack.error.code, ack.error.message, ack.error.details)
+    return ack.result as T
   })
-  if (!response.ok) throw new OpError("http", `${op}: HTTP ${response.status}`)
-  const body = (await response.json()) as Ack<T>
-  if (!body.ok) throw new OpError(body.error.code, body.error.message, body.error.details)
-  return body.result
+}
+
+/** How long a cached read may be served with no change heard: a backstop for changes no frame announces. */
+export const READ_TTL_MS = 60_000
+
+/** Read results by op and args, kept until something may have changed them or they age out. */
+const reads = new Map<string, { readonly value: Promise<unknown>; readonly at: number }>()
+
+/** Drops every cached read. */
+export function invalidateReads(): void {
+  reads.clear()
+}
+
+/** A home revision heard from the server: a new one means owner state changed in some tab, device or agent. */
+export function noteHomeRev(rev: string): void {
+  if (rev !== seenRev) invalidateReads()
+  seenRev = rev
+}
+
+/**
+ * The ops that change nothing, in one place. A `cached` read is served from the cache, because only a command changes
+ * it, and the TTL covers the rest. A `live` read changes without a command (sessions, metrics, logs, files and drive entries an agent writes)
+ * and is never cached. Neither one drops the cache, and both carry `read`, so the home does not bump its revision for
+ * them. Any other op may write.
+ */
+const READS: Readonly<Record<string, "cached" | "live">> = {
+  "automation.list": "cached",
+  "market.entry": "cached",
+  "market.policy": "cached",
+  "market.search": "cached",
+  "market.skipped": "cached",
+  "mcp.list": "cached",
+  "mcp.tools": "cached",
+  "memory.list": "cached",
+  "memory.profile": "cached",
+  "models.list": "cached",
+  "notify.prefs": "cached",
+  "notify.quiet": "cached",
+  "owner.read": "cached",
+  "plugin.catalog": "cached",
+  "plugin.list": "cached",
+  "plugin.packages": "cached",
+  "preset.list": "cached",
+  "prompt.list": "cached",
+  "push.key": "cached",
+  "push.list": "cached",
+  "skill.list": "cached",
+  "skill.read": "cached",
+  "system.version": "cached",
+  "workspace.read": "cached",
+  "captain.get": "live",
+  "captain.list": "live",
+  "conv.context": "live",
+  "drive.history": "live",
+  "drive.list": "live",
+  "drive.read": "live",
+  "drive.scopes": "live",
+  "file.list": "live",
+  "file.read": "live",
+  "file.revision": "live",
+  "file.revisions": "live",
+  "history.page": "live",
+  "job.list": "live",
+  "memory.suggested": "live",
+  "request.list": "live",
+  "session.list": "live",
+  "system.logs": "live",
+  "system.metrics": "live",
+  "usage.summary": "live",
+}
+
+/**
+ * Sends one op, batched with every other op issued in the same task. An op listed in `READS` is served or sent the
+ * way the table says. Any other op may change state, so the cached reads are dropped once it settles, whatever the
+ * outcome, because a rejected or failed batch may still have committed.
+ */
+export async function cmd<T>(op: string, args: Record<string, unknown> = {}, options: CmdOptions = {}): Promise<T> {
+  const read = READS[op]
+  if (read === "cached") return cached<T>(op, args)
+  if (read === "live") return send<T>(op, args, { read: true })
+  try {
+    return await send<T>(op, args, options)
+  } finally {
+    invalidateReads()
+  }
+}
+
+/** Served from the cache while nothing has dropped it and it is under a minute old, and concurrent callers share one request. */
+function cached<T>(op: string, args: Record<string, unknown>): Promise<T> {
+  const key = `${op}\u0000${JSON.stringify(args)}`
+  const hit = reads.get(key)
+  if (hit !== undefined && Date.now() - hit.at < READ_TTL_MS) return hit.value as Promise<T>
+  const started = send<T>(op, args, { read: true })
+  const entry = { value: started, at: Date.now() }
+  reads.set(key, entry)
+  started.catch(() => {
+    if (reads.get(key) === entry) reads.delete(key)
+  })
+  return started
 }
 
 export type ServerFrame =
@@ -47,6 +185,7 @@ export type ServerFrame =
   | { readonly t: "resume"; readonly stream: string; readonly value?: unknown; readonly start?: number }
   | { readonly t: "ev"; readonly stream: string; readonly events: readonly unknown[] }
   | { readonly t: "error"; readonly message: string }
+  | { readonly t: "changed"; readonly stream: string; readonly rev: string }
 
 export type StreamListener = (value: unknown, rev: string | undefined) => void
 export type DeltaListener = (events: readonly unknown[]) => void
@@ -133,6 +272,8 @@ export class Streams {
       this.#retry = 0
       this.#refused = 0
       this.#onStatus("open")
+      // Changes announced while this tab had no socket were missed, so what it cached may be stale.
+      invalidateReads()
       this.#resuming.clear()
       for (const [stream, subs] of this.#subs) {
         const resume = cursorOf(subs)
@@ -263,6 +404,7 @@ export class Streams {
       return
     }
     if (frame.t === "snap") {
+      if (frame.stream === "home") invalidateReads()
       for (const sub of this.#subs.get(frame.stream) ?? []) sub.value(frame.value, frame.rev)
       return
     }
@@ -276,6 +418,10 @@ export class Streams {
     if (frame.t === "error" && frame.message === "unknown frame" && this.#resuming.size > 0) {
       for (const stream of this.#resuming.keys()) if (this.#subs.has(stream)) this.#send({ t: "sub", stream })
       this.#resuming.clear()
+      return
+    }
+    if (frame.t === "changed") {
+      noteHomeRev(frame.rev)
       return
     }
     if (frame.t === "ev") {
@@ -301,7 +447,7 @@ function parseFrame(raw: string): ServerFrame | undefined {
   }
   if (typeof value !== "object" || value === null) return undefined
   const t = Reflect.get(value, "t")
-  if (t === "snap" || t === "resume" || t === "ev" || t === "ack" || t === "error" || t === "hello") return value as ServerFrame
+  if (t === "snap" || t === "resume" || t === "changed" || t === "ev" || t === "ack" || t === "error" || t === "hello") return value as ServerFrame
   return undefined
 }
 
