@@ -47,20 +47,28 @@ type Subscription = {
   readonly delta: DeltaListener
 }
 
+/** Handshakes refused in a row before the tab asks `/v1/status` whether its token is still good. */
+export const REFUSED_HANDSHAKES = 3
+
 /** One socket per tab, a fresh snapshot per reconnect, resubscribed from the current view set. */
 export class Streams {
   #ws: WebSocket | undefined
   #subs = new Map<string, Set<Subscription>>()
   #retry = 0
+  #refused = 0
+  #stopped = false
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
   readonly #onSession: (socket: string | undefined) => void
+  readonly #onSignedOut: () => void
 
   constructor(
     onStatus: (status: "connecting" | "open" | "closed") => void,
     onSession: (socket: string | undefined) => void,
+    onSignedOut: () => void,
   ) {
     this.#onStatus = onStatus
     this.#onSession = onSession
+    this.#onSignedOut = onSignedOut
   }
 
   subscribe(stream: string, subscription: Subscription): () => void {
@@ -78,14 +86,17 @@ export class Streams {
   }
 
   open(): void {
-    if (this.#ws !== undefined) return
+    if (this.#ws !== undefined || this.#stopped) return
     this.#onStatus("connecting")
     const url = new URL("/v1/socket", location.href)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
     const socket = new WebSocket(url, ["ingle", `bearer.${token()}`])
     this.#ws = socket
+    let opened = false
     socket.addEventListener("open", () => {
+      opened = true
       this.#retry = 0
+      this.#refused = 0
       this.#onStatus("open")
       for (const stream of this.#subs.keys()) this.#send({ t: "sub", stream })
     })
@@ -94,7 +105,8 @@ export class Streams {
       this.#ws = undefined
       this.#onSession(undefined)
       this.#onStatus("closed")
-      this.#reconnect()
+      if (!opened) this.#refused += 1
+      void this.#reconnect()
     })
     socket.addEventListener("error", () => socket.close())
   }
@@ -102,10 +114,28 @@ export class Streams {
   /** Drops the socket so the next handshake carries the current token; subscriptions survive the bounce. */
   reconnectNow(): void {
     this.#retry = 0
+    this.#refused = 0
     this.#ws?.close()
   }
 
-  #reconnect(): void {
+  /**
+   * A handshake the server refuses looks like any dropped socket, so after a run of them the tab asks once whether the
+   * token still works. A 401 ends the session instead of redialling for the life of the tab; anything else, an offline
+   * network included, keeps the backoff and starts a new run.
+   */
+  async #reconnect(): Promise<void> {
+    if (this.#refused >= REFUSED_HANDSHAKES) {
+      this.#refused = 0
+      const status = await fetch("/v1/status", { headers: { authorization: `Bearer ${token()}` } }).then(
+        (response) => response.status,
+        () => undefined,
+      )
+      if (status === 401) {
+        this.#stopped = true
+        this.#onSignedOut()
+        return
+      }
+    }
     const delay = Math.min(15_000, 500 * 2 ** this.#retry)
     this.#retry += 1
     setTimeout(() => this.#openWhenVisible(), delay)

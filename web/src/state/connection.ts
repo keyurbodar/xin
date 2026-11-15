@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js"
 import { Streams } from "../lib/api.ts"
+import { setToken } from "../lib/auth.ts"
 
 export type Connection = "connecting" | "open" | "closed"
 
@@ -12,8 +13,14 @@ export const connectionState = connection
 /** The id of this tab's live socket, so a settings list can mark its own row instead of guessing by origin. */
 export const sessionId = thisSession
 
+/** The server refused this tab's token, so it is dropped and the tab reopens on sign-in. */
+function signOut(): void {
+  setToken("")
+  location.reload()
+}
+
 export function connect(): Streams {
-  streams ??= new Streams(setConnection, setThisSession)
+  streams ??= new Streams(setConnection, setThisSession, signOut)
   streams.open()
   return streams
 }

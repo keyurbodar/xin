@@ -41,7 +41,7 @@ function liveBindings(): Record<string, string> {
 const live = process.env.INGLE_LIVE === "1"
 const load = process.env.INGLE_LOAD === "1"
 
-export default defineConfig({
+const worker = {
   plugins: [
     cloudflareTest({
       wrangler: { configPath: path("./test/wrangler.jsonc") },
@@ -52,7 +52,16 @@ export default defineConfig({
     }),
   ],
   test: {
+    name: "worker",
     include: load ? ["test/**/*.bench.ts"] : ["src/**/*.test.ts", "plugins/**/*.test.ts", "test/**/*.test.ts"],
+  },
+}
+
+const web = { test: { name: "web", include: ["web/src/**/*.test.ts"], environment: "node" } }
+
+export default defineConfig({
+  test: {
+    projects: load ? [worker] : [worker, web],
     maxWorkers,
     retry: 0,
   },
