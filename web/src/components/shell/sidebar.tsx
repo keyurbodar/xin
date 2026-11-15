@@ -12,7 +12,7 @@ import { setTheme, theme, themeOf } from "../../lib/theme.ts"
 import { openThreadTab } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
 import { BrandMark } from "../ui/brand-mark.tsx"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
+import { Signal } from "../ui/signal.tsx"
 import { openNewThread } from "./new-thread.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL, MENU_SEPARATOR } from "./menu.ts"
 
@@ -131,7 +131,7 @@ function ProjectRow(props: { project: ProjectSummary }): JSX.Element {
         <ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={13} />
       </span>
       <span class="min-w-0 flex-1 truncate">{props.project.name}</span>
-      <Show when={state()}>{(value) => <StatusGlyph state={value()} size={14} />}</Show>
+      <Show when={state()}>{(value) => <Signal state={value()} size={14} />}</Show>
     </button>
   )
 }
@@ -201,7 +201,7 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
                 class={ROW}
                 classList={{ "bg-hover text-ink": current(), "text-ink-2": !current() }}
               >
-                <StatusGlyph state={visualState(thread.status)} size={14} class="shrink-0" />
+                <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
                 <span class="min-w-0 flex-1 truncate">{thread.title}</span>
                 <span class="shrink-0 font-mono text-2xs text-ink-3">{ago(thread.beatAt)}</span>
               </button>

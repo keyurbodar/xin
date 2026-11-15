@@ -1,7 +1,8 @@
 import { createSignal, For, Show, type JSX } from "solid-js"
 import { Icon } from "../ui/icon.tsx"
+import { Spinner } from "../ui/loaders.tsx"
 import { navigate } from "../../lib/router.ts"
-import { Field, GhostButton, PrimaryButton, Spinner, StatusLine, StepHeading, TextInput } from "./controls.tsx"
+import { Field, GhostButton, PrimaryButton, StatusLine, StepHeading, TextInput } from "./controls.tsx"
 import {
   connectProvider,
   forgetProvider,
@@ -208,7 +209,7 @@ export function ProviderStep(): JSX.Element {
               disabled={busy() || saved() !== undefined}
             />
             <Show when={busy()}>
-              <Spinner tone="light" />
+              <Spinner size={14} class="shrink-0 text-ink-2" />
             </Show>
             <Show when={saved() !== undefined && !busy()}>
               <Icon name="check" size={14} class="shrink-0 text-done" />

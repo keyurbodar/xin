@@ -8,6 +8,7 @@ import { owner, ownerName, rotateSession } from "../../state/settings.ts"
 import { Markdown } from "../chat/markdown.tsx"
 import { Button, Failure, Note, Panel } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
+import { MorphIcon } from "../ui/morph-icon.tsx"
 import { Group, Row } from "./parts.tsx"
 
 /** A socket's only identity is the origin its browser sent; the scheme is noise in a row. */
@@ -261,7 +262,7 @@ export function Profile(): JSX.Element {
                   aria-label={revealed() ? "Hide token" : "Show token"}
                   onClick={() => setRevealed(!revealed())}
                 >
-                  <Glyph name="eye" size={14} />
+                  <MorphIcon kind="reveal" on={revealed()} size={14} />
                 </button>
                 <button
                   type="button"
