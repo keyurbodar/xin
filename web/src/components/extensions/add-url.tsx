@@ -79,7 +79,7 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
             <input
               value={spec()}
               onInput={(event) => setSpec(event.currentTarget.value)}
-              placeholder="github.com/owner/plugin#main or npm-name@1.2.0"
+              placeholder="github:owner/plugin#3f1b56d… (40-hex commit) or npm-name@1.2.0"
               spellcheck={false}
               aria-label="Package spec"
               class="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink placeholder:text-icon focus:outline-none"

@@ -2,7 +2,15 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
-import { integrityProblem, nameOf, permissionProblem, tarballProblem } from "./pin.ts"
+import {
+  gitProblem,
+  integrityProblem,
+  isGitSpec,
+  nameOf,
+  permissionProblem,
+  specProblem,
+  tarballProblem,
+} from "./pin.ts"
 import { reachViolations } from "./reach.ts"
 import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
 
@@ -371,6 +379,11 @@ async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
     for (const spec of add) console.warn(`would add ${spec}`)
     return
   }
+  const shipped = new Set(discover().flatMap((entry) => (entry.local ? [entry.pkg] : [])))
+  for (const spec of add) {
+    const problem = specProblem(spec, shipped)
+    if (problem !== undefined) throw new Error(problem)
+  }
   for (const pkg of remove) await bun(["remove", pkg])
   const before = new Set(discover().map((entry) => entry.pkg))
   for (const spec of add) {
@@ -381,7 +394,17 @@ async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
       const swapped = await tarballProblem(spec, pin.integrity, new Uint8Array(await response.arrayBuffer()))
       if (swapped !== undefined) throw new Error(swapped)
     }
+    const manifest = readFileSync(join(ROOT, "package.json"), "utf8")
+    const lock = readFileSync(join(ROOT, "bun.lock"), "utf8")
     await bun(["add", spec])
+    if (isGitSpec(spec)) {
+      const problem = gitProblem(spec, readFileSync(join(ROOT, "bun.lock"), "utf8"), shipped)
+      if (problem === undefined) continue
+      writeFileSync(join(ROOT, "package.json"), manifest)
+      writeFileSync(join(ROOT, "bun.lock"), lock)
+      await bun(["install"])
+      throw new Error(problem)
+    }
     if (pin === undefined) continue
     const problem =
       integrityProblem(spec, pin.integrity, readFileSync(join(ROOT, "bun.lock"), "utf8")) ??

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { integrityProblem, permissionProblem, sha512Of, tarballProblem } from "../scripts/pin.ts"
+import {
+  gitProblem,
+  integrityProblem,
+  permissionProblem,
+  sha512Of,
+  specProblem,
+  tarballProblem,
+} from "../scripts/pin.ts"
 
 const LOCK = `{
   "lockfileVersion": 1,
@@ -37,5 +44,34 @@ describe("plugin sync pins", () => {
     expect(permissionProblem("@acme/weather@1.2.0", ["network", "secrets"], manifest)).toBeUndefined()
     expect(permissionProblem("@acme/weather@1.2.0", ["network"], manifest)).toContain("declares secrets")
     expect(permissionProblem("@acme/weather@1.2.0", [], { ingle: { plugins: { weather: {} } } })).toBeUndefined()
+  })
+})
+
+const COMMIT = "666df7c10035f7e26f27ec214fe5ae3173435f34"
+const SHIPPED = new Set(["ingle-plugin-git"])
+const gitLock = (spec: string, name: string, built: string): string => `{
+  "lockfileVersion": 2,
+  "workspaces": { "": { "name": "ingle", "dependencies": { "${name}": "${spec}", }, }, },
+  "packages": {
+    "${name}": ["${name}@github:acme/tools#${built}", {}, "acme-tools-${built}", "sha512-x"],
+  },
+}
+`
+
+describe("plugin sync git pins and first-party names", () => {
+  it("refuses a git spec with no ref or a branch, and a registry name the build ships, before fetching", () => {
+    expect(specProblem("github:acme/tools", SHIPPED)).toContain("40-hex commit")
+    expect(specProblem("github:acme/tools#main", SHIPPED)).toContain("40-hex commit")
+    expect(specProblem(`github:acme/tools#${COMMIT}`, SHIPPED)).toBeUndefined()
+    expect(specProblem("ingle-plugin-git@9.9.9", SHIPPED)).toContain("ships with this build")
+    expect(specProblem("@acme/weather@1.2.0", SHIPPED)).toBeUndefined()
+  })
+
+  it("accepts the pinned commit and refuses another commit or a first-party name", () => {
+    const spec = `github:acme/tools#${COMMIT}`
+    expect(gitProblem(spec, gitLock(spec, "acme-tools", "666df7c"), SHIPPED)).toBeUndefined()
+    expect(gitProblem(spec, gitLock(spec, "acme-tools", "1234567"), SHIPPED)).toContain("resolved 1234567")
+    expect(gitProblem(spec, gitLock(spec, "ingle-plugin-git", "666df7c"), SHIPPED)).toContain("ships with this build")
+    expect(gitProblem(spec, gitLock("github:other/x", "acme-tools", "666df7c"), SHIPPED)).toContain("no dependency")
   })
 })
