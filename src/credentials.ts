@@ -19,7 +19,7 @@ export function credentialRefsIn(text: string): readonly string[] {
   return [...text.matchAll(TOKEN)].flatMap((token) => (token[1] === undefined ? [] : [token[1]]))
 }
 
-export function assertTemplateSyntax(text: string, where: string): void {
+function assertTemplateSyntax(text: string, where: string): void {
   for (const occurrence of text.matchAll(SUSPECT))
     if (!TOKEN_EXACT.test(occurrence[0]))
       throw new Error(`${where}: "${occurrence[0]}" is not a credential template; use \${credential:REF}`)

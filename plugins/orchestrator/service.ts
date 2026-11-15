@@ -70,7 +70,7 @@ const summaryOf = (id: number, doc: ThreadDocState): ThreadSummary => ({
 
 const commandId = (value: string): CommandId => value as CommandId
 
-export function stringField(value: JsonValue | undefined, key: string): string | undefined {
+function stringField(value: JsonValue | undefined, key: string): string | undefined {
   if (typeof value !== "object" || value === null) return undefined
   const found: unknown = Reflect.get(value, key)
   return typeof found === "string" ? found : undefined

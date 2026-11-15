@@ -1,4 +1,5 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
+import { originLabel } from "../../lib/format.ts"
 import { currentEndpoint, disablePush, enablePush, type PushChange } from "../../lib/push.ts"
 import {
   notifyNow,
@@ -68,11 +69,6 @@ function minutesOf(text: string): number | undefined {
 }
 
 /** The scheme is noise in a row; the host is what tells one device from another. */
-function originLabel(origin: string): string {
-  const stripped = origin.replace(/^https?:\/\//u, "").replace(/\/$/u, "")
-  return stripped === "" ? "No origin sent" : stripped
-}
-
 function Saving(props: { show: boolean }): JSX.Element {
   return (
     <Show when={props.show}>

@@ -25,7 +25,7 @@ function threadTone(state: VisualState): string {
   }
 }
 
-export function plain(text: string): string {
+function plain(text: string): string {
   return text
     .replace(/```[\s\S]*?```/gu, " ")
     .replace(/[*_`#>]/gu, "")

@@ -14,15 +14,6 @@ export function ago(at: number | undefined, now = Date.now()): string {
   return new Date(at).toLocaleDateString(undefined, { weekday: "short" })
 }
 
-/** Elapsed work time with minutes and seconds, for a finished thread row. */
-export function elapsed(at: number | undefined, now = Date.now()): string {
-  if (at === undefined) return "—"
-  const total = Math.max(0, Math.floor((now - at) / 1000))
-  const minutes = Math.floor(total / 60)
-  const seconds = total % 60
-  return minutes === 0 ? `${seconds}s` : `${minutes}m ${String(seconds).padStart(2, "0")}s`
-}
-
 export function money(usd: number): string {
   if (usd === 0) return "$0.00"
   return usd < 0.01 ? `$${usd.toFixed(3)}` : `$${usd.toFixed(2)}`
@@ -103,4 +94,10 @@ export function describeRule(rrule: string): string {
     default:
       return rrule
   }
+}
+
+/** A browser origin without its scheme, for a session or device row. */
+export function originLabel(origin: string): string {
+  const stripped = origin.replace(/^https?:\/\//u, "").replace(/\/$/u, "")
+  return stripped === "" ? "No origin sent" : stripped
 }

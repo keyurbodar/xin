@@ -101,7 +101,7 @@ export type ScheduleEditRequest =
     }
   | { readonly id: string; readonly action: "delete"; readonly expectedUpdatedAt?: string }
 
-export const SCHEDULE_EDIT_ACTIONS = ["update", "delete"] as const
+const SCHEDULE_EDIT_ACTIONS = ["update", "delete"] as const
 
 const EDIT_STRING_MAX = 100
 

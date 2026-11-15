@@ -4,7 +4,7 @@ import { buildIndex, type GitObject, subtleSha1 } from "./pack.ts"
 import { advertise, type Fetched, type Fetcher, fetchPack, remoteUrl } from "./protocol.ts"
 import { PackStore, RepoIndex, type RepoRow } from "./store.ts"
 
-export const MAX_PACK_BYTES = 80 * 1024 * 1024
+const MAX_PACK_BYTES = 80 * 1024 * 1024
 const MAX_DEPTH = 5_000
 const SCAN_LIMIT = 1_000
 const BLOB_CACHE = 32
@@ -353,7 +353,7 @@ const MAX_DIFF_CELLS = 4_000_000
 const MAX_PATCH_LINES = 400
 
 /** A line diff by longest common subsequence, capped so one huge file cannot dominate a request. */
-export function patchOf(before: Uint8Array, after: Uint8Array): string {
+function patchOf(before: Uint8Array, after: Uint8Array): string {
   const a = new TextDecoder().decode(before).split("\n")
   const b = new TextDecoder().decode(after).split("\n")
   if (a.length * b.length > MAX_DIFF_CELLS) return "(file too large to diff line by line)"

@@ -43,8 +43,8 @@ import { WorkspaceDoc, type SpaceState } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
-export const ANCHOR_KIND = "xin.anchor"
-export const REPORTER_KIND = "xin.reporter"
+const ANCHOR_KIND = "xin.anchor"
+const REPORTER_KIND = "xin.reporter"
 
 /**
  * Threads a space lists before its oldest finished ones drop out. Live threads (working or waiting) are never
@@ -96,7 +96,7 @@ type ReporterCheckpoint =
 export type ReporterTask = Task<ReporterInput, ReporterCheckpoint, null, object>
 export type AnchorTask = Task<null, { readonly phase: "done" }, null, object>
 
-export const CHILD_TOOLS = [
+const CHILD_TOOLS = [
   "delegate_task",
   "thread_create",
   "task_cancel",
@@ -129,7 +129,7 @@ export type ThreadDeps = {
   settled(event: ThreadSettled): void
 }
 
-export const Anchor: AnchorTask = defineTask<null, { readonly phase: "done" }, null>({
+const Anchor: AnchorTask = defineTask<null, { readonly phase: "done" }, null>({
   name: ANCHOR_KIND,
   version: 1,
   initial: () => ({ phase: "done" }),
@@ -141,7 +141,7 @@ export const Anchor: AnchorTask = defineTask<null, { readonly phase: "done" }, n
     runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), taskContext),
 })
 
-export function reporterTask(deps: ThreadDeps): ReporterTask {
+function reporterTask(deps: ThreadDeps): ReporterTask {
   return defineTask<ReporterInput, ReporterCheckpoint, null>({
     name: REPORTER_KIND,
     version: 1,

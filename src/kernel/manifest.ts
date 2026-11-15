@@ -52,7 +52,7 @@ export function readManifest(value: unknown, where: string): Manifest {
   }
 }
 
-export function parseRequire(spec: string): { readonly name: string; readonly range?: string } | undefined {
+function parseRequire(spec: string): { readonly name: string; readonly range?: string } | undefined {
   const match = REQUIRE.exec(spec)
   const name = match?.[1]
   if (name === undefined) return undefined

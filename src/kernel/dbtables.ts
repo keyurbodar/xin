@@ -1,7 +1,7 @@
 export const KERNEL_OWNER = "kernel"
-export const MIGRATIONS_TABLE_PREFIX = "migrations_"
+const MIGRATIONS_TABLE_PREFIX = "migrations_"
 
-export const TABLE_OWNERS: Readonly<Record<string, string>> = {
+const TABLE_OWNERS: Readonly<Record<string, string>> = {
   kv: KERNEL_OWNER,
   receipts: KERNEL_OWNER,
   credentials: "models",

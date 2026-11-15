@@ -83,7 +83,7 @@ function formatter(tz: string): Intl.DateTimeFormat {
   return made
 }
 
-export function validateZone(tz: string): void {
+function validateZone(tz: string): void {
   try {
     formatter(tz)
   } catch {
@@ -99,7 +99,7 @@ export type Instant = {
   readonly minute: number
 }
 
-export function zonedInstant(time: Instant, tz: string): number {
+function zonedInstant(time: Instant, tz: string): number {
   validateZone(tz)
   return zonedTime(time, tz)
 }

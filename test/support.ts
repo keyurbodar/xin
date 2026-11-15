@@ -14,6 +14,7 @@ import { M8_MODEL } from "./plugins/m8.ts"
 import type { Home } from "./worker.ts"
 import { defaultSpaceOf, ThreadDoc } from "../src/contracts/threaddoc.ts"
 import { WorkspaceDoc } from "../src/contracts/workspace.ts"
+import { CLOCK_READING_PREFIX } from "../src/contracts/message.ts"
 
 export type Stub = DurableObjectStub<Home>
 
@@ -74,8 +75,6 @@ export const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Pro
 export const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
 
-export const CLOCK_READING_PREFIX = "Time sampled while preparing turn "
-
 export const contentText = (content: unknown): string => {
   if (typeof content === "string") return content
   if (!Array.isArray(content)) return ""
@@ -121,7 +120,7 @@ export type OfferLog = {
   latest(): Offer
 }
 
-export function offeredTools(context: TranscriptContext): string[] {
+function offeredTools(context: TranscriptContext): string[] {
   const names = new Set<string>()
   for (const message of context.messages) {
     if (message.role !== "system") continue
@@ -193,7 +192,7 @@ export async function eventually(
   throw new Error("condition not reached")
 }
 
-export const OWNER = "test-owner-token"
+const OWNER = "test-owner-token"
 export const owner = (): DurableObjectStub<Home> => env.HOME.get(env.HOME.idFromName("owner"))
 
 export const api = (path: string, init?: RequestInit) =>

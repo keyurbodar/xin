@@ -21,9 +21,9 @@ import { readTranscript } from "./dreamtranscript.ts"
 
 const context = BACKGROUND_CONTEXT
 
-export const DREAMER_TASK = "xin.dreamer"
+const DREAMER_TASK = "xin.dreamer"
 export const IDLE_MS = 10 * 60_000
-export const RETRY_MS = 10 * 60_000
+const RETRY_MS = 10 * 60_000
 export const PROFILE_KEY = "profile_md"
 export const CURSOR_KEY = "dreamer_cursor"
 export const TRANSCRIPT_CURSOR_KEY = "dreamer_transcript_cursor"

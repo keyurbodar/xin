@@ -84,15 +84,3 @@ export function Toggle(props: {
 export function Panel(props: { children: JSX.Element; class?: string | undefined }): JSX.Element {
   return <div class={`overflow-hidden rounded-[4px] border border-line bg-surface ${props.class ?? ""}`}>{props.children}</div>
 }
-
-export function MissingOp(props: { op: string; detail?: string | undefined }): JSX.Element {
-  return (
-    <div class="flex flex-wrap items-baseline gap-2 text-[11.5px] text-fg-3">
-      <span class="mono-meta">Not in this build</span>
-      <span class="mono-meta text-fg-2">{props.op}</span>
-      <Show when={props.detail}>
-        {(detail) => <span class="text-[11.5px] text-fg-3">{detail()}</span>}
-      </Show>
-    </div>
-  )
-}

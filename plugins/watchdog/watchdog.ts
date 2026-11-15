@@ -29,8 +29,8 @@ export type WatchdogPorts = {
 }
 
 export const WATCHDOG_KIND = "xin.watchdog"
-export const WATCHDOG_INTERVAL_MS = 30_000
-export const STALL_MS = 120_000
+const WATCHDOG_INTERVAL_MS = 30_000
+const STALL_MS = 120_000
 const BEAT_MS = 30_000
 const PAGE = 200
 

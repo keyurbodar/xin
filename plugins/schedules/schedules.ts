@@ -58,7 +58,7 @@ import {
 const context = BACKGROUND_CONTEXT
 
 export const SCHEDULE_TASK = "xin.schedule"
-export const SCHEDULE_VERSION = 2
+const SCHEDULE_VERSION = 2
 const MISSED = " (missed ×"
 const ID = new RegExp(ID_SOURCE)
 
@@ -108,7 +108,7 @@ export const ScheduleRecordSchema = obj({
   runs: opt(arr(StoredRunSchema)),
 })
 
-export const SchedulesStateSchema = obj({ records: map(ScheduleRecordSchema) })
+const SchedulesStateSchema = obj({ records: map(ScheduleRecordSchema) })
 
 export type StoredSchedule = Static<typeof ScheduleRecordSchema>
 type StoredTarget = Static<typeof StoredTargetSchema>
@@ -174,7 +174,7 @@ export function scheduleOps(service: SchedulesService): readonly Op[] {
   ]
 }
 
-export function scheduleTask(port: SchedulesPort): Task<TimerInput, ScheduleState, null, object> {
+function scheduleTask(port: SchedulesPort): Task<TimerInput, ScheduleState, null, object> {
   return defineTask<TimerInput, ScheduleState, null, object>({
     name: SCHEDULE_TASK,
     version: SCHEDULE_VERSION,
@@ -255,7 +255,7 @@ async function liveRecord(port: SchedulesPort, input: TimerInput, ctx: Context):
   return record === undefined || record.revision !== input.revision || !record.active ? undefined : record
 }
 
-export function nextOf(record: StoredSchedule): Occurrence | undefined {
+function nextOf(record: StoredSchedule): Occurrence | undefined {
   return slotsOf(record.when, record.tz, record.anchor).next(record.cursor.last, record.cursor.index)
 }
 

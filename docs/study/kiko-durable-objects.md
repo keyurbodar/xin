@@ -286,9 +286,9 @@ Reads deserve their own gate. Xin's 21 reads a message is a warm-path number; me
 
 ## 15. Reproducing this
 
-Two instruments, both kept next to this document.
+Two instruments.
 
-- **Kiko's side**: `docs/study/kiko-meter.integration.test.ts` is the probe that produced 6 writes / 4,094 reads at 22 messages / 331,316 at 324. Copy it to `kiko/apps/server/integration/` and run `bunx vitest run --project worker integration/kiko-meter.integration.test.ts --silent=false` from `kiko/apps/server`; it drives the real Worker through Kiko's own `localWorker` harness and reads `GET /api/dev/stats`.
+- **Kiko's side**: `docs/study/kiko-meter.integration.test.ts` at [`d746ed9`](https://github.com/keyurbodar/xin/blob/d746ed9/docs/study/kiko-meter.integration.test.ts) (removed from the tree, since it runs only inside Kiko) is the probe that produced 6 writes / 4,094 reads at 22 messages / 331,316 at 324. Copy it to `kiko/apps/server/integration/` and run `bunx vitest run --project worker integration/kiko-meter.integration.test.ts --silent=false` from `kiko/apps/server`; it drives the real Worker through Kiko's own `localWorker` harness and reads `GET /api/dev/stats`.
 - **Xin's side**: `test/rows.ts` is the same meter for `Home`: it patches `sql.exec`, the KV methods and the alarm methods and reports the cursors' own `rowsRead` / `rowsWritten`, so index rows are counted the way Cloudflare counts them. `test/rows.test.ts` runs one message and one reply through the faux provider and holds a SQL baseline of **5 written / 10 read** per message in an empty home, with a tolerance of 5 (the meter also reports the KV and alarm rows it adds to that); it prints the measured numbers when the billed SQL rows move past the tolerance, and updating `BASELINE` is how a new number is accepted. Since the journal, that baseline counts journal rows and their truncation, not a table per record.
 
 Use `test/rows.ts` for the before and after numbers. `src/cost.test.ts` and `test/load.bench.ts` now bound the same billed counters through `test/meter.ts`, so their bounds are billing numbers, unlike the `total_changes()` bounds they replaced: an insert into a table with two indexes reports one change and is billed as three.
