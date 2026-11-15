@@ -3,7 +3,7 @@ import { cmd } from "../../lib/api.ts"
 import { setToken, token } from "../../lib/auth.ts"
 import { ago, originLabel } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
-import { reauthorize, sessionId } from "../../state/connection.ts"
+import { holdConnection, reauthorize, sessionId } from "../../state/connection.ts"
 import { errorMessage } from "../../state/extensions.ts"
 import { closeSessions, owner, ownerName, rotateSession, sessions, type Session } from "../../state/settings.ts"
 import { Markdown } from "../chat/markdown.tsx"
@@ -77,6 +77,7 @@ export function Profile(): JSX.Element {
     setBusy(true)
     setError(undefined)
     setNote(undefined)
+    if (signOut) holdConnection()
     try {
       const next = await rotateSession()
       setFresh(next)
@@ -92,6 +93,7 @@ export function Profile(): JSX.Element {
       reauthorize()
       setNote("This browser is on the new token. Every other device is signed out.")
     } catch (failure: unknown) {
+      if (signOut) reauthorize()
       setError(errorMessage(failure))
     } finally {
       setBusy(false)

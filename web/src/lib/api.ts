@@ -57,6 +57,9 @@ export class Streams {
   #retry = 0
   #refused = 0
   #stopped = false
+  #paused = false
+  /** Bumped by every reconnect the tab asks for, so a check or a timer from before it does nothing. */
+  #run = 0
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
   readonly #onSession: (socket: string | undefined) => void
   readonly #onSignedOut: () => void
@@ -86,7 +89,7 @@ export class Streams {
   }
 
   open(): void {
-    if (this.#ws !== undefined || this.#stopped) return
+    if (this.#ws !== undefined || this.#stopped || this.#paused) return
     this.#onStatus("connecting")
     const url = new URL("/v1/socket", location.href)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
@@ -115,22 +118,39 @@ export class Streams {
   reconnectNow(): void {
     this.#retry = 0
     this.#refused = 0
+    this.#paused = false
+    this.#run += 1
+    if (this.#ws === undefined) this.open()
+    else this.#ws.close()
+  }
+
+  /**
+   * Holds the socket closed while the owner retires this tab's token on purpose, so its refused handshakes cannot end
+   * the session before the one-time replacement is copied or adopted. `reconnectNow()` resumes.
+   */
+  pause(): void {
+    this.#paused = true
+    this.#run += 1
     this.#ws?.close()
   }
 
   /**
    * A handshake the server refuses looks like any dropped socket, so after a run of them the tab asks once whether the
-   * token still works. A 401 ends the session instead of redialling for the life of the tab; anything else, an offline
-   * network included, keeps the backoff and starts a new run.
+   * token still works. A 401 for the token still stored ends the session instead of redialling for the life of the tab;
+   * a 401 for a token replaced meanwhile, or anything else, an offline network included, keeps the backoff.
    */
   async #reconnect(): Promise<void> {
+    if (this.#paused) return
+    const run = this.#run
     if (this.#refused >= REFUSED_HANDSHAKES) {
       this.#refused = 0
-      const status = await fetch("/v1/status", { headers: { authorization: `Bearer ${token()}` } }).then(
+      const presented = token()
+      const status = await fetch("/v1/status", { headers: { authorization: `Bearer ${presented}` } }).then(
         (response) => response.status,
         () => undefined,
       )
-      if (status === 401) {
+      if (run !== this.#run) return
+      if (status === 401 && token() === presented) {
         this.#stopped = true
         this.#onSignedOut()
         return
@@ -138,7 +158,9 @@ export class Streams {
     }
     const delay = Math.min(15_000, 500 * 2 ** this.#retry)
     this.#retry += 1
-    setTimeout(() => this.#openWhenVisible(), delay)
+    setTimeout(() => {
+      if (run === this.#run) this.#openWhenVisible()
+    }, delay)
   }
 
   /** A hidden tab waits to be seen before it dials again, so a dead socket in a background tab costs no requests. */
