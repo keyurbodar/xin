@@ -241,6 +241,7 @@ describe("compact", () => {
       title: "Compaction",
       description:
         "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
+      permissions: ["models", "conversations"],
       contributes: { ops: ["conv.compact"] },
     })
     expect(manifest.ingle.bundle).toEqual([{ id: "compact", plugin: "compact" }])

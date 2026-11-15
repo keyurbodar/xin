@@ -74,7 +74,13 @@ export const CATALOG: Catalog = {
     title: "Compaction",
     description:
       "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
-    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: ["conv.compact"] }, slots: [] },
+    manifest: {
+      api: 1,
+      requires: [],
+      permissions: ["conversations", "models"],
+      contributes: { tools: [], ops: ["conv.compact"] },
+      slots: [],
+    },
     local: true,
     source: "ingle-plugin-compact@0.1.0",
   },
