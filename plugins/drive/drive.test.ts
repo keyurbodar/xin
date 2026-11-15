@@ -101,6 +101,37 @@ describe("drive", () => {
     expect(field(field(history, "versions"), "0")).not.toMatchObject({ at: 1 })
   })
 
+  it("writes over a matching base, refuses a stale or vanished base, and writes without one, at no extra row read", async () => {
+    const stub = fresh()
+    const scope = { kind: "project", id: await project(stub, "acme") }
+    await ok(stub, "b0", "drive.write", { scope, path: "other.md", text: "one" })
+    const opened = field(await ok(stub, "b1", "drive.write", { scope, path: "plan.md", text: "one" }), "sha256")
+
+    const before = await reads(stub)
+    await ok(stub, "b2", "drive.write", { scope, path: "other.md", text: "two" })
+    const plainReads = (await reads(stub)) - before
+
+    const mid = await reads(stub)
+    const matched = await ok(stub, "b3", "drive.write", { scope, path: "plan.md", text: "three", base: opened })
+    expect((await reads(stub)) - mid).toBe(plainReads)
+    expect(matched).toMatchObject({ size: 5 })
+
+    const stale = await cmd(stub, "b4", "drive.write", { scope, path: "plan.md", text: "four", base: opened })
+    expect(stale.ok).toBe(false)
+    expect(JSON.stringify(stale)).toContain("bad_args")
+    expect(JSON.stringify(stale)).toContain("stale base: plan.md changed since")
+    expect(await ok(stub, "b5", "drive.read", { scope, path: "plan.md" })).toMatchObject({ text: "three" })
+
+    await ok(stub, "b6", "drive.delete", { scope, path: "plan.md" })
+    const gone = await cmd(stub, "b7", "drive.write", {
+      scope,
+      path: "plan.md",
+      text: "four",
+      base: field(matched, "sha256"),
+    })
+    expect(JSON.stringify(gone)).toContain("(now deleted)")
+  })
+
   it("rejects paths that leave the scope and scopes that do not exist", async () => {
     const stub = fresh()
     expect(await cmd(stub, "e1", "drive.write", { scope: { kind: "user" }, path: "../x", text: "" })).toMatchObject({
@@ -243,6 +274,31 @@ describe("drive", () => {
     await ok(stub, "d1", "drive.delete", { scope: user, path: "report.html" })
     expect((await get(again)).status).toBe(404)
     expect((await get("/s/not-an-id")).status).toBe(401)
+  })
+
+  it("makes a browser revalidate a share link on every view, so Stop sharing takes effect at once", async () => {
+    const stub = fresh()
+    const user = { kind: "user" }
+    await ok(stub, "w1", "drive.write", { scope: user, path: "notes.md", text: "hello" })
+    const url = field(await ok(stub, "sh1", "drive.share", { scope: user, path: "notes.md" }), "url")
+    if (typeof url !== "string") throw new Error("no url")
+
+    const first = await get(url)
+    expect(first.status).toBe(200)
+    expect(first.headers.get("cache-control")).toBe("private, no-cache")
+    const etag = first.headers.get("etag")
+    if (etag === null) throw new Error("no etag")
+    await first.arrayBuffer()
+
+    const revalidated = await get(url, { "if-none-match": etag })
+    expect(revalidated.status).toBe(304)
+    expect(revalidated.headers.get("cache-control")).toBe("private, no-cache")
+    await revalidated.arrayBuffer()
+
+    await ok(stub, "u1", "drive.unshare", { scope: user, path: "notes.md" })
+    const gone = await get(url, { "if-none-match": etag })
+    expect(gone.status).toBe(404)
+    await gone.arrayBuffer()
   })
 
   it("answers a share link's conditional and ranged reads with 304, 412, 206 and 416, and honours If-Range", async () => {

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-RUN="${INGLE_RUN:-$ROOT/.verify}"
+NAME="${INGLE_RUN:-}"
+case "$NAME" in */* | . | ..) echo "INGLE_RUN is a run name, not a path: $NAME" >&2; exit 2 ;; esac
+RUN="$ROOT/.verify${NAME:+/$NAME}"
 PORT="${INGLE_PORT:-8799}"
 TOKEN="${INGLE_TOKEN:-verify-owner-token}"
 KEK="dmVyaWZ5LWtlay1leGFjdGx5LTMyLWJ5dGVzLWxvbmc="
@@ -47,7 +49,7 @@ case "${1:-}" in
     echo "stopped; evidence kept in $RUN/evidence" ;;
   *) cat <<'USAGE'
 ingle.sh launch | doctor | call METHOD PATH [JSON] | ws FRAME_JSON... | stop
-env: INGLE_PORT (8799), INGLE_RUN (.verify), INGLE_TOKEN (verify-owner-token)
+env: INGLE_PORT (8799), INGLE_RUN (a run name; state under .verify/<name>), INGLE_TOKEN (verify-owner-token)
 USAGE
      exit 2 ;;
 esac
