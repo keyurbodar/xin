@@ -335,4 +335,32 @@ describe("drive", () => {
     expect(beyond.headers.get("content-range")).toBe("bytes */10")
     await beyond.arrayBuffer()
   })
+
+  it("refuses a weak If-Match tag, answers a HEAD's failed precondition with 412, and sends last-modified", async () => {
+    const stub = fresh()
+    const user = { kind: "user" }
+    await ok(stub, "w1", "drive.write", { scope: user, path: "notes.txt", text: "hello" })
+    const url = field(await ok(stub, "sh1", "drive.share", { scope: user, path: "notes.txt" }), "url")
+    if (typeof url !== "string") throw new Error("no url")
+    const head = (headers: Record<string, string>) =>
+      exports.default.fetch(new Request(`https://ingle.test${url}`, { method: "HEAD", headers }))
+
+    const whole = await get(url)
+    const etag = whole.headers.get("etag")
+    if (etag === null) throw new Error("no etag")
+    const modified = whole.headers.get("last-modified")
+    expect(modified).not.toBeNull()
+    expect(Number.isNaN(Date.parse(modified ?? ""))).toBe(false)
+    await whole.arrayBuffer()
+
+    const weak = await get(url, { "if-match": `W/${etag}` })
+    expect(weak.status).toBe(412)
+    await weak.arrayBuffer()
+
+    expect((await head({ "if-match": '"old"' })).status).toBe(412)
+    expect((await head({ "if-unmodified-since": "Thu, 01 Jan 1970 00:00:00 GMT" })).status).toBe(412)
+    const held = await head({ "if-match": etag })
+    expect(held.status).toBe(200)
+    expect(held.headers.get("last-modified")).toBe(modified)
+  })
 })
