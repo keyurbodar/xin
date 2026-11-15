@@ -98,7 +98,7 @@ function Frame(props: {
 
   return (
     <div
-      class="fixed inset-0 z-50 grid place-items-center bg-black/65 p-4 transition-opacity duration-[140ms]"
+      class="fixed inset-0 z-50 grid place-items-center bg-scrim p-4 transition-opacity duration-[140ms]"
       classList={{ "opacity-0": props.closing }}
       onMouseDown={() => {
         if (!props.busy) props.onClose()
@@ -109,7 +109,7 @@ function Frame(props: {
         role="dialog"
         aria-modal="true"
         aria-label={props.title}
-        class={`relative max-h-[calc(100vh-32px)] ${props.width} max-w-[calc(100vw-32px)] overflow-y-auto rounded-[4px] border border-line-inner bg-raised shadow-[0_24px_64px_rgba(0,0,0,0.65)]`}
+        class={`relative max-h-[calc(100vh-32px)] ${props.width} max-w-[calc(100vw-32px)] overflow-y-auto rounded-md border border-line-2 bg-card shadow-[0_24px_64px_rgba(0,0,0,0.65)]`}
         classList={{ enter: !props.closing, "dialog-out": props.closing }}
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
@@ -117,14 +117,14 @@ function Frame(props: {
           props.onSubmit?.()
         }}
       >
-        <div class="flex items-center border-b border-line px-5 py-3.5">
+        <div class="flex items-center border-b border-line-1 px-5 py-3.5">
           <h2 class="text-[15px] font-medium">{props.title}</h2>
           <button
             type="button"
             onClick={props.onClose}
             aria-label="Close"
             disabled={props.busy}
-            class="ml-auto grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg disabled:opacity-50"
+            class="ml-auto grid h-7 w-7 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink disabled:opacity-50"
           >
             <Icon name="x" size={14} />
           </button>
@@ -133,7 +133,7 @@ function Frame(props: {
         <div class="flex flex-col gap-4 px-5 py-4">{props.children}</div>
 
         <Show when={props.footer}>
-          {(footer) => <div class="flex items-center gap-2 border-t border-line px-5 py-3">{footer()}</div>}
+          {(footer) => <div class="flex items-center gap-2 border-t border-line-1 px-5 py-3">{footer()}</div>}
         </Show>
       </form>
     </div>
@@ -149,18 +149,18 @@ export function Field(props: {
   return (
     <label class="flex flex-col gap-1.5">
       <span class="flex items-baseline gap-1.5">
-        <span class="text-[12px] font-medium text-fg-2">{props.label}</span>
+        <span class="text-sm font-medium text-ink-2">{props.label}</span>
         <Show when={props.optional === true}>
-          <span class="text-[12px] text-fg-4">optional</span>
+          <span class="text-sm text-icon">optional</span>
         </Show>
       </span>
       {props.children}
       <Show when={props.hint !== undefined}>
-        <span class="text-[11.5px] text-fg-3">{props.hint}</span>
+        <span class="text-xs text-ink-3">{props.hint}</span>
       </Show>
     </label>
   )
 }
 
 export const FIELD_INPUT =
-  "w-full rounded-[2px] border border-line-inner bg-surface px-2.5 text-[13px] text-fg outline-none placeholder:text-fg-4 focus:border-accent-line focus:ring-[3px] focus:ring-accent-dim disabled:opacity-50"
+  "w-full rounded-sm border border-line-2 bg-panel px-2.5 text-base text-ink outline-none placeholder:text-icon focus:border-primary/40 focus:ring-[3px] focus:ring-primary-soft disabled:opacity-50"

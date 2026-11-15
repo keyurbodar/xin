@@ -29,7 +29,7 @@ export function WelcomeScreen(): JSX.Element {
     )
 
   return (
-    <div class="flex h-full flex-col bg-page text-fg">
+    <div class="flex h-full flex-col bg-bg text-ink">
       <OnboardingTopBar
         items={items()}
         onSelect={(index) => {
