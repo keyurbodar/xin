@@ -2,14 +2,16 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { env } from "cloudflare:workers"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { api, addThreads, cmd, field, owner } from "../../test/support.ts"
 import { M4_MODEL } from "../../test/plugins/m4.ts"
 import { type Home } from "../../test/worker.ts"
 import { sweep } from "./files.ts"
 import type { CommandId, PluginId } from "../../src/ids.ts"
 import type { Actor, Outcome } from "../../src/ops.ts"
-import { blobKey, FileIndex, type FileRow, MAX_LISTED_FILES, R2Env } from "../../src/r2env.ts"
+import { blobKey, FileIndex, type FileRow, MAX_LISTED_FILES, R2Env, sha256 } from "../../src/r2env.ts"
+
+const sha256Hex = (text: string): Promise<string> => sha256(new TextEncoder().encode(text))
 
 const rowOf = (path: string): Promise<FileRow | undefined> =>
   runInDurableObject(owner(), (home: Home) => new FileIndex(home.db).row(path))
@@ -34,7 +36,7 @@ const toolTexts = (home: Home, id: ConversationId): Promise<string[]> =>
   })
 
 describe("files", () => {
-  it("streams a web upload into R2 and commits metadata without carrying the body to the DO", async () => {
+  it("stores a web upload in R2 and commits metadata without carrying the body to the DO", async () => {
     const path = "/projects/m4/upload.txt"
     const body = "xin-upload:" + "x".repeat(2 * 1024 * 1024)
     const reply = await put(path, body, { "content-type": "text/plain" })
@@ -67,7 +69,11 @@ describe("files", () => {
     const first = "/projects/m4/same-a.txt"
     const second = "/projects/m4/same-b.txt"
     const body = `identical-${crypto.randomUUID()}`
-    for (const path of [first, second]) expect((await put(path, body)).status).toBe(200)
+    expect((await put(first, body)).status).toBe(200)
+    const before = await env.FILES.head(blobKey(await sha256Hex(body)))
+    expect((await put(second, body)).status).toBe(200)
+    const after = await env.FILES.head(blobKey(await sha256Hex(body)))
+    expect(after?.version).toBe(before?.version)
 
     const rows = await runInDurableObject(owner(), async (home: Home) => {
       const indexed = await new FileIndex(home.db).under("/projects/m4/")
@@ -79,6 +85,36 @@ describe("files", () => {
     const shared = a?.r2_key ?? ""
     const listed = await env.FILES.list({ prefix: shared })
     expect(listed.objects.map((object) => object.key)).toEqual([shared])
+  })
+
+  it("puts a blob again when its last put is over an hour old, so the orphan sweep grace restarts", async () => {
+    const body = `aged-${crypto.randomUUID()}`
+    const key = blobKey(await sha256Hex(body))
+    expect((await put("/projects/m4/aged-a.txt", body)).status).toBe(200)
+    const before = await env.FILES.head(key)
+    vi.useFakeTimers({ toFake: ["Date"] })
+    try {
+      vi.setSystemTime(Date.now() + 2 * 60 * 60_000)
+      expect((await put("/projects/m4/aged-b.txt", body)).status).toBe(200)
+    } finally {
+      vi.useRealTimers()
+    }
+    const after = await env.FILES.head(key)
+    expect(after?.version).not.toBe(before?.version)
+  })
+
+  it("stages a body over the buffer limit, keeps one blob and leaves no staged copy", async () => {
+    const body = `large-${crypto.randomUUID()}` + "y".repeat(9 * 1024 * 1024)
+    const paths = ["/projects/m4/large-a.bin", "/projects/m4/large-b.bin"]
+    const versions: (string | undefined)[] = []
+    for (const path of paths) {
+      expect((await put(path, body, { "content-length": String(body.length) })).status).toBe(200)
+      versions.push((await env.FILES.head(blobKey(await sha256Hex(body))))?.version)
+    }
+    expect(versions[1]).toBe(versions[0])
+    const row = await rowOf(paths[0] ?? "")
+    expect(row?.size).toBe(body.length)
+    expect((await env.FILES.list({ prefix: "tmp/" })).objects).toEqual([])
   })
 
   it("round-trips a file through pi's write and read tools over R2Env", async () => {
