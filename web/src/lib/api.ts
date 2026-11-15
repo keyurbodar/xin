@@ -41,16 +41,27 @@ export async function cmd<T>(op: string, args: Record<string, unknown> = {}, opt
 export type ServerFrame =
   | { readonly t: "hello"; readonly socket: string }
   | { readonly t: "ack"; readonly id: string; readonly ok: boolean; readonly result?: unknown; readonly error?: { code: string; message: string } }
-  | { readonly t: "snap"; readonly stream: string; readonly value: unknown }
+  | { readonly t: "snap"; readonly stream: string; readonly value: unknown; readonly rev?: string }
+  | { readonly t: "resume"; readonly stream: string; readonly value?: unknown; readonly start?: number }
   | { readonly t: "ev"; readonly stream: string; readonly events: readonly unknown[] }
   | { readonly t: "error"; readonly message: string }
 
-export type StreamListener = (value: unknown) => void
+export type StreamListener = (value: unknown, rev: string | undefined) => void
 export type DeltaListener = (events: readonly unknown[]) => void
 
-type Subscription = {
+/** What a subscriber already holds, sent on a resubscribe so the server answers with only what is missing. */
+export type ResumeCursor = { readonly start: number; readonly from: number } | { readonly rev: string }
+
+export type Resumable = {
+  cursor(): ResumeCursor | undefined
+  /** The server's answer to the cursor: what changed since it, and where the shared window now starts. */
+  apply(value: unknown, start: number | undefined): void
+}
+
+export type Subscription = {
   readonly value: StreamListener
   readonly delta: DeltaListener
+  readonly resume?: Resumable
 }
 
 /** Handshakes refused in a row before the tab asks `/v1/status` whether its token is still good. */
@@ -59,6 +70,8 @@ export const REFUSED_HANDSHAKES = 3
 export class Streams {
   #ws: WebSocket | undefined
   #subs = new Map<string, Set<Subscription>>()
+  /** The subscribers each outstanding resume was computed from: only they may apply its answer. */
+  #resuming = new Map<string, ReadonlySet<Subscription>>()
   #retry = 0
   #refused = 0
   #stopped = false
@@ -92,10 +105,12 @@ export class Streams {
     const set = this.#subs.get(stream) ?? new Set<Subscription>()
     this.#subs.set(stream, set)
     set.add(subscription)
-    if (set.size === 1) this.#send({ t: "sub", stream })
+    // A plain sub per subscriber, so one that joins a live stream (or one awaiting a resume) gets a full snapshot.
+    this.#send({ t: "sub", stream })
     return () => {
       set.delete(subscription)
       if (set.size === 0) {
+        this.#resuming.delete(stream)
         this.#subs.delete(stream)
         this.#send({ t: "unsub", stream })
       }
@@ -116,7 +131,12 @@ export class Streams {
       this.#retry = 0
       this.#refused = 0
       this.#onStatus("open")
-      for (const stream of this.#subs.keys()) this.#send({ t: "sub", stream })
+      this.#resuming.clear()
+      for (const [stream, subs] of this.#subs) {
+        const resume = cursorOf(subs)
+        if (resume !== undefined) this.#resuming.set(stream, new Set(subs))
+        this.#send(resume === undefined ? { t: "sub", stream } : { t: "sub", stream, resume })
+      }
     })
     socket.addEventListener("message", (event) => this.#receive(event.data))
     socket.addEventListener("close", () => {
@@ -241,13 +261,33 @@ export class Streams {
       return
     }
     if (frame.t === "snap") {
-      for (const sub of this.#subs.get(frame.stream) ?? []) sub.value(frame.value)
+      for (const sub of this.#subs.get(frame.stream) ?? []) sub.value(frame.value, frame.rev)
+      return
+    }
+    if (frame.t === "resume") {
+      const asked = this.#resuming.get(frame.stream)
+      this.#resuming.delete(frame.stream)
+      for (const sub of this.#subs.get(frame.stream) ?? []) if (asked?.has(sub)) sub.resume?.apply(frame.value, frame.start)
+      return
+    }
+    // A server from before resume (a rollback) refuses a sub that carries one: ask again plainly, for a snapshot.
+    if (frame.t === "error" && frame.message === "unknown frame" && this.#resuming.size > 0) {
+      for (const stream of this.#resuming.keys()) if (this.#subs.has(stream)) this.#send({ t: "sub", stream })
+      this.#resuming.clear()
       return
     }
     if (frame.t === "ev") {
       for (const sub of this.#subs.get(frame.stream) ?? []) sub.delta(frame.events)
     }
   }
+}
+
+/** Subscribers of one stream share its frames, so a cursor is only sent when every one of them can resume. */
+function cursorOf(subs: ReadonlySet<Subscription>): ResumeCursor | undefined {
+  const cursors = [...subs].map((sub) => sub.resume?.cursor())
+  const first = cursors[0]
+  if (first === undefined || cursors.some((cursor) => JSON.stringify(cursor) !== JSON.stringify(first))) return undefined
+  return first
 }
 
 function parseFrame(raw: string): ServerFrame | undefined {
@@ -259,7 +299,7 @@ function parseFrame(raw: string): ServerFrame | undefined {
   }
   if (typeof value !== "object" || value === null) return undefined
   const t = Reflect.get(value, "t")
-  if (t === "snap" || t === "ev" || t === "ack" || t === "error" || t === "hello") return value as ServerFrame
+  if (t === "snap" || t === "resume" || t === "ev" || t === "ack" || t === "error" || t === "hello") return value as ServerFrame
   return undefined
 }
 
