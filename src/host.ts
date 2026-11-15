@@ -150,19 +150,22 @@ export class Home extends DurableObject<Env> {
         sql.exec("DELETE FROM pi_checkpoint").toArray()
       }
       sql.exec("DELETE FROM pi_journal_ring").toArray()
+      // A home from before the ring replays `pi_journal` before it can drop it, so an unreadable row there needs the
+      // drop too.
+      sql.exec("DROP TABLE IF EXISTS pi_journal").toArray()
       // A kernel whose required row failed is discarded: the next boot opens the storage the drop left behind.
       this.#kernel = undefined
       await this.#open()
     }
     return Response.json({
       failure: this.#failure ?? null,
-      journal: this.#count("pi_journal_ring"),
+      journal: this.#count("pi_journal_ring") + this.#count("pi_journal"),
       checkpoint: this.#count("pi_checkpoint"),
     })
   }
 
   /** A repair route must answer even when its tables were never created, so a missing one counts as zero. */
-  #count(table: "pi_journal_ring" | "pi_checkpoint"): number {
+  #count(table: "pi_journal_ring" | "pi_journal" | "pi_checkpoint"): number {
     try {
       return this.ctx.storage.sql.exec<{ rows: number }>(`SELECT COUNT(*) AS rows FROM ${table}`).one().rows
     } catch {
