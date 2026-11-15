@@ -108,8 +108,9 @@ export async function apply(ctx: Context): Promise<void> {
     comment: async (actor, id, input) => settle(await issues.comment(actor, id, input)),
   }
   ctx.provide("issues", service)
-  ctx.wire.home("issues", async () => ({ issues: { rev: await issues.rev(), statesRev: await issues.statesRev() } }))
+  ctx.wire.home("issues", async () => ({ issues: await issues.revs() }))
   await deliver(await issues.pending())
+  await issues.revs()
 
   const ops = [
     defineOp({
