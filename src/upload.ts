@@ -3,6 +3,8 @@ import { blobKey, normalizePath, sha256, toHex, typeOf } from "./r2env.ts"
 
 const HASH = "SHA-256"
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+/** At or under this size a body is hashed in memory and stored with one put, instead of staged and copied. */
+const BUFFER_BYTES = 8 * 1024 * 1024
 
 const tooBig = (): Response => Response.json({ error: "file too large", maxBytes: MAX_UPLOAD_BYTES }, { status: 413 })
 
@@ -15,9 +17,12 @@ function contentLength(request: Request): number | undefined {
   return Number.isSafeInteger(length) && length >= 0 ? length : undefined
 }
 
+/** Blobs are content-addressed, so bytes already stored under their digest are never written again. */
+const stored = async (env: Env, digest: string): Promise<boolean> => (await env.FILES.head(blobKey(digest))) !== null
+
 async function buffered(env: Env, bytes: Uint8Array): Promise<Stored> {
   const digest = await sha256(bytes)
-  await env.FILES.put(blobKey(digest), bytes)
+  if (!(await stored(env, digest))) await env.FILES.put(blobKey(digest), bytes)
   return { digest, size: bytes.byteLength }
 }
 
@@ -43,7 +48,7 @@ async function streamed(env: Env, body: ReadableStream<Uint8Array>, staged: stri
     throw error
   }
   const digest = toHex(await hasher.digest)
-  await copy(env, staged, blobKey(digest))
+  if (!(await stored(env, digest))) await copy(env, staged, blobKey(digest))
   return { digest, size: length }
 }
 
@@ -73,31 +78,31 @@ export async function upload(request: Request, env: Env): Promise<Response | und
   const length = contentLength(request)
   if (length !== undefined && length > MAX_UPLOAD_BYTES) return tooBig()
   const target =
-    length === undefined
+    length === undefined || length <= BUFFER_BYTES
       ? { kind: "buffered" as const }
       : { kind: "streamed" as const, staged: `tmp/${crypto.randomUUID()}`, length }
   try {
-    let stored: Stored
+    let result: Stored
     if (target.kind === "buffered") {
       const bytes = new Uint8Array(await request.arrayBuffer())
       if (bytes.byteLength > MAX_UPLOAD_BYTES) return tooBig()
-      stored = await buffered(env, bytes)
-    } else stored = await streamed(env, body, target.staged, target.length)
+      result = await buffered(env, bytes)
+    } else result = await streamed(env, body, target.staged, target.length)
     const committed = await env.HOME.get(env.HOME.idFromName("owner")).fetch(
       new Request("https://xin.internal/v1/files/commit", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           path,
-          r2Key: blobKey(stored.digest),
-          size: stored.size,
+          r2Key: blobKey(result.digest),
+          size: result.size,
           type,
-          sha256: stored.digest,
+          sha256: result.digest,
         }),
       }),
     )
     if (!committed.ok) return committed
-    return Response.json({ path, size: stored.size, type, sha256: stored.digest })
+    return Response.json({ path, size: result.size, type, sha256: result.digest })
   } finally {
     if (target.kind === "streamed") await env.FILES.delete(target.staged)
   }
