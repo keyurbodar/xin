@@ -176,23 +176,28 @@ export function create(deps: DrivePort): DrivePlugin {
   const instructionsSection = section("drive", async (input) => {
     const scopes = await scopesOf(input.conversationId)
     const own = await scopeOf(deps.harness, input.conversationId)
-    const reachable = scopes.filter((mounted) => mounted.scope.kind !== "user" || own?.kind === "puck")
-    const lines = [
-      "Drive keeps files across conversations. Use the file tools under your scopes' folders:",
-      ...reachable.map((mounted) => `- ${mounted.label}: ${mounted.root}`),
-    ]
+    const extra = scopes.filter((mounted) =>
+      mounted.scope.kind === "user" ? own?.kind === "puck" : mounted.scope.kind !== "project",
+    )
+    const lines =
+      extra.length === 0
+        ? []
+        : [
+            "Drive keeps files across conversations. Use the file tools under your scopes' folders:",
+            ...extra.map((mounted) => `- ${mounted.label}: ${mounted.root}`),
+          ]
     for (const mounted of scopes) {
       const text = (await reservedOf(mounted.root)).instructions?.trim()
       if (text === undefined || text === "") continue
       const clipped = text.length > MAX_INSTRUCTIONS_CHARS ? `${text.slice(0, MAX_INSTRUCTIONS_CHARS)}\n[cut]` : text
+      if (lines.length > 0) lines.push("")
       lines.push(
-        "",
         `<instructions scope="${mounted.label}" path="${mounted.root}${INSTRUCTIONS}">`,
         clipped,
         "</instructions>",
       )
     }
-    return lines.join("\n")
+    return lines.length === 0 ? undefined : lines.join("\n")
   })
 
   const textOf = async (key: string, type: string): Promise<string | null> => {
