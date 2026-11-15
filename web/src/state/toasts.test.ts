@@ -49,3 +49,13 @@ test("the stack keeps three toasts, newest first, and the evicted one expires", 
   await Bun.sleep(TOAST_EXIT_MS + 20)
   expect(toasts()).toEqual([])
 })
+
+test("a toast already dismissed does not expire again when a newer toast evicts it", async () => {
+  const first = counted("a")
+  dismissToast(newest())
+  for (const title of ["b", "c", "d"]) counted(title)
+  expect(first).toEqual({ undo: 0, expire: 1 })
+  for (const toast of liveToasts()) dismissToast(toast)
+  await Bun.sleep(TOAST_EXIT_MS + 20)
+  expect(toasts()).toEqual([])
+})

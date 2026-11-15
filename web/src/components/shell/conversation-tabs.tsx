@@ -103,7 +103,7 @@ export function ConversationTabs(props: {
     const remove = (): void => {
       const focused = ids.find((id) => refs.get(id)?.contains(document.activeElement) === true)
       setClosing([])
-      closeThreadTabs(projectId, ids)
+      const closeId = closeThreadTabs(projectId, ids)
       if (activeClosed) openTab(nearestKept(order, ids, active))
       if (focused !== undefined) focusTab(nearestKept(order, ids, focused))
       showUndoToast({
@@ -111,11 +111,11 @@ export function ConversationTabs(props: {
         title: closingTabs.length === 1 ? "Closed tab" : `Closed ${closingTabs.length} tabs`,
         detail: closingTabs.length === 1 ? `“${first.title}”` : undefined,
         undo: () => {
-          reopenThreadTabs(projectId, ids)
+          reopenThreadTabs(projectId, closeId)
           if (activeClosed) navigate(`/p/${slug}/t/${active}`)
           focusTab(activeClosed ? active : first.id)
         },
-        expire: () => forgetThreadTabs(projectId, ids),
+        expire: () => forgetThreadTabs(projectId, closeId),
       })
     }
     if (keyStarted()) {
