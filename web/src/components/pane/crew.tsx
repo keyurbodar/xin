@@ -9,7 +9,7 @@ import { crewOf } from "../../lib/captains.ts"
 import type { CaptainProfile, CrewMember } from "../../lib/captains.ts"
 import { homeProjects, projectThreads, type ProjectSummary, type ThreadSummary } from "../../state/home.ts"
 import { showPaneView } from "../../state/tabs.ts"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
+import { Signal } from "../ui/signal.tsx"
 import { createPaneAction, EmptyState } from "../chat/ui.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL } from "../shell/menu.ts"
 import { PANE_ROW } from "./bodies.tsx"
@@ -34,7 +34,7 @@ function CrewRow(props: { member: CrewMember; at: number; onOpen: (id: number) =
   return (
     <div class="group relative">
       <button type="button" onClick={() => props.onOpen(props.member.threadId)} class={PANE_ROW}>
-        <StatusGlyph state={state()} size={16} class="mt-0.5 shrink-0" />
+        <Signal state={state()} size={16} class="mt-0.5 shrink-0" />
         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
           <span class="flex items-baseline gap-1.5">
             <span class="truncate text-sm text-ink">{props.member.title}</span>
@@ -126,7 +126,7 @@ export function CrewView(props: CrewContext): JSX.Element {
                   <For each={candidates()} fallback={<span class="block px-2 py-1.5 text-sm text-ink-3">No other threads</span>}>
                     {(thread) => (
                       <Menu.Item value={String(thread.id)} class={MENU_ITEM}>
-                        <StatusGlyph state={visualState(thread.status)} size={14} class="shrink-0" />
+                        <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
                         <Menu.ItemText class="flex-1 truncate">{thread.title}</Menu.ItemText>
                       </Menu.Item>
                     )}

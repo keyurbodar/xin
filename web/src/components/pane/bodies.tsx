@@ -1,13 +1,14 @@
 import { createResource, For, Show, type JSX } from "solid-js"
+import { firstLoad } from "../../lib/loading.ts"
 import { Clock, File } from "lucide-solid"
 import { cmd } from "../../lib/api.ts"
 import { ago, bytes } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
-import { STATE_WORD, visualState, type VisualState } from "../../lib/status.ts"
+import { STATE_WORD, visualState, type SignalState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
-import { Skullet } from "../ui/skeleton.tsx"
-import { EmptyState, PanelGhost, ResourceError } from "../chat/ui.tsx"
+import { Signal } from "../ui/signal.tsx"
+import { Loading, PaneSkeleton, RowSkeleton } from "../ui/skeleton.tsx"
+import { EmptyState, ResourceError } from "../chat/ui.tsx"
 
 export type FileEntry = {
   readonly path: string
@@ -59,7 +60,7 @@ export function FilesView(props: { slug: string }): JSX.Element {
   }
 
   return (
-    <Skullet loading={files.loading} sample={() => <PanelGhost rows={7} />} label="Loading files">
+    <Loading when={firstLoad(files)} skeleton={<PaneSkeleton rows={5} />} label="Loading files">
       <Show when={files.error}>
         <ResourceError what="files" error={files.error} onRetry={() => void refetch()} />
       </Show>
@@ -90,7 +91,7 @@ export function FilesView(props: { slug: string }): JSX.Element {
           </Show>
         )}
       </Show>
-    </Skullet>
+    </Loading>
   )
 }
 
@@ -104,7 +105,7 @@ type JobEntry = {
   readonly result?: string
 }
 
-function jobState(state: JobEntry["state"]): VisualState {
+function jobState(state: JobEntry["state"]): SignalState {
   switch (state) {
     case "running":
       return "working"
@@ -122,7 +123,7 @@ function jobState(state: JobEntry["state"]): VisualState {
 export function JobsView(): JSX.Element {
   const [jobs, { refetch }] = createResource(() => cmd<{ readonly jobs: readonly JobEntry[] }>("job.list", {}))
   return (
-    <Skullet loading={jobs.loading} sample={() => <PanelGhost rows={4} />} label="Loading jobs">
+    <Loading when={firstLoad(jobs)} skeleton={<RowSkeleton rows={4} />} label="Loading jobs">
       <Show when={jobs.error}>
         <ResourceError what="jobs" error={jobs.error} onRetry={() => void refetch()} />
       </Show>
@@ -135,7 +136,7 @@ export function JobsView(): JSX.Element {
             <For each={data().jobs}>
               {(job) => (
                 <div class="flex items-start gap-2.5 rounded-sm px-2 py-1.5">
-                  <StatusGlyph state={jobState(job.state)} size={16} class="mt-0.5 shrink-0" />
+                  <Signal state={jobState(job.state)} size={16} class="mt-0.5 shrink-0" />
                   <span class="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span class="truncate text-sm text-ink">{job.title}</span>
                     <span class="flex items-center gap-1.5 text-xs text-ink-3">
@@ -154,15 +155,15 @@ export function JobsView(): JSX.Element {
           </Show>
         )}
       </Show>
-    </Skullet>
+    </Loading>
   )
 }
 
 export function ThreadLine(props: { thread: ThreadSummary; onOpen: (id: number) => void }): JSX.Element {
-  const state = (): VisualState => visualState(props.thread.status)
+  const state = (): SignalState => visualState(props.thread.status)
   return (
     <button type="button" onClick={() => props.onOpen(props.thread.id)} class={PANE_ROW}>
-      <StatusGlyph state={state()} size={16} class="mt-0.5 shrink-0" />
+      <Signal state={state()} size={16} class="mt-0.5 shrink-0" />
       <span class="min-w-0 flex-1">
         <span class="block truncate text-sm text-ink">{props.thread.title}</span>
         <span class="block truncate text-xs text-ink-3" classList={{ "im-shimmer": state() === "working" }}>

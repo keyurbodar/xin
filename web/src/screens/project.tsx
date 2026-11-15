@@ -41,8 +41,8 @@ import { createPresence } from "../components/shell/presence.ts"
 import { expandSlash } from "../lib/slash.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { navigate, param } from "../lib/router.ts"
-import { Skullet } from "../components/ui/skeleton.tsx"
-import { Transcript, TranscriptSkeleton, type PendingMessage } from "../components/chat/transcript.tsx"
+import { Loading, ThreadSkeleton } from "../components/ui/skeleton.tsx"
+import { Transcript, type PendingMessage } from "../components/chat/transcript.tsx"
 import { Composer } from "../components/chat/composer.tsx"
 import { ThreadConversation } from "../components/chat/panel.tsx"
 import { ConversationTabs, type ConversationAction } from "../components/shell/conversation-tabs.tsx"
@@ -170,7 +170,7 @@ export function ProjectChat(props: {
 
   return (
     <div class="flex min-h-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
-      <Skullet loading={snapshot() === undefined} sample={() => <TranscriptSkeleton />} label="Loading conversation">
+      <Loading when={snapshot() === undefined} skeleton={<ThreadSkeleton />} label="Loading conversation">
         <Show when={snapshot()}>
           {(value) => (
             <Transcript
@@ -190,7 +190,7 @@ export function ProjectChat(props: {
             />
           )}
         </Show>
-      </Skullet>
+      </Loading>
           <Composer
             project={props.project}
             active={props.active}
@@ -422,7 +422,7 @@ export function ProjectScreen(): JSX.Element {
               </button>
             </div>
           </Show>
-          <Skullet loading={!homeLoaded()} sample={() => <TranscriptSkeleton />} label="Loading project">
+          <Loading when={!homeLoaded()} skeleton={<ThreadSkeleton />} label="Loading project">
             <div class="pt-16">
               <Show
                 when={param(0) === "p"}
@@ -447,7 +447,7 @@ export function ProjectScreen(): JSX.Element {
                 />
               </Show>
             </div>
-          </Skullet>
+          </Loading>
         </section>
       }
     >

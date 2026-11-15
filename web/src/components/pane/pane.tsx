@@ -8,7 +8,7 @@ import { visualState } from "../../lib/status.ts"
 import type { CaptainProfile } from "../../lib/captains.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { closePaneView, OVERVIEW, projectTabs, setPaneOpen, showPaneView } from "../../state/tabs.ts"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
+import { Signal } from "../ui/signal.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL, MENU_SEPARATOR } from "../shell/menu.ts"
 import { paneEntry, paneView, paneViews, type PaneContext, type PaneEntry } from "./views.tsx"
 
@@ -233,7 +233,7 @@ function ViewMenu(props: {
                     <For each={crew()}>
                       {(choice) => (
                         <Listbox.Item item={choice} class={MENU_ITEM}>
-                          <StatusGlyph state={visualState(choice.status)} size={14} class="shrink-0" />
+                          <Signal state={visualState(choice.status)} size={14} class="shrink-0" />
                           <Listbox.ItemText class="flex-1 truncate">{choice.label}</Listbox.ItemText>
                           <ChevronRight size={14} stroke-width={1.5} class="text-icon" />
                         </Listbox.Item>

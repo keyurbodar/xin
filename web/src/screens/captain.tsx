@@ -19,8 +19,7 @@ import { ThreadConversation } from "../components/chat/panel.tsx"
 import { ProjectPane } from "../components/pane/pane.tsx"
 import { CaptainAvatar } from "../components/captain/avatar.tsx"
 import { CaptainSettings } from "../components/captain/captain-dialog.tsx"
-import { Skullet } from "../components/ui/skeleton.tsx"
-import { TranscriptSkeleton } from "../components/chat/transcript.tsx"
+import { Loading, ThreadSkeleton } from "../components/ui/skeleton.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 import { costOf, ProjectChat } from "./project.tsx"
 
@@ -153,7 +152,7 @@ export function CaptainScreen(): JSX.Element {
               </button>
             </div>
           </Show>
-          <Skullet loading={!homeLoaded()} sample={() => <TranscriptSkeleton />} label="Loading Captain">
+          <Loading when={!homeLoaded()} skeleton={<ThreadSkeleton />} label="Loading Captain">
             <div class="pt-16">
               <EmptyState
                 pictogram="threads"
@@ -166,7 +165,7 @@ export function CaptainScreen(): JSX.Element {
                 }
               />
             </div>
-          </Skullet>
+          </Loading>
         </section>
       }
     >
