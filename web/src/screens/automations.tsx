@@ -1,10 +1,12 @@
 import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { firstLoad } from "../lib/loading.ts"
 import { cmd, OpError } from "../lib/api.ts"
 import { type Automation, type AutomationList, describeTriggers, nextRun } from "../lib/automations.ts"
 import { TopBar, TopButton } from "../components/shell/topbar.tsx"
 import { Icon } from "../components/ui/icon.tsx"
+import { MorphIcon } from "../components/ui/morph-icon.tsx"
 import { ago } from "../lib/format.ts"
-import { Skullet } from "../components/ui/skeleton.tsx"
+import { Loading, RowSkeleton } from "../components/ui/skeleton.tsx"
 import { CreateAutomation } from "../components/automations/create.tsx"
 import { EmptyState } from "../components/chat/ui.tsx"
 
@@ -31,7 +33,7 @@ export function AutomationsScreen(): JSX.Element {
         actions={<TopButton icon={<Icon name="plus" size={14} />} label="New automation" onClick={() => setCreating(true)} />}
       />
       <div class="min-h-0 flex-1 overflow-y-auto px-10 pb-12 pt-7">
-        <Skullet loading={page.loading} sample={() => <AutomationRows items={[]} />} label="Loading automations">
+        <Loading when={firstLoad(page)} skeleton={<RowSkeleton rows={3} />} label="Loading automations">
           <Show
             when={automations().length > 0}
             fallback={
@@ -44,7 +46,7 @@ export function AutomationsScreen(): JSX.Element {
           >
             <AutomationRows items={automations()} onChanged={reload} />
           </Show>
-        </Skullet>
+        </Loading>
       </div>
       <CreateAutomation open={creating()} onClose={() => setCreating(false)} onCreated={reload} />
     </>
@@ -100,8 +102,9 @@ function AutomationRow(props: { item: Automation; onChanged?: (() => void) | und
         type="button"
         disabled={busy()}
         onClick={() => void send("automation.update", { enabled: !props.item.enabled })}
-        class="h-7 shrink-0 rounded-sm border border-line-2 px-2.5 text-sm text-ink-2 hover:border-line-3 hover:text-ink disabled:opacity-50"
+        class="flex h-7 shrink-0 items-center gap-1.5 rounded-sm border border-line-2 px-2.5 text-sm text-ink-2 hover:border-line-3 hover:text-ink disabled:opacity-50"
       >
+        <MorphIcon kind="pause" on={!props.item.enabled} size={13} />
         {props.item.enabled ? "Pause" : "Resume"}
       </button>
       <button

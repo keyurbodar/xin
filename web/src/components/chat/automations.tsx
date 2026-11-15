@@ -1,14 +1,15 @@
 import { For, Show, createResource, type JSX } from "solid-js"
+import { firstLoad } from "../../lib/loading.ts"
 import { cmd } from "../../lib/api.ts"
 import { type Automation, type AutomationList, type AutomationRun, describeTriggers, nextRun } from "../../lib/automations.ts"
 import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import type { ProjectSummary } from "../../state/home.ts"
 import { Icon } from "../ui/icon.tsx"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
-import { Skullet } from "../ui/skeleton.tsx"
+import { Signal } from "../ui/signal.tsx"
+import { Loading, RowSkeleton } from "../ui/skeleton.tsx"
 import { Toggle } from "../extensions/chrome.tsx"
-import { createPaneAction, EmptyState, PanelGhost, ResourceError } from "./ui.tsx"
+import { createPaneAction, EmptyState, ResourceError } from "./ui.tsx"
 
 function outcome(run: AutomationRun): "done" | "failed" | "running" {
   if (run.status === "completed" || run.status === "delivered") return "done"
@@ -32,7 +33,7 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
   }
 
   return (
-    <Skullet loading={automations.loading} sample={() => <PanelGhost rows={4} />} label="Loading automations">
+    <Loading when={firstLoad(automations)} skeleton={<RowSkeleton rows={4} />} label="Loading automations">
       <Show when={automations.error} fallback={null}>
         <ResourceError what="automations" error={automations.error} onRetry={() => void refetch()} />
       </Show>
@@ -71,7 +72,7 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
                     classList={{ "opacity-60": !automation.enabled }}
                   >
                     <div class="flex items-center gap-2">
-                      <StatusGlyph state={automation.enabled ? "queued" : "paused"} size={16} />
+                      <Signal state={automation.enabled ? "queued" : "idle"} size={16} />
                       <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{automation.title}</span>
                       <Toggle
                         on={automation.enabled}
@@ -114,6 +115,6 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
           </Show>
         )}
       </Show>
-    </Skullet>
+    </Loading>
   )
 }

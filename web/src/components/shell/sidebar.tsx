@@ -11,7 +11,8 @@ import { visualState } from "../../lib/status.ts"
 import { setTheme, theme, themeOf } from "../../lib/theme.ts"
 import { openThreadTab } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
+import { BrandMark } from "../ui/brand-mark.tsx"
+import { Signal } from "../ui/signal.tsx"
 import { openNewThread } from "./new-thread.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL, MENU_SEPARATOR } from "./menu.ts"
 
@@ -35,8 +36,7 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
   return (
     <aside class="flex h-full w-[var(--w-sidebar)] shrink-0 flex-col bg-bg">
       <div class="flex h-[var(--h-strip)] shrink-0 items-center gap-1 px-3">
-        <span class="grid h-6 w-6 place-items-center rounded-sm bg-inverse text-xs font-semibold text-on-inverse">I</span>
-        <span class="ml-1.5 text-sm font-medium text-ink">Ingle</span>
+        <BrandMark class="ml-1 h-5 w-5 text-ink" />
         <button type="button" class={`${ICON_BUTTON} ml-auto`} aria-label="Search (⌘K)" title="Search ⌘K" onClick={props.onSearch}>
           <Search {...ICON} />
         </button>
@@ -131,7 +131,7 @@ function ProjectRow(props: { project: ProjectSummary }): JSX.Element {
         <ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={13} />
       </span>
       <span class="min-w-0 flex-1 truncate">{props.project.name}</span>
-      <Show when={state()}>{(value) => <StatusGlyph state={value()} size={14} />}</Show>
+      <Show when={state()}>{(value) => <Signal state={value()} size={14} />}</Show>
     </button>
   )
 }
@@ -201,7 +201,7 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
                 class={ROW}
                 classList={{ "bg-hover text-ink": current(), "text-ink-2": !current() }}
               >
-                <StatusGlyph state={visualState(thread.status)} size={14} class="shrink-0" />
+                <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
                 <span class="min-w-0 flex-1 truncate">{thread.title}</span>
                 <span class="shrink-0 font-mono text-2xs text-ink-3">{ago(thread.beatAt)}</span>
               </button>

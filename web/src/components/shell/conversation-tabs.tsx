@@ -9,7 +9,7 @@ import { visualState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { closeThreadTab, moveThreadTab, paneOpen, setPaneOpen, sidebarHidden, toggleSidebar, wideShell } from "../../state/tabs.ts"
 import { ProjectMark } from "../chat/project-glyph.tsx"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
+import { Signal } from "../ui/signal.tsx"
 import { openNewThread } from "./new-thread.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from "./menu.ts"
 
@@ -197,7 +197,7 @@ export function ConversationTabs(props: {
                   "--drag-x": lifted() ? `${drag()?.dx ?? 0}px` : undefined,
                 }}
               >
-                <StatusGlyph state={visualState(thread.status)} size={14} class="shrink-0" />
+                <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
                 <span class="min-w-0 flex-1 truncate">{thread.title}</span>
                 <button
                   type="button"

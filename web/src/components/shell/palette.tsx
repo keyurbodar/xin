@@ -2,8 +2,8 @@ import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, 
 import { activeProjects } from "../../state/home.ts"
 import { navigate } from "../../lib/router.ts"
 import { openThreadTab } from "../../state/tabs.ts"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
-import type { VisualState } from "../../lib/status.ts"
+import { Signal } from "../ui/signal.tsx"
+import type { SignalState } from "../../lib/status.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
 
 type Kind = "thread" | "project" | "page" | "action"
@@ -13,7 +13,7 @@ type Item = {
   readonly kind: Kind
   readonly title: string
   readonly meta: string
-  readonly state?: VisualState
+  readonly state?: SignalState
   readonly icon?: IconName
   readonly open: () => void
 }
@@ -56,12 +56,12 @@ function items(): readonly Item[] {
       icon: "folder",
       open: () => navigate(`/p/${project.slug}`),
     })
-    const states: readonly [VisualState, readonly { id: number; title: string; statusLine?: string }[]][] = [
-      ["waiting", project.threads.waiting],
+    const states: readonly [SignalState, readonly { id: number; title: string; statusLine?: string }[]][] = [
+      ["needs", project.threads.waiting],
       ["failed", project.threads.failed],
       ["working", project.threads.working],
       ["done", project.threads.completed],
-      ["cancelled", project.threads.cancelled],
+      ["idle", project.threads.cancelled],
     ]
     for (const [state, list] of states) {
       for (const thread of list) {
@@ -281,7 +281,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
                               />
                             }
                           >
-                            <StatusGlyph state={item.state ?? "queued"} size={16} />
+                            <Signal state={item.state ?? "queued"} size={16} />
                           </Show>
                           <span class="min-w-0 flex-1 truncate">
                             <Marked text={item.title} query={query()} />
