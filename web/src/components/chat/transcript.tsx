@@ -179,7 +179,7 @@ export function Transcript(props: {
                   <div class="min-w-0 flex-1">
                     <Markdown text={live().partial} />
                   </div>
-                  <span class="mt-1.5 inline-block h-4 w-px shrink-0 animate-pulse bg-ink" />
+                  <span class="im-caret mt-1.5 shrink-0" />
                 </div>
               </Show>
             </div>
