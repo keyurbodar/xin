@@ -13,7 +13,6 @@ import {
   linkArgs,
   createCommandIds,
   assignableCandidates,
-  outsideProject,
   threadPlace,
   type ThreadHome,
   type ThreadPlace,
@@ -99,11 +98,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
     if (!on) return action.run("links", async () => keep(await linkIssue({ id: props.id, kind, other }, false)))
     const args = linkArgs(props.id, kind, other, detail.links)
     if (args.kind === "invalid") return action.send("links", args, write)
-    return action.run("links", async () => {
-      const outside = outsideProject((await issueDetail(other)).issue, issueScope(props.project, props.captain))
-      if (outside !== undefined) throw new Error(outside)
-      keep(await linkIssue(args.args, true))
-    })
+    return action.run("links", async () => keep(await linkIssue(args.args, true)))
   }
   const loadOlder = (): void => {
     const current = pages()

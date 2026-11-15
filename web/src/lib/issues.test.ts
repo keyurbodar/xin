@@ -351,7 +351,7 @@ test("assignees come from the issue's own project: its threads, its live Captain
   expect(led.map((entry) => entry.name)).toEqual(["You", "Alpha lead"])
 })
 
-test("an issue from another project cannot be linked, whether typed as #id or found by search", () => {
+test("the link search never offers an issue from another project", () => {
   expect(outsideProject({ id: 4, project: "prj_a" }, "prj_a")).toBeUndefined()
   expect(outsideProject({ id: 9, project: "prj_b" }, "prj_a")).toBe("#9 is in another project")
   expect(outsideProject({ id: 9, project: null }, "prj_a")).toBe("#9 is in another project")

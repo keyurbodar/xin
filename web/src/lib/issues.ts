@@ -557,7 +557,7 @@ export function assignableCandidates(
   ]
 }
 
-/** Why an issue cannot be linked from a pane scoped to `project`, or undefined when it can. */
+/** Why a search result cannot be offered as a link from a pane scoped to `project`; the host refuses a typed `#id` itself. */
 export function outsideProject(issue: { readonly id: number; readonly project: string | null }, project: string): string | undefined {
   return issue.project === project ? undefined : `#${issue.id} is in another project`
 }
