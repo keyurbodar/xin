@@ -78,6 +78,28 @@ describe("drive", () => {
     })
   })
 
+  it("drops revisions left at a move's destination instead of merging them into the moved file's history", async () => {
+    const stub = fresh()
+    const user = { kind: "user" }
+    const first = await ok(stub, "w1", "drive.write", { scope: user, path: "a.md", text: "one" })
+    await ok(stub, "w2", "drive.write", { scope: user, path: "a.md", text: "two" })
+    const shared = field(first, "sha256")
+    if (typeof shared !== "string") throw new Error("no sha")
+    await runInDurableObject(stub, async (home: Home) => {
+      for (const sha of [shared, "f".repeat(64)])
+        await home.db.run(
+          "INSERT INTO file_revisions (path, sha256, size, type, at) VALUES (?, ?, 3, 'text/markdown', 1)",
+          "/me/b.md",
+          sha,
+        )
+    })
+
+    await ok(stub, "m1", "drive.move", { scope: user, from: "a.md", to: "b.md" })
+    const history = await ok(stub, "h1", "drive.history", { scope: user, path: "b.md" })
+    expect(field(history, "versions")).toEqual([expect.objectContaining({ sha256: shared })])
+    expect(field(field(history, "versions"), "0")).not.toMatchObject({ at: 1 })
+  })
+
   it("rejects paths that leave the scope and scopes that do not exist", async () => {
     const stub = fresh()
     expect(await cmd(stub, "e1", "drive.write", { scope: { kind: "user" }, path: "../x", text: "" })).toMatchObject({
