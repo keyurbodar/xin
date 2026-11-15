@@ -1,6 +1,11 @@
 import { runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { Conversation, ConversationId, EntryRecord } from "@earendil-works/pi-durable"
+import {
+  DEFAULT_COMPACTION_POLICY,
+  type Conversation,
+  type ConversationId,
+  type EntryRecord,
+} from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import source from "./models.ts?raw"
 import { resolveModel } from "../../src/contracts/models.ts"
@@ -123,6 +128,19 @@ function summaryOf(value: unknown): Summary {
         return [{ id, name, ...datedOf(row) }]
       },
     ),
+  }
+}
+
+const readContext = async (stub: ReturnType<typeof fresh>, id: string) => {
+  const reply = await call(stub, id, "conv.context", {})
+  expect(reply.ok, JSON.stringify(reply)).toBe(true)
+  return reply.result as {
+    model: { provider: string; modelId: string } | null
+    contextWindow: number
+    used: number
+    measured: boolean
+    categories: { key: string; tokens: number }[]
+    compactAt: number
   }
 }
 
@@ -414,6 +432,32 @@ describe("models", () => {
       conversationId: (other.result as { coordinatorId: number }).coordinatorId as ConversationId,
     }
     expect(await run("scope-stranger", beta.id, stranger)).toMatchObject({ kind: "rejected", code: "forbidden" })
+  })
+
+  it("reports context usage by category, estimated before a reply and measured after", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, (home: Home) => home.chooseModel(FAUX_MODEL))
+    const before = await readContext(stub, "ctx-1")
+    expect(before.measured).toBe(false)
+    expect(before.model).toEqual(FAUX_MODEL)
+    expect(before.categories.map((entry) => entry.key)).toEqual(["system", "tools", "conversation"])
+    const [system, tools] = before.categories
+    expect(system?.tokens).toBeGreaterThan(0)
+    expect(tools?.tokens).toBeGreaterThan(0)
+    expect(before.compactAt).toBe(before.contextWindow - DEFAULT_COMPACTION_POLICY.reserveTokens)
+
+    const entries = await runInDurableObject(stub, async (home: Home) => {
+      await home.submit("hello", "ctx-turn")
+      await home.harness.waitForIdle(context)
+      return history(await home.root())
+    })
+    const usage = entries
+      .flatMap((entry) => entry.model ?? [])
+      .findLast((message) => message.role === "assistant")?.usage
+    if (usage === undefined) throw new Error("no assistant usage")
+    const after = await readContext(stub, "ctx-2")
+    expect(after.measured).toBe(true)
+    expect(after.used).toBe(usage.input + usage.cacheRead + usage.cacheWrite + usage.output)
   })
 
   it("rejects an unknown model and keeps owner defaults", async () => {
