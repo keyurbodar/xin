@@ -2,12 +2,14 @@ import { arr, bool, int, lit, map, obj, opt, str, union } from "@earendil-works/
 import { defineOp, type Op, type OpApi, OpRejected } from "../../src/ops.ts"
 import {
   AutomationError,
+  type AutomationView,
   type Caller,
   type Engine,
   MAX_PROMPT,
   MAX_RULES,
   MAX_TITLE,
   MAX_TRIGGERS,
+  withoutSecrets,
 } from "./automations.ts"
 
 const ID = "^[A-Za-z0-9_.:-]{1,128}$"
@@ -89,6 +91,10 @@ export function callerOf(api: OpApi): Caller {
   return api.actor.kind === "agent" ? { conversationId: api.actor.conversationId } : {}
 }
 
+/** Webhook secrets go to the owner only; an agent's op result reaches the model. */
+const shown = <T extends AutomationView>(api: OpApi, view: T): T =>
+  api.actor.kind === "agent" ? withoutSecrets(view) : view
+
 /** A stable id from the command id, so a resent create returns the automation the first one made. */
 export function stableId(source: string): string {
   const cleaned = source.replace(/[^A-Za-z0-9_.:-]/g, "-").slice(0, 128)
@@ -99,7 +105,8 @@ export async function guarded<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run()
   } catch (error) {
-    if (error instanceof AutomationError) throw new OpRejected("bad_args", error.message)
+    if (error instanceof AutomationError)
+      throw new OpRejected(error.code === "subagent_session" ? "forbidden" : "bad_args", error.message)
     throw error
   }
 }
@@ -111,45 +118,50 @@ export function automationOps(engine: Engine): readonly Op[] {
       args: CreateArgs,
       actors: ACTORS,
       run: (api, args) =>
-        guarded(() => engine.create(args, callerOf(api), Date.now(), `auto-${stableId(api.commandId)}`)),
+        guarded(async () =>
+          shown(api, await engine.create(args, callerOf(api), Date.now(), `auto-${stableId(api.commandId)}`)),
+        ),
     }),
     defineOp({
       name: "automation.list",
       args: obj({}),
       actors: ACTORS,
-      run: async () => ({ automations: [...(await engine.list())] }),
+      run: (api) =>
+        guarded(async () => ({ automations: (await engine.list(callerOf(api))).map((view) => shown(api, view)) })),
     }),
     defineOp({
       name: "automation.get",
       args: GetArgs,
       actors: ACTORS,
-      run: (_api, args) => guarded(() => engine.get(args.id, args.runs ?? 20)),
+      run: (api, args) => guarded(async () => shown(api, await engine.get(args.id, args.runs ?? 20, callerOf(api)))),
     }),
     defineOp({
       name: "automation.update",
       args: UpdateArgs,
       actors: ACTORS,
-      run: (api, args) => guarded(() => engine.update(args, callerOf(api), Date.now())),
+      run: (api, args) => guarded(async () => shown(api, await engine.update(args, callerOf(api), Date.now()))),
     }),
     defineOp({
       name: "automation.delete",
       args: IdArgs,
       actors: ACTORS,
-      run: async (_api, args) => ({ id: args.id, deleted: await engine.remove(args.id) }),
+      run: (api, args) => guarded(async () => ({ id: args.id, deleted: await engine.remove(args.id, callerOf(api)) })),
     }),
     defineOp({
       name: "automation.trigger",
       args: TriggerArgs,
       actors: ACTORS,
       run: (api, args) =>
-        guarded(() => engine.trigger(args.id, args.input, Date.now(), `manual:${stableId(api.commandId)}`)),
+        guarded(() =>
+          engine.trigger(args.id, args.input, Date.now(), `manual:${stableId(api.commandId)}`, callerOf(api)),
+        ),
     }),
     defineOp({
       name: "automation.runs",
       args: RunsArgs,
       actors: ACTORS,
-      run: async (_api, args) => ({
-        runs: [...(await guarded(() => engine.runs(args.id, args.limit ?? 20, args.before)))],
+      run: async (api, args) => ({
+        runs: [...(await guarded(() => engine.runs(args.id, args.limit ?? 20, args.before, callerOf(api))))],
       }),
     }),
   ]

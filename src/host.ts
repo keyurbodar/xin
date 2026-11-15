@@ -122,9 +122,12 @@ export class Home extends DurableObject<Env> {
   }
 
   override async fetch(request: Request): Promise<Response> {
-    if (new URL(request.url).pathname === REPAIR) return this.#repair(request)
+    const path = new URL(request.url).pathname
+    if (path === REPAIR) return this.#repair(request)
     if (this.#failure !== undefined)
-      return Response.json({ error: "boot_failed", failure: this.#failure }, { status: 503 })
+      return path.startsWith("/hooks/")
+        ? new Response(null, { status: 503 })
+        : Response.json({ error: "boot_failed", failure: this.#failure }, { status: 503 })
     const { root } = this.#current
     const route = root.http.find(request)
     return route === undefined ? new Response("not found", { status: 404 }) : route(request)

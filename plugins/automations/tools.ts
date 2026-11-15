@@ -1,7 +1,7 @@
 import { defineExtension, defineTool, section, type ToolExecutionResult } from "@earendil-works/pi-durable"
 import { bool, obj, opt, str } from "@earendil-works/pi-schema"
 import { type Context, textResult } from "../../src/kernel/index.ts"
-import { AutomationError, type Engine } from "./automations.ts"
+import { AutomationError, type Engine, withoutSecrets } from "./automations.ts"
 import { Project, Prompt, targetSchema, Title, triggersSchema } from "./ops.ts"
 
 export const name = "tool-automations"
@@ -50,14 +50,16 @@ function saveTool(engine: Engine) {
         const caller = { conversationId: api.conversationId }
         const { id } = args
         if (id === undefined)
-          return engine.create(
-            { ...args, title: args.title ?? "", prompt: args.prompt ?? "", triggers: args.triggers ?? [] },
-            caller,
-            api.now(),
-            `auto-call-${api.taskId}`,
+          return withoutSecrets(
+            await engine.create(
+              { ...args, title: args.title ?? "", prompt: args.prompt ?? "", triggers: args.triggers ?? [] },
+              caller,
+              api.now(),
+              `auto-call-${api.taskId}`,
+            ),
           )
-        if (args.delete === true) return { id, deleted: await engine.remove(id) }
-        return engine.update({ ...args, id }, caller, api.now())
+        if (args.delete === true) return { id, deleted: await engine.remove(id, caller) }
+        return withoutSecrets(await engine.update({ ...args, id }, caller, api.now()))
       }),
   })
 }
@@ -68,7 +70,10 @@ function listTool(engine: Engine) {
     description: "List automations with their triggers, next run and last run.",
     parameters: obj({}),
     replay: "safe",
-    execute: () => runTool(async () => ({ automations: await engine.list() })),
+    execute: (_args, api) =>
+      runTool(async () => ({
+        automations: (await engine.list({ conversationId: api.conversationId })).map(withoutSecrets),
+      })),
   })
 }
 
@@ -81,7 +86,12 @@ function triggerTool(engine: Engine) {
       input: opt(str({ minLength: 1, maxLength: 16_384 })),
     }),
     replay: "safe",
-    execute: (args, api) => runTool(() => engine.trigger(args.id, args.input, api.now(), `manual:call-${api.taskId}`)),
+    execute: (args, api) =>
+      runTool(() =>
+        engine.trigger(args.id, args.input, api.now(), `manual:call-${api.taskId}`, {
+          conversationId: api.conversationId,
+        }),
+      ),
   })
 }
 

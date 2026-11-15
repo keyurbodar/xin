@@ -1,9 +1,11 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId } from "@earendil-works/pi-durable"
+import type { CommandId } from "../../src/ids.ts"
+import type { Actor } from "../../src/ops.ts"
 import { runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { M5_MODEL } from "../../test/plugins/m5.ts"
-import { cmd, eventually, fresh } from "../../test/support.ts"
+import { addThreads, cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import type { AutomationDetail, AutomationView, RunView } from "./automations.ts"
 
@@ -37,6 +39,40 @@ const detail = (stub: Stub, id: string): Promise<AutomationDetail> =>
 
 const alarm = (stub: Stub): Promise<number | null> =>
   runInDurableObject(stub, (_home: Home, state: DurableObjectState) => state.storage.getAlarm())
+
+const asAgent = (stub: Stub, conversationId: number, id: string, name: string, args: unknown) =>
+  runInDurableObject(stub, (home: Home) =>
+    home.commands.run({ id: id as CommandId, op: name, args }, {
+      kind: "agent",
+      conversationId: conversationId as ConversationId,
+    } satisfies Actor),
+  )
+
+const streamed = (path: string, bytes: number): Request =>
+  new Request(`https://ingle.test${path}`, {
+    method: "POST",
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let sent = 0; sent < bytes; sent += 64 * 1024) controller.enqueue(new Uint8Array(64 * 1024).fill(97))
+        controller.close()
+      },
+    }),
+    duplex: "half",
+  } as RequestInit)
+
+const webhookAutomation = (stub: Stub, id: string, project: string, rules: unknown[] = []) =>
+  op<AutomationView>(stub, id, "automation.create", {
+    title: "Hook",
+    prompt: "Handle it",
+    project,
+    triggers: [{ kind: "webhook", rules }],
+  })
+
+const pathOf = (view: AutomationView): string => {
+  const trigger = view.triggers[0]
+  if (trigger?.kind !== "webhook") throw new Error("no webhook trigger")
+  return trigger.path
+}
 
 describe("automations", () => {
   it("validates triggers and reports the next cron occurrence in its zone", async () => {
@@ -240,4 +276,87 @@ describe("automations", () => {
     })
     expect(rejected.ok).toBe(false)
   })
+  it("answers an unknown secret before reading the body and caps a streamed body", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "bounded")
+    const created = await webhookAutomation(stub, "w1", project.id)
+    const unknown = await stub.fetch(streamed(`/hooks/${"A".repeat(43)}`, 8 * 1024 * 1024))
+    expect(unknown.status).toBe(404)
+    const large = await stub.fetch(streamed(pathOf(created), 1024 * 1024))
+    expect(large.status).toBe(413)
+    expect((await hook(stub, pathOf(created), { ok: true })).status).toBe(202)
+  }, 30_000)
+
+  it("keeps webhook secrets from agents and confines a coordinator to its own project", async () => {
+    const stub = fresh()
+    const alpha = await makeProject(stub, "alpha")
+    const beta = await makeProject(stub, "beta")
+    const owned = await webhookAutomation(stub, "x1", alpha.id)
+    expect(pathOf(owned)).toMatch(/^\/hooks\/[A-Za-z0-9_-]{43}$/)
+    const secret = pathOf(owned).slice("/hooks/".length)
+
+    const mine = await asAgent(stub, alpha.coordinatorId, "x2", "automation.list", {})
+    expect(mine.kind, JSON.stringify(mine)).toBe("ok")
+    expect(JSON.stringify(mine)).toContain(owned.id)
+    expect(JSON.stringify(mine)).not.toContain(secret)
+    const viewed = await asAgent(stub, alpha.coordinatorId, "x3", "automation.get", { id: owned.id })
+    expect(JSON.stringify(viewed)).not.toContain(secret)
+
+    const other = await asAgent(stub, beta.coordinatorId, "x4", "automation.list", {})
+    expect(other).toMatchObject({ kind: "ok", result: { automations: [] } })
+    for (const [id, name, args] of [
+      ["x5", "automation.update", { id: owned.id, prompt: "hijacked" }],
+      ["x6", "automation.trigger", { id: owned.id }],
+      ["x7", "automation.get", { id: owned.id }],
+      ["x8", "automation.create", { title: "t", prompt: "p", project: alpha.id, triggers: [] }],
+      [
+        "x9",
+        "automation.create",
+        { title: "t", prompt: "p", target: { kind: "same", threadId: alpha.coordinatorId }, triggers: [] },
+      ],
+    ] as const)
+      expect(await asAgent(stub, beta.coordinatorId, id, name, args), name).toMatchObject({ kind: "rejected" })
+    expect(await asAgent(stub, beta.coordinatorId, "x10", "automation.delete", { id: owned.id })).toMatchObject({
+      kind: "ok",
+      result: { deleted: false },
+    })
+    expect((await detail(stub, owned.id)).prompt).toBe("Handle it")
+  }, 30_000)
+
+  it("refuses a delegated thread", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "delegated")
+    const [thread] = await addThreads(stub, project.id, ["worker"])
+    if (thread === undefined) throw new Error("no thread")
+    for (const [id, name, args] of [
+      ["d1", "automation.list", {}],
+      ["d2", "automation.create", { title: "t", prompt: "p", triggers: [] }],
+    ] as const)
+      expect(await asAgent(stub, thread.id, id, name, args), name).toMatchObject({
+        kind: "rejected",
+        code: "forbidden",
+      })
+  }, 30_000)
+
+  it("closes a batch before its joined input passes the cap and drops redelivered webhooks", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "capped")
+    const created = await webhookAutomation(stub, "c1", project.id, [{ quietSeconds: 600 }])
+    const send = async (text: string, delivery: string) =>
+      (await hook(stub, pathOf(created), { text }, { "x-github-delivery": delivery })).json<Record<string, unknown>>()
+    const big = "x".repeat(15_000)
+
+    expect(await send(big, "d1")).toEqual({ status: "batched", count: 1 })
+    expect(await send(big, "d1")).toEqual({ status: "batched", count: 1 })
+    expect(await send(big, "d2")).toEqual({ status: "batched", count: 2 })
+    const third = await send(big, "d3")
+    expect(third).toMatchObject({ status: "batched", count: 1 })
+    expect(typeof third["closed"]).toBe("string")
+
+    const current = await detail(stub, created.id)
+    expect(current.runs).toHaveLength(1)
+    expect(current.runs[0]?.inputs).toBe(2)
+    expect(current.runs[0]?.input?.length ?? Infinity).toBeLessThanOrEqual(32 * 1024 + 200)
+    expect(current.batches.map((batch) => batch.count)).toEqual([1])
+  }, 30_000)
 })

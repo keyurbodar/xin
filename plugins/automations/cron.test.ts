@@ -24,8 +24,17 @@ describe("cron", () => {
     expect(next("30 9 * * *", "Asia/Kolkata", "2026-11-15T00:00:00Z")).toBe("2026-11-15T04:00:00.000Z")
   })
 
-  it("skips a local time daylight saving removes", () => {
-    expect(next("30 2 * * *", "Europe/Berlin", "2026-03-28T12:00:00Z")).toBe("2026-03-30T00:30:00.000Z")
+  it("runs a local time daylight saving removes at the end of the gap that day", () => {
+    expect(next("30 2 * * *", "Europe/Berlin", "2026-03-28T12:00:00Z")).toBe("2026-03-29T01:00:00.000Z")
+    expect(next("30 2 * * *", "America/New_York", "2027-03-13T12:00:00Z")).toBe("2027-03-14T07:00:00.000Z")
+    expect(next("30 2 * * *", "America/New_York", "2027-03-14T07:00:00Z")).toBe("2027-03-15T06:30:00.000Z")
+    expect(next("*/30 2-3 * * *", "America/New_York", "2027-03-14T07:00:00Z")).toBe("2027-03-14T07:30:00.000Z")
+  })
+
+  it("runs a repeated local time once, at its first occurrence", () => {
+    expect(next("30 1 * * *", "America/New_York", "2026-11-01T00:00:00Z")).toBe("2026-11-01T05:30:00.000Z")
+    expect(next("30 1 * * *", "America/New_York", "2026-11-01T05:30:00Z")).toBe("2026-11-02T06:30:00.000Z")
+    expect(next("30 1 * * *", "America/New_York", "2026-11-01T06:00:00Z")).toBe("2026-11-02T06:30:00.000Z")
   })
 
   it("matches day of month or weekday when both are restricted", () => {

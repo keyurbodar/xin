@@ -1,5 +1,6 @@
 import type { Context as KernelContext } from "../../src/kernel/index.ts"
 import { Engine, retiredSchedules } from "./automations.ts"
+import { importSchedules } from "./legacy.ts"
 import { automationOps } from "./ops.ts"
 import { MIGRATIONS, OWNER } from "./store.ts"
 
@@ -24,6 +25,9 @@ export async function apply(ctx: KernelContext): Promise<void> {
   ctx.http.route("POST /hooks/*", (request) => engine.webhook(request, Date.now()))
   ctx.wire.home(name, async () => ({ automations: { revision: engine.revision } }))
   ctx.on("thread/settled", (event) => engine.settled(event, Date.now()))
+  await importSchedules(engine, ctx.harness, Date.now()).catch((error: unknown) => {
+    console.warn("automations: importing old schedules failed; it retries on the next boot", error)
+  })
 }
 
 declare module "@deepseek-ai/cordis" {

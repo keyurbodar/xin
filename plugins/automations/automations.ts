@@ -37,6 +37,7 @@ export const MAX_TRIGGERS = 20
 export const MAX_RULES = 10
 export const MAX_BODY = 64 * 1024
 const INPUT_CLIP = 16 * 1024
+const BATCH_TEXT = 32 * 1024
 const BATCH_INPUTS = 50
 const DEFAULT_MAX_WAIT_S = 24 * 3600
 const HOOK_PATH = "/hooks/"
@@ -161,7 +162,7 @@ export type AutomationDetail = AutomationView & {
   readonly batches: BatchView[]
 }
 
-export type AutomationErrorCode = "invalid" | "not_found"
+export type AutomationErrorCode = "invalid" | "not_found" | "subagent_session"
 
 export class AutomationError extends Error {
   constructor(
@@ -207,10 +208,13 @@ export class Engine {
 
   async create(input: CreateInput, caller: Caller, now: number, id: string): Promise<AutomationView> {
     const view = await this.#queue(async () => {
+      const scoped = await this.#scope(caller)
       const existing = await this.store.automation(id)
-      if (existing !== undefined) return this.#view(existing)
+      if (existing !== undefined && visible(existing, scoped)) return this.#view(existing)
+      if (existing !== undefined) throw invalid(`the id ${id} is taken`)
       const target = await this.#target(input.target, caller)
       const project = await this.#project(input.project, caller, target)
+      await this.#within(scoped, project, target.threadId, caller)
       const row: AutomationRow = {
         id,
         title: titleOf(input.title),
@@ -231,13 +235,14 @@ export class Engine {
 
   async update(input: UpdateInput, caller: Caller, now: number): Promise<AutomationView> {
     const view = await this.#queue(async () => {
-      const current = await this.#found(input.id)
+      const { row: current, scoped } = await this.#owned(input.id, caller)
       const target =
         input.target === undefined
           ? { kind: current.target, threadId: current.thread_id }
           : await this.#target(input.target, caller)
       const project = input.project === undefined ? current.project : await this.#project(input.project, caller, target)
       if (target.kind === "fresh" && project === null) throw invalid("a fresh-thread automation needs a project")
+      await this.#within(scoped, project, target.threadId, caller)
       const row: AutomationRow = {
         ...current,
         title: input.title === undefined ? current.title : titleOf(input.title),
@@ -262,30 +267,37 @@ export class Engine {
     return view
   }
 
-  async remove(id: string): Promise<boolean> {
-    const removed = await this.#queue(() => this.store.remove(id))
+  async remove(id: string, caller: Caller): Promise<boolean> {
+    const removed = await this.#queue(async () => {
+      const row = await this.store.automation(id)
+      if (row === undefined || !visible(row, await this.#scope(caller))) return false
+      return this.store.remove(id)
+    })
     if (removed) await this.#changed()
     return removed
   }
 
-  async list(): Promise<AutomationView[]> {
+  async list(caller: Caller): Promise<AutomationView[]> {
+    const scoped = await this.#scope(caller)
     const [automations, triggers, latest] = await Promise.all([
       this.store.automations(),
       this.store.triggers(),
       this.store.latestRuns(),
     ])
     const lastRuns = new Map(latest.map((run) => [run.automation_id, runView(run)]))
-    return automations.map((row) =>
-      viewOf(
-        row,
-        triggers.filter((trigger) => trigger.automation_id === row.id),
-        lastRuns.get(row.id) ?? null,
-      ),
-    )
+    return automations
+      .filter((row) => visible(row, scoped))
+      .map((row) =>
+        viewOf(
+          row,
+          triggers.filter((trigger) => trigger.automation_id === row.id),
+          lastRuns.get(row.id) ?? null,
+        ),
+      )
   }
 
-  async get(id: string, runLimit: number): Promise<AutomationDetail> {
-    const row = await this.#found(id)
+  async get(id: string, runLimit: number, caller: Caller): Promise<AutomationDetail> {
+    const { row } = await this.#owned(id, caller)
     const [triggers, runs, batches] = await Promise.all([
       this.store.triggers(id),
       this.store.runs(id, runLimit),
@@ -306,16 +318,16 @@ export class Engine {
     }
   }
 
-  async runs(id: string, limit: number, before: string | undefined): Promise<RunView[]> {
-    await this.#found(id)
+  async runs(id: string, limit: number, before: string | undefined, caller: Caller): Promise<RunView[]> {
+    await this.#owned(id, caller)
     const cursor = before === undefined ? undefined : Date.parse(before)
     if (cursor !== undefined && Number.isNaN(cursor)) throw invalid("before must be an ISO time")
     return (await this.store.runs(id, limit, cursor)).map(runView)
   }
 
   /** A manual run: it starts even while the automation is disabled. */
-  async trigger(id: string, input: string | undefined, now: number, runId: string): Promise<RunView> {
-    await this.#found(id)
+  async trigger(id: string, input: string | undefined, now: number, runId: string, caller: Caller): Promise<RunView> {
+    await this.#owned(id, caller)
     await this.store.addRun({
       id: runId,
       automation_id: id,
@@ -365,14 +377,12 @@ export class Engine {
   async webhook(request: Request, now: number): Promise<Response> {
     const secret = new URL(request.url).pathname.slice(HOOK_PATH.length)
     if (!SECRET.test(secret)) return new Response("not found", { status: 404 })
-    const declared = Number(request.headers.get("content-length") ?? "0")
-    if (declared > MAX_BODY) return new Response("payload too large", { status: 413 })
-    const body = await request.text()
-    if (new TextEncoder().encode(body).byteLength > MAX_BODY) return new Response("payload too large", { status: 413 })
+    const trigger = await this.store.bySecret(secret)
+    if (trigger === undefined || trigger.kind !== "webhook") return new Response("not found", { status: 404 })
+    const body = await boundedText(request, MAX_BODY)
+    if (body === undefined) return new Response("payload too large", { status: 413 })
     const delivery = request.headers.get("idempotency-key") ?? request.headers.get("x-github-delivery") ?? undefined
     const outcome = await this.#queue(async () => {
-      const trigger = await this.store.bySecret(secret)
-      if (trigger === undefined || trigger.kind !== "webhook") return undefined
       const automation = await this.store.automation(trigger.automation_id)
       if (automation === undefined) return undefined
       if (automation.enabled === 0) return { status: "ignored", reason: "disabled" } as const
@@ -383,10 +393,11 @@ export class Engine {
     if (outcome === undefined) return new Response("not found", { status: 404 })
     if (outcome.status === "ignored") return Response.json(outcome)
     await this.port.arm()
-    if (outcome.status === "started") {
-      await this.#dispatch(outcome.run, now)
-      await this.#changed()
-    }
+    const started = [outcome.closed, outcome.status === "started" ? outcome.run : undefined].filter(
+      (run): run is string => run !== undefined,
+    )
+    for (const run of started) await this.#dispatch(run, now)
+    if (started.length > 0) await this.#changed()
     return Response.json(outcome, { status: 202 })
   }
 
@@ -452,7 +463,8 @@ export class Engine {
     delivery: string | undefined,
     now: number,
   ): Promise<
-    { readonly status: "started"; readonly run: string } | { readonly status: "batched"; readonly count: number }
+    | { readonly status: "started"; readonly run: string; readonly closed?: string }
+    | { readonly status: "batched"; readonly count: number; readonly closed?: string }
   > {
     const payload = parseJson(body)
     const index = config.rules.findIndex((rule) => whenMatches(rule, payload))
@@ -472,24 +484,34 @@ export class Engine {
     }
     const group = JSON.stringify(rule.groupBy.map((path) => fieldOf(payload, path) ?? null))
     const open = await this.store.batch(trigger.id, index, group)
-    const inputs = [...(open === undefined ? [] : parseInputs(open.inputs)), clip(body)]
-    const first = open?.first_at ?? now
+    const id = delivery === undefined ? undefined : clipTo(delivery, 128)
+    if (open !== undefined && id !== undefined && parseInputs(open.deliveries).includes(id))
+      return { status: "batched", count: open.count }
+    const input = clip(body)
+    const overflows = open !== undefined && textSize(parseInputs(open.inputs)) + input.length > BATCH_TEXT
+    const closed = open !== undefined && overflows ? { closed: await this.#closeBatch(open, now) } : {}
+    const kept = overflows ? undefined : open
+    const first = kept?.first_at ?? now
     const batch: BatchRow = {
       trigger_id: trigger.id,
       rule: index,
       group_key: group,
       automation_id: trigger.automation_id,
-      count: (open?.count ?? 0) + 1,
-      inputs: JSON.stringify(inputs),
+      count: (kept?.count ?? 0) + 1,
+      inputs: JSON.stringify([...(kept === undefined ? [] : parseInputs(kept.inputs)), input]),
+      deliveries: JSON.stringify([
+        ...(kept === undefined ? [] : parseInputs(kept.deliveries)),
+        ...(id === undefined ? [] : [id]),
+      ]),
       first_at: first,
       last_at: now,
       close_at: closeAt(rule, first, now),
     }
     if ((rule.count !== null && batch.count >= rule.count) || batch.count >= BATCH_INPUTS)
-      return { status: "started", run: await this.#closeBatch(batch, now) }
+      return { status: "started", run: await this.#closeBatch(batch, now), ...closed }
     await this.store.putBatch(batch)
     this.#deadline = undefined
-    return { status: "batched", count: batch.count }
+    return { status: "batched", count: batch.count, ...closed }
   }
 
   async #dispatch(id: string, now: number): Promise<void> {
@@ -582,6 +604,43 @@ export class Engine {
     this.#revision += 1
     await this.port.arm()
     await this.port.changed()
+  }
+
+  /** The project an agent caller is confined to; undefined for the owner and the root chat. Delegated threads are refused. */
+  async #scope(caller: Caller): Promise<string | undefined> {
+    const id = caller.conversationId
+    if (id === undefined) return undefined
+    if ((await this.port.harness.snapshot(ThreadDoc, id, context)) !== undefined)
+      throw new AutomationError(
+        "subagent_session",
+        "a delegated thread cannot manage automations; ask the project's coordinator",
+      )
+    const scope = await scopeOf(this.port.harness, id)
+    return scope === undefined || scope.kind === "puck" ? undefined : scope.projectId
+  }
+
+  async #owned(
+    id: string,
+    caller: Caller,
+  ): Promise<{ readonly row: AutomationRow; readonly scoped: string | undefined }> {
+    const scoped = await this.#scope(caller)
+    const row = await this.#found(id)
+    if (!visible(row, scoped)) throw new AutomationError("not_found", `no automation ${id}`)
+    return { row, scoped }
+  }
+
+  async #within(
+    scoped: string | undefined,
+    project: string | null,
+    threadId: number | null,
+    caller: Caller,
+  ): Promise<void> {
+    if (scoped === undefined) return
+    if (project !== scoped) throw invalid("an automation can only use this conversation's own project")
+    if (threadId === null || threadId === caller.conversationId) return
+    const scope = await scopeOf(this.port.harness, threadId as ConversationId)
+    if (scope === undefined || scope.kind === "puck" || scope.projectId !== scoped)
+      throw invalid(`conversation ${threadId} is outside this project`)
   }
 
   async #found(id: string): Promise<AutomationRow> {
@@ -721,6 +780,19 @@ function scheduleNext(trigger: TriggerRow, now: number): number | null {
   return nextCron(parseCron(config.cron), config.tz, now) ?? null
 }
 
+const visible = (row: AutomationRow, scoped: string | undefined): boolean =>
+  scoped === undefined || row.project === scoped
+
+/** A view for the model: a webhook's secret is its only credential, so only the owner's surfaces show it. */
+export function withoutSecrets<T extends AutomationView>(view: T): T {
+  return {
+    ...view,
+    triggers: view.triggers.map((trigger) =>
+      trigger.kind === "webhook" ? { ...trigger, path: `${HOOK_PATH}<shown to the owner only>` } : trigger,
+    ),
+  }
+}
+
 function viewOf(row: AutomationRow, triggers: readonly TriggerRow[], lastRun: RunView | null): AutomationView {
   const next = triggers.flatMap((trigger) => (trigger.next_at === null ? [] : [trigger.next_at]))
   return {
@@ -854,6 +926,33 @@ function parseJson(body: string): unknown {
 function parseInputs(stored: string): string[] {
   const parsed: unknown = JSON.parse(stored)
   return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []
+}
+
+const textSize = (inputs: readonly string[]): number => inputs.reduce((sum, input) => sum + input.length, 0)
+
+async function boundedText(request: Request, max: number): Promise<string | undefined> {
+  if (Number(request.headers.get("content-length") ?? "0") > max) return undefined
+  if (request.body === null) return ""
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > max) {
+      await reader.cancel()
+      return undefined
+    }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(bytes)
 }
 
 function webhookText(inputs: readonly string[]): string {

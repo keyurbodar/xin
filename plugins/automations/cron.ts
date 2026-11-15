@@ -121,14 +121,20 @@ function sameMinute(left: Civil, right: Civil): boolean {
   return civilMs(left) === civilMs(right)
 }
 
-/** The instant a wall-clock minute names in `tz`, or undefined when daylight saving skips it. */
-function instantOf(civil: Civil, tz: string): number | undefined {
+/** The instant a wall-clock minute names in `tz`: the first one when the clock falls back, and the end of the gap when daylight saving skips it. */
+function instantOf(civil: Civil, tz: string): number {
   const guess = civilMs(civil)
   const first = guess - (civilMs(civilOf(guess, tz)) - guess)
   const second = guess - (civilMs(civilOf(first, tz)) - first)
-  for (const candidate of [Math.min(first, second), Math.max(first, second)])
-    if (sameMinute(civilOf(candidate, tz), civil)) return candidate
-  return undefined
+  let low = Math.min(first, second)
+  let high = Math.max(first, second)
+  for (const candidate of [low, high]) if (sameMinute(civilOf(candidate, tz), civil)) return candidate
+  while (high - low > MINUTE_MS) {
+    const middle = low + Math.floor((high - low) / 2 / MINUTE_MS) * MINUTE_MS
+    if (civilMs(civilOf(middle, tz)) > guess) high = middle
+    else low = middle
+  }
+  return high
 }
 
 /** The first minute after `after` that the expression names in `tz`. */
@@ -151,7 +157,7 @@ export function nextCron(cron: Cron, tz: string, after: number): number | undefi
       for (const minute of minutes) {
         if (offset === 0 && hour === start.hour && minute < start.minute) continue
         const at = instantOf({ ...day, hour, minute }, tz)
-        if (at !== undefined && at > after) return at
+        if (at > after) return at
       }
     }
   }

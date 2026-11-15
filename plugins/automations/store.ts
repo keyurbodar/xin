@@ -17,6 +17,10 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
       "CREATE INDEX automation_batches_close ON automation_batches (close_at)",
     ],
   },
+  {
+    version: 2,
+    statements: ["ALTER TABLE automation_batches ADD COLUMN deliveries TEXT NOT NULL DEFAULT '[]'"],
+  },
 ]
 
 export type Target = "fresh" | "same"
@@ -72,6 +76,7 @@ export type BatchRow = {
   readonly automation_id: string
   readonly count: number
   readonly inputs: string
+  readonly deliveries: string
   readonly first_at: number
   readonly last_at: number
   readonly close_at: number
@@ -295,16 +300,17 @@ export class Store {
 
   putBatch(batch: BatchRow): Promise<void> {
     return this.db.run(
-      `INSERT INTO automation_batches (trigger_id, rule, group_key, automation_id, count, inputs, first_at, last_at, close_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO automation_batches (trigger_id, rule, group_key, automation_id, count, inputs, deliveries, first_at, last_at, close_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (trigger_id, rule, group_key) DO UPDATE SET count = excluded.count, inputs = excluded.inputs,
-         last_at = excluded.last_at, close_at = excluded.close_at`,
+         deliveries = excluded.deliveries, last_at = excluded.last_at, close_at = excluded.close_at`,
       batch.trigger_id,
       batch.rule,
       batch.group_key,
       batch.automation_id,
       batch.count,
       batch.inputs,
+      batch.deliveries,
       batch.first_at,
       batch.last_at,
       batch.close_at,
