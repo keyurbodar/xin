@@ -130,3 +130,9 @@
     animation: none;
   }
 }
+
+.im-toast-stack .im-toast.im-toast[data-removed] {
+  opacity: 0;
+  pointer-events: none;
+  transition-duration: var(--dur-toast-exit);
+}

@@ -1,5 +1,6 @@
 import { createSignal, untrack } from "solid-js"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
+import { reinsert, type RemovedTab } from "../lib/tab-order.ts"
 
 /** A pane view id from the view registry in components/pane/views.tsx; "overview" is always open. */
 export type PaneView = string
@@ -79,9 +80,9 @@ export function closeThreadTabs(projectId: string, threadIds: readonly number[])
   updateProject(projectId, (tabs) => ({ ...tabs, threads: tabs.threads.filter((id) => !threadIds.includes(id)) }))
 }
 
-/** Puts back an earlier tab order; tabs opened since keep their place after it. */
-export function restoreThreadTabs(projectId: string, threads: readonly number[]): void {
-  updateProject(projectId, (tabs) => ({ ...tabs, threads: [...new Set([...threads, ...tabs.threads])] }))
+/** Reopens closed tabs at their old indexes; every other tab stays where it is now. */
+export function reopenThreadTabs(projectId: string, removed: readonly RemovedTab[]): void {
+  updateProject(projectId, (tabs) => ({ ...tabs, threads: reinsert(tabs.threads, removed) }))
 }
 
 export function moveThreadTab(projectId: string, threadId: number, index: number): void {

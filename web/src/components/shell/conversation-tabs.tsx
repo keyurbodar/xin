@@ -12,7 +12,7 @@ import {
   moveThreadTab,
   paneOpen,
   projectTabs,
-  restoreThreadTabs,
+  reopenThreadTabs,
   setPaneOpen,
   sidebarHidden,
   toggleSidebar,
@@ -20,7 +20,8 @@ import {
 } from "../../state/tabs.ts"
 import { ProjectMark } from "../chat/project-glyph.tsx"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
-import { showUndoToast } from "../ui/toast.tsx"
+import { showUndoToast } from "../../state/toasts.ts"
+import { nearestKept, removedAt } from "../../lib/tab-order.ts"
 import { openNewThread } from "./new-thread.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from "./menu.ts"
 
@@ -77,6 +78,16 @@ export function ConversationTabs(props: {
     }
   }
 
+  let projectTab: HTMLButtonElement | undefined
+
+  const focusTab = (id: number | undefined): void => {
+    requestAnimationFrame(() => {
+      const element = id === undefined ? undefined : refs.get(id)
+      const target = element?.isConnected === true ? element : (refs.get(props.activeThreadId ?? -1) ?? projectTab)
+      target?.focus({ preventScroll: true })
+    })
+  }
+
   const openTab = (id: number | undefined): void => {
     navigate(id === undefined ? `/p/${props.project.slug}` : `/p/${props.project.slug}/t/${id}`)
   }
@@ -86,22 +97,22 @@ export function ConversationTabs(props: {
     const first = closingTabs[0]
     if (first === undefined) return
     const { id: projectId, slug } = props.project
-    const before = projectTabs(projectId).threads
+    const removed = removedAt(projectTabs(projectId).threads, ids)
+    const order = props.threads.map((thread) => thread.id)
     const active = props.activeThreadId
     const activeClosed = active !== undefined && ids.includes(active)
-    const index = props.threads.findIndex((thread) => thread.id === active)
-    const kept = (thread: ThreadSummary): boolean => !ids.includes(thread.id)
-    const neighbour = props.threads.slice(0, index).findLast(kept) ?? props.threads.slice(index + 1).find(kept)
     const remove = (): void => {
+      const focused = ids.find((id) => refs.get(id)?.contains(document.activeElement) === true)
       setClosing([])
       closeThreadTabs(projectId, ids)
-      if (activeClosed) openTab(neighbour?.id)
+      if (activeClosed) openTab(nearestKept(order, ids, active))
+      if (focused !== undefined) focusTab(nearestKept(order, ids, focused))
       showUndoToast({
         icon: X,
         title: closingTabs.length === 1 ? "Closed tab" : `Closed ${closingTabs.length} tabs`,
         detail: closingTabs.length === 1 ? `“${first.title}”` : undefined,
         undo: () => {
-          restoreThreadTabs(projectId, before)
+          reopenThreadTabs(projectId, removed)
           if (activeClosed) navigate(`/p/${slug}/t/${active}`)
         },
       })
@@ -118,6 +129,9 @@ export function ConversationTabs(props: {
   const menu = useMenu({
     positioning: { placement: "bottom-start", gutter: 4 },
     onSelect: (details) => act(details.value),
+    onOpenChange: (details) => {
+      if (!details.open) focusTab(menuTarget())
+    },
   })
 
   const openMenu = (id: number, point: Point): void => {
@@ -200,6 +214,7 @@ export function ConversationTabs(props: {
       <div role="tablist" class="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
         <button
           type="button"
+          ref={projectTab}
           role="tab"
           aria-selected={props.activeThreadId === undefined}
           onClick={() => openTab(undefined)}
