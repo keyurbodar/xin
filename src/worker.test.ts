@@ -1,7 +1,7 @@
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { env, exports } from "cloudflare:workers"
 import { describe, expect, it } from "vitest"
-import { TEST_PROFILE, type Home as TestHome } from "../test/worker.ts"
+import { TEST_PROFILE } from "../test/worker.ts"
 import type { Home } from "./host.ts"
 import { blobKey, sha256 } from "./r2env.ts"
 
@@ -89,7 +89,7 @@ describe("Worker auth", () => {
   }, 30_000)
 })
 
-const owner = () => env.HOME.get(env.HOME.idFromName("owner")) as DurableObjectStub<TestHome>
+const owner = () => env.HOME.get(env.HOME.idFromName("owner"))
 
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` })
 
@@ -166,7 +166,7 @@ describe("Home auth boundary", () => {
   })
 
   it("re-reads the rotated token once after an eviction and still refuses the one it replaced", async () => {
-    const stub = env.HOME.get(env.HOME.newUniqueId()) as DurableObjectStub<TestHome>
+    const stub = env.HOME.get(env.HOME.newUniqueId())
     const replaced = await rotate(stub)
     const token = await rotate(stub)
     await evictDurableObject(stub)
@@ -221,7 +221,7 @@ describe("Home auth boundary", () => {
   })
 })
 
-async function rotate(stub?: DurableObjectStub<TestHome>): Promise<string> {
+async function rotate(stub?: ReturnType<typeof owner>): Promise<string> {
   const init = {
     method: "POST",
     headers: { authorization: "Bearer test-owner-token", "content-type": "application/json" },
