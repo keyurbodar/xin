@@ -380,33 +380,6 @@
   }
 }
 
-/* A bottom sheet arrives on the spring and leaves on the exit curve. */
-@utility sheet-in {
-  animation: sheet-in var(--dur-slow) var(--ease-spring) backwards;
-}
-
-@keyframes sheet-in {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: none;
-  }
-}
-
-@utility sheet-out {
-  animation: sheet-out var(--dur-base) var(--ease-exit) forwards;
-}
-
-@keyframes sheet-out {
-  from {
-    transform: none;
-  }
-  to {
-    transform: translateY(100%);
-  }
-}
-
 /* A row that lands: 4px drop, 200ms, staggered 40ms across a fan-out. */
 @utility row-in {
   animation: row-in var(--dur-base) var(--ease-enter) backwards;

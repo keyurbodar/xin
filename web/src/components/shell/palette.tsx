@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { activeProjects } from "../../state/home.ts"
 import { navigate } from "../../lib/router.ts"
+import { openThreadTab } from "../../state/tabs.ts"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
 import type { VisualState } from "../../lib/status.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
@@ -70,7 +71,10 @@ function items(): readonly Item[] {
           title: thread.title,
           meta: `${project.name}${thread.statusLine === undefined ? "" : ` · ${thread.statusLine}`}`,
           state,
-          open: () => navigate(`/p/${project.slug}`),
+          open: () => {
+            openThreadTab(project.id, thread.id)
+            navigate(`/p/${project.slug}/t/${thread.id}`)
+          },
         })
       }
     }

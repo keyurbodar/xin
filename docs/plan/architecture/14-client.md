@@ -97,7 +97,8 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 | Route | Frame | What it is |
 | --- | --- | --- |
 | `#/` | D1 | the first active project's chat; with no project, an empty state that opens New project |
-| `#/p/:slug` | D1, D2, D5, D6 | project chat: transcript, composer, right panel (Threads, Files, Memory, Schedules, Jobs). An opened thread widens the panel to 520, so the coordinator stays in view (`V3-a`). The more menu in the top bar opens project settings: the same name and goal as New project, saved with `project.update`, and Archive with `project.archive`. Memory reads `memory.list` and `memory.suggested`, and drives add, pin, edit, forget and dismiss; Schedules lists with `outcomes: true` and draws the last six runs as dots |
+| `#/p/:slug`, `#/p/:slug/t/<threadId>` | D1, D2, D5, D6 | the project workspace: a centre panel with a tab bar of open conversations (the coordinator first, then every thread the person opened; the address names the active one) and a right pane. Thread tabs open from the sidebar, the palette, Overview, the view menu and transcript cards, close with × or a middle click, reorder by drag (pointer capture, 1.02 lift, neighbours slide), and persist per project in `localStorage["ingle.tabs"]` (`state/tabs.ts`); tabs of threads the home no longer lists are dropped. Right of the tabs: the active conversation's spend (the sum of `cost.total` over every bucket of its `docs["pi.usage"]`), a more menu (Project settings, Archive project, both opening the settings dialog with `project.update` and `project.archive`), and a show-pane button when the pane is hidden. A thread tab renders the thread's transcript with the same `Transcript` and the steer composer (`thread.send`, `thread.stop`). New thread (sidebar and the tab bar's +) opens a dialog that calls `thread.create` with a title and a task |
+| right pane | D2 | `components/pane/views.tsx` holds the one registry: `PANE_VIEWS` (`{id, label, icon, render}`: Overview, Files, Memory, Schedules, Jobs, All threads) drives the pane tabs, the + view menu and the bodies, and `OVERVIEW_SECTIONS` (same shape without an icon) drives Overview. The + menu is a searchable Popover + Listbox: the views, then a Crew group of the project's threads (each opens a centre tab) and All threads with its count. Overview: Needs you (the home snapshot's `requests`, shown when `openRequests` > 0), In progress (working and waiting threads with their status line), Threads, and Drive (`file.list` count and the newest four files). Sections are collapsible 28px rows on secondary. Ingle has no issues or pull requests, so the pane has no PR section. Memory reads `memory.list` and `memory.suggested`; Schedules lists with `outcomes: true` |
 | `#/p/:slug/files/<path>` | D5 | the file reader: breadcrumb, size and age, Copy and Download, the document, and the project's file list beside it |
 | `#/p/:slug/run/<conversationId>` | D6 | one schedule's delivered run, read-only: the transcript the timer produced, with a breadcrumb back to the project |
 | `#/schedules` | D6 | every schedule with pause, resume and delete, and a New schedule form whose When field is plain words parsed by `schedule.parse` with the next three runs shown before saving |
@@ -106,7 +107,7 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 | `#/signin` | O1 | owner token |
 | `#/welcome` | O2–O5 | first provider key, first project, first message, notifications |
 
-Layout metrics are tokens in `tokens.css`: sidebar `--w-sidebar` (240), right pane `--w-pane` (432), chat column `--w-column` (720), tab bar `--h-topbar` (44) with 28px tabs. The shell that reads them lands with the shell layer; until then the old layout below 1280px collapses the sidebar to a rail and below 1024px uses a bottom tab bar, and the right panel docks at 1280 and up.
+Layout (v4 shell, render 12.1): the sidebar (240, on bg) holds the app mark, search (⌘K) and collapse (⌘B), the nav rows New thread, Schedules, Extensions and Settings, a Projects section with each project's state glyph and +, the current project's Threads (all statuses, newest first, with a filter toggle), and the owner menu (Settings; Theme: Dark, Light, Rose). The centre and the pane are panels inset 8 from the window with radius 12 and an 8 gutter; the pane is 432 and docked from 1280. Below 1280 the pane overlays the centre from the right; below 1024 the sidebar is a drawer opened from the menu button in the tab bar, closed by the scrim, its × or any navigation. Expand widens the pane over the centre. The chat column never exceeds 720. There is no rail and no bottom tab bar.
 
 ## Identity
 
@@ -126,13 +127,13 @@ Tokens are `--dur-instant|fast|base|slow|deliberate` (80/140/200/320/480) and `-
 | --- | --- | --- | --- |
 | Dialog | 200, opacity and scale .98 to 1, enter curve | 140, exit curve | `enter`, `dialog-out` |
 | Right sheet and panel drawer | 320, 24px from the right plus fade, standard | 200, exit curve | `slide-right`, `slide-right-out` |
-| Bottom sheet | 320 on the spring, 100% from the bottom | 200, exit curve | `sheet-in`, `sheet-out` |
-| Menu and popover | 140, 4px drop, enter curve | unmount | `menu-in` |
+| Sidebar drawer | 240, from the left on the drawer curve | unmount | `drawer-in` |
+| Menu and popover (Ark) | 150, opacity and scale .97 from `--transform-origin`, enter curve | 100, exit curve | `shell/overlay.css` on `[data-scope][data-part="content"][data-state]` |
 | Fan-out row | 200, 4px drop, 40ms stagger capped at six | unmount | `row-in` |
 | Report card | 320, 6px rise | unmount | `card-in` |
 | Scrim | 200 linear fade | 200 | `fade-in` |
 
-Panel tabs slide their pill over 200 and crossfade the body over 140. Controls answer within 80ms: a press scales .98, a hover tints in 80 and fades out over 140, a toggle knob travels in 140, and a rejected input shakes 4px once over 240. `prefers-reduced-motion` collapses every animation and transition to 1ms.
+Pane views swap with opacity and a 4px rise over 150 (`pane-swap`). Controls answer within 80ms: a press scales .98, a hover tints in 80 and fades out over 140, a toggle knob travels in 140, and a rejected input shakes 4px once over 240. `prefers-reduced-motion` collapses every animation and transition to 1ms.
 
 ## Decisions taken from the review frame's open questions
 
