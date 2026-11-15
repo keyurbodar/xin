@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { cached, cmd, live } from "../lib/api.ts"
 import { errorMessage, isKnownOpError, isRecord, remote, type RemoteHandle } from "./extensions.ts"
 
@@ -15,15 +16,6 @@ export type ModelInfo = {
   readonly reasoning: boolean
   readonly keyed: boolean
   readonly cost: ModelPrice | undefined
-}
-
-/** V3: one mark per price band, from the catalog's own rate per million tokens, blended across input and output. */
-export function priceMarks(price: ModelPrice | undefined): string {
-  if (price === undefined) return ""
-  const perMillion = (price.input + price.output) / 2
-  if (perMillion <= 0) return ""
-  if (perMillion < 2) return "$"
-  return perMillion < 10 ? "$$" : "$$$"
 }
 
 export type ModelRef = { readonly provider: string; readonly modelId: string }
@@ -100,6 +92,61 @@ export function modelName(provider: string | undefined, modelId: string | undefi
     (model) => model.modelId === modelId && (provider === undefined || model.provider === provider),
   )
   return found?.name
+}
+
+const FAVORITES_KEY = "ingle.favoriteModels"
+
+const modelKey = (ref: ModelRef): string => `${ref.provider}/${ref.modelId}`
+
+function storedFavorites(): readonly string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]")
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []
+  } catch {
+    return []
+  }
+}
+
+const [favoriteKeys, setFavoriteKeys] = createSignal<readonly string[]>(storedFavorites())
+
+/** Favourite models live in this browser: no op writes `owner.favorites` yet. */
+export function isFavorite(ref: ModelRef): boolean {
+  return favoriteKeys().includes(modelKey(ref))
+}
+
+const favoriteLookups = new Map<string, Promise<ModelInfo | undefined>>()
+
+/** Favourites the capped `models.list` reply left out, each looked up once per session so reopening the picker sends nothing. */
+export async function missingFavorites(present: readonly ModelInfo[]): Promise<readonly ModelInfo[]> {
+  const listed = new Set(present.map(modelKey))
+  const found = await Promise.all(
+    favoriteKeys()
+      .filter((key) => !listed.has(key))
+      .map((key) => {
+        const known = favoriteLookups.get(key)
+        if (known !== undefined) return known
+        const cut = key.indexOf("/")
+        const provider = key.slice(0, cut)
+        const modelId = key.slice(cut + 1)
+        const lookup = searchModels(modelId).then(
+          (reply) => reply.models.find((model) => model.provider === provider && model.modelId === modelId),
+          () => {
+            favoriteLookups.delete(key)
+            return undefined
+          },
+        )
+        favoriteLookups.set(key, lookup)
+        return lookup
+      }),
+  )
+  return found.filter((model): model is ModelInfo => model !== undefined)
+}
+
+export function toggleFavorite(ref: ModelRef): void {
+  const key = modelKey(ref)
+  const next = isFavorite(ref) ? favoriteKeys().filter((entry) => entry !== key) : [...favoriteKeys(), key]
+  setFavoriteKeys(next)
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(next))
 }
 
 export function providers(value: ModelsList): readonly ProviderSummary[] {
@@ -376,11 +423,13 @@ export async function saveCredential(provider: string, key: string, custom?: { b
   if (key !== "") args["key"] = key
   if (custom !== undefined) args["custom"] = { baseUrl: custom.baseUrl, key, api: custom.api }
   await cmd("credential.set", args)
+  favoriteLookups.clear()
   await models.reload()
 }
 
 export async function deleteCredential(provider: string): Promise<void> {
   await cmd("credential.delete", { provider })
+  favoriteLookups.clear()
   await models.reload()
 }
 

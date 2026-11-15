@@ -63,7 +63,7 @@ export function SettingsScreen(): JSX.Element {
 
   return (
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
-      <nav class="flex w-full shrink-0 items-center gap-1 overflow-x-auto border-b border-line bg-surface px-2 py-2 sm:w-[232px] sm:flex-col sm:items-stretch sm:gap-px sm:overflow-y-auto sm:border-b-0 sm:border-r sm:px-2 sm:py-3.5">
+      <nav class="flex w-full shrink-0 items-center gap-1 overflow-x-auto border-b border-line-1 bg-panel px-2 py-2 sm:w-[232px] sm:flex-col sm:items-stretch sm:gap-px sm:overflow-y-auto sm:border-b-0 sm:border-r sm:px-2 sm:py-3.5">
         <span class="label hidden px-2.5 pb-1.5 pt-1 sm:inline">Settings</span>
         <For each={GROUPS}>
           {(group) => (
@@ -74,13 +74,13 @@ export function SettingsScreen(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => navigate(`/settings/${entry.id}`)}
-                    class="flex h-8 shrink-0 items-center gap-2 rounded-[2px] px-2.5 text-[13px] whitespace-nowrap"
+                    class="flex h-8 shrink-0 items-center gap-2 rounded-sm px-2.5 text-base whitespace-nowrap"
                     classList={{
-                      "bg-selected text-fg": tab() === entry.id,
-                      "text-fg-2 hover:bg-hover": tab() !== entry.id,
+                      "bg-hover text-ink": tab() === entry.id,
+                      "text-ink-2 hover:bg-secondary": tab() !== entry.id,
                     }}
                   >
-                    <Glyph name={entry.icon} size={14} class={tab() === entry.id ? "text-fg" : "text-fg-3"} />
+                    <Glyph name={entry.icon} size={14} class={tab() === entry.id ? "text-ink" : "text-ink-3"} />
                     {entry.label}
                   </button>
                 )}
@@ -91,10 +91,10 @@ export function SettingsScreen(): JSX.Element {
       </nav>
 
       <section class="flex min-w-0 flex-1 flex-col">
-        <header class="flex h-14 shrink-0 items-center gap-3 border-b border-line px-7">
-          <h1 class="text-[16px] font-medium text-fg">{TITLES[tab()]}</h1>
+        <header class="flex h-14 shrink-0 items-center gap-3 border-b border-line-1 px-7">
+          <h1 class="text-lg font-medium text-ink">{TITLES[tab()]}</h1>
           <Show when={tab() !== "profile"}>
-            <span class="ml-auto text-[11.5px] text-fg-3">One owner</span>
+            <span class="ml-auto text-xs text-ink-3">One owner</span>
           </Show>
         </header>
         <div class="min-h-0 flex-1 overflow-y-auto px-7 py-5">

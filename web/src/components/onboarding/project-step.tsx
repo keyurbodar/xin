@@ -95,17 +95,17 @@ export function ProjectStep(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => applyTemplate(template)}
-                  class="flex items-start gap-2.5 rounded-[2px] border px-3 py-2.5 text-left"
+                  class="flex items-start gap-2.5 rounded-sm border px-3 py-2.5 text-left"
                   classList={{
-                    "border-line-strong bg-hover": name() === template.name && goal() === template.goal,
-                    "border-line-inner bg-surface hover:border-line-strong hover:bg-hover":
+                    "border-line-3 bg-secondary": name() === template.name && goal() === template.goal,
+                    "border-line-2 bg-panel hover:border-line-3 hover:bg-secondary":
                       name() !== template.name || goal() !== template.goal,
                   }}
                 >
-                  <Icon name={template.icon} size={14} class="mt-0.5 shrink-0 text-fg-3" />
+                  <Icon name={template.icon} size={14} class="mt-0.5 shrink-0 text-ink-3" />
                   <span class="min-w-0">
-                    <span class="block text-[12.5px] font-medium">{template.name}</span>
-                    <span class="block truncate text-[11.5px] text-fg-3">{template.goal}</span>
+                    <span class="block text-sm font-medium">{template.name}</span>
+                    <span class="block truncate text-xs text-ink-3">{template.goal}</span>
                   </span>
                 </button>
               )}
@@ -144,12 +144,12 @@ export function ProjectStep(): JSX.Element {
           <StatusLine tone={failure() === undefined ? "muted" : "error"} text={failure()} />
 
           <Show when={project() !== undefined}>
-            <div class="flex items-center gap-2.5 rounded-[2px] border border-line-inner bg-raised px-3 py-2.5">
-              <Icon name="check" size={14} class="shrink-0 text-ok" />
-              <span class="min-w-0 truncate text-[12.5px] text-fg-2">
-                Created <span class="text-fg">{project()?.name}</span>
+            <div class="flex items-center gap-2.5 rounded-sm border border-line-2 bg-card px-3 py-2.5">
+              <Icon name="check" size={14} class="shrink-0 text-done" />
+              <span class="min-w-0 truncate text-sm text-ink-2">
+                Created <span class="text-ink">{project()?.name}</span>
               </span>
-              <span class="ml-auto shrink-0 font-mono text-[10.5px] text-fg-4">/p/{project()?.slug}</span>
+              <span class="ml-auto shrink-0 font-mono text-2xs text-icon">/p/{project()?.slug}</span>
             </div>
           </Show>
 
@@ -166,19 +166,19 @@ export function ProjectStep(): JSX.Element {
 
         <div class="min-w-0">
           <span class="label">Preview in the sidebar</span>
-          <div class="mt-3 overflow-hidden rounded-[4px] border border-line bg-surface">
-            <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-3">
-              <span class="grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised text-fg-2">
+          <div class="mt-3 overflow-hidden rounded-md border border-line-1 bg-panel">
+            <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-3">
+              <span class="grid h-6 w-6 shrink-0 place-items-center rounded-sm border border-line-2 bg-card text-ink-2">
                 <ProjectMark slug={slugify(previewName())} name={previewName()} size={15} />
               </span>
               <div class="min-w-0 flex-1">
-                <div class="truncate text-[13px] font-medium">{previewName()}</div>
-                <div class="text-[11.5px] text-fg-3">New · no threads yet</div>
+                <div class="truncate text-base font-medium">{previewName()}</div>
+                <div class="text-xs text-ink-3">New · no threads yet</div>
               </div>
             </div>
-            <div class="px-3.5 py-3.5 text-[12.5px] leading-[1.6] text-fg-3">{previewGoal()}</div>
+            <div class="px-3.5 py-3.5 text-sm leading-[1.6] text-ink-3">{previewGoal()}</div>
           </div>
-          <p class="mt-3.5 text-[12px] leading-[1.6] text-fg-3">
+          <p class="mt-3.5 text-sm leading-[1.6] text-ink-3">
             The sidebar picks a glyph from the name. Preset defaults to Full; change it in the project’s settings.
           </p>
         </div>

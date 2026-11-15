@@ -156,9 +156,15 @@ export const REFUSED_HANDSHAKES = 3
 export class Streams {
   #ws: WebSocket | undefined
   #subs = new Map<string, Set<Subscription>>()
+  /** The subscribers each outstanding resume was computed from: only they may apply its answer. */
+  #resuming = new Map<string, ReadonlySet<Subscription>>()
   #retry = 0
   #refused = 0
   #stopped = false
+  /** The token being retired while the stream is held; the hold ends only once a different token is stored. */
+  #held: string | undefined
+  /** Bumped by every reconnect the tab asks for, so a check or a timer from before it does nothing. */
+  #run = 0
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
   readonly #onSession: (socket: string | undefined) => void
   readonly #onSignedOut: () => void
@@ -177,10 +183,12 @@ export class Streams {
     const set = this.#subs.get(stream) ?? new Set<Subscription>()
     this.#subs.set(stream, set)
     set.add(subscription)
-    if (set.size === 1) this.#send({ t: "sub", stream })
+    // A plain sub per subscriber, so one that joins a live stream (or one awaiting a resume) gets a full snapshot.
+    this.#send({ t: "sub", stream })
     return () => {
       set.delete(subscription)
       if (set.size === 0) {
+        this.#resuming.delete(stream)
         this.#subs.delete(stream)
         this.#send({ t: "unsub", stream })
       }
@@ -188,7 +196,7 @@ export class Streams {
   }
 
   open(): void {
-    if (this.#ws !== undefined || this.#stopped) return
+    if (this.#ws !== undefined || this.#stopped || this.#holding()) return
     this.#onStatus("connecting")
     const url = new URL("/v1/socket", location.href)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
@@ -202,8 +210,10 @@ export class Streams {
       this.#onStatus("open")
       // Changes announced while this tab had no socket were missed, so what it cached may be stale.
       invalidateReads()
+      this.#resuming.clear()
       for (const [stream, subs] of this.#subs) {
         const resume = cursorOf(subs)
+        if (resume !== undefined) this.#resuming.set(stream, new Set(subs))
         this.#send(resume === undefined ? { t: "sub", stream } : { t: "sub", stream, resume })
       }
     })
@@ -220,24 +230,57 @@ export class Streams {
 
   /** Drops the socket so the next handshake carries the current token; subscriptions survive the bounce. */
   reconnectNow(): void {
+    if (this.#holding()) return
     this.#retry = 0
     this.#refused = 0
+    this.#run += 1
+    if (this.#ws === undefined) this.open()
+    else this.#ws.close()
+  }
+
+  /**
+   * Holds the socket closed while the owner retires this tab's token on purpose, so its refused handshakes cannot end
+   * the session before the one-time replacement is copied or adopted. Only a different stored token ends the hold: a
+   * push or any other `reconnectNow()` with the retired token still stored keeps it.
+   */
+  pause(): void {
+    this.#held = token()
+    this.#run += 1
     this.#ws?.close()
+  }
+
+  /** Ends a hold whose rotation never happened, so the token it held is still the live one. */
+  resume(): void {
+    this.#held = undefined
+    this.reconnectNow()
+  }
+
+  #holding(): boolean {
+    if (this.#held === undefined) return false
+    const stored = token()
+    // Another tab signing out empties the shared token; that is not the replacement, so the hold stays.
+    if (stored === this.#held || stored === "") return true
+    this.#held = undefined
+    return false
   }
 
   /**
    * A handshake the server refuses looks like any dropped socket, so after a run of them the tab asks once whether the
-   * token still works. A 401 ends the session instead of redialling for the life of the tab; anything else, an offline
-   * network included, keeps the backoff and starts a new run.
+   * token still works. A 401 for the token still stored ends the session instead of redialling for the life of the tab;
+   * a 401 for a token replaced meanwhile, or anything else, an offline network included, keeps the backoff.
    */
   async #reconnect(): Promise<void> {
+    if (this.#holding()) return
+    const run = this.#run
     if (this.#refused >= REFUSED_HANDSHAKES) {
       this.#refused = 0
-      const status = await fetch("/v1/status", { headers: { authorization: `Bearer ${token()}` } }).then(
+      const presented = token()
+      const status = await fetch("/v1/status", { headers: { authorization: `Bearer ${presented}` } }).then(
         (response) => response.status,
         () => undefined,
       )
-      if (status === 401) {
+      if (run !== this.#run) return
+      if (status === 401 && token() === presented) {
         this.#stopped = true
         this.#onSignedOut()
         return
@@ -245,7 +288,9 @@ export class Streams {
     }
     const delay = Math.min(15_000, 500 * 2 ** this.#retry)
     this.#retry += 1
-    setTimeout(() => this.#openWhenVisible(), delay)
+    setTimeout(() => {
+      if (run === this.#run) this.#openWhenVisible()
+    }, delay)
   }
 
   /** A hidden tab waits to be seen before it dials again, so a dead socket in a background tab costs no requests. */
@@ -272,7 +317,15 @@ export class Streams {
       return
     }
     if (frame.t === "resume") {
-      for (const sub of this.#subs.get(frame.stream) ?? []) sub.resume?.apply(frame.value, frame.start)
+      const asked = this.#resuming.get(frame.stream)
+      this.#resuming.delete(frame.stream)
+      for (const sub of this.#subs.get(frame.stream) ?? []) if (asked?.has(sub)) sub.resume?.apply(frame.value, frame.start)
+      return
+    }
+    // A server from before resume (a rollback) refuses a sub that carries one: ask again plainly, for a snapshot.
+    if (frame.t === "error" && frame.message === "unknown frame" && this.#resuming.size > 0) {
+      for (const stream of this.#resuming.keys()) if (this.#subs.has(stream)) this.#send({ t: "sub", stream })
+      this.#resuming.clear()
       return
     }
     if (frame.t === "changed") {
@@ -319,6 +372,7 @@ export function uploadFile(
   file: File,
   folder: string,
   onProgress?: (fraction: number) => void,
+  signal?: AbortSignal,
 ): Promise<UploadedFile> {
   const safe = file.name.replace(/[^\w.\-]+/gu, "-").slice(-80)
   const type = file.type === "" ? "application/octet-stream" : file.type
@@ -337,6 +391,12 @@ export function uploadFile(
       else reject(new OpError("upload", `${file.name}: HTTP ${request.status}`))
     }
     request.onerror = () => reject(new OpError("upload", `${file.name}: the upload did not reach the Worker`))
+    request.onabort = () => reject(new OpError("aborted", `${file.name}: upload cancelled`))
+    if (signal?.aborted === true) {
+      reject(new OpError("aborted", `${file.name}: upload cancelled`))
+      return
+    }
+    signal?.addEventListener("abort", () => request.abort(), { once: true })
     request.send(file)
   })
 }

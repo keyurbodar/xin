@@ -25,6 +25,16 @@ export function connect(): Streams {
   return streams
 }
 
+/** Keeps the socket closed while this tab's token is being retired on purpose; `reauthorize()` resumes it. */
+export function holdConnection(): void {
+  streams?.pause()
+}
+
+/** Ends a hold whose rotation failed, so the socket redials with the token it already had. */
+export function releaseConnection(): void {
+  streams?.resume()
+}
+
 /** Bounces the socket after the owner token changed, so the handshake carries the new one. */
 export function reauthorize(): void {
   streams?.reconnectNow()

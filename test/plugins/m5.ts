@@ -134,6 +134,12 @@ const step: FauxResponseStep = async (context, options) => {
     const call = delegate(1, "elsewhere-1", "wrong project", "beta").content[0]
     return fauxAssistantMessage(call === undefined ? [] : [call], { stopReason: "toolUse" })
   }
+  if (prompt.includes("captain notes")) {
+    return fauxAssistantMessage(
+      [fauxToolCall("captain_notes", { file: "notes", text: "Ship small PRs." }, { id: "captain-notes-1" })],
+      { stopReason: "toolUse" },
+    )
+  }
   if (prompt.includes("delegate one")) {
     const call = delegate(1, "one-1").content[0]
     return fauxAssistantMessage(call === undefined ? [] : [call], { stopReason: "toolUse" })

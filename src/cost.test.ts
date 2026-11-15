@@ -1,3 +1,4 @@
+import { fauxAssistantMessage, getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
@@ -5,7 +6,7 @@ import { describe, expect, it } from "vitest"
 import { M5_MODEL } from "../test/plugins/m5.ts"
 import { eventually, fresh, OWNER_HEADERS } from "../test/support.ts"
 import { freshProduct, measureTurn, type Move, productCmd, type ProductStub, type TurnCost } from "../test/turncost.ts"
-import { FAUX_MODEL, type Home } from "../test/worker.ts"
+import { FAUX_MODEL, type Home, PRODUCT_MODEL, type ProductHomeTest, respondProduct } from "../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
 const MESSAGE_ROW_BOUND = 18
@@ -256,5 +257,49 @@ describe("a turn, in what the model bills", () => {
     expect(warm.freshBytes).toBeLessThanOrEqual(2_900)
     expect(warm.toolResultBytes).toBeLessThanOrEqual(2_700)
     for (const request of warm.requests) expect(request.systemEntries, "system entries").toBe(1)
+  })
+})
+
+describe("a delegated thread, in what its first request bills", () => {
+  it("keeps the first request within the measured bound", async () => {
+    const stub = freshProduct()
+    const created = await productCmd(stub, "thread-project", "project.create", { slug: "lean", name: "lean" })
+    expect(created.ok, JSON.stringify(created)).toBe(true)
+    const project = projectOf(created.result)
+    const encoder = new TextEncoder()
+    const first: { promptBytes?: number; schemaBytes?: number; tools?: readonly string[] } = {}
+    respondProduct(
+      Array.from({ length: 4 }, () => (request) => {
+        const system = getCurrentSystemPrompt(request.messages)
+        if (first.promptBytes === undefined && system.includes("You are a thread named")) {
+          const tools = getCurrentTools(request.messages)
+          first.promptBytes = request.messages.reduce(
+            (total, message) => total + encoder.encode(JSON.stringify(message)).length,
+            0,
+          )
+          first.schemaBytes = encoder.encode(JSON.stringify(tools)).length
+          first.tools = tools.map((tool) => tool.name)
+        }
+        return fauxAssistantMessage("done")
+      }),
+    )
+    await runInDurableObject(stub, async (home: ProductHomeTest) => {
+      const coordinator = await home.harness.conversation(project.coordinatorId as ConversationId, context)
+      if (coordinator === undefined) throw new Error("no coordinator conversation")
+      await coordinator.configure({ model: PRODUCT_MODEL }, context)
+      const outcome = await home.loader.ctx.threads.delegate(
+        { conversationId: project.coordinatorId as ConversationId, taskId: "cost-thread" },
+        { task: "answer", title: "Lean", mode: "async", clientRequestId: "cost-thread" },
+        context,
+      )
+      expect(outcome.kind, JSON.stringify(outcome)).toBe("started")
+      await home.harness.waitForIdle(context)
+    })
+
+    expect(first.promptBytes, "the thread made no request").toBeDefined()
+    expect(first.tools).not.toContain("schedule_create")
+    expect(first.tools).not.toContain("create_goal")
+    expect(first.promptBytes ?? Infinity).toBeLessThanOrEqual(5_450)
+    expect(first.schemaBytes ?? Infinity).toBeLessThanOrEqual(4_850)
   })
 })
