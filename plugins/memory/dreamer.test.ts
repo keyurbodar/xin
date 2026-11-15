@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest"
 import { appendNote, CURSOR_KEY, PROFILE_KEY, readKv, readNumber, RETRY_KEY, TRANSCRIPT_CURSOR_KEY } from "./dreamer.ts"
 import { PROFILE_LIMIT, validateDreamerOutput } from "./dreamprompt.ts"
 import type { CommandId } from "../../src/ids.ts"
-import { eventually, fresh } from "../../test/support.ts"
+import { eventually, fresh, OWNER_HEADERS } from "../../test/support.ts"
 import { DREAM_MODEL, dreamJson, requests, script } from "../../test/plugins/m7.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 
@@ -222,5 +222,27 @@ describe("Dreamer output", () => {
     expect(requestText(0)).toContain(CHAT)
     expect(await runInDurableObject(stub, (home: Home) => readNumber(home.db, TRANSCRIPT_CURSOR_KEY))).toBeUndefined()
     expect(await runInDurableObject(stub, (home: Home) => readKv(home.db, PROFILE_KEY))).toBeUndefined()
+  })
+
+  it("moves the home revision on after a pass that rewrites the profile and adds a note", async () => {
+    const stub = fresh()
+    const bump = async (): Promise<string> => {
+      const reply = await stub.fetch(
+        new Request("https://ingle.test/v1/cmd", {
+          method: "POST",
+          headers: { ...OWNER_HEADERS, "content-type": "application/json" },
+          body: JSON.stringify({ id: `bump-${crypto.randomUUID()}`, op: "test.bump", args: { by: 1 } }),
+        }),
+      )
+      return String(reply.headers.get("x-ingle-rev"))
+    }
+    await runInDurableObject(stub, seed)
+    const [epoch, before] = (await bump()).split(".")
+    script([
+      dreamJson({ profile_md: "Takes the train.", add: [{ scope: "me", text: "Commutes by train" }], retire: [] }),
+    ])
+    await runInDurableObject(stub, (home: Home) => run(home, "announce-forget", "memory.forget", { query: "dinosaur" }))
+    await eventually(stub, async (home: Home) => (await readKv(home.db, PROFILE_KEY)) !== undefined)
+    expect(await bump()).toBe(`${epoch}.${Number(before) + 2}`)
   })
 })
