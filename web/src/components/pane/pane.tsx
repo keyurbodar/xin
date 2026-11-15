@@ -118,7 +118,14 @@ export function ProjectPane(props: {
       <Show when={view()} keyed>
         {(current) => (
           <div class="im-pane min-h-0 flex-1 overflow-y-auto p-2" data-instant={untrack(keyStarted) ? "" : undefined}>
-            {current.render({ project: props.project, onOpenThread: props.onOpenThread })}
+            {untrack(() =>
+              current.render({
+                get project() {
+                  return props.project
+                },
+                onOpenThread: props.onOpenThread,
+              }),
+            )}
           </div>
         )}
       </Show>

@@ -21,13 +21,19 @@ export function issueStates(): Promise<readonly IssueState[]> {
   return states
 }
 
-/** The project's open issues, up to the contract's page limit: one read per screen and per home revision. */
-export async function openProjectIssues(project: string): Promise<readonly IssueSummary[]> {
-  return parseIssuePage(await cmd<unknown>("issue.list", { project, closed: false, limit: 200 }))
+/** The project's open or closed issues, up to the contract's page limit: one read per screen and per home revision. */
+export async function projectIssues(project: string, closed: boolean): Promise<readonly IssueSummary[]> {
+  return parseIssuePage(await cmd<unknown>("issue.list", { project, closed, limit: 200 }))
 }
 
-export async function issueDetail(id: number): Promise<IssueDetail> {
-  const detail = parseIssueDetail(await cmd<unknown>("issue.get", { id }))
+/** Prefix search over titles and descriptions, for the link picker. */
+export async function searchIssues(project: string, q: string): Promise<readonly IssueSummary[]> {
+  return parseIssuePage(await cmd<unknown>("issue.list", { project, q, limit: 8 }))
+}
+
+/** The issue with its newest timeline page, or the page before `before`. */
+export async function issueDetail(id: number, before?: number): Promise<IssueDetail> {
+  const detail = parseIssueDetail(await cmd<unknown>("issue.get", before === undefined ? { id } : { id, before }))
   if (detail === undefined) throw new Error(`Issue #${id} came back malformed`)
   return detail
 }
@@ -49,3 +55,8 @@ export function updateIssue(id: number, fields: Record<string, unknown>): Promis
 export async function commentOnIssue(id: number, body: string): Promise<void> {
   await cmd<unknown>("issue.comment", { id, body })
 }
+
+export function linkIssue(args: Record<string, unknown>, on: boolean): Promise<Issue> {
+  return issueOf(cmd<unknown>(on ? "issue.link" : "issue.unlink", args))
+}
+

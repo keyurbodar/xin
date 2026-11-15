@@ -1,6 +1,17 @@
 import { expect, test } from "bun:test"
 import {
   actorName,
+  assigneeCandidates,
+  assigneesEdit,
+  closedGroups,
+  descriptionEdit,
+  dueEdit,
+  issueIdOf,
+  linkArgs,
+  titleEdit,
+  withHead,
+  withOlder,
+  type IssueDetail,
   assigneeName,
   dueLabel,
   eventLine,
@@ -104,7 +115,7 @@ test("the detail parses links, the timeline and whether older events exist", () 
   expect(detail?.children.map((child) => child.id)).toEqual([2])
   expect(detail?.links).toEqual({ blocks: [{ id: 3, title: "C", state: "todo" }], blockedBy: [], related: [] })
   expect(detail?.timeline.map((event) => event.id)).toEqual([10])
-  expect(detail?.earlier).toBe(true)
+  expect(detail?.earlier).toBe(9)
   expect(parseIssueDetail({ issue: { id: 1 } })).toBeUndefined()
 })
 
@@ -182,4 +193,91 @@ test("new issue args need a title and carry only the options that were picked", 
     priority: "high",
     state: "needs-you",
   })
+})
+
+test("closed groups list only closed states with issues, in state order", () => {
+  const states = parseStates({
+    states: [
+      { id: "todo", name: "Todo", closed: false, position: 0 },
+      { id: "canceled", name: "Canceled", closed: true, position: 7 },
+      { id: "done", name: "Done", closed: true, position: 6 },
+    ],
+  })
+  const groups = closedGroups(states, [issue(1, "canceled"), issue(2, "done"), issue(3, "todo")])
+  expect(groups.map((group) => [group.state.id, group.issues.map((entry) => entry.id)])).toEqual([
+    ["done", [2]],
+    ["canceled", [1]],
+  ])
+})
+
+test("title and description edits trim, refuse an empty title and skip no-ops", () => {
+  expect(titleEdit("Ship", " Ship ")).toEqual({ kind: "same" })
+  expect(titleEdit("Ship", "  ")).toEqual({ kind: "invalid", message: "A title cannot be empty" })
+  expect(titleEdit("Ship", " Ship it ")).toEqual({ kind: "send", fields: { title: "Ship it" } })
+  expect(descriptionEdit("Body", "Body\n\n")).toEqual({ kind: "same" })
+  expect(descriptionEdit("Body", "")).toEqual({ kind: "send", fields: { description: "" } })
+})
+
+test("due edits send the date, null for Clear, and nothing when unchanged", () => {
+  expect(dueEdit(null, "2026-11-20")).toEqual({ kind: "send", fields: { due: "2026-11-20" } })
+  expect(dueEdit("2026-11-20", "")).toEqual({ kind: "send", fields: { due: null } })
+  expect(dueEdit(null, "")).toEqual({ kind: "same" })
+  expect(dueEdit("2026-11-20", "2026-11-20")).toEqual({ kind: "same" })
+  expect(dueEdit(null, "11/20")).toEqual({ kind: "invalid", message: "Pick a date" })
+})
+
+test("assignee edits send the whole list after one add or remove", () => {
+  const owner = { kind: "person", id: "owner" } as const
+  const thread = { kind: "thread", id: 7 } as const
+  expect(assigneesEdit([owner], { add: thread })).toEqual({ kind: "send", fields: { assignees: [owner, thread] } })
+  expect(assigneesEdit([owner, thread], { remove: owner })).toEqual({ kind: "send", fields: { assignees: [thread] } })
+  expect(assigneesEdit([owner], { add: { kind: "person", id: "owner" } })).toEqual({ kind: "same" })
+  expect(assigneesEdit([owner], { remove: thread })).toEqual({ kind: "same" })
+  const full = Array.from({ length: 20 }, (_, id) => ({ kind: "thread", id }) as const)
+  expect(assigneesEdit(full, { add: owner })).toEqual({ kind: "invalid", message: "At most 20 assignees" })
+})
+
+test("assignee candidates drop who is assigned and match the name or detail", () => {
+  const all = [
+    { assignee: { kind: "person", id: "owner" } as const, name: "You", detail: "Person" },
+    { assignee: { kind: "thread", id: 7 } as const, name: "Fix the build", detail: "Thread" },
+    { assignee: { kind: "captain", id: 1 } as const, name: "Bosun", detail: "Captain" },
+  ]
+  expect(assigneeCandidates(all, [{ kind: "thread", id: 7 }], "").map((entry) => entry.name)).toEqual(["You", "Bosun"])
+  expect(assigneeCandidates(all, [], "capt").map((entry) => entry.name)).toEqual(["Bosun"])
+  expect(assigneeCandidates(all, [], "build").map((entry) => entry.name)).toEqual(["Fix the build"])
+})
+
+test("link entry reads an id, and link args refuse self and duplicate links", () => {
+  expect(issueIdOf("#12")).toBe(12)
+  expect(issueIdOf(" 12 ")).toBe(12)
+  expect(issueIdOf("12a")).toBeUndefined()
+  expect(issueIdOf("#0")).toBeUndefined()
+  const links = { blocks: [{ id: 3, title: "C", state: "todo" }], blockedBy: [], related: [] }
+  expect(linkArgs(1, "blocks", 4, links)).toEqual({ kind: "send", args: { id: 1, kind: "blocks", other: 4 } })
+  expect(linkArgs(1, "blocks", 1, links)).toEqual({ kind: "invalid", message: "An issue cannot link to itself" })
+  expect(linkArgs(1, "blocks", 3, links)).toEqual({ kind: "invalid", message: "#3 is already listed there" })
+  expect(linkArgs(1, "related", 3, links).kind).toBe("send")
+})
+
+function page(ids: readonly number[], earlier: number | null): IssueDetail {
+  return {
+    issue: { ...issue(1, "todo"), description: "" },
+    children: [],
+    links: { blocks: [], blockedBy: [], related: [] },
+    timeline: ids.map((id) => event(id, "created")),
+    earlier,
+  }
+}
+
+test("older pages prepend and take the older cursor; a head re-read merges without gaps and keeps it", () => {
+  const head = withHead(undefined, page([101, 102, 103], 101))
+  expect(head).toEqual({ events: page([101, 102, 103], null).timeline, cursor: 101, paged: false })
+  const older = withOlder(head, page([1, 2, 100], null))
+  expect(older.events.map((entry) => entry.id)).toEqual([1, 2, 100, 101, 102, 103])
+  expect(older.cursor).toBeNull()
+  const moved = withHead(older, page([103, 104, 105], 103))
+  expect(moved.events.map((entry) => entry.id)).toEqual([1, 2, 100, 101, 102, 103, 104, 105])
+  expect(moved.cursor).toBeNull()
+  expect(withHead(head, page([102, 103, 104], 102)).cursor).toBe(102)
 })
