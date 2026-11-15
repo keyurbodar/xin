@@ -160,6 +160,13 @@ export class Store {
     return this.db.run("UPDATE automation_triggers SET next_at = ? WHERE id = ?", next, triggerId)
   }
 
+  /** Every conversation a run of an automation went to, for the Drive scope those conversations see. */
+  runThreads(): Promise<{ readonly automation_id: string; readonly thread_id: number }[]> {
+    return this.db.all(
+      "SELECT automation_id, thread_id FROM automation_runs WHERE thread_id IS NOT NULL UNION SELECT id, thread_id FROM automations WHERE thread_id IS NOT NULL",
+    )
+  }
+
   setThread(automationId: string, threadId: number): Promise<void> {
     return this.db.run("UPDATE automations SET thread_id = ? WHERE id = ?", threadId, automationId)
   }

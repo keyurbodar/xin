@@ -2,6 +2,7 @@ import type { Env } from "./env.ts"
 
 export { Home } from "./host.ts"
 import { bearer, sameToken } from "./kernel/token.ts"
+import { serveShare } from "./share.ts"
 import { upload } from "./upload.ts"
 
 const home = (env: Env) => env.HOME.get(env.HOME.idFromName("owner"))
@@ -25,6 +26,8 @@ export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === "/health") return new Response("ok")
+    const shared = await serveShare(request, env)
+    if (shared !== undefined) return shared
     if (url.pathname.startsWith("/hooks/")) return home(env).fetch(request)
     const presented = bearer(request)
     if (presented === undefined || presented === "") return new Response("unauthorized", { status: 401 })
