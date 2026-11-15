@@ -6,7 +6,7 @@ import { activeProjects, projectThreads, routeProject, routeThreadId, type Proje
 import { owner, ownerName } from "../../state/settings.ts"
 import { navigate, route } from "../../lib/router.ts"
 import { ago } from "../../lib/format.ts"
-import { arrival } from "../../lib/motion.ts"
+import { stagger } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { setTheme, theme, themeOf } from "../../lib/theme.ts"
 import { openThreadTab } from "../../state/tabs.ts"
@@ -24,12 +24,13 @@ const THEMES = [
 ] as const
 
 const ROW =
-  "flex h-[var(--h-row)] w-full shrink-0 items-center gap-2.5 rounded-sm px-2 text-left text-sm hover:bg-secondary"
+  "flex h-[var(--h-row)] w-full shrink-0 items-center gap-2.5 rounded-sm px-2 text-left text-sm im-hover"
 
 export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; drawer: boolean }): JSX.Element {
   onMount(() => void owner.reload())
   const first = (): string | undefined => route().parts[0]
-  const arriving = arrival(() => activeProjects().length > 0)
+  let projects: HTMLDivElement | undefined
+  stagger(() => projects, () => activeProjects().length > 0)
 
   return (
     <aside class="flex h-full w-[var(--w-sidebar)] shrink-0 flex-col bg-bg">
@@ -72,7 +73,7 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
             <Plus {...ICON} />
           </button>
         </SectionHead>
-        <div class="flex flex-col gap-px px-2" classList={{ arrive: arriving() }}>
+        <div ref={projects} class="flex flex-col gap-px px-2">
           <For each={activeProjects()} fallback={<span class="px-2 py-1 text-sm text-ink-3">No projects yet</span>}>
             {(project) => <ProjectRow project={project} />}
           </For>
@@ -99,7 +100,7 @@ function NavRow(props: {
       disabled={props.disabled === true}
       onClick={() => props.onClick()}
       class={`${ROW} disabled:opacity-50`}
-      classList={{ "bg-hover text-ink hover:bg-hover": props.active === true, "text-ink-2": props.active !== true }}
+      classList={{ "bg-hover text-ink": props.active === true, "text-ink-2": props.active !== true }}
     >
       <span class="text-ink-3">{props.children}</span>
       {props.label}
@@ -124,7 +125,7 @@ function ProjectRow(props: { project: ProjectSummary }): JSX.Element {
       type="button"
       onClick={() => navigate(`/p/${props.project.slug}`)}
       class={ROW}
-      classList={{ "bg-hover text-ink hover:bg-hover": current(), "text-ink-2": !current() }}
+      classList={{ "bg-hover text-ink": current(), "text-ink-2": !current() }}
     >
       <span class="grid h-5 w-5 shrink-0 place-items-center rounded-xs border border-line-2 bg-card text-ink-2">
         <ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={13} />
@@ -148,7 +149,8 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
     openThreadTab(props.project.id, id)
     navigate(`/p/${props.project.slug}/t/${id}`)
   }
-  const arriving = arrival(() => threads().length > 0)
+  let list: HTMLDivElement | undefined
+  stagger(() => list, () => threads().length > 0)
 
   return (
     <>
@@ -183,7 +185,7 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
           />
         </div>
       </Show>
-      <div class="flex flex-col gap-px px-2" classList={{ arrive: arriving() }}>
+      <div ref={list} class="flex flex-col gap-px px-2">
         <For
           each={threads()}
           fallback={
@@ -197,7 +199,7 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
                 type="button"
                 onClick={() => open(thread.id)}
                 class={ROW}
-                classList={{ "bg-hover text-ink hover:bg-hover": current(), "text-ink-2": !current() }}
+                classList={{ "bg-hover text-ink": current(), "text-ink-2": !current() }}
               >
                 <StatusGlyph state={visualState(thread.status)} size={14} class="shrink-0" />
                 <span class="min-w-0 flex-1 truncate">{thread.title}</span>

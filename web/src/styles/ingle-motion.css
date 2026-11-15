@@ -1,0 +1,530 @@
+/*
+  Ingle motion, v1 (AMA-20). Drop-in after ingle-tokens.css.
+  Source of truth for Doop canvas elsVZejERK page 17 · Motion (live); every frame there embeds this file.
+
+  Rules (emil-design-eng):
+  - Keyboard-started and 100+/day actions do not animate: put data-instant on the element (or :root) for those.
+  - No ease-in. Enter and exit use --ease-out; exits run ~70% of the entrance. On-screen movement uses --ease-in-out.
+  - UI motion stays under 300ms. Transform and opacity only; grid-template-rows grow is the one layout exception.
+  - Nothing starts from scale(0). Popovers scale from their trigger (--transform-origin); dialogs stay centred.
+  - Hover is gated to (hover: hover) and (pointer: fine).
+  - App-driven UI (toasts, chips, tabs, toggles, tool calls) uses transitions + @starting-style so it can be interrupted.
+    Ark UI overlays (menu, popover, tooltip, dialog, sheet) use keyframes on data-state, because Ark's presence
+    waits for animationend before unmounting.
+  - prefers-reduced-motion, or :root[data-motion="reduce"] from the Appearance setting, keeps opacity and colour, drops movement, stills loops.
+  - :root[data-visibility="hidden"] pauses every loop (set it from document.visibilitychange).
+*/
+
+:root {
+  --ease-out: cubic-bezier(.23, 1, .32, 1);
+  --ease-in-out: cubic-bezier(.77, 0, .175, 1);
+  --ease-drawer: cubic-bezier(.32, .72, 0, 1);
+  --ease-spring: cubic-bezier(.3, 1.4, .5, 1);
+  --ease-color: ease;
+
+  --dur-press: 120ms;
+  --dur-release: 160ms;
+  --dur-hover-in: 100ms;
+  --dur-hover-out: 140ms;
+  --dur-tooltip: 125ms;
+  --dur-tooltip-exit: 100ms;
+  --dur-popover: 150ms;
+  --dur-popover-exit: 100ms;
+  --dur-dialog: 200ms;
+  --dur-dialog-exit: 140ms;
+  --dur-sheet: 240ms;
+  --dur-sheet-exit: 180ms;
+  --dur-drawer: 300ms;
+  --dur-drawer-exit: 200ms;
+  --dur-toast: 200ms;
+  --dur-toast-exit: 140ms;
+  --dur-pane: 150ms;
+  --dur-grow: 200ms;
+  --dur-grow-exit: 140ms;
+  --dur-swap: 200ms;
+  --dur-morph: 160ms;
+  --dur-arrive: 200ms;
+  --dur-roll: 200ms;
+  --dur-flip: 200ms;
+  --dur-lift: 140ms;
+  --dur-progress: 240ms;
+  --dur-ring: 240ms;
+  --dur-shake: 240ms;
+  --dur-chunk: 120ms;
+  --dur-reduce: 120ms;
+
+  --loop-chase: .96s;
+  --loop-breathe: 1.4s;
+  --loop-blink: 1.6s;
+  --loop-shimmer: 2.4s;
+  --loop-skeleton: 2.4s;
+  --loop-caret: 1s;
+  --loop-indeterminate: 1.2s;
+
+  --stagger: 40ms;
+  --skeleton-delay: 150ms;
+  --tooltip-delay: 500ms;
+  --toast-life: 5s;
+
+  --press-scale: .97;
+  --pop-from: .97;
+  --dialog-from: .96;
+  --arrive-from: .9;
+  --tab-from: .96;
+  --lift-scale: 1.02;
+  --swap-blur: 2px;
+  --nudge: 4px;
+  --rise: 8px;
+
+  --shadow-lift: 0 8px 24px rgb(0 0 0 / .32), 0 0 0 .5px var(--color-line-2);
+}
+
+/* ---------- 1. Press and hover ---------- */
+
+.im-press {
+  transition: transform var(--dur-release) var(--ease-out);
+}
+.im-press:active:not(:disabled, [aria-disabled="true"]) {
+  transform: scale(var(--press-scale));
+  transition-duration: var(--dur-press);
+}
+
+.im-hover {
+  transition: background-color var(--dur-hover-out) var(--ease-color), color var(--dur-hover-out) var(--ease-color);
+}
+@media (hover: hover) and (pointer: fine) {
+  .im-hover:hover {
+    background-color: var(--color-hover);
+    color: var(--color-ink);
+    transition-duration: var(--dur-hover-in);
+  }
+}
+
+.im-focus:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ---------- 2. Ark overlays: menu, popover, select, tooltip ---------- */
+
+.im-pop {
+  transform-origin: var(--transform-origin, top left);
+}
+.im-pop[data-state="open"] {
+  animation: im-pop-in var(--dur-popover) var(--ease-out);
+}
+.im-pop[data-state="closed"] {
+  animation: im-pop-out var(--dur-popover-exit) var(--ease-out) forwards;
+}
+.im-tip {
+  transform-origin: var(--transform-origin, bottom center);
+}
+.im-tip[data-state="open"] {
+  animation: im-pop-in var(--dur-tooltip) var(--ease-out);
+}
+.im-tip[data-state="closed"] {
+  animation: im-pop-out var(--dur-tooltip-exit) var(--ease-out) forwards;
+}
+.im-tip[data-instant],
+.im-pop[data-instant] {
+  animation-duration: 0ms;
+}
+@keyframes im-pop-in {
+  from { opacity: 0; transform: scale(var(--pop-from)); }
+}
+@keyframes im-pop-out {
+  to { opacity: 0; transform: scale(var(--pop-from)); }
+}
+
+/* ---------- 3. Dialog, right sheet, bottom drawer ---------- */
+
+.im-scrim[data-state="open"] { animation: im-fade-in var(--dur-dialog) var(--ease-out); }
+.im-scrim[data-state="closed"] { animation: im-fade-out var(--dur-dialog-exit) var(--ease-out) forwards; }
+
+.im-dialog { transform-origin: center; }
+.im-dialog[data-state="open"] { animation: im-dialog-in var(--dur-dialog) var(--ease-out); }
+.im-dialog[data-state="closed"] { animation: im-dialog-out var(--dur-dialog-exit) var(--ease-out) forwards; }
+@keyframes im-dialog-in { from { opacity: 0; transform: scale(var(--dialog-from)); } }
+@keyframes im-dialog-out { to { opacity: 0; transform: scale(var(--dialog-from)); } }
+
+.im-sheet[data-state="open"] { animation: im-sheet-in var(--dur-sheet) var(--ease-drawer); }
+.im-sheet[data-state="closed"] { animation: im-sheet-out var(--dur-sheet-exit) var(--ease-drawer) forwards; }
+@keyframes im-sheet-in { from { transform: translateX(100%); } }
+@keyframes im-sheet-out { to { transform: translateX(100%); } }
+
+.im-drawer {
+  transform: translateY(var(--drag-y, 0px));
+}
+.im-drawer[data-state="open"] { animation: im-drawer-in var(--dur-drawer) var(--ease-drawer); }
+.im-drawer[data-state="closed"] { animation: im-drawer-out var(--dur-drawer-exit) var(--ease-drawer) forwards; }
+.im-drawer[data-dragging] { animation: none; transition: none; }
+.im-drawer[data-settling] { transition: transform var(--dur-drawer) var(--ease-drawer); }
+@keyframes im-drawer-in { from { transform: translateY(100%); } }
+@keyframes im-drawer-out { to { transform: translateY(100%); } }
+
+@keyframes im-fade-in { from { opacity: 0; } }
+@keyframes im-fade-out { to { opacity: 0; } }
+
+/* ---------- 4. Pane swap (right pane view change, Overview → Files) ---------- */
+
+.im-pane {
+  transition: opacity var(--dur-pane) var(--ease-out), transform var(--dur-pane) var(--ease-out);
+  @starting-style { opacity: 0; transform: translateY(var(--nudge)); }
+}
+
+/* ---------- 5. Toasts (Sonner-style stack, transitions so a burst stays smooth) ---------- */
+
+.im-toast {
+  --i: 0;
+  transform: translateY(calc(var(--i) * -10px)) scale(calc(1 - var(--i) * .05));
+  opacity: calc(1 - var(--i) * .2);
+  transition: transform var(--dur-toast) var(--ease-out), opacity var(--dur-toast) var(--ease-out);
+  @starting-style { transform: translateY(100%); opacity: 0; }
+}
+.im-toast[data-index="3"],
+.im-toast[data-index="4"] { opacity: 0; pointer-events: none; }
+.im-toast-stack:hover .im-toast,
+.im-toast-stack:focus-within .im-toast {
+  transform: translateY(calc(var(--offset, 0px) * -1));
+  opacity: 1;
+}
+.im-toast[data-removed] {
+  transform: translateY(100%);
+  opacity: 0;
+  transition-duration: var(--dur-toast-exit);
+}
+.im-toast[data-swiping] { transition: none; transform: translateX(var(--swipe-x, 0px)); }
+.im-toast-life {
+  transform-origin: left;
+  animation: im-life var(--toast-life) linear forwards;
+}
+.im-toast-stack:hover .im-toast-life,
+:root[data-visibility="hidden"] .im-toast-life { animation-play-state: paused; }
+@keyframes im-life { to { transform: scaleX(0); } }
+
+/* ---------- 6. Tabs: open, close, reorder (FLIP moves use `translate`, so they never fight scale) ---------- */
+
+.im-flip { transition: translate var(--dur-flip) var(--ease-in-out); }
+.im-lift {
+  transition: transform var(--dur-lift) var(--ease-out), box-shadow var(--dur-lift) var(--ease-out), translate var(--dur-flip) var(--ease-in-out);
+}
+.im-tab {
+  transform-origin: left center;
+  transition:
+    opacity var(--dur-arrive) var(--ease-out),
+    transform var(--dur-arrive) var(--ease-out),
+    translate var(--dur-flip) var(--ease-in-out),
+    box-shadow var(--dur-lift) var(--ease-out);
+  @starting-style { opacity: 0; transform: scale(var(--tab-from)); }
+}
+.im-tab[data-closing] {
+  opacity: 0;
+  transform: scale(var(--tab-from));
+  transition-duration: var(--dur-dialog-exit), var(--dur-dialog-exit), var(--dur-flip), var(--dur-lift);
+  pointer-events: none;
+}
+.im-lift[data-dragging] {
+  translate: var(--drag-x, 0px) 0;
+  transform: scale(var(--lift-scale));
+  box-shadow: var(--shadow-lift);
+  transition: transform var(--dur-lift) var(--ease-out), box-shadow var(--dur-lift) var(--ease-out);
+  z-index: 2;
+}
+.im-lift[data-settling] {
+  transition: translate var(--dur-flip) var(--ease-out), transform var(--dur-lift) var(--ease-out), box-shadow var(--dur-lift) var(--ease-out);
+  z-index: 2;
+}
+.im-flip[data-flip-start],
+.im-tab[data-instant],
+.im-flip[data-instant] { transition: none; }
+
+/* ---------- 7. Grow in place: tool call, run row, crew pill ---------- */
+
+.im-grow {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-grow-exit) var(--ease-out);
+}
+.im-grow > * { min-height: 0; overflow: hidden; }
+.im-grow > * > * {
+  opacity: 0;
+  transform: translateY(calc(var(--nudge) * -1));
+  transition: opacity var(--dur-grow-exit) var(--ease-out), transform var(--dur-grow-exit) var(--ease-out);
+}
+.im-grow[data-open] {
+  grid-template-rows: 1fr;
+  transition-duration: var(--dur-grow);
+}
+.im-grow[data-open] > * > * {
+  opacity: 1;
+  transform: none;
+  transition-duration: var(--dur-grow);
+  transition-delay: 60ms;
+}
+.im-chevron { transition: transform var(--dur-grow) var(--ease-out); }
+[data-open] > .im-chevron,
+.im-chevron[data-open] { transform: rotate(90deg); }
+
+/* ---------- 8. Arrival, count roll, list stagger ---------- */
+
+.im-arrive {
+  transition: transform var(--dur-arrive) var(--ease-spring), opacity var(--dur-arrive) var(--ease-out);
+  @starting-style { transform: scale(var(--arrive-from)); opacity: 0; }
+}
+
+.im-roll {
+  display: inline-flex;
+  height: 1lh;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+.im-roll > span {
+  display: flex;
+  flex-direction: column;
+  transform: translateY(calc(var(--d, 0) * -1lh));
+  transition: transform var(--dur-roll) var(--ease-out);
+}
+
+.im-stagger > * {
+  animation: im-rise var(--dur-arrive) var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 5) * var(--stagger));
+}
+@keyframes im-rise { from { opacity: 0; transform: translateY(var(--rise)); } }
+
+.im-event {
+  transition: opacity var(--dur-swap) var(--ease-out), transform var(--dur-swap) var(--ease-out);
+  @starting-style { opacity: 0; transform: translateY(var(--nudge)); }
+}
+
+/* ---------- 9. State swap: status line text, labels, icons (crossfade with blur) ---------- */
+
+.im-swap { display: inline-grid; }
+.im-swap > * {
+  grid-area: 1 / 1;
+  transition: opacity var(--dur-swap) var(--ease-out), filter var(--dur-swap) var(--ease-out), transform var(--dur-swap) var(--ease-out);
+}
+.im-swap > :not([data-active]) {
+  opacity: 0;
+  filter: blur(var(--swap-blur));
+  transform: translateY(var(--nudge));
+  pointer-events: none;
+}
+.im-swap-icon > * { transition-duration: var(--dur-morph); }
+.im-swap-icon > :not([data-active]) { transform: scale(.6); }
+
+/* ---------- 10. Signal (3×3 D-Grid) with dot-level state morph ---------- */
+
+.sig {
+  --s: 14px;
+  --c: var(--color-ink-3);
+  display: inline-grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: calc(var(--s) * .12);
+  width: var(--s);
+  height: var(--s);
+  flex: none;
+}
+.sig[data-size="12"] { --s: 12px; }
+.sig[data-size="16"] { --s: 16px; }
+.sig[data-size="20"] { --s: 20px; }
+.sig i {
+  border-radius: 999px;
+  background: var(--c);
+  opacity: .18;
+  transition: opacity var(--dur-swap) var(--ease-out), background-color var(--dur-swap) var(--ease-color);
+}
+.sig[data-state="idle"] i:nth-child(5) { opacity: .7; }
+.sig[data-state="queued"] i { opacity: .35; }
+.sig[data-state="working"] { --c: var(--color-working); }
+.sig[data-state="working"] i { animation: im-sig-run var(--loop-chase) linear infinite; }
+.sig[data-state="working"] i:nth-child(2) { animation-delay: .12s; }
+.sig[data-state="working"] i:nth-child(3) { animation-delay: .24s; }
+.sig[data-state="working"] i:nth-child(6) { animation-delay: .36s; }
+.sig[data-state="working"] i:nth-child(9) { animation-delay: .48s; }
+.sig[data-state="working"] i:nth-child(8) { animation-delay: .60s; }
+.sig[data-state="working"] i:nth-child(7) { animation-delay: .72s; }
+.sig[data-state="working"] i:nth-child(4) { animation-delay: .84s; }
+.sig[data-state="working"] i:nth-child(5) { animation: none; opacity: .5; }
+.sig[data-state="needs"] { --c: var(--color-needs); }
+.sig[data-state="needs"] i:nth-child(2n) { opacity: 1; animation: im-breathe var(--loop-breathe) ease-in-out infinite; }
+.sig[data-state="needs"] i:nth-child(5) { opacity: 1; }
+.sig[data-state="waiting"] { --c: var(--color-ink-2); }
+.sig[data-state="waiting"] i:is(:nth-child(1), :nth-child(3), :nth-child(7), :nth-child(9)) { opacity: .6; }
+.sig[data-state="waiting"] i:nth-child(5) { opacity: 1; animation: im-breathe var(--loop-blink) ease-in-out infinite; }
+.sig[data-state="done"] { --c: var(--color-done); }
+.sig[data-state="done"] i:is(:nth-child(3), :nth-child(4), :nth-child(6), :nth-child(8)) { opacity: 1; }
+.sig[data-state="failed"] { --c: var(--color-failed); }
+.sig[data-state="failed"] i:nth-child(odd) { opacity: 1; }
+.sig[data-state="merged"] { --c: var(--color-merged); }
+.sig[data-state="merged"] i:is(:nth-child(1), :nth-child(3), :nth-child(4), :nth-child(5), :nth-child(7)) { opacity: 1; }
+@keyframes im-sig-run { 0% { opacity: 1; } 40%, 100% { opacity: .2; } }
+@keyframes im-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* ---------- 11. Thinking, streaming, working text ---------- */
+
+.im-shimmer {
+  color: transparent;
+  background: linear-gradient(90deg, var(--color-ink-3) 0 40%, var(--color-ink) 50%, var(--color-ink-3) 60% 100%) 0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: im-shimmer var(--loop-shimmer) linear infinite;
+}
+@keyframes im-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+
+.im-chunk { animation: im-fade-in var(--dur-chunk) var(--ease-out); }
+
+.im-caret {
+  display: inline-block;
+  width: .5em;
+  height: 1em;
+  vertical-align: -.15em;
+  margin-left: 2px;
+  border-radius: 2px;
+  background: var(--color-ink-2);
+  animation: im-caret var(--loop-caret) steps(1) infinite;
+}
+@keyframes im-caret { 50% { opacity: 0; } }
+
+.im-dots { display: inline-flex; gap: 3px; }
+.im-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--color-ink-3);
+  animation: im-breathe var(--loop-breathe) ease-in-out infinite;
+}
+.im-dots i:nth-child(2) { animation-delay: .16s; }
+.im-dots i:nth-child(3) { animation-delay: .32s; }
+
+/* ---------- 12. Composer: send → stop, upload progress, context ring, rejected input, copy ---------- */
+
+.im-send {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  transition: background-color var(--dur-morph) var(--ease-out), color var(--dur-morph) var(--ease-out), transform var(--dur-release) var(--ease-out);
+}
+.im-send[data-state="idle"] { background: var(--color-secondary); color: var(--color-icon); }
+.im-send:active:not(:disabled) { transform: scale(var(--press-scale)); transition-duration: var(--dur-morph), var(--dur-morph), var(--dur-press); }
+
+.im-progress {
+  transform-origin: left;
+  transform: scaleX(var(--p, 0));
+  transition: transform var(--dur-progress) var(--ease-out), opacity var(--dur-toast-exit) var(--ease-out);
+}
+.im-progress[data-done] { opacity: 0; transition-delay: 0ms, 200ms; }
+.im-progress[data-indeterminate] {
+  width: 35%;
+  transform: none;
+  animation: im-indeterminate var(--loop-indeterminate) var(--ease-in-out) infinite;
+}
+@keyframes im-indeterminate { from { translate: -100% 0; } to { translate: 300% 0; } }
+
+.im-ring {
+  --p: 0;
+  --ring-c: var(--color-ink-2);
+  fill: none;
+  stroke: var(--ring-c);
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - var(--p));
+  transition: stroke-dashoffset var(--dur-ring) var(--ease-out), stroke var(--dur-swap) var(--ease-color);
+}
+.im-ring[data-level="warn"] { --ring-c: var(--color-working); }
+.im-ring[data-level="full"] { --ring-c: var(--color-failed); }
+
+.im-reject {
+  animation: im-shake var(--dur-shake) var(--ease-in-out);
+  box-shadow: 0 0 0 1px var(--color-failed);
+}
+@keyframes im-shake {
+  20% { transform: translateX(calc(var(--nudge) * -1)); }
+  50% { transform: translateX(var(--nudge)); }
+  80% { transform: translateX(calc(var(--nudge) * -.5)); }
+}
+
+/* ---------- 13. Switch, checkbox ---------- */
+
+.im-switch > i { transition: transform 150ms var(--ease-in-out); }
+.im-switch { transition: background-color 150ms var(--ease-in-out); }
+.im-switch[aria-checked="true"] > i { transform: translateX(12px); }
+.im-check path {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+  transition: stroke-dashoffset 140ms var(--ease-out) 40ms;
+}
+.im-check[aria-checked="true"] path { stroke-dashoffset: 0; }
+.im-check { transition: background-color 80ms var(--ease-out), box-shadow 80ms var(--ease-out); }
+
+/* ---------- 14. Skeleton → content ---------- */
+
+.im-skeleton {
+  background: var(--color-muted);
+  border-radius: var(--radius-xs);
+  animation:
+    im-fade-in var(--dur-swap) var(--ease-out) var(--skeleton-delay) both,
+    im-pulse var(--loop-skeleton) ease-in-out calc(var(--skeleton-delay) + var(--dur-swap)) infinite;
+}
+@keyframes im-pulse { 50% { opacity: .5; } }
+.im-content { animation: im-fade-in var(--dur-swap) var(--ease-out); }
+
+/* ---------- 15. Instant, hidden tab, reduced motion ---------- */
+
+:root[data-instant] *,
+[data-instant] {
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+}
+
+:root[data-visibility="hidden"] :is(.sig i, .im-shimmer, .im-caret, .im-dots i, .im-skeleton, .im-progress[data-indeterminate]) {
+  animation-play-state: paused;
+}
+
+/* Reduced motion: the OS setting, or Settings → Appearance → Reduce motion (:root[data-motion="reduce"]). Same rules both ways. */
+@media (prefers-reduced-motion: reduce) {
+  .im-press:active, .im-send:active { transform: none; }
+  .im-pop[data-state], .im-tip[data-state], .im-dialog[data-state], .im-sheet[data-state], .im-drawer[data-state], .im-scrim[data-state] {
+    animation-name: im-fade-in;
+    animation-duration: var(--dur-reduce);
+  }
+  .im-pop[data-state="closed"], .im-tip[data-state="closed"], .im-dialog[data-state="closed"], .im-sheet[data-state="closed"], .im-drawer[data-state="closed"], .im-scrim[data-state="closed"] {
+    animation-name: im-fade-out;
+  }
+  .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { transform: none; transition-property: opacity; transition-duration: var(--dur-reduce); }
+  .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { @starting-style { transform: none; opacity: 0; } }
+  .im-toast[data-removed] { transform: none; }
+  .im-flip, .im-lift, .im-lift[data-dragging], .im-roll > span, .im-chevron, .im-switch > i { transition: none; }
+  .im-lift[data-dragging] { transform: none; }
+  .im-tab { transition-property: opacity; }
+  .im-grow, .im-grow > * > * { transition: none; transform: none; }
+  .im-stagger > * { animation: im-fade-in var(--dur-reduce) var(--ease-out) both; animation-delay: 0ms; }
+  .im-swap > * { filter: none; transform: none; }
+  .im-reject { animation: none; }
+  .sig i, .im-shimmer, .im-caret, .im-dots i, .im-skeleton, .im-progress[data-indeterminate] { animation: none; }
+  .im-shimmer { color: var(--color-ink-3); background: none; }
+  .im-skeleton { opacity: 1; }
+  .im-ring { transition-property: stroke; }
+}
+:root[data-motion="reduce"] {
+  .im-press:active, .im-send:active { transform: none; }
+  .im-pop[data-state], .im-tip[data-state], .im-dialog[data-state], .im-sheet[data-state], .im-drawer[data-state], .im-scrim[data-state] {
+    animation-name: im-fade-in;
+    animation-duration: var(--dur-reduce);
+  }
+  .im-pop[data-state="closed"], .im-tip[data-state="closed"], .im-dialog[data-state="closed"], .im-sheet[data-state="closed"], .im-drawer[data-state="closed"], .im-scrim[data-state="closed"] {
+    animation-name: im-fade-out;
+  }
+  .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { transform: none; transition-property: opacity; transition-duration: var(--dur-reduce); }
+  .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { @starting-style { transform: none; opacity: 0; } }
+  .im-toast[data-removed] { transform: none; }
+  .im-flip, .im-lift, .im-lift[data-dragging], .im-roll > span, .im-chevron, .im-switch > i { transition: none; }
+  .im-lift[data-dragging] { transform: none; }
+  .im-tab { transition-property: opacity; }
+  .im-grow, .im-grow > * > * { transition: none; transform: none; }
+  .im-stagger > * { animation: im-fade-in var(--dur-reduce) var(--ease-out) both; animation-delay: 0ms; }
+  .im-swap > * { filter: none; transform: none; }
+  .im-reject { animation: none; }
+  .sig i, .im-shimmer, .im-caret, .im-dots i, .im-skeleton, .im-progress[data-indeterminate] { animation: none; }
+  .im-shimmer { color: var(--color-ink-3); background: none; }
+  .im-skeleton { opacity: 1; }
+  .im-ring { transition-property: stroke; }
+}
