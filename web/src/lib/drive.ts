@@ -194,13 +194,20 @@ export function isStale(problem: unknown): boolean {
 
 export type ConflictChoice = "reload" | "overwrite"
 
-/** After a stale write: Reload drops the edits and reads the file again; Overwrite writes them over the version now current. */
+export type DriveWrite = { readonly scope: DriveScope; readonly path: string; readonly text: string; readonly base?: string }
+
+/** What Save sends: the draft, with the sha the file was opened at as `base` so a newer version is never replaced unseen. */
+export function writeArgs(scope: DriveScope, path: string, text: string, opened: { readonly sha256: string } | undefined): DriveWrite {
+  return opened === undefined ? { scope, path, text } : { scope, path, text, base: opened.sha256 }
+}
+
+/** After a stale write: Reload drops the edits and reads the file again; Overwrite sends them again over the version now current. */
 export function resolveConflict(
   choice: ConflictChoice,
-  draft: string,
+  stale: DriveWrite,
   current: { readonly sha256: string },
-): { readonly kind: "reload" } | { readonly kind: "write"; readonly text: string; readonly base: string } {
-  return choice === "reload" ? { kind: "reload" } : { kind: "write", text: draft, base: current.sha256 }
+): { readonly kind: "reload" } | { readonly kind: "write"; readonly write: DriveWrite } {
+  return choice === "reload" ? { kind: "reload" } : { kind: "write", write: { ...stale, base: current.sha256 } }
 }
 
 /** Files over the upload limit never leave the browser; the rest are sent. */
@@ -226,8 +233,7 @@ export const drive = {
     cmd<DriveListing>("drive.list", prefix === "" ? { scope } : { scope, prefix }),
   read: (scope: DriveScope, path: string, sha256?: string) =>
     cmd<DriveFile>("drive.read", sha256 === undefined ? { scope, path } : { scope, path, sha256 }),
-  write: (scope: DriveScope, path: string, text: string, base?: string) =>
-    change<DriveEntry>("drive.write", base === undefined ? { scope, path, text } : { scope, path, text, base }),
+  write: (args: DriveWrite) => change<DriveEntry>("drive.write", args),
   move: (scope: DriveScope, from: string, to: string, toScope: DriveScope) =>
     change<DriveEntry>("drive.move", { scope, from, to, toScope }),
   remove: (scope: DriveScope, path: string) => change<{ readonly deleted: boolean }>("drive.delete", { scope, path }),
