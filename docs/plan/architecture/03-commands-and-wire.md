@@ -60,7 +60,8 @@ client → {"_tag":"Ping"}                              auto-answered by the run
 
 server → {t:"hello", socket}                          the socket's own id, sent once on accept
 server → {t:"ack",  id, ok, result|error}
-server → {t:"snap", stream, value}                    bounded: last 60 entries + live state; older via cmd history.page
+server → {t:"snap", stream, value, rev?}              bounded: last 60 entries + live state; older via cmd history.page; home carries rev
+server → {t:"resume", stream, value?, start?}         answer to a sub with resume: what the client lacks (below)
 server → {t:"ev",   stream, events[]}                 pi watchEvents deltas: text appends, tool output, status
 ```
 
@@ -68,7 +69,7 @@ server → {t:"ev",   stream, events[]}                 pi watchEvents deltas: t
 
 - Sockets use `ctx.acceptWebSocket()`. Each socket's subscriptions live in `serializeAttachment()`, so they survive hibernation.
 - There is **one pi conversation watch per subscribed conversation** (`Conversation.watch`, a window of 60 to 120 entries), shared by all sockets. It starts on the first `sub`, and again on wake for every stream in the surviving sockets' attachments, so a hibernated tab keeps getting events. It stops when the last subscriber leaves. `ev.events` are the watch's delta ops against the snapshot's view.
-- **Reconnect = fresh snapshot.** pi doesn't replay, and that's fine: the snapshot is bounded and the client keeps its own cache. Cursor replay (kiko and t3) adds a sequence log we don't need.
+- **Reconnect resumes from what the client holds.** A resubscribe may carry `resume`. For a conversation that is `{start, from}`: the oldest entry id the client holds, and one past its newest. When `start` is at or before the first entry of the shared watch's window, the server answers `{t:"resume", value, start}`. `value` is the watch's current view with only the entries from `from` on, and `start` is the window's first entry id. The client keeps its own entries from `start` up to `from`, then appends `value.entries`, which rebuilds exactly the window that later `ev` ops index into. For the home stream, `resume` is `{rev}`, the digest the last `snap` carried. When that digest is still current, the answer is `{t:"resume", stream}` with no value. Any other case falls back to a full `snap`. There is no sequence log: the cursor is entry ids, which never change once committed. A `snap` and a resume both start from the watch's newest value, not its value at attachment.
 - **Loading earlier entries** is one read op, not a replay: the snapshot value carries `before`, the entry just older than its window, and `history.page` passes it back as an exclusive cursor. The client prepends each page and keeps the newest `nextBefore` until a page omits it.
 - The `home` stream is a projection: projects, each project's Overview (threads grouped by status), the open-request count, and running jobs. It is recomputed from docs on every commit that touches `xin.*` docs, then diffed and sent.
 - When no socket is connected and a report or question lands, the DO sends one Web Push (VAPID, sent with `fetch`) carrying the thread title.

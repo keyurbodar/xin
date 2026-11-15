@@ -7,6 +7,8 @@ type Listener = (event: { data?: unknown }) => void
 let requests: string[] = []
 let statusReply = 401
 let accept = false
+let sent: unknown[] = []
+let sockets: FakeSocket[] = []
 
 class FakeSocket {
   static readonly OPEN = 1
@@ -15,6 +17,7 @@ class FakeSocket {
 
   constructor(url: URL) {
     requests.push(`socket ${url.pathname}`)
+    sockets.push(this)
     queueMicrotask(() => {
       if (accept) {
         this.readyState = FakeSocket.OPEN
@@ -27,7 +30,13 @@ class FakeSocket {
     this.#listeners.set(type, [...(this.#listeners.get(type) ?? []), listener])
   }
 
-  send(): void {}
+  send(frame: string): void {
+    sent.push(JSON.parse(frame))
+  }
+
+  deliver(frame: unknown): void {
+    this.#emit("message", { data: JSON.stringify(frame) })
+  }
 
   close(): void {
     if (this.readyState === 3) return
@@ -44,6 +53,8 @@ beforeEach(() => {
   requests = []
   statusReply = 401
   accept = false
+  sent = []
+  sockets = []
   vi.useFakeTimers()
   vi.stubGlobal("WebSocket", FakeSocket)
   vi.stubGlobal("location", { href: "https://ingle.test/" })
@@ -110,5 +121,34 @@ describe("Streams on a refused token", () => {
     streams.open()
     await vi.advanceTimersByTimeAsync(HOUR)
     expect(requests).toEqual(["socket /v1/socket"])
+  })
+})
+
+describe("Streams on a reconnect", () => {
+  it("resubscribes with what each stream holds and hands the server's answer to it", async () => {
+    accept = true
+    const applied: unknown[] = []
+    const streams = new Streams(
+      () => undefined,
+      () => undefined,
+      () => undefined,
+    )
+    streams.subscribe("conv:7", {
+      value: () => undefined,
+      delta: () => undefined,
+      resume: { cursor: () => ({ start: 3, from: 9 }), apply: (value, start) => applied.push({ value, start }) },
+    })
+    streams.subscribe("home", { value: () => undefined, delta: () => undefined })
+    streams.open()
+    await vi.advanceTimersByTimeAsync(0)
+    sent = []
+    streams.reconnectNow()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(sent).toEqual([
+      { t: "sub", stream: "conv:7", resume: { start: 3, from: 9 } },
+      { t: "sub", stream: "home" },
+    ])
+    sockets.at(-1)?.deliver({ t: "resume", stream: "conv:7", value: { entries: [] }, start: 5 })
+    expect(applied).toEqual([{ value: { entries: [] }, start: 5 }])
   })
 })
