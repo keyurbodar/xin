@@ -182,8 +182,8 @@ function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | unde
         </Show>
       </Skullet>
           <Composer
-            projectName={props.project.name}
-            modelLabel={modelLabel()}
+            project={props.project}
+            modelLabel={currentInfo()?.name ?? modelLabel()}
             model={chosenModel()}
             models={choices()}
             omitted={pickerModels.latest?.omitted ?? 0}
@@ -205,8 +205,8 @@ function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | unde
             onPickEffort={async (thinking: ThinkingLevel) => {
               await cmd("conv.configure", { conv: props.project.coordinatorId, thinking })
             }}
-            onAttach={async (file, onProgress) => {
-              const uploaded = await uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress)
+            onAttach={async (file, onProgress, signal) => {
+              const uploaded = await uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress, signal)
               forgetProjectFiles(props.project.slug)
               return uploaded
             }}

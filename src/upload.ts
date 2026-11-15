@@ -70,7 +70,7 @@ async function copy(env: Env, staged: string, key: string): Promise<void> {
   await pump
 }
 
-export async function upload(request: Request, env: Env): Promise<Response | undefined> {
+export async function upload(request: Request, env: Env, presented: string): Promise<Response | undefined> {
   const url = new URL(request.url)
   if (request.method !== "PUT" || !url.pathname.startsWith("/files/")) return undefined
   let decoded: string
@@ -100,7 +100,7 @@ export async function upload(request: Request, env: Env): Promise<Response | und
     const committed = await env.HOME.get(env.HOME.idFromName("owner")).fetch(
       new Request("https://ingle.internal/v1/files/commit", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", authorization: `Bearer ${presented}` },
         body: JSON.stringify({
           path,
           r2Key: blobKey(result.digest),
