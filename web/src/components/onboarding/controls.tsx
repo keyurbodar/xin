@@ -1,16 +1,6 @@
 import { Show, type JSX } from "solid-js"
 import { Button } from "../ui/button.tsx"
-
-export function Spinner(props: { tone?: "dark" | "light" }): JSX.Element {
-  return (
-    <svg width={14} height={14} viewBox="0 0 16 16" aria-hidden="true" class={props.tone === "light" ? "text-ink-2" : "text-on-primary"}>
-      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-opacity="0.22" stroke-width="1.6" />
-      <g class="spinner-arc">
-        <path d="M8 2a6 6 0 0 1 6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-      </g>
-    </svg>
-  )
-}
+import { Spinner } from "../ui/loaders.tsx"
 
 export function PrimaryButton(props: {
   label: string
@@ -27,7 +17,7 @@ export function PrimaryButton(props: {
       onClick={props.onClick}
     >
       <Show when={props.busy === true}>
-        <Spinner />
+        <Spinner size={14} />
       </Show>
       <Show when={props.busy !== true}>{props.icon}</Show>
       {props.label}

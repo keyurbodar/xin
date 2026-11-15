@@ -1,270 +1,134 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { REFUSED_HANDSHAKES, Streams } from "./api.ts"
+import { afterEach, beforeEach, expect, test } from "bun:test"
+import { repair, Streams } from "./api.ts"
 
-type Listener = (event: { data?: unknown }) => void
-
-/** Every request the tab makes, as the Worker would count them. */
-let requests: string[] = []
-let dialled: string[] = []
-let statusReply = 401
-let accept = false
-let stored = "own_revoked"
-/** A status reply the test resolves by hand, so a token can change while the check is in flight. */
-let pending: ((status: number) => void) | undefined
-let hold = false
+type Listener = () => void
 
 class FakeSocket {
-  static readonly OPEN = 1
+  static opened: FakeSocket[] = []
+  readonly listeners = new Map<string, Listener[]>()
   readyState = 0
-  readonly #listeners = new Map<string, Listener[]>()
 
-  constructor(url: URL, protocols: readonly string[]) {
-    requests.push(`socket ${url.pathname}`)
-    dialled.push(protocols.find((protocol) => protocol.startsWith("bearer.")) ?? "")
-    queueMicrotask(() => {
-      if (accept) {
-        this.readyState = FakeSocket.OPEN
-        this.#emit("open", {})
-      } else this.close()
-    })
+  constructor() {
+    FakeSocket.opened.push(this)
   }
 
   addEventListener(type: string, listener: Listener): void {
-    this.#listeners.set(type, [...(this.#listeners.get(type) ?? []), listener])
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
   }
 
   send(): void {}
 
   close(): void {
-    if (this.readyState === 3) return
-    this.readyState = 3
-    this.#emit("close", {})
-  }
-
-  #emit(type: string, event: { data?: unknown }): void {
-    for (const listener of this.#listeners.get(type) ?? []) listener(event)
+    for (const listener of this.listeners.get("close") ?? []) listener()
   }
 }
 
+const timers = new Map<number, () => void>()
+const waiting = new Set<Listener>()
+let nextTimer = 1
+let visibility: "visible" | "hidden" = "visible"
+const saved = {
+  fetch: globalThis.fetch,
+  setTimeout: globalThis.setTimeout,
+  clearTimeout: globalThis.clearTimeout,
+  WebSocket: Reflect.get(globalThis, "WebSocket"),
+  document: Reflect.get(globalThis, "document"),
+  location: Reflect.get(globalThis, "location"),
+}
+
+function install(name: string, value: unknown): void {
+  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true })
+}
+
 beforeEach(() => {
-  requests = []
-  dialled = []
-  statusReply = 401
-  accept = false
-  stored = "own_revoked"
-  pending = undefined
-  hold = false
-  vi.useFakeTimers()
-  vi.stubGlobal("WebSocket", FakeSocket)
-  vi.stubGlobal("location", { href: "https://ingle.test/" })
-  vi.stubGlobal("document", { visibilityState: "visible", addEventListener: () => undefined })
-  vi.stubGlobal("localStorage", {
-    getItem: () => stored,
-    setItem: (_key: string, value: string) => {
-      stored = value
+  FakeSocket.opened = []
+  timers.clear()
+  waiting.clear()
+  visibility = "visible"
+  install("WebSocket", FakeSocket)
+  install("location", { href: "http://127.0.0.1:5199/" })
+  install("document", {
+    get visibilityState() {
+      return visibility
     },
-    removeItem: () => {
-      stored = ""
-    },
+    addEventListener: (_type: string, listener: Listener) => waiting.add(listener),
+    removeEventListener: (_type: string, listener: Listener) => waiting.delete(listener),
   })
-  vi.stubGlobal("fetch", async (input: string, init?: { headers?: Record<string, string> }) => {
-    requests.push(`fetch ${input} ${init?.headers?.["authorization"] ?? ""}`.trim())
-    const status = hold ? await new Promise<number>((resolve) => (pending = resolve)) : statusReply
-    return new Response(null, { status })
+  install("setTimeout", (run: () => void) => {
+    const id = nextTimer++
+    timers.set(id, run)
+    return id
+  })
+  install("clearTimeout", (id: number | undefined) => {
+    if (id !== undefined) timers.delete(id)
   })
 })
 
 afterEach(() => {
-  vi.useRealTimers()
-  vi.unstubAllGlobals()
+  for (const [name, value] of Object.entries(saved)) install(name, value)
 })
 
-const HOUR = 60 * 60_000
+const quiet = (): Streams => new Streams(() => {}, () => {}, () => {}, () => {})
 
-describe("Streams on a refused token", () => {
-  it("checks /v1/status once after a run of refused handshakes and stops dialling on a 401", async () => {
-    let signedOut = 0
-    const streams = new Streams(
-      () => undefined,
-      () => undefined,
-      () => {
-        signedOut += 1
-      },
-    )
-    streams.open()
-    await vi.advanceTimersByTimeAsync(HOUR)
-    expect(signedOut).toBe(1)
-    expect(requests).toEqual([
-      ...Array.from({ length: REFUSED_HANDSHAKES }, () => "socket /v1/socket"),
-      "fetch /v1/status Bearer own_revoked",
-    ])
-  })
+function fire(): void {
+  const [id, run] = [...timers.entries()][0] ?? []
+  if (id === undefined || run === undefined) throw new Error("no pending dial")
+  timers.delete(id)
+  run()
+}
 
-  it("keeps the backoff when the token still works, asking again only after another run", async () => {
-    statusReply = 503
-    let signedOut = 0
-    const streams = new Streams(
-      () => undefined,
-      () => undefined,
-      () => {
-        signedOut += 1
-      },
-    )
-    streams.open()
-    await vi.advanceTimersByTimeAsync(HOUR)
-    const dials = requests.filter((request) => request.startsWith("socket")).length
-    const checks = requests.filter((request) => request.startsWith("fetch /v1/status")).length
-    expect(signedOut).toBe(0)
-    expect(dials).toBeLessThanOrEqual(HOUR / 15_000 + 10)
-    expect(checks).toBe(Math.floor(dials / REFUSED_HANDSHAKES))
-  })
+test("reconnects and online events during an outage leave one pending dial, never a second chain", () => {
+  const streams = quiet()
+  streams.open()
+  FakeSocket.opened[0]?.close()
+  expect(timers.size).toBe(1)
 
-  it("never asks /v1/status while handshakes succeed", async () => {
-    accept = true
-    const streams = new Streams(
-      () => undefined,
-      () => undefined,
-      () => undefined,
-    )
-    streams.open()
-    await vi.advanceTimersByTimeAsync(HOUR)
-    expect(requests).toEqual(["socket /v1/socket"])
-  })
+  streams.dialNow()
+  streams.dialNow()
+  streams.dialNow()
+  expect(FakeSocket.opened.length).toBe(2)
+  expect(timers.size).toBe(0)
+
+  FakeSocket.opened[1]?.close()
+  expect(timers.size).toBe(1)
+  streams.dialNow()
+  FakeSocket.opened[2]?.close()
+  streams.dialNow()
+  FakeSocket.opened[3]?.close()
+  expect(timers.size).toBe(1)
+  fire()
+  expect(FakeSocket.opened.length).toBe(5)
+  expect(timers.size).toBe(0)
 })
 
-describe("Streams when the token changes under a check", () => {
-  it("ignores a 401 for a token that was replaced while the check was in flight", async () => {
-    hold = true
-    let signedOut = 0
-    const streams = new Streams(
-      () => undefined,
-      () => undefined,
-      () => {
-        signedOut += 1
-      },
-    )
-    streams.open()
-    await vi.advanceTimersByTimeAsync(5_000)
-    expect(pending).toBeDefined()
-    stored = "own_replacement"
-    accept = true
-    streams.reconnectNow()
-    pending?.(401)
-    await vi.advanceTimersByTimeAsync(HOUR)
-    expect(signedOut).toBe(0)
-    expect(dialled.at(-1)).toBe("bearer.own_replacement")
-    expect(dialled.filter((bearer) => bearer === "bearer.own_replacement")).toHaveLength(1)
-  })
+test("a hidden tab's wait for visibility is dropped when a dial starts, so it cannot dial again later", () => {
+  const streams = quiet()
+  streams.open()
+  FakeSocket.opened[0]?.close()
+  visibility = "hidden"
+  fire()
+  expect(waiting.size).toBe(1)
+  visibility = "visible"
+  streams.dialNow()
+  expect(waiting.size).toBe(0)
+  expect(FakeSocket.opened.length).toBe(2)
+})
 
-  it("dials nothing while paused for a released token, and resumes on the next token", async () => {
-    let signedOut = 0
-    const streams = new Streams(
-      () => undefined,
-      () => undefined,
-      () => {
-        signedOut += 1
-      },
-    )
-    accept = true
-    streams.open()
-    await vi.advanceTimersByTimeAsync(0)
-    streams.pause()
-    accept = false
-    await vi.advanceTimersByTimeAsync(HOUR)
-    expect(signedOut).toBe(0)
-    expect(requests).toEqual(["socket /v1/socket"])
-    stored = "own_replacement"
-    accept = true
-    streams.reconnectNow()
-    await vi.advanceTimersByTimeAsync(1_000)
-    expect(dialled).toEqual(["bearer.own_revoked", "bearer.own_replacement"])
+test("repair posts no body for a report and the drop for a repair, with the bearer token", async () => {
+  const sent: { method: string | undefined; body: unknown; auth: string | null }[] = []
+  install("fetch", async (_url: string, init: RequestInit) => {
+    sent.push({
+      method: init.method,
+      body: init.body,
+      auth: new Headers(init.headers).get("authorization"),
+    })
+    return new Response(JSON.stringify({ failure: null, journal: 0, checkpoint: 0 }), { status: 200 })
   })
-
-  it("ignores a 401 for a token another tab replaced, with no reconnect asked for", async () => {
-    hold = true
-    let signedOut = 0
-    const streams = new Streams(
-      () => undefined,
-      () => undefined,
-      () => {
-        signedOut += 1
-      },
-    )
-    streams.open()
-    await vi.advanceTimersByTimeAsync(5_000)
-    expect(pending).toBeDefined()
-    stored = "own_replacement"
-    accept = true
-    pending?.(401)
-    await vi.advanceTimersByTimeAsync(HOUR)
-    expect(signedOut).toBe(0)
-    expect(dialled.at(-1)).toBe("bearer.own_replacement")
-  })
-
-  it("keeps the hold through a push-driven reconnect while the retired token is still stored", async () => {
-    let signedOut = 0
-    const streams = new Streams(
-      () => undefined,
-      () => undefined,
-      () => {
-        signedOut += 1
-      },
-    )
-    accept = true
-    streams.open()
-    await vi.advanceTimersByTimeAsync(0)
-    streams.pause()
-    accept = false
-    for (let push = 0; push < 5; push += 1) {
-      streams.reconnectNow()
-      await vi.advanceTimersByTimeAsync(10_000)
-    }
-    await vi.advanceTimersByTimeAsync(HOUR)
-    expect(signedOut).toBe(0)
-    expect(requests).toEqual(["socket /v1/socket"])
-  })
-
-  it("resumes on the same token when the rotation that held it failed", async () => {
-    const streams = new Streams(
-      () => undefined,
-      () => undefined,
-      () => undefined,
-    )
-    accept = true
-    streams.open()
-    await vi.advanceTimersByTimeAsync(0)
-    streams.pause()
-    streams.resume()
-    await vi.advanceTimersByTimeAsync(1_000)
-    expect(dialled).toEqual(["bearer.own_revoked", "bearer.own_revoked"])
-  })
-
-  it("keeps the hold when another tab signs out and empties the shared token", async () => {
-    let signedOut = 0
-    const streams = new Streams(
-      () => undefined,
-      () => undefined,
-      () => {
-        signedOut += 1
-      },
-    )
-    accept = true
-    streams.open()
-    await vi.advanceTimersByTimeAsync(0)
-    streams.pause()
-    accept = false
-    stored = ""
-    for (let push = 0; push < 5; push += 1) {
-      streams.reconnectNow()
-      await vi.advanceTimersByTimeAsync(10_000)
-    }
-    await vi.advanceTimersByTimeAsync(HOUR)
-    expect(signedOut).toBe(0)
-    expect(requests).toEqual(["socket /v1/socket"])
-    stored = "own_replacement"
-    accept = true
-    streams.reconnectNow()
-    await vi.advanceTimersByTimeAsync(1_000)
-    expect(dialled).toEqual(["bearer.own_revoked", "bearer.own_replacement"])
-  })
+  expect(await repair()).toEqual({ kind: "report", report: { failure: null, journal: 0, checkpoint: 0 } })
+  await repair("journal")
+  expect(sent.map((call) => [call.method, call.body])).toEqual([
+    ["POST", undefined],
+    ["POST", JSON.stringify({ drop: "journal" })],
+  ])
+  expect(sent[0]?.auth).toMatch(/^Bearer/)
 })
