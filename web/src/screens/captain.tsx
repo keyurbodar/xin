@@ -3,9 +3,10 @@ import { GitFork, Menu, Settings } from "lucide-solid"
 import { navigate } from "../lib/router.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { connect } from "../state/connection.ts"
-import { createConversationView, type Snapshot } from "../state/conversation.ts"
+import { agentModelOf, createConversationView, type Snapshot } from "../state/conversation.ts"
 import { homeLoaded, projectThreads, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
-import { captainSpace, routeCaptain, routeCrewThreadId, type CaptainRow } from "../state/captains.ts"
+import { captainSpace, routeCaptain, routeCrewThreadId } from "../state/captains.ts"
+import { offersSideThread, type CaptainRow } from "../lib/captains.ts"
 import { models } from "../state/settings.ts"
 import { presets, prompts } from "../state/extensions.ts"
 import { refreshRequests } from "../state/requests.ts"
@@ -23,10 +24,8 @@ import { TranscriptSkeleton } from "../components/chat/transcript.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 import { costOf, ProjectChat } from "./project.tsx"
 
-const CAPTAIN_ACTIONS: readonly ConversationAction[] = [
-  { value: "settings", label: "Captain settings", icon: Settings },
-  { value: "side", label: "Side thread…", icon: GitFork },
-]
+const SETTINGS_ACTION: ConversationAction = { value: "settings", label: "Captain settings", icon: Settings }
+const SIDE_ACTION: ConversationAction = { value: "side", label: "Side thread…", icon: GitFork }
 
 /** A Captain is a coordinator with a space of its own, so its screen is the project workspace over that space. */
 function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary }): JSX.Element {
@@ -56,10 +55,6 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
     if (current !== undefined) openThreadTab(props.space.id, current.id)
   })
   createEffect(() => pruneThreadTabs(props.space.id, new Set(threads().keys())))
-  onMount(() => {
-    void prompts.reload()
-    void presets.reload()
-  })
   createEffect(() => {
     void props.space.openRequests
     void refreshRequests()
@@ -92,7 +87,7 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
             threads={tabThreads()}
             activeThreadId={thread()?.id}
             cost={costOf(snapshot())}
-            actions={CAPTAIN_ACTIONS}
+            actions={offersSideThread(agentModelOf(coordinatorSnapshot())) ? [SETTINGS_ACTION, SIDE_ACTION] : [SETTINGS_ACTION]}
             onAction={(value) => (value === "side" ? setSideOpen(true) : setSettingsOpen(true))}
           />
           <Show when={thread()?.id} keyed>
@@ -138,8 +133,13 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
   )
 }
 
+/** The catalog, prompts and presets load once for the screen, so switching Captains reads none of them again. */
 export function CaptainScreen(): JSX.Element {
-  onMount(() => void models.reload())
+  onMount(() => {
+    void models.reload()
+    void prompts.reload()
+    void presets.reload()
+  })
   return (
     <Show
       when={routeCaptain()?.id}

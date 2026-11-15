@@ -1,15 +1,16 @@
-import { createMemo, createResource, For, Show, type JSX } from "solid-js"
+import { createMemo, For, Show, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
 import { ArrowUpRight, UserMinus, UserPlus } from "lucide-solid"
 import { ago } from "../../lib/format.ts"
 import { STATE_WORD, visualState } from "../../lib/status.ts"
-import { addToCrew, captainDetail, homeCaptains, removeFromCrew, type CaptainProfile, type CrewMember } from "../../state/captains.ts"
+import { addToCrew, homeCaptains, removeFromCrew } from "../../state/captains.ts"
+import { crewOf } from "../../lib/captains.ts"
+import type { CaptainProfile, CrewMember } from "../../lib/captains.ts"
 import { homeProjects, projectThreads, type ProjectSummary, type ThreadSummary } from "../../state/home.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
-import { Skullet } from "../ui/skeleton.tsx"
-import { createPaneAction, EmptyState, PanelGhost, ResourceError } from "../chat/ui.tsx"
+import { createPaneAction, EmptyState } from "../chat/ui.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL } from "../shell/menu.ts"
 import { PANE_ROW } from "./bodies.tsx"
 import { Section } from "./overview.tsx"
@@ -20,19 +21,12 @@ type CrewContext = { readonly project: ProjectSummary; readonly captain: Captain
 
 type CrewRead = { readonly crew: readonly CrewMember[]; readonly at: number }
 
-/** captain.get runs again only when home changes what a crew row shows, so a heartbeat costs no command. */
-function createCrew(context: () => CrewContext) {
-  const key = createMemo(() => {
-    const threads = projectThreads(context().project)
-      .map((thread) => `${thread.id}:${thread.status}:${thread.statusLine ?? ""}:${thread.result?.length ?? 0}`)
-      .join("|")
-    return `${context().captain.id}#${threads}`
+/** The crew comes from the home stream's space threads, so no update costs a command. */
+function createCrew(context: () => CrewContext): () => CrewRead {
+  return createMemo(() => {
+    const at = Date.now()
+    return { crew: crewOf(context().project.threads, at), at }
   })
-  const [crew, { refetch }] = createResource(key, async (): Promise<CrewRead> => {
-    const detail = await captainDetail(context().captain.id)
-    return { crew: detail.crew, at: Date.now() }
-  })
-  return { crew, refetch }
 }
 
 function CrewRow(props: { member: CrewMember; at: number; onOpen: (id: number) => void; onRemove?: (() => void) | undefined; busy?: boolean }): JSX.Element {
@@ -78,8 +72,8 @@ function CrewRow(props: { member: CrewMember; at: number; onOpen: (id: number) =
 }
 
 export function CrewSection(props: CrewContext & { label: string }): JSX.Element {
-  const { crew } = createCrew(() => props)
-  const rows = (): readonly CrewMember[] => crew.latest?.crew ?? []
+  const crew = createCrew(() => props)
+  const rows = (): readonly CrewMember[] => crew().crew
   return (
     <Section
       label={props.label}
@@ -92,16 +86,16 @@ export function CrewSection(props: CrewContext & { label: string }): JSX.Element
     >
       <For
         each={rows().slice(0, OVERVIEW_ROWS)}
-        fallback={<span class="px-2 py-1.5 text-sm text-ink-3">{crew.loading ? "Loading the crew" : "No crew yet"}</span>}
+        fallback={<span class="px-2 py-1.5 text-sm text-ink-3">No crew yet</span>}
       >
-        {(member) => <CrewRow member={member} at={crew.latest?.at ?? Date.now()} onOpen={props.onOpenThread} />}
+        {(member) => <CrewRow member={member} at={crew().at} onOpen={props.onOpenThread} />}
       </For>
     </Section>
   )
 }
 
 export function CrewView(props: CrewContext): JSX.Element {
-  const { crew, refetch } = createCrew(() => props)
+  const crew = createCrew(() => props)
   const action = createPaneAction()
   const candidates = createMemo((): readonly ThreadSummary[] => {
     const captainSpaces = new Set(homeCaptains().map((captain) => captain.spaceId))
@@ -146,37 +140,28 @@ export function CrewView(props: CrewContext): JSX.Element {
       <Show when={action.failed()}>
         {(text) => <span class="px-2 pb-1 text-xs text-failed">{text()}</span>}
       </Show>
-      <Skullet loading={crew.latest === undefined && crew.loading} sample={() => <PanelGhost rows={4} />} label="Loading the crew">
-        <Show when={crew.error !== undefined && crew.latest === undefined}>
-          <ResourceError what="the crew" error={crew.error} onRetry={() => void refetch()} />
-        </Show>
-        <Show when={crew.latest}>
-          {(read) => (
-            <Show
-              when={read().crew.length > 0}
-              fallback={
-                <EmptyState
-                  pictogram="threads"
-                  title="No crew yet"
-                  detail={`Threads ${props.captain.name} starts join its crew. You can also add one from this project.`}
-                />
-              }
-            >
-              <For each={read().crew}>
-                {(member) => (
-                  <CrewRow
-                    member={member}
-                    at={read().at}
-                    onOpen={props.onOpenThread}
-                    busy={action.busy() === member.threadId}
-                    onRemove={() => void action.run(member.threadId, () => removeFromCrew(props.captain.id, member.threadId))}
-                  />
-                )}
-              </For>
-            </Show>
+      <Show
+        when={crew().crew.length > 0}
+        fallback={
+          <EmptyState
+            pictogram="threads"
+            title="No crew yet"
+            detail={`Threads ${props.captain.name} starts join its crew. You can also add one from this project.`}
+          />
+        }
+      >
+        <For each={crew().crew}>
+          {(member) => (
+            <CrewRow
+              member={member}
+              at={crew().at}
+              onOpen={props.onOpenThread}
+              busy={action.busy() === member.threadId}
+              onRemove={() => void action.run(member.threadId, () => removeFromCrew(props.captain.id, member.threadId))}
+            />
           )}
-        </Show>
-      </Skullet>
+        </For>
+      </Show>
     </div>
   )
 }

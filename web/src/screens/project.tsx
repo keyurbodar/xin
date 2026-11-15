@@ -5,7 +5,6 @@ import {
   projectThreads,
   routeProject,
   routeThreadId,
-  spaceRequests,
   type ProjectSummary,
   type ThreadSummary,
 } from "../state/home.ts"
@@ -22,6 +21,7 @@ import {
   type ThinkingLevel,
 } from "../state/conversation.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
+import { spaceRequests } from "../lib/spaces.ts"
 import { recordOf, numOf } from "../lib/parse.ts"
 import { openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
 import { modelName, models, searchModels, type ModelInfo, type ModelRef } from "../state/settings.ts"

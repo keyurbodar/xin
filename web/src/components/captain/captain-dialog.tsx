@@ -2,16 +2,11 @@ import { createResource, createSignal, For, Show, type JSX } from "solid-js"
 import { isDefinitive } from "../../lib/api.ts"
 import { navigate } from "../../lib/router.ts"
 import { slugify } from "../../lib/slug.ts"
-import {
-  archiveCaptain,
-  captainDetail,
-  createCaptain,
-  updateCaptain,
-  type CaptainFields,
-  type CaptainProfile,
-} from "../../state/captains.ts"
+import { archiveCaptain, captainDetail, createCaptain, updateCaptain } from "../../state/captains.ts"
+import { captainModel, modelKey, type CaptainFields, type CaptainProfile } from "../../lib/captains.ts"
 import { activeProjects, routeProject } from "../../state/home.ts"
-import { searchModels, type ModelInfo, type ModelRef } from "../../state/settings.ts"
+import { searchModels, type ModelInfo } from "../../state/settings.ts"
+import { ensureContext } from "../../state/context.ts"
 import { setSidebarDrawer } from "../../state/tabs.ts"
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
 
@@ -23,8 +18,6 @@ export function openNewCaptain(): void {
   setSidebarDrawer(false)
   setCreating(true)
 }
-
-const keyOf = (model: ModelRef): string => `${model.provider}/${model.modelId}`
 
 function failureText(problem: unknown): string {
   return problem instanceof Error ? problem.message : "That did not go through"
@@ -66,16 +59,22 @@ function ModelSelect(props: { value: string; disabled: boolean; allowDefault: bo
         <Show when={props.allowDefault}>
           <option value="">The project's coordinator model</option>
         </Show>
-        <Show when={props.value !== "" && !catalog().some((model) => keyOf(model) === props.value)}>
+        <Show when={props.value !== "" && !catalog().some((model) => modelKey(model) === props.value)}>
           <option value={props.value}>{props.value}</option>
         </Show>
-        <For each={catalog()}>{(model) => <option value={keyOf(model)}>{model.name}</option>}</For>
+        <For each={catalog()}>{(model) => <option value={modelKey(model)}>{model.name}</option>}</For>
       </select>
     </div>
   )
 }
 
-function DraftFields(props: { draft: Draft; busy: boolean; allowDefaultModel: boolean; onChange: (draft: Draft) => void }): JSX.Element {
+function DraftFields(props: {
+  draft: Draft
+  busy: boolean
+  allowDefaultModel: boolean
+  modelHint?: string | undefined
+  onChange: (draft: Draft) => void
+}): JSX.Element {
   const set = (patch: Partial<Draft>): void => props.onChange({ ...props.draft, ...patch })
   return (
     <>
@@ -112,7 +111,7 @@ function DraftFields(props: { draft: Draft; busy: boolean; allowDefaultModel: bo
           onInput={(event) => set({ description: event.currentTarget.value })}
         />
       </Field>
-      <Field label="Model" hint="Its chat runs on this model from its next request">
+      <Field label="Model" hint={props.modelHint ?? "Its chat runs on this model from its next request"}>
         <ModelSelect
           value={props.draft.model}
           disabled={props.busy}
@@ -142,12 +141,6 @@ function DraftFields(props: { draft: Draft; busy: boolean; allowDefaultModel: bo
       </Field>
     </>
   )
-}
-
-function modelFrom(draft: Draft): ModelRef | undefined {
-  const cut = draft.model.indexOf("/")
-  if (cut <= 0) return undefined
-  return { provider: draft.model.slice(0, cut), modelId: draft.model.slice(cut + 1) }
 }
 
 function Footer(props: { busy: boolean; ready: boolean; label: string; busyLabel: string; onCancel: () => void; children?: JSX.Element }): JSX.Element {
@@ -194,20 +187,31 @@ export function NewCaptainDialog(): JSX.Element {
     setBusy(false)
   })
 
-  const ready = (): boolean => !busy() && draft().name.trim() !== "" && projectId() !== ""
+  const coordinatorId = (): number | undefined => activeProjects().find((project) => project.id === projectId())?.coordinatorId
+  const [coordinator] = createResource(
+    () => (creating() ? coordinatorId() : undefined),
+    async (conv) => (await ensureContext(conv)).model,
+  )
+  const model = () => captainModel(draft().model, coordinator.latest)
+  const shown = (): Draft => {
+    const resolved = model()
+    return { ...draft(), model: resolved === undefined ? "" : modelKey(resolved) }
+  }
+  const ready = (): boolean => !busy() && draft().name.trim() !== "" && projectId() !== "" && model() !== undefined
 
   const create = async (): Promise<void> => {
     if (!ready()) return
+    const current = draft()
+    const chosen = model()
+    if (chosen === undefined) return
     setBusy(true)
     setFailure(undefined)
-    const current = draft()
-    const model = modelFrom(current)
     const alias = slugify(current.alias)
-    const fields: CaptainFields = {
+    const fields: CaptainFields & Required<Pick<CaptainFields, "model">> = {
       name: current.name.trim(),
+      model: chosen,
       ...(alias === "" ? {} : { alias }),
       ...(current.description.trim() === "" ? {} : { description: current.description.trim() }),
-      ...(model === undefined ? {} : { model }),
       ...(current.rules.trim() === "" ? {} : { rules: current.rules }),
       ...(current.crewRules.trim() === "" ? {} : { crewRules: current.crewRules }),
     }
@@ -246,7 +250,17 @@ export function NewCaptainDialog(): JSX.Element {
           <For each={activeProjects()}>{(project) => <option value={project.id}>{project.name}</option>}</For>
         </select>
       </Field>
-      <DraftFields draft={draft()} busy={busy()} allowDefaultModel onChange={setDraft} />
+      <DraftFields
+        draft={shown()}
+        busy={busy()}
+        allowDefaultModel={false}
+        modelHint={
+          model() === undefined && !coordinator.loading
+            ? "This project's coordinator has no model yet, so pick one before creating"
+            : "Starts on the project coordinator's model unless you pick another"
+        }
+        onChange={setDraft}
+      />
       <Show when={failure()}>{(text) => <div class="text-sm text-failed">{text()}</div>}</Show>
     </Dialog>
   )
@@ -281,7 +295,7 @@ export function CaptainSettings(props: { captain: CaptainProfile; open: boolean;
       name: loaded.name,
       alias: loaded.alias,
       description: loaded.description,
-      model: loaded.model === null ? "" : keyOf(loaded.model),
+      model: loaded.model === null ? "" : modelKey(loaded.model),
       rules: loaded.rules,
       crewRules: loaded.crewRules,
     }
@@ -296,7 +310,7 @@ export function CaptainSettings(props: { captain: CaptainProfile; open: boolean;
     const from = base()
     if (from === undefined) return {}
     const next = current()
-    const model = modelFrom(next)
+    const model = captainModel(next.model, undefined)
     const alias = slugify(next.alias)
     return {
       ...(next.name.trim() === from.name ? {} : { name: next.name.trim() }),

@@ -9,6 +9,7 @@ export type ThreadSummary = {
   readonly title: string
   readonly role?: string
   readonly status: string
+  readonly run: number
   readonly statusLine?: string
   readonly result?: string
   readonly beatAt?: number
@@ -67,6 +68,7 @@ function threadsOf(value: unknown): readonly ThreadSummary[] {
         id,
         title,
         status,
+        run: numOf(record.run) ?? 1,
         ...(role === undefined ? {} : { role }),
         ...(statusLine === undefined ? {} : { statusLine }),
         ...(result === undefined ? {} : { result }),
@@ -140,12 +142,6 @@ export function subscribeHome(streams: Streams): () => void {
 
 export function activeProjects(): readonly ProjectSummary[] {
   return projects().filter((project) => !project.archived)
-}
-
-/** The open questions asked in this space: its coordinator's and its threads'. */
-export function spaceRequests(project: ProjectSummary, rows: readonly RequestRow[]): readonly RequestRow[] {
-  const members = new Set([project.coordinatorId, ...projectThreads(project).map((thread) => thread.id)])
-  return rows.filter((request) => members.has(request.conversationId))
 }
 
 export function projectThreads(project: { readonly threads: ThreadGroups }): readonly ThreadSummary[] {
