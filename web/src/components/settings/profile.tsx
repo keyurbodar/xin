@@ -1,13 +1,12 @@
-import { createResource, createSignal, For, onMount, Show, type JSX } from "solid-js"
+import { createResource, createSignal, onMount, Show, type JSX } from "solid-js"
 import { cmd } from "../../lib/api.ts"
 import { setToken, token } from "../../lib/auth.ts"
-import { ago, originLabel } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
-import { reauthorize, sessionId } from "../../state/connection.ts"
+import { reauthorize } from "../../state/connection.ts"
 import { errorMessage } from "../../state/extensions.ts"
-import { closeSessions, owner, ownerName, rotateSession, sessions, type Session } from "../../state/settings.ts"
+import { owner, ownerName, rotateSession } from "../../state/settings.ts"
 import { Markdown } from "../chat/markdown.tsx"
-import { Button, Chip, Failure, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
+import { Button, Failure, Note, Panel } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { MorphIcon } from "../ui/morph-icon.tsx"
 import { Group, Row } from "./parts.tsx"
@@ -25,7 +24,6 @@ export function Profile(): JSX.Element {
   const signedIn = (): boolean => current() !== ""
 
   const [confirming, setConfirming] = createSignal(false)
-  const [closing, setClosing] = createSignal<string | undefined>(undefined)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [note, setNote] = createSignal<string | undefined>(undefined)
@@ -41,7 +39,6 @@ export function Profile(): JSX.Element {
 
   onMount(() => {
     void owner.reload()
-    void sessions.reload()
   })
 
   /** The first letter of a stored name. No name means no letter, so the row shows a glyph instead. */
@@ -50,27 +47,6 @@ export function Profile(): JSX.Element {
     if (state.kind !== "ready") return undefined
     const letters = [...state.value.name.trim()]
     return letters.length === 0 ? undefined : letters[0]?.toUpperCase()
-  }
-
-  const list = (): readonly Session[] => {
-    const state = sessions.state()
-    return state.kind === "ready" ? state.value : []
-  }
-
-  /** This tab's socket is the one the home greeted by id, so the row is exact even with several tabs open. */
-  const marked = (session: Session): boolean => session.id === sessionId()
-
-  const signOut = async (id: string): Promise<void> => {
-    setClosing(id)
-    setError(undefined)
-    setNote(undefined)
-    try {
-      await closeSessions(id)
-    } catch (failure: unknown) {
-      setError(errorMessage(failure))
-    } finally {
-      setClosing(undefined)
-    }
   }
 
   /** Mints the new token and drops every socket. This browser adopts it unless the owner is leaving. */
@@ -370,48 +346,6 @@ export function Profile(): JSX.Element {
             </Note>
           </div>
         </Row>
-      </Group>
-
-      <Group title="Signed in" detail="Live sockets on this home">
-        <Show when={sessions.state().kind === "loading"}>
-          <Pending label="Reading sessions" />
-        </Show>
-        <Show when={failureOf(sessions.state())}>
-          {(message) => <Failure message={message()} onRetry={() => void sessions.reload()} />}
-        </Show>
-        <Show when={sessions.state().kind === "ready"}>
-          <Panel>
-            <Show
-              when={list().length > 0}
-              fallback={<p class="px-3.5 py-3 text-sm text-ink-3">No other session is connected.</p>}
-            >
-              <For each={list()}>
-                {(session) => (
-                  <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5 last:border-0">
-                    <Glyph name="monitor" size={14} class="text-ink-3" />
-                    <div class="min-w-0 flex-1">
-                      <span class="block truncate text-sm text-ink">{originLabel(session.origin)}</span>
-                      <span class="block text-xs text-ink-3">
-                        {session.since === 0 ? "connected before a restart" : `connected ${ago(session.since)}`}
-                      </span>
-                    </div>
-                    <Show when={marked(session)}>
-                      <Chip tone="ok">This browser</Chip>
-                    </Show>
-                    <Button
-                      size="sm"
-                      variant="quiet"
-                      disabled={closing() === session.id}
-                      onClick={() => void signOut(session.id)}
-                    >
-                      {closing() === session.id ? "Signing out" : "Sign out"}
-                    </Button>
-                  </div>
-                )}
-              </For>
-            </Show>
-          </Panel>
-        </Show>
       </Group>
 
       <Group title="Danger">

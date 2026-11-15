@@ -1,5 +1,5 @@
 import { createSignal, onMount, type JSX } from "solid-js"
-import { setToken, verifyToken } from "../lib/auth.ts"
+import { probe, setToken } from "../lib/auth.ts"
 import { OnboardingTopBar, type RailItem } from "../components/onboarding/chrome.tsx"
 import { Spinner } from "../components/ui/loaders.tsx"
 
@@ -30,10 +30,14 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
     if (busy()) return
     setBusy(true)
     setError(undefined)
-    const accepted = await verifyToken(value().trim())
+    const answer = await probe(value().trim())
     setBusy(false)
-    if (!accepted) {
+    if (answer.kind === "unauthorized") {
       setError("That token doesn’t match this instance.")
+      return
+    }
+    if (answer.kind === "unreachable") {
+      setError("This instance didn’t answer. Check the network and try again.")
       return
     }
     setToken(value().trim())
