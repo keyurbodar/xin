@@ -12,10 +12,9 @@ const FILES = ["read", "write", "edit"]
 const THREAD_PROMPT = "You are a thread named"
 const PACKAGE = "ingle-plugin-presets-test"
 const LEAN_OMITTED = [
-  "schedule_create",
-  "schedule_list",
-  "schedule_view",
-  "schedule_edit",
+  "automation_save",
+  "automation_list",
+  "automation_trigger",
   "get_goal",
   "create_goal",
   "update_goal",
@@ -202,7 +201,7 @@ describe("presets", () => {
     expect(offered.tools).toContain("remember")
   }, 20_000)
 
-  it("leaves the schedule and goal tools out of a delegated thread but not its coordinator", async () => {
+  it("leaves the automation and goal tools out of a delegated thread but not its coordinator", async () => {
     const stub = fresh()
     const project = await makeProject(stub, "lean")
     await chooseModel(stub, project.coordinatorId)
