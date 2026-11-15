@@ -36,7 +36,6 @@ export type CaptainDetail = CaptainProfile & {
   readonly notes: string
   readonly rules: string
   readonly crewRules: string
-  readonly crew: readonly CrewMember[]
 }
 
 export type CaptainFields = {
@@ -92,25 +91,6 @@ function countsOf(value: unknown): CrewCounts {
   }
 }
 
-function memberOf(value: unknown): CrewMember | undefined {
-  const record = recordOf(value)
-  const threadId = numOf(record?.threadId)
-  const title = strOf(record?.title)
-  const status = CREW_STATUSES.find((entry) => entry === record?.status)
-  if (record === undefined || threadId === undefined || title === undefined || status === undefined) return undefined
-  const statusLine = strOf(record.statusLine)
-  const report = strOf(record.report)
-  return {
-    threadId,
-    title,
-    status,
-    run: numOf(record.run) ?? 1,
-    idleMs: numOf(record.idleMs) ?? 0,
-    ...(statusLine === undefined ? {} : { statusLine }),
-    ...(report === undefined ? {} : { report }),
-  }
-}
-
 function modelOf(value: unknown): ModelRef | null {
   const record = recordOf(value)
   const provider = strOf(record?.provider)
@@ -128,10 +108,6 @@ export function parseCaptainDetail(value: unknown): CaptainDetail {
     notes: strOf(record.notes) ?? "",
     rules: strOf(record.rules) ?? "",
     crewRules: strOf(record.crewRules) ?? "",
-    crew: listOf(record.crew).flatMap((entry) => {
-      const member = memberOf(entry)
-      return member === undefined ? [] : [member]
-    }),
   }
 }
 
@@ -166,6 +142,10 @@ export function captainModel(picked: string, coordinator: ModelRef | undefined):
   const cut = picked.indexOf("/")
   if (cut > 0) return { provider: picked.slice(0, cut), modelId: picked.slice(cut + 1) }
   return coordinator
+}
+
+export function canCreateCaptain(draft: { name: string; projectId: string; model: ModelRef | undefined }): boolean {
+  return draft.name.trim() !== "" && draft.projectId !== "" && draft.model !== undefined
 }
 
 /** A side thread runs on its parent's model, so a conversation without one cannot fork. */

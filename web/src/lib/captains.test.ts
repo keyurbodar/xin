@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { ThreadGroups, ThreadSummary } from "../state/home.ts"
-import { captainModel, crewOf, offersSideThread, parseCaptainDetail, parseCaptainRows } from "./captains.ts"
+import { canCreateCaptain, captainModel, crewOf, offersSideThread, parseCaptainDetail, parseCaptainProfile, parseCaptainRows } from "./captains.ts"
 
 const profile = {
   id: "cpt_1",
@@ -50,23 +50,28 @@ test("the home captains part parses profiles with crew counts and drops malforme
   expect(parseCaptainRows(undefined)).toEqual([])
 })
 
-test("captain.get parses the standing files, the model and the crew", () => {
-  const detail = parseCaptainDetail({
-    ...profile,
-    model: coordinator,
-    notes: "n",
-    rules: "r",
-    crewRules: "c",
-    crew: [
-      { threadId: 4, title: "Fix", status: "waiting", run: 2, idleMs: 5, statusLine: "asking", report: "done" },
-      { threadId: 5, title: "Bad", status: "sleeping" },
-    ],
-  })
+test("captain.get parses the standing files and the model", () => {
+  const detail = parseCaptainDetail({ ...profile, model: coordinator, notes: "n", rules: "r", crewRules: "c" })
   expect(detail.model).toEqual(coordinator)
   expect([detail.notes, detail.rules, detail.crewRules]).toEqual(["n", "r", "c"])
-  expect(detail.crew).toEqual([{ threadId: 4, title: "Fix", status: "waiting", run: 2, idleMs: 5, statusLine: "asking", report: "done" }])
   expect(parseCaptainDetail({ ...profile, model: null }).model).toBeNull()
   expect(() => parseCaptainDetail({ name: "x" })).toThrow()
+})
+
+test("a profile complete except for coordinatorId is rejected", () => {
+  const { coordinatorId: _dropped, ...rest } = profile
+  expect(parseCaptainProfile(rest)).toBeUndefined()
+  expect(parseCaptainProfile({ ...profile, coordinatorId: "10" })).toBeUndefined()
+  expect(parseCaptainRows({ captains: [rest, profile] }).map((row) => row.id)).toEqual(["cpt_1"])
+})
+
+test("Create needs a model: an empty pick with no coordinator model cannot create, a picked model can", () => {
+  const ready = { name: "Bosun", projectId: "prj_1" }
+  expect(canCreateCaptain({ ...ready, model: captainModel("", undefined) })).toBe(false)
+  expect(canCreateCaptain({ ...ready, model: captainModel("anthropic/claude-sonnet", undefined) })).toBe(true)
+  expect(canCreateCaptain({ ...ready, model: captainModel("", coordinator) })).toBe(true)
+  expect(canCreateCaptain({ ...ready, name: "  ", model: coordinator })).toBe(false)
+  expect(canCreateCaptain({ ...ready, projectId: "", model: coordinator })).toBe(false)
 })
 
 const thread = (id: number, beatAt: number, extra: Partial<ThreadSummary> = {}): ThreadSummary => ({
@@ -94,4 +99,9 @@ test("the crew comes from home's thread groups, most recently active first, with
   ])
   expect(crew[1]?.statusLine).toBe("reading")
   expect(crew[2]?.report).toHaveLength(400)
+})
+
+test("a heartbeat from slightly in the future, from clock skew, never shows a negative idle time", () => {
+  const groups: ThreadGroups = { working: [thread(1, 1_050)], waiting: [], completed: [], failed: [], cancelled: [] }
+  expect(crewOf(groups, 1_000).map((member) => member.idleMs)).toEqual([0])
 })

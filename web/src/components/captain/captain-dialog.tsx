@@ -3,7 +3,7 @@ import { isDefinitive } from "../../lib/api.ts"
 import { navigate } from "../../lib/router.ts"
 import { slugify } from "../../lib/slug.ts"
 import { archiveCaptain, captainDetail, createCaptain, updateCaptain } from "../../state/captains.ts"
-import { captainModel, modelKey, type CaptainFields, type CaptainProfile } from "../../lib/captains.ts"
+import { canCreateCaptain, captainModel, modelKey, type CaptainFields, type CaptainProfile } from "../../lib/captains.ts"
 import { activeProjects, routeProject } from "../../state/home.ts"
 import { searchModels, type ModelInfo } from "../../state/settings.ts"
 import { ensureContext } from "../../state/context.ts"
@@ -56,7 +56,14 @@ function ModelSelect(props: { value: string; disabled: boolean; allowDefault: bo
         aria-label="Model"
         onChange={(event) => props.onChange(event.currentTarget.value)}
       >
-        <Show when={props.allowDefault}>
+        <Show
+          when={props.allowDefault}
+          fallback={
+            <option value="" disabled>
+              Pick a model
+            </option>
+          }
+        >
           <option value="">The project's coordinator model</option>
         </Show>
         <Show when={props.value !== "" && !catalog().some((model) => modelKey(model) === props.value)}>
@@ -197,7 +204,7 @@ export function NewCaptainDialog(): JSX.Element {
     const resolved = model()
     return { ...draft(), model: resolved === undefined ? "" : modelKey(resolved) }
   }
-  const ready = (): boolean => !busy() && draft().name.trim() !== "" && projectId() !== "" && model() !== undefined
+  const ready = (): boolean => !busy() && canCreateCaptain({ name: draft().name, projectId: projectId(), model: model() })
 
   const create = async (): Promise<void> => {
     if (!ready()) return
