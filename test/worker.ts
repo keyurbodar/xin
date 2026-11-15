@@ -76,7 +76,12 @@ const bump = defineOp({
 })
 
 const TEST_CATALOG: Catalog = {
-  test: testPlugin("test", { extensions: [defineExtension({ name: "tool-test-ping", tools: [ping] })], ops: [bump] }),
+  test: testPlugin(
+    "test",
+    { extensions: [defineExtension({ name: "tool-test-ping", tools: [ping] })], ops: [bump] },
+    ["pi", "ops"],
+    { permissions: ["conversations"] },
+  ),
   broken: {
     ...testPlugin("broken", {}),
     plugin: {
