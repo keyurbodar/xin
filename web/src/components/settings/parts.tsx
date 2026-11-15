@@ -6,7 +6,7 @@ export function Group(props: { title: string; detail?: string | undefined; child
       <div class="flex items-baseline gap-2">
         <span class="label">{props.title}</span>
         <Show when={props.detail}>
-          {(detail) => <span class="text-[11.5px] text-fg-3">{detail()}</span>}
+          {(detail) => <span class="text-xs text-ink-3">{detail()}</span>}
         </Show>
       </div>
       <div class="flex flex-col">{props.children}</div>
@@ -16,11 +16,11 @@ export function Group(props: { title: string; detail?: string | undefined; child
 
 export function Row(props: { title: string; detail?: string | undefined; children: JSX.Element }): JSX.Element {
   return (
-    <div class="grid grid-cols-[240px_minmax(0,1fr)] items-start gap-6 border-b border-line py-3.5 last:border-0">
+    <div class="grid grid-cols-[240px_minmax(0,1fr)] items-start gap-6 border-b border-line-1 py-3.5 last:border-0">
       <div class="min-w-0">
-        <span class="block text-[12.5px] font-medium text-fg">{props.title}</span>
+        <span class="block text-sm font-medium text-ink">{props.title}</span>
         <Show when={props.detail}>
-          {(detail) => <span class="mt-0.5 block text-[11.5px] leading-snug text-fg-3">{detail()}</span>}
+          {(detail) => <span class="mt-0.5 block text-xs leading-snug text-ink-3">{detail()}</span>}
         </Show>
       </div>
       <div class="min-w-0">{props.children}</div>
@@ -55,7 +55,7 @@ export function SelectField(props: {
       disabled={props.disabled === true}
       aria-label={props.ariaLabel}
       onChange={(event) => props.onChange(event.currentTarget.value)}
-      class="h-8 rounded-[2px] border border-line-inner bg-page px-2 text-[12.5px] text-fg focus:border-line-strong focus:outline-none disabled:opacity-40"
+      class="h-8 rounded-sm border border-line-2 bg-bg px-2 text-sm text-ink focus:border-line-3 focus:outline-none disabled:opacity-40"
       style={{ width: props.width ?? "260px" }}
     >
       <option value="">{props.placeholder ?? "Catalog default"}</option>
@@ -77,7 +77,7 @@ export function SelectField(props: {
 export function Saved(props: { show: boolean }): JSX.Element {
   return (
     <Show when={props.show}>
-      <span class="ml-2 inline-flex items-center gap-1 text-[11.5px] text-fg-3">
+      <span class="ml-2 inline-flex items-center gap-1 text-xs text-ink-3">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
           <path d="m5 12 5 5L20 7" />
         </svg>

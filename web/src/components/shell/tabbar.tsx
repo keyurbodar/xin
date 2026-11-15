@@ -3,7 +3,7 @@ import { activeProjects } from "../../state/home.ts"
 import { navigate, route } from "../../lib/router.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
 
-export function TabBar(): JSX.Element {
+export function TabBar(props: { onProjects: () => void }): JSX.Element {
   const first = () => route().parts[0]
   const needsYou = (): boolean =>
     activeProjects().some(
@@ -11,9 +11,8 @@ export function TabBar(): JSX.Element {
     )
 
   return (
-    <nav class="flex h-[76px] shrink-0 items-start gap-0 border-t border-line bg-surface px-3 pb-6 pt-2 lg:hidden">
-      <Tab icon="home" label="Home" active={first() === undefined} onClick={() => navigate("/")} />
-      <Tab icon="inbox" label="Inbox" active={first() === "inbox"} onClick={() => navigate("/inbox")} dot={needsYou()} />
+    <nav class="flex h-[76px] shrink-0 items-start gap-0 border-t border-line-1 bg-panel px-3 pb-6 pt-2 lg:hidden">
+      <Tab icon="layers" label="Projects" active={first() === undefined || first() === "p"} onClick={props.onProjects} dot={needsYou()} />
       <Tab icon="grid" label="Extensions" active={first() === "extensions"} onClick={() => navigate("/extensions")} />
       <Tab icon="settings" label="Settings" active={first() === "settings"} onClick={() => navigate("/settings/general")} />
     </nav>
@@ -25,13 +24,13 @@ function Tab(props: { icon: IconName; label: string; active: boolean; dot?: bool
     <button
       type="button"
       onClick={props.onClick}
-      class="flex flex-1 flex-col items-center gap-0.5 pt-1 text-[10.5px]"
-      classList={{ "text-fg": props.active, "text-fg-3": !props.active }}
+      class="flex flex-1 flex-col items-center gap-0.5 pt-1 text-2xs"
+      classList={{ "text-ink": props.active, "text-ink-3": !props.active }}
     >
       <span class="relative">
         <Icon name={props.icon} size={18} />
         <Show when={props.dot === true}>
-          <span class="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-[1px] bg-accent" />
+          <span class="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-2xs bg-primary" />
         </Show>
       </span>
       {props.label}

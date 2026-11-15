@@ -29,22 +29,6 @@ export function count(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`
 }
 
-/** The greeting the home frame uses, from the owner's local clock. */
-export function greeting(now = new Date()): string {
-  const hour = now.getHours()
-  if (hour < 5) return "Still up"
-  if (hour < 12) return "Morning"
-  if (hour < 17) return "Afternoon"
-  return "Evening"
-}
-
-export function longDate(now = new Date()): string {
-  const weekday = now.toLocaleDateString(undefined, { weekday: "long" })
-  const day = now.toLocaleDateString(undefined, { day: "numeric" })
-  const month = now.toLocaleDateString(undefined, { month: "long" })
-  return `${weekday} · ${day} ${month}`
-}
-
 const DAYS: Readonly<Record<string, string>> = {
   MO: "Mon",
   TU: "Tue",

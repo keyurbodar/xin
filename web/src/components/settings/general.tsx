@@ -15,6 +15,7 @@ import {
 } from "../../state/settings.ts"
 import { Failure, INPUT, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Group, Row, Saved, SelectField, type Choice } from "./parts.tsx"
+import { setTheme, theme, themeOf } from "../../lib/theme.ts"
 
 const BLANK: OwnerSettings = { name: "", instructions: "" }
 
@@ -187,7 +188,7 @@ export function General(): JSX.Element {
             <div class="flex flex-wrap gap-1.5">
               <For each={providers(catalog())}>
                 {(provider) => (
-                  <span class="rounded-[2px] border border-line-inner px-1.5 py-0.5 font-mono text-[10.5px] text-fg-3">
+                  <span class="rounded-sm border border-line-2 px-1.5 py-0.5 font-mono text-2xs text-ink-3">
                     {provider.id} · {provider.models.length}
                   </span>
                 )}
@@ -204,7 +205,7 @@ export function General(): JSX.Element {
 
       <Group title="Workspace">
         <Row title="Workspace name" detail="In the tab title and notifications">
-          <span class="text-[12.5px] text-fg-2">Not stored yet</span>
+          <span class="text-sm text-ink-2">Not stored yet</span>
         </Row>
         <Row title="Your name" detail="How the coordinator greets you">
           <div class="flex items-center gap-2">
@@ -222,10 +223,19 @@ export function General(): JSX.Element {
           </div>
         </Row>
         <Row title="Time zone" detail="Used by schedules and timestamps">
-          <span class="font-mono text-[12px] text-fg-2">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+          <span class="font-mono text-sm text-ink-2">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
         </Row>
-        <Row title="Density" detail="Rows and spacing across the app">
-          <span class="text-[12.5px] text-fg-2">Default</span>
+        <Row title="Theme" detail="Dark, light or rose, on this device">
+          <SelectField
+            ariaLabel="Theme"
+            value={theme()}
+            onChange={(next) => setTheme(themeOf(next))}
+            choices={[
+              { value: "dark", label: "Dark" },
+              { value: "light", label: "Light" },
+              { value: "rose", label: "Rose" },
+            ]}
+          />
         </Row>
       </Group>
 
@@ -234,23 +244,23 @@ export function General(): JSX.Element {
         detail="Read by the coordinator and every thread, before project instructions"
       >
         <div class="flex flex-col gap-2 pt-1">
-          <div class="overflow-hidden rounded-[4px] border border-line-inner focus-within:border-accent-line">
+          <div class="overflow-hidden rounded-md border border-line-2 focus-within:border-primary/40">
             <textarea
               rows={7}
               aria-label="Instructions for every project"
-              class="w-full resize-y bg-page px-3 py-2.5 text-[13px] leading-relaxed text-fg focus:bg-surface focus:outline-none disabled:opacity-40"
+              class="w-full resize-y bg-bg px-3 py-2.5 text-base leading-relaxed text-ink focus:bg-panel focus:outline-none disabled:opacity-40"
               value={valueOf("instructions")}
               maxLength={LIMIT.instructions}
               disabled={!readable()}
               onInput={(event) => edit("instructions", event.currentTarget.value)}
               onBlur={() => void flush()}
             />
-            <div class="flex items-baseline gap-2 border-t border-line px-3 py-1.5">
+            <div class="flex items-baseline gap-2 border-t border-line-1 px-3 py-1.5">
               <Show when={owner.state().kind !== "loading" && valueOf("instructions").trim() === ""}>
-                <span class="text-[11.5px] text-fg-3">No workspace instructions are stored.</span>
+                <span class="text-xs text-ink-3">No workspace instructions are stored.</span>
               </Show>
               <Saved show={savedField() === "instructions"} />
-              <span class="ml-auto font-mono text-[10.5px] text-fg-4">
+              <span class="ml-auto font-mono text-2xs text-icon">
                 {valueOf("instructions").length.toLocaleString("en-US")} / 4,000 · Markdown works
               </span>
             </div>

@@ -112,7 +112,7 @@ export function OwnerBubble(props: {
       </Show>
       <Show when={props.text !== ""}>
         <div
-          class="rounded-[4px] border border-line-inner bg-hover py-2.5 text-[13.5px] leading-[1.6] text-fg"
+          class="rounded-md border border-line-2 bg-secondary py-2.5 text-base leading-[1.6] text-ink"
           classList={{ "max-w-[520px] px-3.5": props.density === "chat", "max-w-[280px] px-3": props.density === "panel" }}
         >
           <span class="whitespace-pre-wrap [overflow-wrap:anywhere]">{props.text}</span>
@@ -179,7 +179,7 @@ function EntryItemView(props: { item: EntryItem; context: ItemContext }): JSX.El
           {glyph()}
           <div class="flex min-w-0 flex-1 flex-col gap-3">
             <Show when={props.context.density === "chat"}>
-              <div class="font-mono text-[11px] leading-none text-fg-4">Coordinator</div>
+              <div class="font-mono text-2xs leading-none text-icon">Coordinator</div>
             </Show>
             <Show when={item.text !== ""}>
               <Markdown small={props.context.density === "panel"} text={item.text} />

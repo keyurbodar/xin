@@ -5,6 +5,7 @@ import {
   type ConversationId,
   defineTask,
   type DocumentReader,
+  type Extension,
   type Harness,
   type ModelRef,
   type Registry,
@@ -65,6 +66,8 @@ export type CreateThreadArgs = {
   readonly clientRequestId: string
   readonly requestId: string
   readonly removeTools: readonly ToolRegistration[]
+  /** A side thread starts as a fork of this conversation at its newest entry instead of an empty one. */
+  readonly forkFrom?: ConversationId
 }
 
 export type CreateOutcome =
@@ -105,6 +108,7 @@ const CHILD_TOOLS = [
   "thread_list",
   "task_status",
   "pending_request",
+  "captain_notes",
 ] as const
 
 export function childTools(registry: Registry): readonly ToolRegistration[] {
@@ -126,6 +130,7 @@ export type ThreadDeps = {
   arm(wake?: Wake): Promise<void>
   readonly intake: IntakeService
   readonly watchdog: WatchdogService
+  threadRemovals(parent: ConversationId): readonly Extension[]
   settled(event: ThreadSettled): void
 }
 
@@ -173,8 +178,11 @@ function reporterTask(deps: ThreadDeps): ReporterTask {
       },
       report: async (task, runtime, taskContext) => {
         const checkpoint = task.state.checkpoint
+        // A thread that joined or left a crew mid-run reports to the coordinator it has now.
+        const current = await runtime.snapshot(ThreadDoc, task.input.threadId as ConversationId, taskContext)
+        const parentId = current?.parentId ?? task.input.parentId
         const accepted = await deps.intake.enqueue({
-          target: task.input.parentId as ConversationId,
+          target: parentId as ConversationId,
           commandId: `report:${task.input.threadId}:${task.input.run}`,
           kind: "report",
           threadId: String(task.input.threadId),
@@ -187,7 +195,7 @@ function reporterTask(deps: ThreadDeps): ReporterTask {
         if (projectId !== undefined)
           deps.settled({
             threadId: task.input.threadId,
-            parentId: task.input.parentId,
+            parentId,
             projectId,
             title: task.input.title,
             status: checkpoint.status,
@@ -533,17 +541,26 @@ export function lifecycle(deps: ThreadDeps): Threads {
         limit: project.settings.threadLimit,
       }
     }
+    const forkAt = args.forkFrom === undefined ? undefined : await tx.latestEntryId(args.forkFrom)
     await deps.watchdog.ensure(tx, args.parentId)
     const anchor = await tx.createTask(Anchor, null, {
       ownership: { kind: "conversation" },
       conversationId: args.parentId,
       background: true,
     })
-    const child = await tx.createConversation({ ownership: { kind: "task", taskId: anchor } })
+    const ownership = { kind: "task", taskId: anchor } as const
+    const child =
+      args.forkFrom === undefined || forkAt === undefined
+        ? await tx.createConversation({ ownership })
+        : await tx.forkConversation(args.forkFrom, forkAt, { ownership })
     await configure(tx, child.id, {
       model: args.model,
       tools: { remove: [...args.removeTools] },
-      instructions: `You are a thread named "${args.title}". Answer the brief; your last message is reported to the coordinator.`,
+      extensions: { remove: [...deps.threadRemovals(args.parentId)] },
+      instructions:
+        args.forkFrom === undefined
+          ? `You are a thread named "${args.title}". Answer the brief; your last message is reported to the coordinator.`
+          : `You are a thread named "${args.title}", a side thread forked from the conversation above. Work on the brief that follows; your last message is reported back to that conversation.`,
     })
     await addThread(tx, {
       projectId: args.projectId,
@@ -656,11 +673,65 @@ export function lifecycle(deps: ThreadDeps): Threads {
     },
   })
 
+  const sideThreadOp = defineOp({
+    name: "thread.side",
+    args: obj({
+      conv: int({ minimum: 0 }),
+      title: str({ minLength: 1, maxLength: 200 }),
+      task: str({ minLength: 1 }),
+    }),
+    actors: ["owner"],
+    run: async (api, args) => {
+      const parentId = args.conv as ConversationId
+      const scope = await scopeOf(api.harness, parentId)
+      if (scope?.kind !== "space")
+        throw new OpRejected("bad_args", `conversation ${args.conv} is not a space coordinator or Captain`)
+      if (scope.space.archived) throw new OpRejected("bad_args", `space ${scope.spaceId} is archived`)
+      const parent = await api.harness.conversation(parentId, context)
+      const model = parent === undefined ? undefined : (await parent.agent(context)).model
+      if (model === undefined) throw new OpRejected("bad_args", "the conversation has no model; pick one first")
+      const requestId = `thread-side:${api.commandId}`
+      const created = await api.harness.commit(
+        (tx) =>
+          createThread(tx, {
+            projectId: scope.projectId as ProjectId,
+            spaceId: scope.spaceId,
+            parentId,
+            title: args.title,
+            role: "thread",
+            task: args.task,
+            model,
+            clientRequestId: requestId,
+            requestId,
+            removeTools: childTools(deps.registry),
+            forkFrom: parentId,
+          }),
+        context,
+      )
+      switch (created.kind) {
+        case "created":
+        case "existing":
+          return {
+            threadId: created.threadId,
+            title: created.title,
+            parentId: args.conv,
+            projectId: scope.projectId,
+            spaceId: scope.spaceId,
+            ...(created.kind === "existing" ? { replayed: true } : {}),
+          }
+        case "rejected":
+          throw new OpRejected("bad_args", created.reason)
+        case "limit":
+          throw new OpRejected("busy", `limit_reached: ${created.live.length} live threads of ${created.limit}`)
+      }
+    },
+  })
+
   return {
     anchor: Anchor,
     reporter,
     report,
     createThread,
-    ops: [sendThreadOp(send), stopThread, archiveThread, createThreadOp],
+    ops: [sendThreadOp(send), stopThread, archiveThread, createThreadOp, sideThreadOp],
   }
 }

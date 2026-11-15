@@ -27,6 +27,7 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
 
 export type PresetConfig = {
   readonly default: string
+  readonly threadOmits: readonly string[]
 }
 
 /** One installed pi extension and the plugin row that installed it. */
@@ -73,15 +74,25 @@ const entriesOf = (workspace: WorkspaceState): readonly ConversationEntry[] =>
     ...space.threadIds.map((conversationId) => ({ conversationId: conversationId as ConversationId })),
   ])
 
+const NO_OMITS: ReadonlySet<string> = new Set()
+
 const hasTurns = (messages: readonly { readonly role: string }[]): boolean =>
   messages.some((message) => message.role === "user" || message.role === "assistant")
 
-/** The extensions a preset removes: every installed extension whose plugin the preset does not name. */
-const removalsOf = (preset: PresetView | undefined, installed: readonly InstalledExtension[]): readonly Extension[] => {
-  if (preset === undefined || preset.plugins === "all") return []
-  const allowed = new Set(preset.plugins)
+/**
+ * The extensions a preset removes: every installed extension whose plugin the preset does not name, plus those of
+ * the plugins in `omits`.
+ */
+const removalsOf = (
+  preset: PresetView | undefined,
+  installed: readonly InstalledExtension[],
+  omits: ReadonlySet<string>,
+): readonly Extension[] => {
+  const allowed = preset === undefined || preset.plugins === "all" ? undefined : new Set(preset.plugins)
   return installed
-    .filter(({ plugin }) => plugin !== undefined && !allowed.has(plugin))
+    .filter(
+      ({ plugin }) => plugin !== undefined && (omits.has(plugin) || (allowed !== undefined && !allowed.has(plugin))),
+    )
     .map(({ extension }) => extension)
 }
 
@@ -91,6 +102,7 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
     label: (id) => `preset "${id}"`,
   })
   const defaultId = port.config.default
+  const threadOmits = new Set(port.config.threadOmits)
   const enqueue = serial()
 
   const records = new Map<number, string>()
@@ -126,10 +138,11 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
     conversationId: number,
     preset: PresetView | undefined,
     installed: readonly InstalledExtension[],
+    omits: ReadonlySet<string> = NO_OMITS,
   ): Promise<void> => {
     const conversation = await port.harness.conversation(conversationId as ConversationId, context)
     if (conversation === undefined) return
-    const removals = removalsOf(preset, installed)
+    const removals = removalsOf(preset, installed, omits)
     const removed = new Set(removals.map((extension) => extension.name))
     const expected = names(
       installed.filter(({ extension }) => !removed.has(extension.name)).map(({ extension }) => extension),
@@ -156,8 +169,10 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
     const installed = port.extensions()
     const root = await port.harness.conversation(ROOT_CONVERSATION_ID, context)
     if (root !== undefined) await align(root.id, resolved(root.id), installed)
-    for (const { conversationId } of entriesOf(workspace))
-      await align(conversationId, resolved(conversationId), installed)
+    for (const { conversationId } of entriesOf(workspace)) {
+      const lean = projectOf.has(conversationId) && !records.has(conversationId)
+      await align(conversationId, resolved(conversationId), installed, lean ? threadOmits : NO_OMITS)
+    }
   }
 
   const applyAll = (): Promise<void> =>
@@ -240,6 +255,7 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
   const service: PresetsService = {
     list,
     presetOf: (conversation) => resolved(conversation),
+    threadRemovals: (coordinator) => removalsOf(resolved(coordinator), port.extensions(), threadOmits),
     contribute,
   }
 

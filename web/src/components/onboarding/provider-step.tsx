@@ -128,14 +128,14 @@ export function ProviderStep(): JSX.Element {
                   setChoice(item.id)
                   touch()
                 }}
-                class="flex flex-col gap-1.5 rounded-[2px] border p-3 text-left"
+                class="flex flex-col gap-1.5 rounded-sm border p-3 text-left"
                 classList={{
-                  "border-fg bg-selected": choice() === item.id,
-                  "border-line-inner bg-surface hover:border-line-strong": choice() !== item.id,
+                  "border-ink bg-hover": choice() === item.id,
+                  "border-line-2 bg-panel hover:border-line-3": choice() !== item.id,
                 }}
               >
-                <span class="text-[13px] font-medium">{item.name}</span>
-                <span class="text-[11.5px] leading-[1.4] text-fg-3">{item.detail}</span>
+                <span class="text-base font-medium">{item.name}</span>
+                <span class="text-xs leading-[1.4] text-ink-3">{item.detail}</span>
               </button>
             )}
           </For>
@@ -176,7 +176,7 @@ export function ProviderStep(): JSX.Element {
                   touch()
                 }}
                 aria-label="API"
-                class="h-10 w-full rounded-[2px] border border-line-inner bg-surface px-2.5 text-[13px] text-fg focus:border-accent focus:outline-none"
+                class="h-10 w-full rounded-sm border border-line-2 bg-panel px-2.5 text-base text-ink focus:border-primary focus:outline-none"
               >
                 <For each={APIS}>{(entry) => <option value={entry.id}>{entry.label}</option>}</For>
               </select>
@@ -185,8 +185,8 @@ export function ProviderStep(): JSX.Element {
         </Show>
 
         <Field label="API key" hint="Stored encrypted on this instance. Only the coordinator and threads use it.">
-          <div class="flex h-10 items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-3 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]">
-            <Icon name="key" size={14} class="shrink-0 text-fg-3" />
+          <div class="flex h-10 items-center gap-2 rounded-sm border border-line-2 bg-panel px-3 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]">
+            <Icon name="key" size={14} class="shrink-0 text-ink-3" />
             <input
               type="password"
               value={key()}
@@ -204,14 +204,14 @@ export function ProviderStep(): JSX.Element {
               autocomplete="off"
               spellcheck={false}
               aria-label="API key"
-              class="h-full min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-fg placeholder:text-fg-4 focus:outline-none"
+              class="h-full min-w-0 flex-1 bg-transparent font-mono text-sm text-ink placeholder:text-icon focus:outline-none"
               disabled={busy() || saved() !== undefined}
             />
             <Show when={busy()}>
               <Spinner tone="light" />
             </Show>
             <Show when={saved() !== undefined && !busy()}>
-              <Icon name="check" size={14} class="shrink-0 text-ok" />
+              <Icon name="check" size={14} class="shrink-0 text-done" />
             </Show>
           </div>
           <Show when={saved() !== undefined}>
@@ -221,7 +221,7 @@ export function ProviderStep(): JSX.Element {
                 forgetProvider()
                 setFailure(undefined)
               }}
-              class="self-start text-[11.5px] text-fg-3 underline decoration-line-strong underline-offset-2 hover:text-fg-2"
+              class="self-start text-xs text-ink-3 underline decoration-line-3 underline-offset-2 hover:text-ink-2"
             >
               Use a different key
             </button>
@@ -230,33 +230,33 @@ export function ProviderStep(): JSX.Element {
 
         <StatusLine tone={failure() === undefined ? "ok" : "error"} text={failure() ?? savedLine()} />
 
-        <div class="overflow-hidden rounded-[2px] border border-line">
-          <div class="flex h-8 items-center gap-2 border-b border-line bg-raised px-3">
+        <div class="overflow-hidden rounded-sm border border-line-1">
+          <div class="flex h-8 items-center gap-2 border-b border-line-1 bg-card px-3">
             <span class="label flex-1">From the catalog</span>
-            <span class="font-mono text-[11px] text-fg-3">{catalogStatus()}</span>
+            <span class="font-mono text-2xs text-ink-3">{catalogStatus()}</span>
           </div>
           <Show
             when={models().length > 0}
             fallback={
-              <div class="px-3 py-3 text-[12px] text-fg-3">
+              <div class="px-3 py-3 text-sm text-ink-3">
                 {saved() === undefined ? "Models appear here once the key works." : "No models are listed for this provider yet."}
               </div>
             }
           >
             <For each={visible()}>
               {(model) => (
-                <div class="flex h-9 items-center gap-2.5 border-b border-line px-3 text-[12.5px] last:border-0">
-                  <span class="h-1.5 w-1.5 shrink-0 rounded-[1px] bg-ok" />
+                <div class="flex h-9 items-center gap-2.5 border-b border-line-1 px-3 text-sm last:border-0">
+                  <span class="h-1.5 w-1.5 shrink-0 rounded-2xs bg-done" />
                   <span class="min-w-0 flex-1 truncate font-medium">{model.name}</span>
-                  <span class="shrink-0 font-mono text-[10.5px] text-fg-4">{contextLabel(model.contextWindow)}</span>
+                  <span class="shrink-0 font-mono text-2xs text-icon">{contextLabel(model.contextWindow)}</span>
                   <Show when={model.reasoning}>
-                    <span class="shrink-0 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-3">reasoning</span>
+                    <span class="shrink-0 font-mono text-2xs uppercase tracking-[0.06em] text-ink-3">reasoning</span>
                   </Show>
                 </div>
               )}
             </For>
             <Show when={hidden() > 0}>
-              <div class="flex h-8 items-center px-3 font-mono text-[10.5px] text-fg-4">+{hidden()} more</div>
+              <div class="flex h-8 items-center px-3 font-mono text-2xs text-icon">+{hidden()} more</div>
             </Show>
           </Show>
         </div>

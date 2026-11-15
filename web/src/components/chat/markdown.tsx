@@ -34,15 +34,15 @@ function CodeBlock(props: { code: string; fence: string }): JSX.Element {
   }
 
   return (
-    <div class="code-block overflow-hidden rounded-[4px] border border-line-inner bg-surface">
-      <div class="flex h-8 items-center gap-3 border-b border-line px-3 font-mono text-[11px] text-fg-3">
+    <div class="code-block overflow-hidden rounded-md border border-line-2 bg-panel">
+      <div class="flex h-8 items-center gap-3 border-b border-line-1 px-3 font-mono text-2xs text-ink-3">
         <span>{fenceLabel(props.fence)}</span>
         <span class="ml-auto flex items-center gap-1">
           <button
             type="button"
             aria-pressed={wrapped()}
             onClick={() => setWrapped((on) => !on)}
-            class="h-6 rounded-[2px] px-1.5 text-[11px] hover:text-fg"
+            class="h-6 rounded-sm px-1.5 text-2xs hover:text-ink"
           >
             {wrapped() ? "Wrapped" : "Wrap"}
           </button>
@@ -50,8 +50,8 @@ function CodeBlock(props: { code: string; fence: string }): JSX.Element {
             type="button"
             aria-label="Copy code"
             onClick={() => void copy()}
-            class="flex h-6 items-center gap-1.5 rounded-[2px] px-1.5 hover:text-fg"
-            classList={{ "text-fg": copied() }}
+            class="flex h-6 items-center gap-1.5 rounded-sm px-1.5 hover:text-ink"
+            classList={{ "text-ink": copied() }}
           >
             <Glyph name={copied() ? "check" : "copy"} size={13} />
             <Morph value={copied() ? "Copied" : "Copy"} />
@@ -87,7 +87,7 @@ function inline(text: string): JSX.Element[] {
               href={href}
               target="_blank"
               rel="noreferrer"
-              class="text-fg underline decoration-line-strong underline-offset-[3px] hover:decoration-fg"
+              class="text-ink underline decoration-line-3 underline-offset-[3px] hover:decoration-ink"
             >
               {text.slice(index + 1, labelEnd)}
             </a>,
@@ -101,7 +101,7 @@ function inline(text: string): JSX.Element[] {
       const close = text.indexOf("**", index + 2)
       if (close !== -1) {
         flush()
-        parts.push(<strong class="font-medium text-fg">{text.slice(index + 2, close)}</strong>)
+        parts.push(<strong class="font-medium text-ink">{text.slice(index + 2, close)}</strong>)
         index = close + 2
         continue
       }
@@ -121,7 +121,7 @@ function inline(text: string): JSX.Element[] {
         flush()
         const code = text.slice(index + 1, close)
         parts.push(
-          <code class="rounded-[2px] border border-line-inner bg-hover px-1 py-0.5 font-mono text-[12.5px] text-fg-2">
+          <code class="rounded-sm border border-line-2 bg-secondary px-1 py-0.5 font-mono text-sm text-ink-2">
             {code}
           </code>,
         )
@@ -153,12 +153,12 @@ function isTableDelimiter(line: string): boolean {
 function TableBlock(props: { header: readonly string[]; rows: readonly (readonly string[])[] }): JSX.Element {
   return (
     <div class="overflow-x-auto">
-      <table class="w-max min-w-full border-collapse text-[13px] leading-[1.5]">
+      <table class="w-max min-w-full border-collapse text-base leading-[1.5]">
         <thead>
           <tr>
             <For each={props.header}>
               {(cell) => (
-                <th class="border-b border-line px-2 py-1.5 text-left text-[11px] font-normal tracking-wide whitespace-nowrap text-fg-3 uppercase">
+                <th class="border-b border-line-1 px-2 py-1.5 text-left text-2xs font-normal tracking-wide whitespace-nowrap text-ink-3 uppercase">
                   {inline(cell)}
                 </th>
               )}
@@ -170,7 +170,7 @@ function TableBlock(props: { header: readonly string[]; rows: readonly (readonly
             {(row) => (
               <tr>
                 <For each={row}>
-                  {(cell) => <td class="border-b border-line-inner px-2 py-1.5 align-top text-fg-2">{inline(cell)}</td>}
+                  {(cell) => <td class="border-b border-line-2 px-2 py-1.5 align-top text-ink-2">{inline(cell)}</td>}
                 </For>
               </tr>
             )}
@@ -219,7 +219,7 @@ export function Markdown(props: { text: string; small?: boolean; muted?: boolean
       const heading = /^(#{1,3})\s+(.*)$/.exec(trimmed)
       if (heading !== null) {
         output.push(
-          <div class="mt-1 text-[15px] font-medium leading-[1.4] text-fg">{inline(heading[2] ?? "")}</div>,
+          <div class="mt-1 text-[15px] font-medium leading-[1.4] text-ink">{inline(heading[2] ?? "")}</div>,
         )
         index += 1
         continue
@@ -269,7 +269,7 @@ export function Markdown(props: { text: string; small?: boolean; muted?: boolean
           index += 1
         }
         output.push(
-          <blockquote class="border-l border-line-strong pl-3 text-fg-2">{inline(quoted.join("\n"))}</blockquote>,
+          <blockquote class="border-l border-line-3 pl-3 text-ink-2">{inline(quoted.join("\n"))}</blockquote>,
         )
         continue
       }
@@ -289,10 +289,10 @@ export function Markdown(props: { text: string; small?: boolean; muted?: boolean
     <div
       class="flex flex-col gap-2.5 leading-[1.6] [overflow-wrap:anywhere]"
       classList={{
-        "text-[14px]": props.small !== true,
-        "text-[13px]": props.small === true,
-        "text-fg": props.muted !== true,
-        "text-fg-2": props.muted === true,
+        "text-base": props.small !== true,
+        "text-sm": props.small === true,
+        "text-ink": props.muted !== true,
+        "text-ink-2": props.muted === true,
       }}
     >
       {blocks()}
