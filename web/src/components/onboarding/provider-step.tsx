@@ -9,7 +9,7 @@ import {
   onboardingProvider,
   type ProviderInput,
 } from "../../state/onboarding.ts"
-import { priceMarks, type ModelInfo } from "../../state/settings.ts"
+import type { ModelInfo, ModelPrice } from "../../state/settings.ts"
 
 type ChoiceId = "anthropic" | "openai" | "openrouter" | "other"
 type CustomApi = "openai-completions" | "openai-responses" | "anthropic-messages" | "google-generative-ai"
@@ -36,6 +36,14 @@ function choiceOf(provider: string | undefined): ChoiceId {
 
 function apiFrom(value: string): CustomApi {
   return APIS.find((entry) => entry.id === value)?.id ?? "openai-completions"
+}
+
+function priceMarks(price: ModelPrice | undefined): string {
+  if (price === undefined) return ""
+  const perMillion = (price.input + price.output) / 2
+  if (perMillion <= 0) return ""
+  if (perMillion < 2) return "$"
+  return perMillion < 10 ? "$$" : "$$$"
 }
 
 function contextLabel(tokens: number): string {
