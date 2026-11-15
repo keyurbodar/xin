@@ -57,7 +57,8 @@ export class Streams {
   #retry = 0
   #refused = 0
   #stopped = false
-  #paused = false
+  /** The token being retired while the stream is held; the hold ends only once a different token is stored. */
+  #held: string | undefined
   /** Bumped by every reconnect the tab asks for, so a check or a timer from before it does nothing. */
   #run = 0
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
@@ -89,7 +90,7 @@ export class Streams {
   }
 
   open(): void {
-    if (this.#ws !== undefined || this.#stopped || this.#paused) return
+    if (this.#ws !== undefined || this.#stopped || this.#holding()) return
     this.#onStatus("connecting")
     const url = new URL("/v1/socket", location.href)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
@@ -116,9 +117,9 @@ export class Streams {
 
   /** Drops the socket so the next handshake carries the current token; subscriptions survive the bounce. */
   reconnectNow(): void {
+    if (this.#holding()) return
     this.#retry = 0
     this.#refused = 0
-    this.#paused = false
     this.#run += 1
     if (this.#ws === undefined) this.open()
     else this.#ws.close()
@@ -126,12 +127,26 @@ export class Streams {
 
   /**
    * Holds the socket closed while the owner retires this tab's token on purpose, so its refused handshakes cannot end
-   * the session before the one-time replacement is copied or adopted. `reconnectNow()` resumes.
+   * the session before the one-time replacement is copied or adopted. Only a different stored token ends the hold: a
+   * push or any other `reconnectNow()` with the retired token still stored keeps it.
    */
   pause(): void {
-    this.#paused = true
+    this.#held = token()
     this.#run += 1
     this.#ws?.close()
+  }
+
+  /** Ends a hold whose rotation never happened, so the token it held is still the live one. */
+  resume(): void {
+    this.#held = undefined
+    this.reconnectNow()
+  }
+
+  #holding(): boolean {
+    if (this.#held === undefined) return false
+    if (token() === this.#held) return true
+    this.#held = undefined
+    return false
   }
 
   /**
@@ -140,7 +155,7 @@ export class Streams {
    * a 401 for a token replaced meanwhile, or anything else, an offline network included, keeps the backoff.
    */
   async #reconnect(): Promise<void> {
-    if (this.#paused) return
+    if (this.#holding()) return
     const run = this.#run
     if (this.#refused >= REFUSED_HANDSHAKES) {
       this.#refused = 0

@@ -179,4 +179,63 @@ describe("Streams when the token changes under a check", () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(dialled).toEqual(["bearer.own_revoked", "bearer.own_replacement"])
   })
+
+  it("ignores a 401 for a token another tab replaced, with no reconnect asked for", async () => {
+    hold = true
+    let signedOut = 0
+    const streams = new Streams(
+      () => undefined,
+      () => undefined,
+      () => {
+        signedOut += 1
+      },
+    )
+    streams.open()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(pending).toBeDefined()
+    stored = "own_replacement"
+    accept = true
+    pending?.(401)
+    await vi.advanceTimersByTimeAsync(HOUR)
+    expect(signedOut).toBe(0)
+    expect(dialled.at(-1)).toBe("bearer.own_replacement")
+  })
+
+  it("keeps the hold through a push-driven reconnect while the retired token is still stored", async () => {
+    let signedOut = 0
+    const streams = new Streams(
+      () => undefined,
+      () => undefined,
+      () => {
+        signedOut += 1
+      },
+    )
+    accept = true
+    streams.open()
+    await vi.advanceTimersByTimeAsync(0)
+    streams.pause()
+    accept = false
+    for (let push = 0; push < 5; push += 1) {
+      streams.reconnectNow()
+      await vi.advanceTimersByTimeAsync(10_000)
+    }
+    await vi.advanceTimersByTimeAsync(HOUR)
+    expect(signedOut).toBe(0)
+    expect(requests).toEqual(["socket /v1/socket"])
+  })
+
+  it("resumes on the same token when the rotation that held it failed", async () => {
+    const streams = new Streams(
+      () => undefined,
+      () => undefined,
+      () => undefined,
+    )
+    accept = true
+    streams.open()
+    await vi.advanceTimersByTimeAsync(0)
+    streams.pause()
+    streams.resume()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(dialled).toEqual(["bearer.own_revoked", "bearer.own_revoked"])
+  })
 })
