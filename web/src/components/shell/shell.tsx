@@ -8,13 +8,16 @@ import { ConnectionBanner } from "./connection-banner.tsx"
 import { CommandPalette } from "./palette.tsx"
 import { NewThreadDialog } from "./new-thread.tsx"
 import { ICON_BUTTON } from "./menu.ts"
-import { Toasts } from "../../plugins/slots.tsx"
+import { Toasts as PluginToasts } from "../../plugins/slots.tsx"
 import { ProjectScreen } from "../../screens/project.tsx"
 import { ExtensionsScreen } from "../../screens/extensions.tsx"
 import { SettingsScreen } from "../../screens/settings.tsx"
 import { AutomationsScreen } from "../../screens/automations.tsx"
+import { CaptainScreen } from "../../screens/captain.tsx"
+import { NewCaptainDialog } from "../captain/captain-dialog.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
+import { Toasts } from "../ui/toast.tsx"
 
 export function Shell(): JSX.Element {
   const first = () => route().parts[0]
@@ -92,39 +95,43 @@ export function Shell(): JSX.Element {
             </div>
           )}
         >
-          <Show
-            when={project()}
-            fallback={
-              <section class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-ring">
-                <Show when={!wide() || sidebarHidden()}>
-                  <div class="flex h-[var(--h-topbar)] shrink-0 items-center border-b border-line-1 px-2">
-                    <button type="button" class={ICON_BUTTON} aria-label="Open the sidebar" onClick={toggleSidebar}>
-                      <MenuIcon size={16} stroke-width={1.5} />
-                    </button>
-                  </div>
-                </Show>
-                <Switch>
-                  <Match when={first() === "extensions"}>
-                    <ExtensionsScreen />
-                  </Match>
-                  <Match when={first() === "settings"}>
-                    <SettingsScreen />
-                  </Match>
-                  <Match when={first() === "automations"}>
-                    <AutomationsScreen />
-                  </Match>
-                </Switch>
-              </section>
-            }
-          >
-            <ProjectScreen />
+          <Show when={first() !== "c"} fallback={<CaptainScreen />}>
+            <Show
+              when={project()}
+              fallback={
+                <section class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-ring">
+                  <Show when={!wide() || sidebarHidden()}>
+                    <div class="flex h-[var(--h-topbar)] shrink-0 items-center border-b border-line-1 px-2">
+                      <button type="button" class={ICON_BUTTON} aria-label="Open the sidebar" onClick={toggleSidebar}>
+                        <MenuIcon size={16} stroke-width={1.5} />
+                      </button>
+                    </div>
+                  </Show>
+                  <Switch>
+                    <Match when={first() === "extensions"}>
+                      <ExtensionsScreen />
+                    </Match>
+                    <Match when={first() === "settings"}>
+                      <SettingsScreen />
+                    </Match>
+                    <Match when={first() === "automations"}>
+                      <AutomationsScreen />
+                    </Match>
+                  </Switch>
+                </section>
+              }
+            >
+              <ProjectScreen />
+            </Show>
           </Show>
         </ErrorBoundary>
       </main>
       <NewProjectDialog open={first() === "new"} onClose={() => navigate("/")} />
       <NewThreadDialog />
+      <NewCaptainDialog />
       <CommandPalette open={palette()} onClose={() => setPalette(false)} />
       <Toasts />
+      <PluginToasts />
     </div>
   )
 }
