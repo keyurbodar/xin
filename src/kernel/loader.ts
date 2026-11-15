@@ -87,7 +87,12 @@ export class IngleLoader extends Loader {
     super(ctx, { baseUrl: config.baseUrl })
     this.composition = config.composition
     this.warnings = [...config.warnings]
-    this.compiled = new Set(Object.values(config.composition.catalog).map((entry) => sourcePackage(entry.source)))
+    this.compiled = new Set(
+      Object.values(config.composition.catalog).flatMap((entry) => {
+        const name = sourcePackage(entry.source)
+        return name.startsWith("ingle") ? [name, `xin${name.slice("ingle".length)}`] : [name]
+      }),
+    )
     this.runtimeBundles = config.runtime.filter((bundle) => !this.compiled.has(bundle.package))
     for (const [name, entry] of Object.entries(config.composition.catalog)) this.builtins[name] = entry.plugin
     const lower = this.lowerOf(config.runtime)

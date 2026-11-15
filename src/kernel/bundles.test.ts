@@ -335,6 +335,26 @@ describe("runtime bundles", () => {
     expect(await list(stub)).toMatchObject([{ package: name, rows: [{ id: "greet", state: { kind: "missing" } }] }])
   })
 
+  it("does not mount a stored bundle under the pre-rename name of a compiled package", async () => {
+    const stub = fresh()
+    const name = "xin-plugin-time"
+    const bundle: RuntimeBundle = {
+      package: name,
+      source: { kind: "registry", version: "1.0.0", integrity: "sha512-AAAA" },
+      rows: [{ id: "greet", plugin: "k-echo", config: { text: "hello" } }],
+      patch: [],
+      requires: [],
+    }
+    await runInDurableObject(stub, async (_home: Home, state) => {
+      state.storage.kv.put("plugins.bundles", [bundle])
+    })
+    await evictDurableObject(stub)
+
+    expect(await rowOf(stub, "greet")).toBeUndefined()
+    expect(await stored(stub, "greet")).toBeUndefined()
+    expect(await list(stub)).toMatchObject([{ package: name, rows: [{ id: "greet", state: { kind: "missing" } }] }])
+  })
+
   it("fails a second row of a plugin that registers a fixed extension name", async () => {
     const stub = fresh()
     const name = "ingle-plugin-duplicate"
