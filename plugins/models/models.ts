@@ -28,6 +28,7 @@ import {
   ROOT_CONVERSATION_ID,
   UsageDoc,
   type AgentChange,
+  configure as configureAgent,
   type ConversationId,
   type Harness,
   type JsonObject,
@@ -869,8 +870,6 @@ export function create(deps: ModelsPort): ModelsParts {
         const found = registry.models.getModel(args.model.provider, args.model.modelId)
         if (found === undefined)
           throw new OpRejected("bad_args", `unknown model ${args.model.provider}/${args.model.modelId}`)
-        if (isOff(refOf(found)))
-          throw new OpRejected("bad_args", `model ${args.model.provider}/${args.model.modelId} is disabled`)
         change.model = { provider: args.model.provider, modelId: args.model.modelId }
         if (!found.reasoning) change.thinkingLevel = null
       }
@@ -883,16 +882,12 @@ export function create(deps: ModelsPort): ModelsParts {
           change.thinkingLevel = args.thinking
         }
       }
-      const previous = (await conversation.agent(BACKGROUND_CONTEXT)).model
-      await conversation.configure(change satisfies AgentChange, BACKGROUND_CONTEXT)
-      const chosen = change.model
-      if (chosen !== undefined && chosen !== null && isOff(chosen)) {
-        await conversation.configure(
-          { model: previous === undefined || isOff(previous) ? null : previous },
-          BACKGROUND_CONTEXT,
-        )
-        throw new OpRejected("bad_args", `model ${chosen.provider}/${chosen.modelId} was disabled meanwhile`)
-      }
+      await api.harness.commit(async (tx) => {
+        const chosen = change.model
+        if (chosen !== undefined && chosen !== null && isOff(chosen))
+          throw new OpRejected("bad_args", `model ${chosen.provider}/${chosen.modelId} is disabled`)
+        await configureAgent(tx, conversation.id, change satisfies AgentChange)
+      }, BACKGROUND_CONTEXT)
       if (change.model !== undefined && change.model !== null) await remember(db, change.model)
       const agent = await conversation.agent(BACKGROUND_CONTEXT)
       return {
