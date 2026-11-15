@@ -12,10 +12,10 @@ Markdown skills with `name` and `description` frontmatter. Every conversation ge
 
 Settings, Skills: paste a Markdown skill. The model sees the list and loads a skill when the task matches.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 $S call POST /v1/cmd '{"id":"vs-1","op":"skill.put","args":{"name":"research","markdown":"---\nname: research\ndescription: How to research a topic\n---\nSearch, read three sources, summarise."}}'   # ok, {name, description}
 $S call POST /v1/cmd '{"id":"vs-2","op":"skill.put","args":{"name":"bad","markdown":"no frontmatter"}}'   # ok:false bad_args
 $S call POST /v1/cmd '{"id":"vs-3","op":"skill.list"}'          # [{name:"research", ...}]

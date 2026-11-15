@@ -17,7 +17,7 @@ const core = (plugin: CatalogEntry["plugin"], title: string, description: string
   title,
   description,
   required: true,
-  source: "xin",
+  source: "ingle",
 })
 
 export const CORE_CATALOG: Catalog = {
@@ -35,7 +35,7 @@ export const CORE_CATALOG: Catalog = {
     plugin: managerTool,
     title: "Plugin manager tool",
     description: "The plugin_manager agent tool, off by default.",
-    source: "xin",
+    source: "ingle",
   },
 }
 
@@ -48,5 +48,5 @@ const row = (id: string): Row => ({
 })
 
 export const CORE_BUNDLES: Readonly<Record<string, readonly Row[]>> = {
-  "xin-base": Object.keys(CORE_CATALOG).map(row),
+  "ingle-base": Object.keys(CORE_CATALOG).map(row),
 }

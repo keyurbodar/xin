@@ -6,7 +6,7 @@ here, so this drives Firefox ESR through geckodriver, turns push on through the 
 Settings pane, and then checks what the service worker actually received.
 
 usage:
-  /usr/bin/python3 .claude/skills/verify-xin/push-firefox.py \
+  /usr/bin/python3 .claude/skills/verify-ingle/push-firefox.py \
       --client http://localhost:5174 --worker http://127.0.0.1:8799 \
       --token verify-owner-token --geckodriver /tmp/geckodriver \
       --shot .verify/shots/P14-push-firefox.png
@@ -100,10 +100,10 @@ def main() -> int:
         )
         browser_.execute_script(
             """
-            window.__xinPush = [];
+            window.__inglePush = [];
             navigator.serviceWorker.addEventListener('message', (event) => {
               const data = event.data;
-              if (data && data.type === 'xin-push') window.__xinPush.push(data);
+              if (data && data.type === 'ingle-push') window.__inglePush.push(data);
             });
             """
         )
@@ -123,7 +123,7 @@ def main() -> int:
         deadline = time.time() + args.wait
         seen: list = []
         while time.time() < deadline:
-            seen = browser_.execute_script("return window.__xinPush")
+            seen = browser_.execute_script("return window.__inglePush")
             if seen:
                 break
             time.sleep(2)

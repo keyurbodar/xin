@@ -202,7 +202,7 @@ export function Profile(): JSX.Element {
         {(message) => <Failure message={message()} />}
       </Show>
 
-      <Group title="What Xin knows about you" detail="Written by the dreamer from your conversations">
+      <Group title="What Ingle knows about you" detail="Written by the dreamer from your conversations">
         <Show when={profile.error}>
           {(failure) => <Failure message={errorMessage(failure())} onRetry={() => void refetch()} />}
         </Show>

@@ -1,8 +1,8 @@
 # 15 · Plugins: one model, three scopes
 
-Xin's plugin layer is the one deepseek-harness (dsh) uses: Cordis contexts, services, typed events and reversible effects, composed from a tree of loader rows. There is no privileged core. The kernel services, pi-durable itself and every feature are rows that a patch can configure, disable or replace.
+Ingle's plugin layer is the one deepseek-harness (dsh) uses: Cordis contexts, services, typed events and reversible effects, composed from a tree of loader rows. There is no privileged core. The kernel services, pi-durable itself and every feature are rows that a patch can configure, disable or replace.
 
-This section adds the one thing dsh leaves implicit and Xin makes a first-class word: **a plugin is mounted at a scope**. A plugin can apply to the whole Home, to one project, or to one thread, and the composition of a scope is resolved by inheritance. That is what makes a personal agent feel configurable without a settings maze: the same plugin can be on everywhere and off in one project, with no second mechanism.
+This section adds the one thing dsh leaves implicit and Ingle makes a first-class word: **a plugin is mounted at a scope**. A plugin can apply to the whole Home, to one project, or to one thread, and the composition of a scope is resolved by inheritance. That is what makes a personal agent feel configurable without a settings maze: the same plugin can be on everywhere and off in one project, with no second mechanism.
 
 A plugin is **trusted code that just runs**. Installing the build is the only trust decision. There are no permission grants, no approval prompts and no sandbox; those were designed, then cut (see [Dropped for simplicity](#dropped-for-simplicity)).
 
@@ -27,7 +27,7 @@ The design goal is the smallest vocabulary that still covers every case dsh cove
 | **Preset** | user | a named set of plugins | agent preset |
 | **Scope** | user | where a preset applies: Home, a project, or a thread | profile + agent scope |
 | **Capability** | author | one typed extension point a plugin registers on (tool, hook, op, timer, …) | service + event |
-| **Manifest** | author | the `xin.plugins.<name>` declaration in `package.json` | `dsh` field, `engines.dsh` |
+| **Manifest** | author | the `ingle.plugins.<name>` declaration in `package.json` | `dsh` field, `engines.dsh` |
 
 | Internal word | What it is | Why it stays internal |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ The design goal is the smallest vocabulary that still covers every case dsh cove
 | isolate realm | a service scope inside Cordis | a scope is a place, not a realm |
 | loader | Cordis' row tree | engine |
 
-dsh asks a user to hold profile, bundle, patch, row, preset, isolate, plugin, market index, version exemption, platform and approval: eleven. Xin keeps dsh's engine and reduces the public set to five by giving three of those words a default that needs no decision (one Home, one bundle per package, one trust decision per build) and by dropping approvals and exemptions entirely.
+dsh asks a user to hold profile, bundle, patch, row, preset, isolate, plugin, market index, version exemption, platform and approval: eleven. Ingle keeps dsh's engine and reduces the public set to five by giving three of those words a default that needs no decision (one Home, one bundle per package, one trust decision per build) and by dropping approvals and exemptions entirely.
 
 ## What a plugin can hook into
 
@@ -71,7 +71,7 @@ A capability is a typed registration on a kernel service. The closed set below i
 | files | `ctx.files` | the file index and R2 bytes |
 | config | `export const Config = Schema.object({…})` | a validated, serialisable configuration |
 
-**Integration** — the seams that connect Xin to the outside:
+**Integration** — the seams that connect Ingle to the outside:
 
 | Capability | Registration | What it does |
 | --- | --- | --- |
@@ -92,7 +92,7 @@ Rules:
 
 ### pi-durable is the agent seam
 
-Xin does not reimplement the agent loop. pi-durable's **extension** is the unit the registry installs; Xin's **plugin** is the unit the owner installs. One plugin may install several extensions (a service row and a `tool-*` row), and an extension may come from a plugin with no host surface at all.
+Ingle does not reimplement the agent loop. pi-durable's **extension** is the unit the registry installs; Ingle's **plugin** is the unit the owner installs. One plugin may install several extensions (a service row and a `tool-*` row), and an extension may come from a plugin with no host surface at all.
 
 | pi surface | What a plugin does with it | Rule |
 | --- | --- | --- |
@@ -112,9 +112,9 @@ A package declares its plugins in `package.json`. Everything is optional; a plug
 
 ```json
 {
-  "name": "xin-plugin-weather",
+  "name": "ingle-plugin-weather",
   "version": "1.2.0",
-  "xin": {
+  "ingle": {
     "plugins": {
       "weather": {
         "module": "./index.ts",
@@ -134,7 +134,7 @@ A package declares its plugins in `package.json`. Everything is optional; a plug
 | `api` | `1` | the plugin API version the module is written against |
 | `requires` | `[]` | other plugins it needs, `name` or `name@range` |
 
-`bun scripts/xin.ts plugin generate` parses and validates every manifest and writes it into `src/catalog.gen.ts`. A bad manifest fails the build, not boot. The running Worker never reads `package.json`; the catalog is the single source at run time.
+`bun scripts/ingle.ts plugin generate` parses and validates every manifest and writes it into `src/catalog.gen.ts`. A bad manifest fails the build, not boot. The running Worker never reads `package.json`; the catalog is the single source at run time.
 
 The two fields earn their place:
 
@@ -151,7 +151,7 @@ Three questions, three surfaces:
 
 | Question | Surface | Answers |
 | --- | --- | --- |
-| What can I install? | `market.search` / `market.entry` | the build's own packages plus any configured index: package, version, `engines.xin`, code or bundle, install spec |
+| What can I install? | `market.search` / `market.entry` | the build's own packages plus any configured index: package, version, `engines.ingle`, code or bundle, install spec |
 | What is in this build? | `plugin.catalog` | every plugin with title, description, manifest, config schema, source package@version |
 | What is running, and is it healthy? | `plugin.list`, `plugin.doctor`, `plugin.tree` | row state, issues, and the composition that produced them |
 
@@ -174,8 +174,8 @@ Four axes, each with one rule:
 
 | Axis | Field | Rule | On mismatch |
 | --- | --- | --- | --- |
-| Plugin API | `xin.plugins.*.api` | equality with `PLUGIN_API` (1) | row `failed`, doctor explains |
-| Package | `version` | semver; the market reads `engines.xin` | the market hides or marks it |
+| Plugin API | `ingle.plugins.*.api` | equality with `PLUGIN_API` (1) | row `failed`, doctor explains |
+| Package | `version` | semver; the market reads `engines.ingle` | the market hides or marks it |
 | Requirements | `requires` | semver range against the build's plugin version | row `failed`, doctor explains |
 | Config and data | `Config`, own migrations | schemastery validates on write; SQL migrations are append-only | a write is rejected; a migration is applied once |
 
@@ -210,13 +210,13 @@ The same rule covers plugin-contributed prompts and skills. A contributed prompt
 
 ## Trust: a plugin just runs
 
-**Trust tiers.** `core` rows are required and cannot be removed. `build` rows come from packages in `xin.profile.json`; installing the build is the trust decision. `runtime` rows come from a bundle or an owner patch at run time. Third-party *code* always arrives through a build; a bundle can mount only plugins that are already compiled.
+**Trust tiers.** `core` rows are required and cannot be removed. `build` rows come from packages in `ingle.profile.json`; installing the build is the trust decision. `runtime` rows come from a bundle or an owner patch at run time. Third-party *code* always arrives through a build; a bundle can mount only plugins that are already compiled.
 
 **What is not there.** No permission grants, no capability declarations, no per-call approval, no sandbox, no capability list to click through. A plugin runs with the same JavaScript access as the kernel, because it is the same isolate. This is dsh's model and the honest one for a personal agent: the boundary is what you install, not what you tick.
 
 **What a person sees.** A plugin is on or off, with a title, a one-line description and the tools it adds. Turning it on is one action. There is nothing to approve before it works.
 
-**Remote code.** An MCP server is the free plan's isolation story for code that runs elsewhere: the code executes in its author's host, and Xin holds only a connection. A bundle mounts live but references compiled plugins.
+**Remote code.** An MCP server is the free plan's isolation story for code that runs elsewhere: the code executes in its author's host, and Ingle holds only a connection. A bundle mounts live but references compiled plugins.
 
 **The paid path, if it is ever needed.** Cloudflare's Worker Loader gives a real isolate behind the same services over RPC. It is not planned: no concrete use case requires it today. If a public plugin directory with unknown authors appears, that is the trigger, and the manifest would gain a field then. Nothing in this design depends on it.
 
@@ -245,7 +245,7 @@ The question is not how many features the plugin system has, but how many words 
 
 1. Write `apply(ctx, config)` and register capabilities.
 2. Add one manifest entry to `package.json`.
-3. Add the package to the build and deploy: `bun scripts/xin.ts plugin new <name>` does all three for a plugin written in this checkout, and `bun scripts/xin.ts plugin add <spec> --enable` does it for a published one.
+3. Add the package to the build and deploy: `bun scripts/ingle.ts plugin new <name>` does all three for a plugin written in this checkout, and `bun scripts/ingle.ts plugin add <spec> --enable` does it for a published one.
 
 No profile, no layer, no patch, no bundle unless the package ships more than one plugin. A plugin with no manifest still works.
 
@@ -292,17 +292,17 @@ The `net` permission check named in M8 belonged to the pre-P5 host adapter, whic
 
 A row is a loader `EntryOptions`: `{ id, name: "cordis:<plugin>", config?, disabled?, group?, isolate? }`. A bundle is an ordered list of rows. Layers apply to an empty list:
 
-1. The bundles named in `xin.profile.json`, in order, then the runtime bundles ([12 Market](./12-market.md)).
+1. The bundles named in `ingle.profile.json`, in order, then the runtime bundles ([12 Market](./12-market.md)).
 2. That file's `patch`. It is build time and checked in.
 3. The owner patch. It is run time, stored in `kv` key `plugins.patch`, and recomputed as the minimal departure from the lower layers.
 
 The last write wins per row. A patch replaces each named field whole, config included, with no deep merge. An unknown id is reported and skipped.
 
-`XinLoader.commit` stores the owner patch so it records only what the owner changed. Adding a row is a local bundle, as dsh adds rows through a bundle.
+`IngleLoader.commit` stores the owner patch so it records only what the owner changed. Adding a row is a local bundle, as dsh adds rows through a bundle.
 
 **Failure.** A failed `required` row puts Home in `boot_failed`; any other failed row is reported with its error and the rest keep running; a row whose plugin left the build is `missing` and is not mounted.
 
-**Kernel services (seams).** Each service is a row in `xin-base`; a different row can provide the same key.
+**Kernel services (seams).** Each service is a row in `ingle-base`; a different row can provide the same key.
 
 | Key | Row | Surface |
 | --- | --- | --- |
@@ -325,7 +325,7 @@ Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `
 
 **MCP surface.** `tool-mcp` installs one deferred tool per MCP tool. When a server declares the `resources` capability it also installs `mcp_resources` (list resources and templates) and `mcp_resource` (read one URI); when it declares `prompts` it installs `mcp_prompts` (list) and `mcp_prompt` (render with arguments). All four are read-only, carry the server name in their tool name, and sit behind `tool_search`. `tool_search` itself is offered only while the row has at least one deferred tool to find: with no server connected it could answer nothing but "no match", so it is not in the prompt at all, and it appears on the first `mcp/changed` that adds a tool. `mcp.list` reports the cached tool count and, when the capability is present, the resource, template and prompt counts; `mcp.resources { name }` and `mcp.prompts { name }` read the live lists. Disabling `tool-mcp` hides all of them together, and a preset that hides the row does the same. There is no sampling, elicitation or GET stream.
 
-**`mcp-server` ships unmounted.** The plugin is in the catalog — `xin-plugin-mcp`, module `server.ts`, config `{ name, url, headers? }` — but `xin-plugin-mcp`'s bundle lists only `mcp` and `tool-mcp`, so no row of `mcp-server` is in the composed tree and `plugin.list` never shows one. The shipped profile therefore configures no MCP server: `tool-mcp` is mounted and has nothing to expose, and `mcp.list` answers empty. Mounting a server takes a row, in one of two ways: add `{ "id": "mcp-server", "plugin": "mcp-server", "config": { "name": "…", "url": "…" } }` to `plugins/mcp/package.json`'s `xin.bundle` and regenerate the catalog (`bun scripts/xin.ts plugin generate`), which is a build and a deploy; or install a runtime bundle with `bundle.put { package, rows: [...] }`, which mounts live with no deploy (12).
+**`mcp-server` ships unmounted.** The plugin is in the catalog — `ingle-plugin-mcp`, module `server.ts`, config `{ name, url, headers? }` — but `ingle-plugin-mcp`'s bundle lists only `mcp` and `tool-mcp`, so no row of `mcp-server` is in the composed tree and `plugin.list` never shows one. The shipped profile therefore configures no MCP server: `tool-mcp` is mounted and has nothing to expose, and `mcp.list` answers empty. Mounting a server takes a row, in one of two ways: add `{ "id": "mcp-server", "plugin": "mcp-server", "config": { "name": "…", "url": "…" } }` to `plugins/mcp/package.json`'s `ingle.bundle` and regenerate the catalog (`bun scripts/ingle.ts plugin generate`), which is a build and a deploy; or install a runtime bundle with `bundle.put { package, rows: [...] }`, which mounts live with no deploy (12).
 
 ## Plugin manager
 
@@ -344,7 +344,7 @@ The agent tool `plugin_manager` is its own row, `tool-plugins` (not required, of
 
 ## Authoring a plugin
 
-The starter is `plugins/hello`: one tool and one prompt, and the package `bun scripts/xin.ts plugin new <name>` copies under a new name, regenerates the catalog and adds to the build. `docs/plugin-authoring.md` is the one-page path from nothing to a deployed plugin, and `test/authoring.test.ts` proves it end to end — scaffold, mount, tool call, `prompt.list` — so the template, the scaffold and the mount cannot drift apart.
+The starter is `plugins/hello`: one tool and one prompt, and the package `bun scripts/ingle.ts plugin new <name>` copies under a new name, regenerates the catalog and adds to the build. `docs/plugin-authoring.md` is the one-page path from nothing to a deployed plugin, and `test/authoring.test.ts` proves it end to end — scaffold, mount, tool call, `prompt.list` — so the template, the scaffold and the mount cannot drift apart.
 
 A plugin is one module:
 
@@ -378,7 +378,7 @@ export function apply(ctx: Context, config: { greeting: string }) {
 ```
 
 ```json
-{ "xin": { "plugins": { "hello": { "module": "./index.ts", "title": "Hello" } } } }
+{ "ingle": { "plugins": { "hello": { "module": "./index.ts", "title": "Hello" } } } }
 ```
 
 An extension that carries tools is named `tool-*`; the registry refuses one that is not, because a preset tells a tool row from a service row by that prefix.

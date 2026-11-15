@@ -14,7 +14,7 @@ import type { BundlePatchState } from "./bundlepatch.ts"
 import { configSchemaOf, validateConfig } from "./config.ts"
 import { pluginOf } from "./layers.ts"
 import type { PackageSpec } from "./packages.ts"
-import type { RowState, XinLoader } from "./loader.ts"
+import type { RowState, IngleLoader } from "./loader.ts"
 
 export * from "./bundlestore.ts"
 export { BundlePatchArg, normalizePatch } from "./bundlepatch.ts"
@@ -54,7 +54,7 @@ function fail(message: string): never {
   throw new OpRejected("bad_args", message)
 }
 
-export function createBundles(loader: XinLoader, storage: DurableObjectStorage, port: PackagePort): Bundles {
+export function createBundles(loader: IngleLoader, storage: DurableObjectStorage, port: PackagePort): Bundles {
   const queue = serial()
 
   const validate = (bundle: RuntimeBundle): readonly PackageSpec[] => {

@@ -13,10 +13,10 @@ The owner adds remote MCP servers (Streamable HTTP). Their tools appear as defer
 
 The settings view has an MCP section to add a server URL and an auth header.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 $S call POST /v1/cmd '{"id":"a0","op":"mcp.add","args":{"name":"plain","url":"http://127.0.0.1:9/mcp"}}'   # bad_args: https only
 $S call POST /v1/cmd '{"id":"a1","op":"mcp.add","args":{"name":"demo","url":"https://mcp.invalid/mcp","headers":{"authorization":"Bearer x"}}}'
 $S call POST /v1/cmd '{"id":"l1","op":"mcp.list","args":{}}'      # error shown, no headers

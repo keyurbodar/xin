@@ -28,6 +28,6 @@ export const catalog: Catalog = {
     plugin: recorder,
     title: "Recorded package",
     description: "A package name a test can install or uninstall.",
-    source: "xin-plugin-weather@1.0.0",
+    source: "ingle-plugin-weather@1.0.0",
   },
 }

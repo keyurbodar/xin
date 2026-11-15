@@ -36,7 +36,7 @@ export class Wire extends Service {
       if (request.headers.get("upgrade") !== "websocket" || this.sockets === undefined)
         return new Response("not found", { status: 404 })
       return this.sockets.accept(
-        request.headers.get("x-xin-protocol") ?? undefined,
+        request.headers.get("x-ingle-protocol") ?? undefined,
         request.headers.get("origin") ?? "",
       )
     })

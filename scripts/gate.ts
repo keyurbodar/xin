@@ -18,7 +18,7 @@ import { boxes, leases, runOnBox } from "./box.ts"
 
 const SELF = import.meta.filename
 const HOME_ROOT = resolve(import.meta.dirname, "..")
-const BASE = "/tmp/xin-gate"
+const BASE = "/tmp/ingle-gate"
 const QUEUE = join(BASE, "queue")
 const RUNNING = join(BASE, "running")
 const RESULTS = join(BASE, "results")
@@ -50,7 +50,7 @@ type Job = {
 const isStep = (value: string): value is Step => ORDER.some((step) => step === value)
 const BOX_STEPS: ReadonlySet<Step> = new Set(["test", "bundle"])
 /** Environment that changes what a step runs, so a pass under one value never caches another. */
-const VARIANT_ENV = ["XIN_LOAD", "XIN_LIVE"] as const
+const VARIANT_ENV = ["INGLE_LOAD", "INGLE_LIVE"] as const
 /** The variant values a job runs under; the submitter's, carried by the job so the runner cannot substitute its own. */
 type Variant = Readonly<Record<string, string>>
 

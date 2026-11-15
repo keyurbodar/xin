@@ -21,10 +21,10 @@
 
 Typing three quick messages gets one reply. "stop" while it answers stops it.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 $S call POST /v1/cmd '{"id":"vm-1","op":"message.send","args":{"text":"hello","clientTs":1}}'   # accepted:true
 $S call POST /v1/cmd '{"id":"vm-1","op":"message.send","args":{"text":"hello","clientTs":1}}'   # same ack (the item dedupes)
 $S call POST /v1/cmd '{"id":"vm-2","op":"message.send","args":{"text":"again"}}'

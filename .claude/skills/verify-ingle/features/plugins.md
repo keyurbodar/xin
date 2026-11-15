@@ -1,6 +1,6 @@
 # Plugins (everything is a row)
 
-Xin's plugin layer is dsh's Cordis stack. Every part of Home is a loader row, kernel services included (`db`, `pi`, `ops`, `http`, `wire`, `clock`, `secrets`, `plugins`, `packages`, `system`), and so is every feature (`models`, `files`, `intake`, ...) and every package under `plugins/*`. The rows come from the bundles in `xin.profile.json`, then the installed runtime bundles, then that file's patch, then the owner patch stored in `kv` `plugins.patch`. Changes apply live. New code needs a rebuild and deploy.
+Ingle's plugin layer is dsh's Cordis stack. Every part of Home is a loader row, kernel services included (`db`, `pi`, `ops`, `http`, `wire`, `clock`, `secrets`, `plugins`, `packages`, `system`), and so is every feature (`models`, `files`, `intake`, ...) and every package under `plugins/*`. The rows come from the bundles in `ingle.profile.json`, then the installed runtime bundles, then that file's patch, then the owner patch stored in `kv` `plugins.patch`. Changes apply live. New code needs a rebuild and deploy.
 
 ## Sub-features
 
@@ -14,7 +14,7 @@ Xin's plugin layer is dsh's Cordis stack. Every part of Home is a loader row, ke
 - Required rows (the kernel) cannot be disabled. A failed required row makes `/v1/cmd` answer 503 `boot_failed`.
 - `system.version`, `system.restart {hard?}`, `system.update` through the `deployer` seam (default row `deploy-hook`, which needs its `url` secret).
 - Agent tool `plugin_manager` (`tool-plugins`): the row is disabled by default. When enabled, the agent can `list`, `catalog`, `tree`, `enable {id, enabled}` and `configure {id, config}`; approval of those mutations follows the P10 `tools/pre-execute` gate.
-- CLI (build time): `bun scripts/xin.ts plugin list | generate | add <spec> [--enable] | remove | enable | disable`.
+- CLI (build time): `bun scripts/ingle.ts plugin list | generate | add <spec> [--enable] | remove | enable | disable`.
 - Example package: `plugins/time` (`timezone` and `refreshIntervalMs` config, dsh `context/time-context`). It offers no tool: it installs extension `clock-<row>`, which appends a user-role reading starting `Time sampled while preparing turn ` to each model request when due. A bundle can add a second `time` row with its own zone, which installs its own `clock-<row>` extension. A second row of a plugin that registers a fixed extension name fails to start and reports `failed`, as a duplicate does in dsh.
 - Tool rows: each feature package ships `tool-<name>` next to its service row (`tool-files`, `tool-models`, `tool-memory`, `tool-questions`, `tool-skills`, `tool-schedules`, `tool-orchestrator`, `tool-mcp`, kernel `tool-plugins`). Disabling one hides those tools; the service row stays `active`.
 
@@ -22,16 +22,16 @@ Xin's plugin layer is dsh's Cordis stack. Every part of Home is a loader row, ke
 
 A Plugins page lists every row with its state and layer. It toggles rows, edits config from the schema in `plugin.catalog`, and offers Restart and Update buttons.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 $S call GET /v1/status                                                                    # build, bundles, degraded, row states
 $S call POST /v1/cmd '{"id":"c","op":"plugin.configure","args":{"id":"time","config":{"timezone":"Asia/Kolkata"}}}'   # applied, layer owner
 $S call POST /v1/cmd '{"id":"b","op":"plugin.configure","args":{"id":"time","config":{"timezone":"Mars/Olympus"}}}'   # application failed, row error
 $S call POST /v1/cmd '{"id":"r","op":"plugin.configure","args":{"id":"time","config":{"timezone":"UTC"}}}'            # inherited value written back: owner patch drops the override
-$S call POST /v1/cmd '{"id":"i","op":"bundle.put","args":{"package":"xin-plugin-extra-time","rows":[{"id":"time-tokyo","plugin":"time","config":{"timezone":"Asia/Tokyo"}}]}}'  # applied; second row of a plugin
-$S call POST /v1/cmd '{"id":"j","op":"bundle.put","args":{"package":"xin-plugin-bad","rows":[{"id":"pi2","plugin":"pi"}]}}'  # bad_args: required plugin
+$S call POST /v1/cmd '{"id":"i","op":"bundle.put","args":{"package":"ingle-plugin-extra-time","rows":[{"id":"time-tokyo","plugin":"time","config":{"timezone":"Asia/Tokyo"}}]}}'  # applied; second row of a plugin
+$S call POST /v1/cmd '{"id":"j","op":"bundle.put","args":{"package":"ingle-plugin-bad","rows":[{"id":"pi2","plugin":"pi"}]}}'  # bad_args: required plugin
 $S call POST /v1/cmd '{"id":"d","op":"plugin.enable","args":{"id":"push","enabled":false}}'
 $S call POST /v1/cmd '{"id":"t","op":"plugin.enable","args":{"id":"tool-memory","enabled":false}}'  # tool row disabled, memory stays active
 $S call POST /v1/cmd '{"id":"t2","op":"plugin.enable","args":{"id":"tool-mcp","enabled":false}}'  # tool_search and server tools hidden; mcp stays active and mcp.list answers
@@ -39,7 +39,7 @@ $S call POST /v1/cmd '{"id":"tp","op":"plugin.enable","args":{"id":"tool-plugins
 $S call POST /v1/cmd '{"id":"q","op":"plugin.enable","args":{"id":"pi","enabled":false}}'  # bad_args: required
 $S call POST /v1/cmd '{"id":"x","op":"system.restart","args":{}}'                         # soft restart; push stays disabled
 $S call POST /v1/cmd '{"id":"u","op":"system.update","args":{}}'                          # failed until the deploy-hook url secret is set
-$S call POST /v1/cmd '{"id":"k1","op":"plugin.install","args":{"spec":"xin-plugin-weather@1.2.0"}}'   # pending add (twice is still one)
+$S call POST /v1/cmd '{"id":"k1","op":"plugin.install","args":{"spec":"ingle-plugin-weather@1.2.0"}}'   # pending add (twice is still one)
 $S call POST /v1/cmd '{"id":"k2","op":"plugin.install","args":{"spec":"evil; rm -rf /"}}'           # bad_args
 $S call GET /v1/build/packages                                                              # {"add":[...],"remove":[...]}, 401 without the token
 $S call POST /v1/cmd '{"id":"pl","op":"preset.list","args":{}}'                              # presets, default and per-conversation selections

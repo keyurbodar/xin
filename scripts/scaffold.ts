@@ -14,7 +14,7 @@ const NAME = /^[a-z][a-z0-9-]*$/
 const title = (name: string): string => name.charAt(0).toUpperCase() + name.slice(1)
 
 /**
- * The files `bun scripts/xin.ts plugin new <name>` writes into `plugins/<name>`, from the
+ * The files `bun scripts/ingle.ts plugin new <name>` writes into `plugins/<name>`, from the
  * template package's own sources. Pure, so the authoring test can scaffold without a disk.
  */
 export function scaffold(name: string, template: Template): readonly ScaffoldFile[] {

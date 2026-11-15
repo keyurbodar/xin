@@ -1,15 +1,15 @@
-# Goal: Xin backend, M0 to M9, verified
+# Goal: Ingle backend, M0 to M9, verified
 
 Paste the block below as the goal.
 
 ```text
-Build the complete Xin backend in this repo, milestones M0 through M9 in docs/plan/milestones.md,
+Build the complete Ingle backend in this repo, milestones M0 through M9 in docs/plan/milestones.md,
 exactly as specified in docs/plan/ and following AGENTS.md.
 
 Done means: every milestone's named proof test passes through `bun scripts/gate.ts` (all steps green);
-the verification skill (.claude/skills/verify-xin, created at M0 with /pstack:create-verification-skill)
+the verification skill (.claude/skills/verify-ingle, created at M0 with /pstack:create-verification-skill)
 drives every feature once against the real Worker under wrangler dev and reports pass; a live run with
-XIN_LIVE=1 completes one coordinator reply, one delegated thread with its report, and one mid-run model
+INGLE_LIVE=1 completes one coordinator reply, one delegated thread with its report, and one mid-run model
 switch, on the OpenCode Go model order in .dev.vars (iceman-contributor-free,
 else beam-free, else muse-spark-1.3-contributor); docs/plan matches the code; one commit per milestone.
 

@@ -20,9 +20,9 @@ describe("deploy hook", () => {
   it("declares the deployer row and posts the ref with the pending packages as a workflow input", () => {
     expect(name).toBe("deploy-hook")
     expect(inject).toEqual(["secrets"])
-    expect(JSON.parse(deployBody(undefined, { add: ["left-pad@1.3.0"], remove: ["xin-plugin-time"] }))).toEqual({
+    expect(JSON.parse(deployBody(undefined, { add: ["left-pad@1.3.0"], remove: ["ingle-plugin-time"] }))).toEqual({
       ref: "main",
-      inputs: { packages: JSON.stringify({ add: ["left-pad@1.3.0"], remove: ["xin-plugin-time"] }) },
+      inputs: { packages: JSON.stringify({ add: ["left-pad@1.3.0"], remove: ["ingle-plugin-time"] }) },
     })
     expect(JSON.parse(deployBody("release", { add: [], remove: [] }))).toEqual({
       ref: "release",
@@ -39,7 +39,7 @@ describe("deploy hook", () => {
         ref: "release/${credential:branch}",
       },
       secrets({ "hook-host": "hooks.test", gh: "hook-token", branch: "main" }),
-      { add: ["xin-plugin-time@0.1.0"], remove: [] },
+      { add: ["ingle-plugin-time@0.1.0"], remove: [] },
     )
 
     expect(result).toEqual({ application: "deploying", detail: "deploy hook answered 204" })
@@ -47,7 +47,7 @@ describe("deploy hook", () => {
     expect(new Headers(posted[0]?.init?.headers).get("authorization")).toBe("Bearer hook-token")
     expect(JSON.parse(String(posted[0]?.init?.body))).toEqual({
       ref: "release/main",
-      inputs: { packages: JSON.stringify({ add: ["xin-plugin-time@0.1.0"], remove: [] }) },
+      inputs: { packages: JSON.stringify({ add: ["ingle-plugin-time@0.1.0"], remove: [] }) },
     })
   })
 

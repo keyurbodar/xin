@@ -1,12 +1,12 @@
-# How Kiko handles Durable Objects, and what Xin should take
+# How Kiko handles Durable Objects, and what Ingle should take
 
 Read against Kiko at [`82906df0`](https://github.com/keyurbodar/kiko/tree/82906df00fd665fdb9b99a267b175d8db127a873) (2026-11-01). Every number below was measured, not read off a comment: Kiko's own write-budget test, plus the integration probe kept at `docs/study/kiko-meter.integration.test.ts` run against the real Worker in `wrangler dev` (`apps/server/integration/worker.ts` harness, `GET /api/dev/stats`, which reports the `cursor.rowsRead` / `cursor.rowsWritten` counters Cloudflare bills).
 
-Xin's baseline, from the pre-journal measurement that prompted this study (2026-11-09): **182 rows written and 229 rows read per message** in the `Home` Durable Object. The harness in §15 measured **99 written / 130 read** for one message and one reply with no tools on the commit this study landed on, so treat 182 as a heavier turn — tools, delegation, streaming partials — and use the harness, not the quoted number, for before and after. The journal (`src/kernel/journal.ts`) has since moved both to **16 written / 21 read** per message, and §14 records the update; the numbers below are the reading this study was written against.
+Ingle's baseline, from the pre-journal measurement that prompted this study (2026-11-09): **182 rows written and 229 rows read per message** in the `Home` Durable Object. The harness in §15 measured **99 written / 130 read** for one message and one reply with no tools on the commit this study landed on, so treat 182 as a heavier turn — tools, delegation, streaming partials — and use the harness, not the quoted number, for before and after. The journal (`src/kernel/journal.ts`) has since moved both to **16 written / 21 read** per message, and §14 records the update; the numbers below are the reading this study was written against.
 
 ## 1. The headline
 
-| | Xin today | Kiko, warm prompt |
+| | Ingle today | Kiko, warm prompt |
 |---|---|---|
 | Rows written per message | 182 | **6** (5 SQL + 1 `setAlarm`) |
 | Rows read per message | 229 | **4,094** at 22 messages, **331,316** at 324 messages |
@@ -67,7 +67,7 @@ private readonly agents = new Map<string, Agent>()
 
 That is the structural decision everything else follows from. Delegation, messaging and the run queue are method calls; the write-budget test asserts zero inter-object RPC, so a run never pays for a second hop, a serialization, or a second object's alarm.
 
-Xin already matches this (one `Home` per owner). The difference is entirely *how* the harness persists inside it.
+Ingle already matches this (one `Home` per owner). The difference is entirely *how* the harness persists inside it.
 
 ## 3. What is in SQL tables and what is in KV
 
@@ -117,7 +117,7 @@ finally { sql.exec("DELETE FROM owner_runs WHERE agent = ? AND version = ?", ...
 
 Cost for one human message, one reply, no tools: **2 message rows + 1 journal row + 1 `owner_runs` insert + 1 `owner_runs` delete + 1 `setAlarm` = 6** (measured: 5 SQL + 1 alarm). With three tool rounds the gate allows `7 + 2 x (3-1) = 11`; each extra round is the assistant/tool entry pair inside the same journal. Tool *step cards* cost nothing extra: `RunSteps` keeps them in a `Map` while the run is open and `RoomLog.addMessage` writes them once, capped at `STEP_LOG_BYTES = 128 * 1024`, into `messages.run_steps_log`.
 
-For comparison, Xin's per-message cost is dominated by pi's SQLite storage: each `StorageWrite` becomes a table row **plus** a `record_ids` row **plus** one row per matching index, and every commit additionally does `UPDATE durable_metadata SET next_id = ?, next_seq = ?`. `entries` carries 2 indexes, `tasks` 5, `submissions` 3, `documents` 3, `document_revisions` 1. That is how ~38 logical changes become ~180 billed rows.
+For comparison, Ingle's per-message cost is dominated by pi's SQLite storage: each `StorageWrite` becomes a table row **plus** a `record_ids` row **plus** one row per matching index, and every commit additionally does `UPDATE durable_metadata SET next_id = ?, next_seq = ?`. `entries` carries 2 indexes, `tasks` 5, `submissions` 3, `documents` 3, `document_revisions` 1. That is how ~38 logical changes become ~180 billed rows.
 
 ## 5. The big one: pi's storage replaced by a batched journal
 
@@ -151,16 +151,16 @@ export class JournalStorage extends MemoryStorage {
 - Ids are leased in blocks of `ID_RANGE = 1024`, so `journal_ids` is updated once per 1024 mints, not per id.
 - A schema for the journal is two tables: `journal (agent, seq, part, parts, bytes, data)` and `journal_ids`.
 
-The result: an entire model turn — user entry, assistant entry with reasoning, every tool call and result, task transitions, doc changes — costs **1 row**. That is the technique that actually gets Xin from 182 to single digits.
+The result: an entire model turn — user entry, assistant entry with reasoning, every tool call and result, task transitions, doc changes — costs **1 row**. That is the technique that actually gets Ingle from 182 to single digits.
 
-Xin's pi-durable is 1.5.0, one minor version past Kiko's 1.3.0, and the shape is the same but the seam is wider: 1.5.0's `Storage.commit` already accepts *batches* (`commit(batches, receive, context)`), and `MemoryStorage.prepareCommit(writes, seq?)` still returns `{ seq, writes, apply() }`. So a Xin adapter can persist a whole `commit` call, however many batches it carries, as one envelope — the work is writing it against 1.5.0's signature rather than copying Kiko's 1.3.0 override.
+Ingle's pi-durable is 1.5.0, one minor version past Kiko's 1.3.0, and the shape is the same but the seam is wider: 1.5.0's `Storage.commit` already accepts *batches* (`commit(batches, receive, context)`), and `MemoryStorage.prepareCommit(writes, seq?)` still returns `{ seq, writes, apply() }`. So a Ingle adapter can persist a whole `commit` call, however many batches it carries, as one envelope — the work is writing it against 1.5.0's signature rather than copying Kiko's 1.3.0 override.
 
 Two caveats, both visible in Kiko:
 
 - `open` replays **everything**. There is no compaction except `JournalStorage.reset` on a context rollover (`core/agent/src/host.ts` → `rollover`, which first parks the last input in `agent_handoff`). A long-lived agent's cold start reads its whole history: rows, bytes and CPU all grow with age.
 - The blob duplicates what the rendered message already holds (the reply text exists in both `messages.text` and the journal), so storage grows faster than the row count suggests.
 
-Xin should take this shape **with** a compaction step: after replaying, write a checkpoint that folds the journal into a snapshot and truncates the prefix, then replay from the checkpoint.
+Ingle should take this shape **with** a compaction step: after replaying, write a checkpoint that folds the journal into a snapshot and truncates the prefix, then replay from the checkpoint.
 
 ## 6. Everything Kiko coalesces, in one list
 
@@ -198,7 +198,7 @@ else if (current !== next) await this.storage.setAlarm(next)
 - **No heartbeat.** Recovery is instead a 60 s delay (`RECOVERY_DELAY_MS`) attached to unfinished tasks: the alarm is a *deadline*, not a liveness ping. Measured: a quiet minute writes 0 rows and makes 0 `setAlarm` calls; three idle seconds read and write nothing.
 - Errors are contained: the alarm loops over due scopes with a per-scope `try/catch`, and any failure ends in `refreshClock` so the next deadline is still armed.
 
-This is directly actionable for Xin, whose `src/kernel/clock.ts` arms `now + HEARTBEAT_MS` (60 s) whenever `wake.active` and calls `setAlarm` unconditionally on every arm. That is one billed row per event that touches the host, plus an alarm invocation per minute while active.
+This is directly actionable for Ingle, whose `src/kernel/clock.ts` arms `now + HEARTBEAT_MS` (60 s) whenever `wake.active` and calls `setAlarm` unconditionally on every arm. That is one billed row per event that touches the host, plus an alarm invocation per minute while active.
 
 ## 8. What lives in memory across requests
 
@@ -207,7 +207,7 @@ This is directly actionable for Xin, whose `src/kernel/clock.ts` arms `now + HEA
 - `settings?: User` — one `User` per instance.
 - Dev-only counters.
 
-The asymmetry matters: agents are bounded (8), **rooms are not**. `this.rooms` has no eviction path (`grep 'rooms.delete'` finds nothing), so a long-lived object with many chats holds every Room and its caches forever. Xin should bound both.
+The asymmetry matters: agents are bounded (8), **rooms are not**. `this.rooms` has no eviction path (`grep 'rooms.delete'` finds nothing), so a long-lived object with many chats holds every Room and its caches forever. Ingle should bound both.
 
 ## 9. Eviction and restart
 
@@ -243,13 +243,13 @@ and `Bubbles.post`, `Bubbles.settle`, `Bubbles.ended` and `Outbox` each wrap it 
 
 **Rooms are never evicted** (§8).
 
-**No production meter.** `patchStorage` is development-only, and nothing records rows read/written in production. The owner cannot see what is consuming the quota, which is exactly why a 99% warning arrives as a surprise. Xin has `usage_daily` for tokens and should put rows next to it.
+**No production meter.** `patchStorage` is development-only, and nothing records rows read/written in production. The owner cannot see what is consuming the quota, which is exactly why a 99% warning arrives as a surprise. Ingle has `usage_daily` for tokens and should put rows next to it.
 
-**And the measurement trap that probably hides Xin's own number from Xin.** `src/cost.test.ts` measures with `SELECT total_changes()`, which counts table rows and **not** index rows; Cloudflare bills an index row per written index. Verified in `bun:sqlite`: an insert into a table with two indexes reports `total_changes() = 1` and is billed as 3 rows. So Xin's documented "38 rows, bound 60" is a table-row count, not a billed count — its billed number is the 182 that was measured through the platform. Any gate Xin writes must use `rowsWritten`/`rowsRead`, as Kiko's does.
+**And the measurement trap that probably hides Ingle's own number from Ingle.** `src/cost.test.ts` measures with `SELECT total_changes()`, which counts table rows and **not** index rows; Cloudflare bills an index row per written index. Verified in `bun:sqlite`: an insert into a table with two indexes reports `total_changes() = 1` and is billed as 3 rows. So Ingle's documented "38 rows, bound 60" is a table-row count, not a billed count — its billed number is the 182 that was measured through the platform. Any gate Ingle writes must use `rowsWritten`/`rowsRead`, as Kiko's does.
 
 ## 12. Ranked: what to adopt, by rows saved per message
 
-Estimates start from Xin's 182, or from the 99 the harness measures for a no-tool turn, and attribute the pi-storage share by write type (table row + `record_ids` + indexes + `durable_metadata`). They are order-of-magnitude, not promises.
+Estimates start from Ingle's 182, or from the 99 the harness measures for a no-tool turn, and attribute the pi-storage share by write type (table row + `record_ids` + indexes + `durable_metadata`). They are order-of-magnitude, not promises.
 
 | # | Technique | Expected saving (rows/message) | Risk / work |
 |---|---|---|---|
@@ -272,23 +272,23 @@ Items 1-4 together are what "a couple of rows" requires; any one alone lands at 
 - **Unbounded journal replay.** Take the journal, add compaction (checkpoint + truncate), and keep the partition size small.
 - **Unbounded `rooms` cache.** Bound it like `agents` (8).
 - **Development-only instrumentation.** Meter in production, next to `usage_daily`.
-- **`total_changes()` as a cost gate.** It undercounts indexes by roughly 4-5x on Xin's schema.
+- **`total_changes()` as a cost gate.** It undercounts indexes by roughly 4-5x on Ingle's schema.
 
-## 14. Fit with Xin's rules
+## 14. Fit with Ingle's rules
 
-**Update, 2026-11-10.** The journal (`src/kernel/journal.ts`, [11 Failures and cost](../plan/architecture/11-failures-and-cost.md) §18) moved both numbers this section was written against. Xin now measures 16 rows written and 21 read per message in the 100-thread load, so a heavy day of 300 messages is 4,800 rows — 4.8% of a free-plan day, not the 549 messages the 182 rows/message reading implied. The 20k estimate and the 182 rows/message figure below are the pre-journal reading; what survives is the method, and the rule that the paid bill is small while `total_changes()` undercounts because it excludes index rows.
+**Update, 2026-11-10.** The journal (`src/kernel/journal.ts`, [11 Failures and cost](../plan/architecture/11-failures-and-cost.md) §18) moved both numbers this section was written against. Ingle now measures 16 rows written and 21 read per message in the 100-thread load, so a heavy day of 300 messages is 4,800 rows — 4.8% of a free-plan day, not the 549 messages the 182 rows/message reading implied. The 20k estimate and the 182 rows/message figure below are the pre-journal reading; what survives is the method, and the rule that the paid bill is small while `total_changes()` undercounts because it excludes index rows.
 
-`docs/plan/architecture/11-failures-and-cost.md` reasoned, when this was written, that a heavy day was ~20k rows and ~2¢, "which is why Xin drops kiko's row-budget machinery". The free plan's ceiling is 100,000 rows **per day**, and on the pre-journal measurement of 182 rows/message that was reached in 549 messages. The *paid* bill was genuinely small even then; the *quota* was what bit, on a single-user free-plan install. The journal is what removed that concern.
+`docs/plan/architecture/11-failures-and-cost.md` reasoned, when this was written, that a heavy day was ~20k rows and ~2¢, "which is why Ingle drops kiko's row-budget machinery". The free plan's ceiling is 100,000 rows **per day**, and on the pre-journal measurement of 182 rows/message that was reached in 549 messages. The *paid* bill was genuinely small even then; the *quota* was what bit, on a single-user free-plan install. The journal is what removed that concern.
 
 Item 1 does not conflict with "official primitives first": `MemoryStorage`, `prepareCommit`, `StorageWrite` and `apply()` are pi-durable's own exported API, which is precisely what Kiko builds on. It also fits "one module per mechanism": the adapter belongs in `src/kernel/pi.ts` beside `Harness.open`, with replay and compaction as its own module.
 
-Reads deserve their own gate. Xin's 21 reads a message is a warm-path number; measure a cold start separately, because replay is paid once per instance and must not be allowed to grow with history the way Kiko's does.
+Reads deserve their own gate. Ingle's 21 reads a message is a warm-path number; measure a cold start separately, because replay is paid once per instance and must not be allowed to grow with history the way Kiko's does.
 
 ## 15. Reproducing this
 
 Two instruments.
 
 - **Kiko's side**: `docs/study/kiko-meter.integration.test.ts` at [`d746ed9`](https://github.com/keyurbodar/xin/blob/d746ed9/docs/study/kiko-meter.integration.test.ts) (removed from the tree, since it runs only inside Kiko) is the probe that produced 6 writes / 4,094 reads at 22 messages / 331,316 at 324. Copy it to `kiko/apps/server/integration/` and run `bunx vitest run --project worker integration/kiko-meter.integration.test.ts --silent=false` from `kiko/apps/server`; it drives the real Worker through Kiko's own `localWorker` harness and reads `GET /api/dev/stats`.
-- **Xin's side**: `test/rows.ts` is the same meter for `Home`: it patches `sql.exec`, the KV methods and the alarm methods and reports the cursors' own `rowsRead` / `rowsWritten`, so index rows are counted the way Cloudflare counts them. `test/rows.test.ts` runs one message and one reply through the faux provider and holds a SQL baseline of **5 written / 10 read** per message in an empty home, with a tolerance of 5 (the meter also reports the KV and alarm rows it adds to that); it prints the measured numbers when the billed SQL rows move past the tolerance, and updating `BASELINE` is how a new number is accepted. Since the journal, that baseline counts journal rows and their truncation, not a table per record.
+- **Ingle's side**: `test/rows.ts` is the same meter for `Home`: it patches `sql.exec`, the KV methods and the alarm methods and reports the cursors' own `rowsRead` / `rowsWritten`, so index rows are counted the way Cloudflare counts them. `test/rows.test.ts` runs one message and one reply through the faux provider and holds a SQL baseline of **5 written / 10 read** per message in an empty home, with a tolerance of 5 (the meter also reports the KV and alarm rows it adds to that); it prints the measured numbers when the billed SQL rows move past the tolerance, and updating `BASELINE` is how a new number is accepted. Since the journal, that baseline counts journal rows and their truncation, not a table per record.
 
 Use `test/rows.ts` for the before and after numbers. `src/cost.test.ts` and `test/load.bench.ts` now bound the same billed counters through `test/meter.ts`, so their bounds are billing numbers, unlike the `total_changes()` bounds they replaced: an insert into a table with two indexes reports one change and is billed as three.

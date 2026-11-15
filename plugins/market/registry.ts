@@ -8,7 +8,7 @@ export type RegistryDist = { readonly tarball: string; readonly integrity?: stri
 
 export type VersionDocument = {
   readonly version: string
-  readonly xin?: unknown
+  readonly ingle?: unknown
   readonly readme?: string
   readonly dist: RegistryDist
 }
@@ -29,7 +29,7 @@ const DistSchema = obj({ tarball: str({ minLength: 1 }), integrity: opt(str({ mi
 const VersionDocumentSchema = obj(
   {
     version: str({ minLength: 1 }),
-    xin: opt(unknown()),
+    ingle: opt(unknown()),
     readme: opt(str()),
     dist: DistSchema,
   },
@@ -58,7 +58,7 @@ export async function fetchVersion(
     value: {
       version: document.version,
       dist: document.dist,
-      ...(document.xin === undefined ? {} : { xin: document.xin }),
+      ...(document.ingle === undefined ? {} : { ingle: document.ingle }),
       ...(document.readme === undefined ? {} : { readme: document.readme }),
     },
   }

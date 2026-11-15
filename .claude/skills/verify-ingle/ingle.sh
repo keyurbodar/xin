@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-RUN="${XIN_RUN:-$ROOT/.verify}"
-PORT="${XIN_PORT:-8799}"
-TOKEN="${XIN_TOKEN:-verify-owner-token}"
+RUN="${INGLE_RUN:-$ROOT/.verify}"
+PORT="${INGLE_PORT:-8799}"
+TOKEN="${INGLE_TOKEN:-verify-owner-token}"
 KEK="dmVyaWZ5LWtlay1leGFjdGx5LTMyLWJ5dGVzLWxvbmc="
 URL="http://127.0.0.1:$PORT"
 mkdir -p "$RUN/evidence" "$RUN/state"
@@ -11,7 +11,7 @@ mkdir -p "$RUN/evidence" "$RUN/state"
 case "${1:-}" in
   launch)
     if [ -f "$RUN/pid" ] && kill -0 "$(cat "$RUN/pid")" 2>/dev/null; then echo "already running pid $(cat "$RUN/pid")"; exit 0; fi
-    if curl -fsS "$URL/health" >/dev/null 2>&1; then echo "port $PORT is taken by another process; set XIN_PORT" >&2; exit 1; fi
+    if curl -fsS "$URL/health" >/dev/null 2>&1; then echo "port $PORT is taken by another process; set INGLE_PORT" >&2; exit 1; fi
     cd "$ROOT"
     setsid bunx wrangler dev --port "$PORT" --ip 127.0.0.1 --persist-to "$RUN/state" \
       --var "OWNER_TOKEN:$TOKEN" --var "KEK:$KEK" >"$RUN/wrangler.log" 2>&1 &
@@ -46,8 +46,8 @@ case "${1:-}" in
     rm -rf "$RUN/state"
     echo "stopped; evidence kept in $RUN/evidence" ;;
   *) cat <<'USAGE'
-xin.sh launch | doctor | call METHOD PATH [JSON] | ws FRAME_JSON... | stop
-env: XIN_PORT (8799), XIN_RUN (.verify), XIN_TOKEN (verify-owner-token)
+ingle.sh launch | doctor | call METHOD PATH [JSON] | ws FRAME_JSON... | stop
+env: INGLE_PORT (8799), INGLE_RUN (.verify), INGLE_TOKEN (verify-owner-token)
 USAGE
      exit 2 ;;
 esac

@@ -9,7 +9,7 @@ import { LandingScreen } from "./screens/landing.tsx"
 import { WelcomeScreen } from "./screens/welcome.tsx"
 
 function isPushMessage(value: unknown): boolean {
-  return typeof value === "object" && value !== null && Reflect.get(value, "type") === "xin-push"
+  return typeof value === "object" && value !== null && Reflect.get(value, "type") === "ingle-push"
 }
 
 export function App(): JSX.Element {

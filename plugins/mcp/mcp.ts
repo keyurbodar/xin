@@ -23,7 +23,7 @@ const NAME_SOURCE = "^[a-z0-9]+(?:-[a-z0-9]+)*$"
 const URL_SOURCE = "^https://\\S+$"
 const SERVER_KEY = "mcp:"
 const MAX_TOOL_NAME = 64
-const CLIENT = { name: "xin", version: "0.1.0" } as const
+const CLIENT = { name: "ingle", version: "0.1.0" } as const
 
 const CachedToolSchema = obj({
   name: str({ minLength: 1 }),

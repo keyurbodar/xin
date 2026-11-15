@@ -1,10 +1,10 @@
 {
-  "name": "xin-plugin-time",
+  "name": "ingle-plugin-time",
   "version": "0.1.0",
   "private": true,
   "description": "Tells the model the time, the owner's zone and how long since the last message before each request.",
   "type": "module",
-  "xin": {
+  "ingle": {
     "plugins": {
       "time": {
         "module": "./index.ts",

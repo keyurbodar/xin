@@ -20,9 +20,9 @@ const OWNER_PATCH = "plugins.patch"
 const isPatch = (value: unknown): value is Patch => patchCheck.check(value)
 
 export function parseProfilePatch(value: unknown): Patch[] {
-  if (!Array.isArray(value)) throw new Error("xin.profile.json patch must be a list")
+  if (!Array.isArray(value)) throw new Error("ingle.profile.json patch must be a list")
   return value.map((patch, index) => {
-    if (!isPatch(patch)) throw new Error(`xin.profile.json patch ${index} is not a row patch`)
+    if (!isPatch(patch)) throw new Error(`ingle.profile.json patch ${index} is not a row patch`)
     return patch
   })
 }

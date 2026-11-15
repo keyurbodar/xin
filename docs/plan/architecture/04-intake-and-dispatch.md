@@ -2,7 +2,7 @@
 
 This section decides how inbound items are debounced and claimed as one batch, and how the host deterministically picks a dispatch mode for that batch.
 
-Read with: [02 State](./02-state.md) for the `xin.intake` document, [03 Commands and wire](./03-commands-and-wire.md) for the command layer, [06 Orchestration](./06-orchestration.md) for the coordinator turn a batch feeds, [10 Time](./10-time.md) for the only timer Xin owns, [11 Failures and cost](./11-failures-and-cost.md) for the crash cases.
+Read with: [02 State](./02-state.md) for the `xin.intake` document, [03 Commands and wire](./03-commands-and-wire.md) for the command layer, [06 Orchestration](./06-orchestration.md) for the coordinator turn a batch feeds, [10 Time](./10-time.md) for the only timer Ingle owns, [11 Failures and cost](./11-failures-and-cost.md) for the crash cases.
 
 ## 5 · Intake: answer the burst
 
@@ -47,7 +47,7 @@ A dispatch that throws — a listener's `next()`, a submission, a push — keeps
 
 ## 6 · Dispatch: what a batch does to a running turn
 
-t3 has four dispatch modes: start, steer, restart, queue. Xin implements start, steer and restart, and answers a batch of nothing but stop words with `stop` instead of queueing it; there is no `queue_after_active` mode in `plugins/intake/dispatch.ts`. The host picks the mode deterministically from `pi.live`. The LLM is never asked.
+t3 has four dispatch modes: start, steer, restart, queue. Ingle implements start, steer and restart, and answers a batch of nothing but stop words with `stop` instead of queueing it; there is no `queue_after_active` mode in `plugins/intake/dispatch.ts`. The host picks the mode deterministically from `pi.live`. The LLM is never asked.
 
 ```mermaid
 flowchart TD

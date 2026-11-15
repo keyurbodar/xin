@@ -7,23 +7,23 @@ export type MarketStatus = "not-installed" | "installed" | "update-available" | 
 
 export type InstalledFact = { readonly kind: "provided" } | { readonly kind: "installed"; readonly version?: string }
 
-export type VersionFact = { readonly version: string; readonly engines?: { readonly xin?: string } }
+export type VersionFact = { readonly version: string; readonly engines?: { readonly ingle?: string } }
 
-export function kindOf(xin: unknown): PackageKind | undefined {
-  if (!isRecord(xin)) return undefined
-  if (xin["plugins"] !== undefined) return "code"
-  if (xin["bundle"] !== undefined) return "bundle"
+export function kindOf(ingle: unknown): PackageKind | undefined {
+  if (!isRecord(ingle)) return undefined
+  if (ingle["plugins"] !== undefined) return "code"
+  if (ingle["bundle"] !== undefined) return "bundle"
   return undefined
 }
 
-export function compatible(version: VersionFact, xinVersion: string): boolean {
-  const range = version.engines?.xin
-  return range === undefined || satisfies(xinVersion, range)
+export function compatible(version: VersionFact, ingleVersion: string): boolean {
+  const range = version.engines?.ingle
+  return range === undefined || satisfies(ingleVersion, range)
 }
 
-export function offeredVersion<T extends VersionFact>(versions: readonly T[], xinVersion: string): T | undefined {
+export function offeredVersion<T extends VersionFact>(versions: readonly T[], ingleVersion: string): T | undefined {
   const newest = versions.toSorted((left, right) => compareVersions(right.version, left.version))
-  return newest.find((version) => compatible(version, xinVersion)) ?? newest[0]
+  return newest.find((version) => compatible(version, ingleVersion)) ?? newest[0]
 }
 
 export function installationOf(offered: string, fact: InstalledFact | undefined): MarketStatus {
