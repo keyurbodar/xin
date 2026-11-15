@@ -2,7 +2,8 @@ import { type Context, Service } from "@deepseek-ai/cordis"
 import type { JsonObject } from "@earendil-works/pi-durable"
 import { obj, opt, str } from "@earendil-works/pi-schema"
 import { defineOp } from "../ops.ts"
-import { ack, decodeCommand, Sockets } from "../wire.ts"
+import { messageOf } from "../errors.ts"
+import { ack, decodeCommand, type ServerFrame, Sockets } from "../wire.ts"
 
 type HomePart = () => Promise<JsonObject>
 
@@ -16,6 +17,9 @@ export class Wire extends Service {
 
   readonly parts = new Map<string, HomePart>()
   sockets: Sockets | undefined
+  /** The home revision: in memory only, with a per-instance epoch so a fresh instance never repeats an old value. */
+  readonly #epoch = crypto.randomUUID().slice(0, 8)
+  #changes = 0
 
   constructor(ctx: Context) {
     super(ctx, "wire")
@@ -28,9 +32,24 @@ export class Wire extends Service {
       const commands = frames.flatMap((frame) => decodeCommand(frame) ?? [])
       if (commands.length !== frames.length) return Response.json({ error: "bad command frame" }, { status: 400 })
       await ctx.clock.arm()
-      const acks = []
-      for (const command of commands) acks.push(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
-      return Response.json(batch ? acks : acks[0])
+      const acks: ServerFrame[] = []
+      let wrote = false
+      let broken: string | undefined
+      for (const command of commands) {
+        if (broken !== undefined) {
+          acks.push({ t: "ack", id: command.id, ok: false, error: { code: "not_run", message: broken } })
+          continue
+        }
+        if (!command.read) wrote = true
+        try {
+          acks.push(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
+        } catch (error) {
+          broken = `an earlier command threw: ${messageOf(error)}`
+          acks.push({ t: "ack", id: command.id, ok: false, error: { code: "failed", message: messageOf(error) } })
+        }
+      }
+      const headers = wrote ? { "x-ingle-rev": this.#bump() } : undefined
+      return Response.json(batch ? acks : acks[0], headers === undefined ? {} : { headers })
     })
     ctx.http.route("POST /v1/auth", async () => new Response(null, { status: 204 }))
     ctx.http.route("GET /v1/socket", async (request) => {
@@ -81,6 +100,14 @@ export class Wire extends Service {
       })
       await sockets.rehydrate()
     })
+  }
+
+  /** A batch that may have written moved the home on: announce it to every home subscriber and answer the new rev. */
+  #bump(): string {
+    this.#changes += 1
+    const rev = `${this.#epoch}.${this.#changes}`
+    this.sockets?.publishChanged(rev)
+    return rev
   }
 
   home(part: string, read: HomePart): () => void {

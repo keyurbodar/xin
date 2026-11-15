@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { cached, cmd, invalidateReads, MAX_BATCH, Streams } from "./api.ts"
+import { cached, cmd, invalidateReads, live, MAX_BATCH, noteHomeRev, READ_TTL_MS, Streams } from "./api.ts"
 
-type Frame = { readonly id: string; readonly op: string; readonly args: unknown }
+type Frame = { readonly id: string; readonly op: string; readonly args: unknown; readonly read?: boolean }
 
 /** Each `POST /v1/cmd` the tab sends, with the frames it carried. */
 let posts: Frame[][] = []
+/** What the next POST answers: the acks, a whole-request failure, or acks with a home revision header. */
+let reply: { status?: number; rev?: string } = {}
 
 const ack = (frame: Frame) =>
   frame.op === "broken"
@@ -13,17 +15,25 @@ const ack = (frame: Frame) =>
 
 beforeEach(() => {
   posts = []
+  reply = {}
   invalidateReads()
   vi.stubGlobal("localStorage", { getItem: () => "own_token", setItem: () => undefined, removeItem: () => undefined })
   vi.stubGlobal("fetch", async (_input: string, init: { body: string }) => {
     const body: unknown = JSON.parse(init.body)
     const frames = (Array.isArray(body) ? body : [body]) as Frame[]
     posts.push(frames)
-    return Response.json(Array.isArray(body) ? frames.map(ack) : ack(frames[0] as Frame))
+    const { status, rev } = reply
+    reply = {}
+    if (status !== undefined) return new Response("boom", { status })
+    const headers = rev === undefined ? undefined : { "x-ingle-rev": rev }
+    return Response.json(Array.isArray(body) ? frames.map(ack) : ack(frames[0] as Frame), headers === undefined ? {} : { headers })
   })
 })
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 /** What Extensions → Customize opens with. */
 const CUSTOMIZE = ["plugin.list", "plugin.catalog", "plugin.packages", "preset.list", "mcp.list"]
@@ -113,5 +123,57 @@ describe("the home stream and the read cache", () => {
     socket?.emit("message", JSON.stringify({ t: "snap", stream: "home", value: {}, rev: "r2" }))
     await cached("plugin.list")
     expect(posts).toHaveLength(2)
+    socket?.emit("message", JSON.stringify({ t: "changed", stream: "home", rev: "other-tab.3" }))
+    await cached("plugin.list")
+    expect(posts).toHaveLength(3)
+  })
+})
+
+const ops = () => posts.map((frames) => frames.map((frame) => frame.op))
+
+describe("what keeps the read cache honest", () => {
+  it("lets a Settings screen reopen from the cache while its live reads still go out", async () => {
+    const open = () => Promise.all([cached("owner.read"), cached("notify.prefs"), live("session.list"), live("usage.summary")])
+    await open()
+    await open()
+    expect(ops()).toEqual([["owner.read", "notify.prefs", "session.list", "usage.summary"], ["session.list", "usage.summary"]])
+    expect(posts[0]?.map((frame) => frame.read)).toEqual([true, true, true, true])
+  })
+
+  it("drops the cache when a batch holding a mutation fails as a whole", async () => {
+    await cached("owner.read")
+    reply = { status: 500 }
+    await Promise.allSettled([cmd("owner.set", { name: "b" }), cached("plugin.list")])
+    await cached("owner.read")
+    expect(ops()).toEqual([["owner.read"], ["owner.set", "plugin.list"], ["owner.read"]])
+    expect(posts[1]?.[0]?.read).toBeUndefined()
+  })
+
+  it("drops the cache when the home announces a revision this tab has not seen", async () => {
+    await cached("owner.read")
+    noteHomeRev("other-tab.1")
+    await cached("owner.read")
+    noteHomeRev("other-tab.1")
+    await cached("owner.read")
+    expect(ops()).toEqual([["owner.read"], ["owner.read"]])
+  })
+
+  it("does not refetch twice when its own command's revision comes back on the socket", async () => {
+    reply = { rev: "own.7" }
+    await cmd("owner.set", { name: "c" })
+    await cached("owner.read")
+    noteHomeRev("own.7")
+    await cached("owner.read")
+    expect(ops()).toEqual([["owner.set"], ["owner.read"]])
+  })
+
+  it("ages a cached read out after the TTL", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    await cached("skill.list")
+    vi.setSystemTime(Date.now() + READ_TTL_MS - 1)
+    await cached("skill.list")
+    vi.setSystemTime(Date.now() + 2)
+    await cached("skill.list")
+    expect(ops()).toEqual([["skill.list"], ["skill.list"]])
   })
 })

@@ -1,4 +1,4 @@
-import { cached, cmd } from "../lib/api.ts"
+import { cached, cmd, live } from "../lib/api.ts"
 import { errorMessage, isKnownOpError, isRecord, remote, type RemoteHandle } from "./extensions.ts"
 
 
@@ -236,7 +236,7 @@ const parseUsage = (value: unknown): UsageSummary => {
 
 export const usage: RemoteHandle<UsageSummary> = remote(async () => {
   try {
-    return await cmd("usage.summary")
+    return await live("usage.summary")
   } catch (error: unknown) {
     if (isKnownOpError(error)) return { recorded: false }
     throw error
@@ -318,7 +318,7 @@ const parseSystemMetrics = (value: unknown): SystemMetrics => {
   }
 }
 
-export const systemMetrics: RemoteHandle<SystemMetrics> = remote(() => cmd("system.metrics"), parseSystemMetrics)
+export const systemMetrics: RemoteHandle<SystemMetrics> = remote(() => live("system.metrics"), parseSystemMetrics)
 
 export type LogEntry = { readonly at: number; readonly level: "warn" | "error"; readonly text: string }
 
@@ -348,7 +348,7 @@ const parseSessions = (value: unknown): readonly Session[] =>
     return [{ id, since: typeof since === "number" ? since : 0, origin: typeof origin === "string" ? origin : "" }]
   })
 
-export const sessions: RemoteHandle<readonly Session[]> = remote(() => cmd("session.list"), parseSessions)
+export const sessions: RemoteHandle<readonly Session[]> = remote(() => live("session.list"), parseSessions)
 
 /** Closes one live socket, or all of them when no id is given; returns how many closed. */
 export async function closeSessions(id?: string): Promise<number> {

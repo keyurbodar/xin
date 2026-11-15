@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { api, owner } from "../test/support.ts"
+import { api, connect, fresh, owner, OWNER_HEADERS } from "../test/support.ts"
 import { MAX_BATCH } from "./kernel/wire.ts"
 
 type Ack = { readonly t: "ack"; readonly id: string; readonly ok: boolean; readonly result?: unknown }
 
 const listFrame = (index: number) => ({ id: `over-${crypto.randomUUID()}-${index}`, op: "plugin.list", args: {} })
+
+const bump = (id: string, by: number) => ({ id: `${id}-${crypto.randomUUID()}`, op: "test.bump", args: { by } })
 
 const post = (body: unknown) => api("/v1/cmd", { method: "POST", body: JSON.stringify(body) })
 
@@ -61,5 +63,47 @@ describe("batched /v1/cmd", () => {
     expect((await post([])).status).toBe(400)
     expect((await post(Array.from({ length: MAX_BATCH + 1 }, (_, index) => listFrame(index)))).status).toBe(400)
     expect((await post([listFrame(0), { op: "plugin.list" }])).status).toBe(400)
+  })
+})
+
+describe("a batch that throws, and the home revision", () => {
+  it("answers frames before a throw, fails the one that threw, and runs none after it", async () => {
+    const stub = fresh()
+    const reply = await stub.fetch("https://ingle.internal/v1/cmd", {
+      method: "POST",
+      headers: OWNER_HEADERS,
+      body: JSON.stringify([bump("a", 1), bump("b", 666), bump("c", 2)]),
+    })
+    expect(reply.status).toBe(200)
+    const acks = await reply.json<{ ok: boolean; result?: unknown; error?: { code: string } }[]>()
+    expect(acks.map((ack) => (ack.ok ? "ok" : ack.error?.code))).toEqual(["ok", "failed", "not_run"])
+    const after = await stub.fetch("https://ingle.internal/v1/cmd", {
+      method: "POST",
+      headers: OWNER_HEADERS,
+      body: JSON.stringify(bump("d", 0)),
+    })
+    expect((await after.json<{ result: unknown }>()).result).toBe(1)
+  })
+
+  it("announces a mutating batch to home subscribers in a frame, and a read-only batch not at all", async () => {
+    const socket = await connect()
+    socket.send({ t: "sub", stream: "home" })
+    await socket.next((frame) => frame.t === "snap" && frame.stream === "home")
+
+    const write = await post({ id: `w-${crypto.randomUUID()}`, op: "test.bump", args: { by: 1 } })
+    const rev = write.headers.get("x-ingle-rev")
+    expect(rev).toEqual(expect.any(String))
+    const changed = await socket.next((frame) => frame.t === "changed")
+    expect(changed).toEqual({ t: "changed", stream: "home", rev })
+    expect(new TextEncoder().encode(JSON.stringify(changed)).byteLength).toBeLessThan(80)
+
+    const read = await post([{ id: `r-${crypto.randomUUID()}`, op: "plugin.list", args: {}, read: true }])
+    expect(read.headers.get("x-ingle-rev")).toBeNull()
+
+    await post({ id: `w-${crypto.randomUUID()}`, op: "test.bump", args: { by: 1 } })
+    const next = await socket.next((frame) => frame.t === "changed")
+    const [epoch, count] = String(rev).split(".")
+    expect(next.rev).toBe(`${epoch}.${Number(count) + 1}`)
+    socket.close()
   })
 })
