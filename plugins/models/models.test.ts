@@ -436,6 +436,42 @@ describe("models", () => {
     expect(await call(stub, "catalog-pick-2", "conv.configure", { model: WIDE_MODEL })).toMatchObject({ ok: true })
   })
 
+  it("keeps a disabled model out of models.list, owner defaults and delegate_task", async () => {
+    const stub = fresh()
+    const created = await call(stub, "off-project", "project.create", { slug: "off", name: "Off" })
+    const project = created.result as { coordinatorId: number }
+    expect(await call(stub, "off-default", "owner.defaults", { role: "chat", model: WIDE_MODEL })).toMatchObject({
+      ok: true,
+    })
+    expect(await call(stub, "off-refused", "models.enable", { model: WIDE_MODEL, enabled: false })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+    expect(await call(stub, "off-narrow", "models.enable", { model: narrow, enabled: false })).toMatchObject({
+      ok: true,
+    })
+
+    const listed = (await call(stub, "off-list", "models.list", { includeUnkeyed: true })) as ListReply
+    expect(listed.result.models.some((model) => model.modelId === narrow.modelId)).toBe(false)
+    expect(listed.result.models.find((model) => model.modelId === WIDE_MODEL.modelId)).toMatchObject({
+      thinking: ["off"],
+    })
+    expect(await call(stub, "off-thread-default", "owner.defaults", { role: "thread", model: narrow })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+
+    const outcome = await runInDurableObject(stub, (home: Home) =>
+      home.loader.ctx.threads.delegate(
+        { conversationId: project.coordinatorId as ConversationId, taskId: "off-task" },
+        { task: "say hi", title: "hi", model: narrow, mode: "async", clientRequestId: "off-delegate" },
+        context,
+      ),
+    )
+    expect(outcome).toMatchObject({ kind: "no_model" })
+  })
+
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {
     const original = globalThis.fetch
     globalThis.fetch = async () =>

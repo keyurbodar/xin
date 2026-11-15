@@ -54,6 +54,8 @@ export interface ModelsService {
   switchModel(input: ModelSwitch): Promise<Outcome>
   /** Month-to-date spend against the owner's cap, for a surface that has to stop before it spends more. */
   spend(): Promise<{ readonly month: number; readonly cap: number | null }>
+  /** Whether the owner switched `ref` off; every path that picks a model refuses one that is. */
+  disabled(ref: ModelRef): Promise<boolean>
 }
 
 declare module "@deepseek-ai/cordis" {

@@ -202,7 +202,7 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
     { readonly kind: "model"; readonly model: ModelRef } | { readonly kind: "none"; readonly reason: string }
   > => {
     if (target !== undefined) {
-      if (models().getModel(target.provider, target.modelId) === undefined) {
+      if (models().getModel(target.provider, target.modelId) === undefined || (await deps.models.disabled(target))) {
         return {
           kind: "none",
           reason: `No model ${target.provider}/${target.modelId} is available. Pick another model.`,
@@ -217,7 +217,8 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
       ...(defaults === undefined ? {} : { project: defaults }),
       owner: await deps.models.ownerDefaults(),
     })
-    if (resolved.kind === "model") return { kind: "model", model: resolved.model }
+    if (resolved.kind === "model" && !(await deps.models.disabled(resolved.model)))
+      return { kind: "model", model: resolved.model }
     const parent = await deps.harness.conversation(callerId, callContext)
     const parentModel = parent === undefined ? undefined : (await parent.agent(callContext)).model
     if (parentModel !== undefined) return { kind: "model", model: parentModel }
