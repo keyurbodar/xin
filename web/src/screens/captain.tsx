@@ -10,7 +10,7 @@ import { offersSideThread, type CaptainRow } from "../lib/captains.ts"
 import { models } from "../state/settings.ts"
 import { presets, prompts } from "../state/extensions.ts"
 import { refreshRequests } from "../state/requests.ts"
-import { openThreadTab, paneOpen, projectTabs, pruneThreadTabs, sidebarHidden, toggleSidebar, wideShell } from "../state/tabs.ts"
+import { openThreadTab, openThreadTabs, paneOpen, pruneThreadTabs, sidebarHidden, toggleSidebar, wideShell } from "../state/tabs.ts"
 import { ICON_BUTTON } from "../components/shell/menu.ts"
 import { createPresence } from "../components/shell/presence.ts"
 import { ConversationTabs, type ConversationAction } from "../components/shell/conversation-tabs.tsx"
@@ -41,7 +41,7 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
     return id === undefined ? undefined : threads().get(id)
   }
   const tabThreads = (): readonly ThreadSummary[] =>
-    projectTabs(props.space.id).threads.flatMap((id) => {
+    openThreadTabs(props.space.id).flatMap((id) => {
       const found = threads().get(id)
       return found === undefined ? [] : [found]
     })

@@ -29,8 +29,8 @@ import { presets as presetStore, prompts } from "../state/extensions.ts"
 import { Archive, GitFork, Menu, Settings } from "lucide-solid"
 import {
   openThreadTab,
+  openThreadTabs,
   paneOpen,
-  projectTabs,
   pruneThreadTabs,
   sidebarHidden,
   toggleSidebar,
@@ -279,7 +279,7 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     return id === undefined ? undefined : threads().get(id)
   }
   const tabThreads = (): readonly ThreadSummary[] =>
-    projectTabs(props.project.id).threads.flatMap((id) => {
+    openThreadTabs(props.project.id).flatMap((id) => {
       const found = threads().get(id)
       return found === undefined ? [] : [found]
     })

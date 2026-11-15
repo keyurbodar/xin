@@ -1,14 +1,26 @@
 import { createEffect, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { Dynamic, Portal } from "solid-js/web"
-import { Menu } from "@ark-ui/solid/menu"
-import { Ellipsis, Menu as MenuIcon, PanelRight, Plus, X, type LucideProps } from "lucide-solid"
+import { Menu, useMenu } from "@ark-ui/solid/menu"
+import { Ellipsis, ExternalLink, Menu as MenuIcon, PanelRight, Plus, X, type LucideProps } from "lucide-solid"
 import { money } from "../../lib/format.ts"
 import { keyStarted } from "../../lib/motion.ts"
 import { navigate } from "../../lib/router.ts"
 import { visualState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
-import { closeThreadTab, moveThreadTab, paneOpen, setPaneOpen, sidebarHidden, toggleSidebar, wideShell } from "../../state/tabs.ts"
+import {
+  closeThreadTabs,
+  moveThreadTab,
+  paneOpen,
+  forgetThreadTabs,
+  reopenThreadTabs,
+  setPaneOpen,
+  sidebarHidden,
+  toggleSidebar,
+  wideShell,
+} from "../../state/tabs.ts"
 import { Signal } from "../ui/signal.tsx"
+import { showUndoToast } from "../../state/toasts.ts"
+import { nearestKept } from "../../lib/tab-order.ts"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from "./menu.ts"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
@@ -25,6 +37,8 @@ type Drag = {
   readonly width: number
   readonly centres: readonly number[]
 }
+
+type Point = { readonly x: number; readonly y: number }
 
 /** One row of the conversation's menu; `separated` draws a rule above it. */
 export type ConversationAction = {
@@ -49,7 +63,7 @@ export function ConversationTabs(props: {
   onNewThread?: (() => void) | undefined
 }): JSX.Element {
   const [drag, setDrag] = createSignal<Drag | undefined>()
-  const [closing, setClosing] = createSignal<number>()
+  const [closing, setClosing] = createSignal<readonly number[]>([])
   const [settled, setSettled] = createSignal(false)
   let moved = false
   const refs = new Map<number, HTMLElement>()
@@ -74,26 +88,86 @@ export function ConversationTabs(props: {
     }
   }
 
+  let projectTab: HTMLButtonElement | undefined
+
+  const focusTab = (id: number | undefined): void => {
+    requestAnimationFrame(() => {
+      const element = id === undefined ? undefined : refs.get(id)
+      const target = element?.isConnected === true ? element : (refs.get(props.activeThreadId ?? -1) ?? projectTab)
+      target?.focus({ preventScroll: true })
+    })
+  }
+
   const openTab = (id: number | undefined): void => {
     navigate(id === undefined ? props.base : `${props.base}/t/${id}`)
   }
 
-  const close = (id: number): void => {
-    const index = props.threads.findIndex((thread) => thread.id === id)
-    const neighbour = props.threads[index - 1] ?? props.threads[index + 1]
-    const active = props.activeThreadId === id
+  const close = (ids: readonly number[]): void => {
+    const closingTabs = props.threads.filter((thread) => ids.includes(thread.id))
+    const first = closingTabs[0]
+    if (first === undefined) return
+    const projectId = props.project.id
+    const order = props.threads.map((thread) => thread.id)
+    const active = props.activeThreadId
+    const activeClosed = active !== undefined && ids.includes(active)
     const remove = (): void => {
-      setClosing(undefined)
-      closeThreadTab(props.project.id, id)
-      if (active) openTab(neighbour?.id)
+      const focused = ids.find((id) => refs.get(id)?.contains(document.activeElement) === true)
+      setClosing([])
+      const closeId = closeThreadTabs(projectId, ids)
+      if (activeClosed) openTab(nearestKept(order, ids, active))
+      if (focused !== undefined) focusTab(nearestKept(order, ids, focused))
+      showUndoToast({
+        icon: X,
+        title: closingTabs.length === 1 ? "Closed tab" : `Closed ${closingTabs.length} tabs`,
+        detail: closingTabs.length === 1 ? `“${first.title}”` : undefined,
+        undo: () => {
+          reopenThreadTabs(projectId, closeId)
+          if (activeClosed) openTab(active)
+          focusTab(activeClosed ? active : first.id)
+        },
+        expire: () => forgetThreadTabs(projectId, closeId),
+      })
     }
     if (keyStarted()) {
       remove()
       return
     }
-    setClosing(id)
+    setClosing(ids)
     setTimeout(() => flip(remove), CLOSE_MS)
   }
+
+  const [menuTarget, setMenuTarget] = createSignal<number | undefined>()
+  const menu = useMenu({
+    positioning: { placement: "bottom-start", gutter: 4 },
+    onSelect: (details) => act(details.value),
+    onOpenChange: (details) => {
+      if (!details.open) focusTab(menuTarget())
+    },
+  })
+
+  const openMenu = (id: number, point: Point): void => {
+    setMenuTarget(id)
+    menu.api().setOpen(true)
+    menu.api().reposition({ getAnchorRect: () => ({ ...point, width: 0, height: 0 }) })
+  }
+
+  const belowTab = (element: HTMLElement): Point => {
+    const rect = element.getBoundingClientRect()
+    return { x: rect.left, y: rect.bottom }
+  }
+
+  const act = (action: string): void => {
+    const id = menuTarget()
+    if (id === undefined) return
+    const index = props.threads.findIndex((thread) => thread.id === id)
+    const others = props.threads.filter((thread) => thread.id !== id).map((thread) => thread.id)
+    if (action === "window") window.open(`#${props.base}/t/${id}`, "_blank", "noopener")
+    if (action === "close") close([id])
+    if (action === "others") close(others)
+    if (action === "right") close(props.threads.slice(index + 1).map((thread) => thread.id))
+  }
+
+  const isLast = (): boolean => props.threads.at(-1)?.id === menuTarget()
 
   const down = (event: PointerEvent, id: number, index: number): void => {
     if (event.button !== 0) return
@@ -151,6 +225,7 @@ export function ConversationTabs(props: {
       <div role="tablist" class="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
         <button
           type="button"
+          ref={projectTab}
           role="tab"
           aria-selected={props.activeThreadId === undefined}
           onClick={() => openTab(undefined)}
@@ -180,7 +255,7 @@ export function ConversationTabs(props: {
                 aria-selected={active()}
                 title={thread.title}
                 data-dragging={lifted() ? "" : undefined}
-                data-closing={closing() === thread.id ? "" : undefined}
+                data-closing={closing().includes(thread.id) ? "" : undefined}
                 data-instant={settled() ? undefined : ""}
                 onPointerDown={(event) => down(event, thread.id, index())}
                 onPointerMove={move}
@@ -192,9 +267,20 @@ export function ConversationTabs(props: {
                 onKeyDown={(event) => {
                   if (event.target !== event.currentTarget) return
                   if (event.key === "Enter" || event.key === " ") openTab(thread.id)
+                  if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                    event.preventDefault()
+                    openMenu(thread.id, belowTab(event.currentTarget))
+                  }
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault()
+                  openMenu(
+                    thread.id,
+                    event.button === 2 ? { x: event.clientX, y: event.clientY } : belowTab(event.currentTarget),
+                  )
                 }}
                 onAuxClick={(event) => {
-                  if (event.button === 1) close(thread.id)
+                  if (event.button === 1) close([thread.id])
                 }}
                 class={`${TAB} im-tab im-lift im-flip min-w-[88px] max-w-[240px] flex-1 basis-[240px] cursor-default touch-none select-none pr-1`}
                 classList={{
@@ -215,7 +301,7 @@ export function ConversationTabs(props: {
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation()
-                    close(thread.id)
+                    close([thread.id])
                   }}
                   class="grid h-5 w-5 shrink-0 place-items-center rounded-xs text-ink-3 opacity-0 hover:bg-secondary hover:text-ink group-hover:opacity-100 focus-visible:opacity-100"
                   classList={{ "opacity-100": active() }}
@@ -227,6 +313,39 @@ export function ConversationTabs(props: {
           }}
         </For>
       </div>
+      <Menu.RootProvider value={menu} lazyMount unmountOnExit>
+        <Portal>
+          <Menu.Positioner>
+            <Menu.Content class={MENU_CONTENT} aria-label="Tab actions">
+              <Menu.Item value="window" class={MENU_ITEM}>
+                <span class="text-ink-3">
+                  <ExternalLink {...ICON} />
+                </span>
+                Open in new window
+              </Menu.Item>
+              <Menu.Separator class={MENU_SEPARATOR} />
+              <Menu.Item value="close" class={MENU_ITEM}>
+                <span class="text-ink-3">
+                  <X {...ICON} />
+                </span>
+                Close
+              </Menu.Item>
+              <Menu.Item value="others" class={MENU_ITEM} disabled={props.threads.length < 2}>
+                <span class="text-ink-3">
+                  <X {...ICON} />
+                </span>
+                Close others
+              </Menu.Item>
+              <Menu.Item value="right" class={MENU_ITEM} disabled={isLast()}>
+                <span class="text-ink-3">
+                  <X {...ICON} />
+                </span>
+                Close to the right
+              </Menu.Item>
+            </Menu.Content>
+          </Menu.Positioner>
+        </Portal>
+      </Menu.RootProvider>
       <Show when={props.onNewThread}>
         {(open) => (
           <button type="button" class={ICON_BUTTON} aria-label="New thread" onClick={() => open()()}>
