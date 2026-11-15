@@ -14,6 +14,7 @@ import { SettingsScreen } from "../../screens/settings.tsx"
 import { AutomationsScreen } from "../../screens/automations.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
+import { Toasts } from "../ui/toast.tsx"
 
 export function Shell(): JSX.Element {
   const first = () => route().parts[0]
@@ -123,6 +124,7 @@ export function Shell(): JSX.Element {
       <NewProjectDialog open={first() === "new"} onClose={() => navigate("/")} />
       <NewThreadDialog />
       <CommandPalette open={palette()} onClose={() => setPalette(false)} />
+      <Toasts />
     </div>
   )
 }
