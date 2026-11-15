@@ -861,6 +861,7 @@ export function create(deps: ModelsPort): ModelsParts {
       custom: opt(CustomSchema),
     }),
     actors: ["owner"],
+    credentials: ["key", "custom"],
     run: async (_api, args) => {
       let entry: StoredEntry
       if (args.custom !== undefined) {

@@ -680,6 +680,7 @@ export function create(ports: McpPorts): McpModule {
       headers: opt(map(str())),
     }),
     actors: ["owner"],
+    credentials: ["headers"],
     run: async (_api, { name, url, headers }) => {
       const owner = await ownerOf(name)
       if (owner.kind === "row")

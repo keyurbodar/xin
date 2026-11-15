@@ -4,6 +4,10 @@ const INJECT = /\binject\s*[:=]\s*\[([^\]]*)\]/g
 const NESTED_INJECT = /\.inject\(\s*\[([^\]]*)\]/g
 const GET = /\bctx\.get\b(\s*\(\s*([^)]*)\))?/g
 const ESCAPE = /\bctx\s*\.\s*(root|reflect|fiber|registry|loader)\b/g
+const ALIAS = /\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*ctx\s*(?:[;)\n]|$)/m
+const DESTRUCTURE = /\}\s*=\s*ctx\s*(?:[;)\n]|$)/m
+const COMPUTED = /\bctx\s*\[/
+const ORIGINAL = /cordis\.original|\bsymbols\s*\.\s*original\b/
 const DYNAMIC_IMPORT = /\bimport\s*\(\s*(?!["'][^"'`$]*["']\s*\))/
 const WORKERS_IMPORT = /["'`]cloudflare:workers["'`]/
 
@@ -31,6 +35,11 @@ export function reachViolations(where: string, text: string, permitted: Readonly
   }
   for (const match of text.matchAll(ESCAPE))
     violations.push(`${where} reads ctx.${match[1]}, which reaches past the row's own services; inject what it needs`)
+  if (ALIAS.test(text)) violations.push(`${where} aliases ctx; read services through ctx itself so the check sees them`)
+  if (DESTRUCTURE.test(text))
+    violations.push(`${where} destructures ctx; read services through ctx itself so the check sees them`)
+  if (COMPUTED.test(text)) violations.push(`${where} reads ctx with a computed key; name the service`)
+  if (ORIGINAL.test(text)) violations.push(`${where} reads cordis.original, which unwraps a service past its guards`)
   if (DYNAMIC_IMPORT.test(text)) violations.push(`${where} imports a computed module name; import a string literal`)
   if (WORKERS_IMPORT.test(text) && !permitted.has("runtime"))
     violations.push(`${where} imports cloudflare:workers without the runtime permission in its package.json`)

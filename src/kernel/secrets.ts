@@ -38,6 +38,7 @@ export class Secrets extends Service {
         name: "secret.set",
         args: obj({ ref: FragmentId, value: str() }),
         actors: ["owner"],
+        credentials: ["value"],
         run: async (_api, { ref, value }) => {
           await this.set(ref, value)
           return { application: "applied", ref }
@@ -47,16 +48,15 @@ export class Secrets extends Service {
   }
 
   get(ref: string): string | undefined {
-    kernelOf(this)?.refuse(this.ctx.fiber, "secrets")
     return sealed(this).get(ref)
   }
 
   async set(ref: string, value: string): Promise<void> {
-    kernelOf(this)?.refuse(this.ctx.fiber, "secrets")
     await sealed(this).set(ref, value)
     this.ctx.emit("credentials/updated", ref)
   }
 
+  /** Every plaintext value, for redaction. A plugin row's facade refuses this; a kernel row is refused here. */
   values(): readonly string[] {
     if (kernelOf(this)?.locate(this.ctx.fiber) !== undefined)
       throw new Error("credential values are only readable by the kernel")
