@@ -1,7 +1,8 @@
-import { For, onCleanup, onMount, Show, type JSX } from "solid-js"
+import { createEffect, For, on, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { CircleAlert, CircleCheck, MessageSquare } from "lucide-solid"
 import { Spinner, StatusLine } from "./controls.tsx"
 import { createPresence } from "../shell/presence.ts"
+import { wrapFocus } from "../../lib/focus.ts"
 import { enablePush, notificationsOpen, onboardingPush, openNotifications } from "../../state/onboarding.ts"
 
 const KINDS = [
@@ -22,16 +23,40 @@ export function NotificationsDialog(): JSX.Element {
 function Panel(props: { closing: boolean }): JSX.Element {
   const push = onboardingPush
   const busy = (): boolean => push().kind === "working"
-  const on = (): boolean => push().kind === "on"
+  const pushOn = (): boolean => push().kind === "on"
   const close = (): void => {
     if (!busy()) openNotifications(false)
   }
 
+  let panel!: HTMLElement
+  let primary!: HTMLButtonElement
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+
   const onKey = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") close()
+    if (event.key === "Escape") {
+      close()
+      return
+    }
+    if (event.key !== "Tab") return
+    const items = [...panel.querySelectorAll<HTMLElement>("button:not([disabled])")]
+    const target = wrapFocus(items, document.activeElement instanceof HTMLElement ? document.activeElement : null, event.shiftKey)
+    if (target === undefined) return
+    event.preventDefault()
+    target.focus()
   }
-  onMount(() => document.addEventListener("keydown", onKey))
-  onCleanup(() => document.removeEventListener("keydown", onKey))
+  onMount(() => {
+    primary.focus()
+    document.addEventListener("keydown", onKey)
+  })
+  createEffect(
+    on(pushOn, (isOn) => {
+      if (isOn) primary.focus()
+    }, { defer: true }),
+  )
+  onCleanup(() => {
+    document.removeEventListener("keydown", onKey)
+    opener?.focus()
+  })
 
   const status = (): { tone: "error" | "ok" | "muted"; text: string | undefined } => {
     const outcome = push()
@@ -56,6 +81,7 @@ function Panel(props: { closing: boolean }): JSX.Element {
         aria-hidden="true"
       />
       <section
+        ref={panel}
         role="dialog"
         aria-modal="true"
         aria-labelledby="notify-title"
@@ -93,11 +119,11 @@ function Panel(props: { closing: boolean }): JSX.Element {
         <div class="mt-3 flex items-center gap-2">
           <span class="mr-auto text-sm text-ink-3">Change this any time in Settings → Notifications</span>
           <Show
-            when={!on()}
+            when={!pushOn()}
             fallback={
               <button
+                ref={primary}
                 type="button"
-                autofocus
                 onClick={close}
                 class="im-press h-8 rounded-md bg-accent px-3 text-base font-medium text-on-accent"
               >
@@ -114,8 +140,8 @@ function Panel(props: { closing: boolean }): JSX.Element {
               Not now
             </button>
             <button
+              ref={primary}
               type="button"
-              autofocus
               disabled={busy()}
               aria-busy={busy()}
               onClick={() => void enablePush()}

@@ -1,10 +1,15 @@
 import { createSignal } from "solid-js"
 import { cmd } from "../lib/api.ts"
-import { numOf, recordOf, strOf } from "../lib/parse.ts"
+import {
+  ensureCaptain,
+  firstOpenStep,
+  readProgress,
+  type CaptainInput,
+  type CaptainResult,
+  type SendKey,
+} from "../lib/onboarding.ts"
 import { enablePush as enableBrowserPush } from "../lib/push.ts"
-import { slugify } from "../lib/slug.ts"
-import { activeProjects } from "./home.ts"
-import { models, saveCredential, type ModelInfo, type ModelRef } from "./settings.ts"
+import { models, saveCredential, type ModelInfo } from "./settings.ts"
 
 export type OnboardingStepId = "signin" | "provider" | "captain" | "thread"
 
@@ -30,25 +35,6 @@ export type ProviderInput =
       readonly api: string
     }
 
-export type CaptainInput = {
-  readonly name: string
-  readonly goal: string
-  readonly repository: string
-  readonly model: ModelRef | undefined
-  readonly suggestions: readonly Suggestion[]
-}
-
-export type Suggestion = { readonly title: string; readonly detail: string }
-
-export type CaptainResult = {
-  readonly id: string
-  readonly name: string
-  readonly description: string
-  readonly coordinatorId: number
-  readonly model: ModelRef | undefined
-  readonly suggestions: readonly Suggestion[]
-}
-
 export type PushOutcome =
   | { readonly kind: "idle" }
   | { readonly kind: "working" }
@@ -56,6 +42,7 @@ export type PushOutcome =
   | { readonly kind: "off"; readonly message: string }
 
 const [stepIndex, setStepIndex] = createSignal(1)
+const [loaded, setLoaded] = createSignal(false)
 const [connectedProvider, setConnectedProvider] = createSignal<ProviderResult | undefined>(undefined)
 const [firstCaptain, setFirstCaptain] = createSignal<CaptainResult | undefined>(undefined)
 const [firstReport, setFirstReport] = createSignal(false)
@@ -63,6 +50,7 @@ const [notifyOpen, setNotifyOpen] = createSignal(false)
 const [pushOutcome, setPushOutcome] = createSignal<PushOutcome>({ kind: "idle" })
 
 export const onboardingIndex = stepIndex
+export const onboardingLoaded = loaded
 export const onboardingProvider = connectedProvider
 export const onboardingCaptain = firstCaptain
 export const onboardingReported = firstReport
@@ -115,52 +103,28 @@ export async function connectProvider(input: ProviderInput): Promise<ProviderRes
   return result
 }
 
-async function captainProject(name: string): Promise<string> {
-  const existing = activeProjects()[0]
-  if (existing !== undefined) return existing.id
-  const created = recordOf(await cmd<unknown>("project.create", { slug: slugify(name), name }))
-  const id = strOf(created?.["id"])
-  if (id === undefined) throw new Error("The project for this Captain was created, but the reply could not be read.")
-  return id
+export async function loadProgress(): Promise<void> {
+  const progress = await readProgress()
+  if (progress.provider !== undefined) {
+    if (models.state().kind !== "ready") await models.reload()
+    const state = models.state()
+    const listed = state.kind === "ready" ? state.value.models.filter((model) => model.provider === progress.provider) : []
+    setConnectedProvider({ provider: progress.provider, models: listed })
+  }
+  setFirstCaptain(progress.captain)
+  setFirstReport(progress.reported)
+  setStepIndex(firstOpenStep(progress))
+  setLoaded(true)
 }
 
 export async function createFirstCaptain(input: CaptainInput, commandId: string): Promise<CaptainResult> {
-  const name = input.name.trim()
-  if (slugify(name) === "") throw new Error("Use at least one letter or number in the name.")
-  const goal = input.goal.trim()
-  const repository = input.repository.trim()
-  const projectId = await captainProject(name)
-  const created = recordOf(
-    await cmd<unknown>(
-      "captain.create",
-      {
-        projectId,
-        name,
-        ...(goal === "" ? {} : { description: goal }),
-        ...(repository === "" ? {} : { rules: `Repository: ${repository}` }),
-        ...(input.model === undefined ? {} : { model: input.model }),
-      },
-      { id: commandId },
-    ),
-  )
-  const id = strOf(created?.["id"])
-  const coordinatorId = numOf(created?.["coordinatorId"])
-  if (id === undefined || coordinatorId === undefined)
-    throw new Error("The Captain was created, but the reply could not be read.")
-  const result: CaptainResult = {
-    id,
-    name: strOf(created?.["name"]) ?? name,
-    description: strOf(created?.["description"]) ?? goal,
-    coordinatorId,
-    model: input.model,
-    suggestions: input.suggestions,
-  }
+  const result = await ensureCaptain(input, commandId)
   setFirstCaptain(result)
   return result
 }
 
-export async function sendFirstMessage(captain: CaptainResult, text: string, commandId: string): Promise<void> {
-  await cmd("message.send", { conv: captain.coordinatorId, text, clientTs: Date.now() }, { id: commandId })
+export async function sendFirstMessage(captain: CaptainResult, key: SendKey): Promise<void> {
+  await cmd("message.send", { conv: captain.coordinatorId, text: key.text, clientTs: key.at }, { id: key.id })
 }
 
 export async function enablePush(): Promise<void> {

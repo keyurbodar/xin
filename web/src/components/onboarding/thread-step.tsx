@@ -16,8 +16,8 @@ import {
   openNotifications,
   previousStep,
   sendFirstMessage,
-  type CaptainResult,
 } from "../../state/onboarding.ts"
+import { sendKeyFor, type CaptainResult, type SendKey } from "../../lib/onboarding.ts"
 import { navigate } from "../../lib/router.ts"
 
 type SignalState = "working" | "done" | "failed" | "needs"
@@ -166,8 +166,9 @@ export function ThreadStep(): JSX.Element {
       fallback={
         <section class="im-arrive w-full max-w-[440px] rounded-lg border border-line-1 bg-card px-7 py-6">
           <p class="text-base text-ink-2">Create a Captain first, then send it the first thing to work on.</p>
-          <div class="mt-4">
+          <div class="mt-4 flex items-center justify-between">
             <QuietButton label="Back" back onClick={previousStep} />
+            <QuietButton label="Skip for now" onClick={() => navigate("/")} />
           </div>
         </section>
       }
@@ -183,6 +184,7 @@ function CaptainChat(props: { captain: CaptainResult }): JSX.Element {
   const [pending, setPending] = createSignal<string | undefined>(undefined)
   const [sending, setSending] = createSignal(false)
   const [failure, setFailure] = createSignal<string | undefined>(undefined)
+  let key: SendKey | undefined
 
   const items = createMemo((): readonly EntryItem[] => itemsOf(snapshot()?.entries ?? []))
   const live = () => liveOf(snapshot())
@@ -207,7 +209,9 @@ function CaptainChat(props: { captain: CaptainResult }): JSX.Element {
     setFailure(undefined)
     setPending(trimmed)
     try {
-      await sendFirstMessage(props.captain, trimmed, crypto.randomUUID())
+      key = sendKeyFor(key, trimmed, () => ({ text: trimmed, id: crypto.randomUUID(), at: Date.now() }))
+      await sendFirstMessage(props.captain, key)
+      key = undefined
       setDraft("")
     } catch (error) {
       setPending(undefined)

@@ -2,67 +2,10 @@ import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { ChevronDown, GitBranch } from "lucide-solid"
 import { IngleMark } from "./chrome.tsx"
 import { Field, PrimaryButton, QuietButton, StatusLine, StepCard, TextInput } from "./controls.tsx"
-import {
-  createFirstCaptain,
-  messageOf,
-  nextStep,
-  onboardingCaptain,
-  previousStep,
-  type Suggestion,
-} from "../../state/onboarding.ts"
-import { models, type ModelInfo, type ModelRef } from "../../state/settings.ts"
-
-type Template = {
-  readonly label: string
-  readonly name: string
-  readonly goal: string
-  readonly suggestions: readonly Suggestion[]
-}
-
-const TEMPLATES: readonly Template[] = [
-  {
-    label: "A codebase",
-    name: "Bosun",
-    goal: "Keep the repo moving: land small PRs, keep the build green, and post a report every evening.",
-    suggestions: [
-      { title: "Fix the flakiest test", detail: "Starts a thread and opens a PR" },
-      { title: "Audit the open pull requests", detail: "Sums up what is stuck and why" },
-      { title: "Post a report every evening", detail: "Sets up a schedule" },
-      { title: "Give me a tour of the repo", detail: "Reads the code and writes a map" },
-    ],
-  },
-  {
-    label: "Docs and blog",
-    name: "Quill",
-    goal: "Keep the docs true to the code and publish one post a week.",
-    suggestions: [
-      { title: "Find docs pages that went stale", detail: "Checks each page against the code" },
-      { title: "Draft this week’s post", detail: "Starts a thread for the draft" },
-      { title: "Send me an outline every Monday", detail: "Sets up a schedule" },
-      { title: "Tidy the docs index", detail: "Proposes a new order" },
-    ],
-  },
-  {
-    label: "Personal ops",
-    name: "Steward",
-    goal: "Keep my week in order: chase what is late and send a summary every Friday.",
-    suggestions: [
-      { title: "Plan my week", detail: "Turns the goal into a short list" },
-      { title: "List what is overdue", detail: "Reads your notes and threads" },
-      { title: "Send a summary every Friday", detail: "Sets up a schedule" },
-      { title: "Draft the replies I owe", detail: "Starts a thread per reply" },
-    ],
-  },
-]
-
-const OWN_SUGGESTIONS: readonly Suggestion[] = [
-  { title: "Plan the first week", detail: "Turns the goal into a short list" },
-  { title: "Research what I need to know", detail: "Starts a few threads in parallel" },
-  { title: "Post a report every evening", detail: "Sets up a schedule" },
-  { title: "Tell me what you can do", detail: "A quick tour of your tools" },
-]
-
-const DEFAULT_MODEL = ""
+import { createFirstCaptain, messageOf, nextStep, onboardingCaptain, previousStep } from "../../state/onboarding.ts"
+import { captainModel, OWN_SUGGESTIONS, TEMPLATES, type ModelRef, type Template } from "../../lib/onboarding.ts"
+import { navigate } from "../../lib/router.ts"
+import { models, type ModelInfo } from "../../state/settings.ts"
 
 const refKey = (model: ModelRef): string => `${model.provider}/${model.modelId}`
 
@@ -73,7 +16,7 @@ export function CaptainStep(): JSX.Element {
   const [goal, setGoal] = createSignal(created()?.description ?? TEMPLATES[0]?.goal ?? "")
   const [repository, setRepository] = createSignal("")
   const createdModel = created()?.model
-  const [model, setModel] = createSignal(createdModel === undefined ? DEFAULT_MODEL : refKey(createdModel))
+  const [model, setModel] = createSignal(createdModel === undefined ? "" : refKey(createdModel))
   const [busy, setBusy] = createSignal(false)
   const [failure, setFailure] = createSignal<string | undefined>(undefined)
   const [commandId, setCommandId] = createSignal(crypto.randomUUID())
@@ -86,8 +29,12 @@ export function CaptainStep(): JSX.Element {
     const state = models.state()
     return state.kind === "ready" ? state.value.models.filter((entry) => entry.keyed) : []
   }
-  const chosen = (): ModelInfo | undefined => keyed().find((entry) => refKey(entry) === model())
-  const modelLabel = (): string => chosen()?.name ?? "Default"
+  const chosen = (): ModelInfo | undefined => captainModel(keyed(), model())
+  const chosenKey = (): string => {
+    const picked = chosen()
+    return picked === undefined ? "" : refKey(picked)
+  }
+  const modelLabel = (): string => chosen()?.name ?? createdModel?.modelId ?? "No model yet"
 
   const touch = (): void => {
     setFailure(undefined)
@@ -179,7 +126,7 @@ export function CaptainStep(): JSX.Element {
         <Field label="Model">
           <label class="relative flex h-9 items-center rounded-md border border-line-2 bg-panel focus-within:border-accent">
             <select
-              value={model()}
+              value={chosenKey()}
               onChange={(event) => {
                 setModel(event.currentTarget.value)
                 touch()
@@ -188,7 +135,9 @@ export function CaptainStep(): JSX.Element {
               disabled={created() !== undefined}
               class="h-full w-full min-w-0 appearance-none truncate bg-transparent pl-3 pr-7 text-base text-ink focus:outline-none disabled:opacity-60"
             >
-              <option value={DEFAULT_MODEL}>Default</option>
+              <Show when={keyed().length === 0}>
+                <option value="">No model yet</option>
+              </Show>
               <For each={keyed()}>{(entry) => <option value={refKey(entry)}>{entry.name}</option>}</For>
             </select>
             <ChevronDown size={14} stroke-width={1.75} class="pointer-events-none absolute right-2.5 text-icon" aria-hidden="true" />
@@ -243,11 +192,22 @@ export function CaptainStep(): JSX.Element {
         <span class="hidden shrink-0 text-sm text-ink-3 sm:block">Preview in the sidebar</span>
       </div>
 
+      <StatusLine
+        tone="muted"
+        text={
+          created() === undefined && keyed().length === 0
+            ? "No model has a key yet, so the Captain can’t answer until you add one in Settings → Models + providers."
+            : undefined
+        }
+      />
       <StatusLine tone="error" text={failure()} />
 
       <div class="flex items-center gap-2 pt-1">
         <QuietButton label="Back" back onClick={previousStep} />
         <span class="mr-auto" />
+        <Show when={created() === undefined}>
+          <QuietButton label="Skip for now" onClick={() => navigate("/")} />
+        </Show>
         <PrimaryButton
           label={created() === undefined ? "Create Captain" : "Continue"}
           busy={busy()}
