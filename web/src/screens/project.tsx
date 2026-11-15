@@ -238,7 +238,7 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
             presetId={presetId()}
             presetLocked={started()}
             effort={agentThinkingOf(snapshot())}
-            reasoning={currentInfo()?.reasoning === true}
+            efforts={currentInfo()?.thinking ?? []}
             onPickModel={async (model) => {
               await cmd("conv.configure", { conv: props.project.coordinatorId, model })
             }}

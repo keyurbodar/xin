@@ -238,7 +238,7 @@ export function Composer(props: {
   presetId: string | undefined
   presetLocked: boolean
   effort: ThinkingLevel | undefined
-  reasoning: boolean
+  efforts: readonly ThinkingLevel[]
   onPickModel: (model: ModelRef) => Promise<void>
   onPickPreset: (id: string) => Promise<void>
   onPickEffort: (level: ThinkingLevel) => Promise<void>
@@ -534,7 +534,7 @@ export function Composer(props: {
                 </Show>
               </Show>
             </ToolButton>
-            <Show when={props.reasoning}>
+            <Show when={props.efforts.length > 1}>
               <span class="mx-1 h-2.5 w-px bg-line-2" aria-hidden="true" />
               <ToolButton
                 name="Effort"
@@ -549,7 +549,7 @@ export function Composer(props: {
                   </>
                 }
               >
-                <For each={THINKING_LEVELS}>
+                <For each={props.efforts}>
                   {(level) => (
                     <ChoiceRow
                       label={EFFORT_WORD[level]}

@@ -22,7 +22,9 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy"
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models"
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
+import { estimateMessageTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate"
 import {
+  DEFAULT_COMPACTION_POLICY,
   defineExtension,
   GenerationTask,
   hook,
@@ -45,6 +47,7 @@ import {
   type ModelDefaults,
   type ModelMatch,
   type ModelsService,
+  type Role,
 } from "../../src/contracts/models.ts"
 import type { Notification } from "../../src/contracts/push.ts"
 import { spaceInScope, ThreadDoc } from "../../src/contracts/threaddoc.ts"
@@ -701,6 +704,8 @@ function search(catalog: readonly Model<Api>[], query: string): ModelMatch[] {
     )
 }
 
+const isDisabled = (settings: Settings, ref: ModelRef): boolean => settings.disabled.some((entry) => same(entry, ref))
+
 function describe(model: Model<Api>, keyed: boolean): JsonValue {
   return {
     provider: model.provider,
@@ -709,6 +714,7 @@ function describe(model: Model<Api>, keyed: boolean): JsonValue {
     contextWindow: model.contextWindow,
     vision: model.input.includes("image"),
     reasoning: model.reasoning,
+    thinking: getSupportedThinkingLevels(model),
     cost: { input: model.cost.input, output: model.cost.output },
     keyed,
   }
@@ -732,7 +738,7 @@ function catalogEntry(model: Model<Api>, keyed: boolean, settings: Settings): Js
       cacheWrite: model.cost.cacheWrite,
     },
     keyed,
-    enabled: !settings.disabled.some((entry) => same(entry, ref)),
+    enabled: !isDisabled(settings, ref),
     favorite: settings.favorites.some((entry) => same(entry, ref)),
   }
 }
@@ -807,7 +813,7 @@ export function create(deps: ModelsPort): ModelsParts {
         const found = registry.models.getModel(args.model.provider, args.model.modelId)
         if (found === undefined)
           throw new OpRejected("bad_args", `unknown model ${args.model.provider}/${args.model.modelId}`)
-        if ((await readSettings(db)).disabled.some((entry) => same(entry, refOf(found))))
+        if (isDisabled(await readSettings(db), refOf(found)))
           throw new OpRejected("bad_args", `model ${args.model.provider}/${args.model.modelId} is disabled`)
         change.model = { provider: args.model.provider, modelId: args.model.modelId }
         if (!found.reasoning) change.thinkingLevel = null
@@ -833,17 +839,75 @@ export function create(deps: ModelsPort): ModelsParts {
     },
   })
 
+  const contextOp = defineOp({
+    name: "conv.context",
+    args: obj({ conv: opt(int({ minimum: 0 })) }),
+    actors: ["owner", "agent"],
+    run: async (api, args) => {
+      const conversation =
+        args.conv === undefined
+          ? await api.harness.root(BACKGROUND_CONTEXT)
+          : await api.harness.conversation(args.conv as ConversationId, BACKGROUND_CONTEXT)
+      if (conversation === undefined) throw new OpRejected("bad_args", `no conversation ${args.conv ?? "root"}`)
+      if (!(await canConfigure(api.harness, api.actor, conversation.id)))
+        throw new OpRejected("forbidden", "an agent may read only its own conversation or a thread in its space")
+      const agent = await conversation.agent(BACKGROUND_CONTEXT)
+      const view = await conversation.context(BACKGROUND_CONTEXT)
+      const sections = await Promise.all(
+        agent.sections.map((section) =>
+          section.render(
+            { conversationId: conversation.id, agent, env: undefined, shown: {}, read: api.harness },
+            BACKGROUND_CONTEXT,
+          ),
+        ),
+      )
+      const system = estimateTextTokens(sections.join("\n"))
+      const tools = estimateTextTokens(
+        agent.tools.map((tool) => `${tool.name}${tool.description}${JSON.stringify(tool.parameters)}`).join(""),
+      )
+      const transcript = view.messages.filter((message) => message.role !== "system")
+      const afterHead = view.head?.id ?? Number.NEGATIVE_INFINITY
+      const reply = view.entries.flatMap((entry, index) =>
+        entry.id > afterHead ? (view.contributions[index] ?? []).filter((message) => message.role === "assistant") : [],
+      )
+      const usage = reply.findLast((message) => message.usage.input + message.usage.output > 0)
+      const measured =
+        usage === undefined
+          ? 0
+          : usage.usage.input + usage.usage.cacheRead + usage.usage.cacheWrite + usage.usage.output
+      const used =
+        measured > 0 ? measured : system + tools + transcript.reduce((sum, m) => sum + estimateMessageTokens(m), 0)
+      const model =
+        agent.model === undefined ? undefined : registry.models.getModel(agent.model.provider, agent.model.modelId)
+      const contextWindow = model?.contextWindow ?? 0
+      return {
+        conversation: conversation.id,
+        model: agent.model ?? null,
+        contextWindow,
+        used,
+        measured: measured > 0,
+        categories: [
+          { key: "system", tokens: system },
+          { key: "tools", tokens: tools },
+          { key: "conversation", tokens: Math.max(0, used - system - tools) },
+        ],
+        compactAt: Math.max(0, contextWindow - DEFAULT_COMPACTION_POLICY.reserveTokens),
+      }
+    },
+  })
+
   const list = defineOp({
     name: "models.list",
     args: obj({ query: opt(str()), includeUnkeyed: opt(bool()) }),
     actors: ["owner", "agent"],
     run: async (api, { query, includeUnkeyed }) => {
-      const catalog = await available(registry)
       const settings = await readSettings(db)
+      const usable = (model: Model<Api>): boolean => !isDisabled(settings, refOf(model))
+      const catalog = (await available(registry)).filter(usable)
       const current = await currentModel(api.harness, api.actor)
       const keyedIds = new Set(catalog.map((model) => `${model.provider}/${model.id}`))
       const hasKey = (model: Model<Api>): boolean => keyedIds.has(`${model.provider}/${model.id}`)
-      const source = includeUnkeyed === true ? registry.models.getModels() : catalog
+      const source = includeUnkeyed === true ? registry.models.getModels().filter(usable) : catalog
       const ordered = ranked(source, settings, current, query)
       // Keyed models come first so the cap never hides one the owner can run.
       const unkeyed = ordered.filter((model) => !hasKey(model))
@@ -870,7 +934,7 @@ export function create(deps: ModelsPort): ModelsParts {
       const settings = await readSettings(db)
       const keyedIds = new Set(keyed.map((model) => `${model.provider}/${model.id}`))
       const hasKey = (model: Model<Api>): boolean => keyedIds.has(`${model.provider}/${model.id}`)
-      const isEnabled = (model: Model<Api>): boolean => !settings.disabled.some((entry) => same(entry, refOf(model)))
+      const isEnabled = (model: Model<Api>): boolean => !isDisabled(settings, refOf(model))
       const everything = registry.models.getModels()
       const providers = registry.models
         .getProviders()
@@ -929,7 +993,15 @@ export function create(deps: ModelsPort): ModelsParts {
     actors: ["owner"],
     run: async (_api, { model, enabled }) => {
       const ref = { provider: model.provider, modelId: model.modelId }
-      await updateSettings(db, (settings) => writeKv(db, "owner.disabled", toggled(settings.disabled, ref, !enabled)))
+      await updateSettings(db, async (settings) => {
+        const role = (Object.keys(settings.defaults) as Role[]).find((key) => {
+          const chosen = settings.defaults[key]
+          return chosen !== undefined && same(chosen, ref)
+        })
+        if (!enabled && role !== undefined)
+          throw new OpRejected("bad_args", `${ref.provider}/${ref.modelId} is the ${role} default; pick another first`)
+        await writeKv(db, "owner.disabled", toggled(settings.disabled, ref, !enabled))
+      })
       return { model: ref, enabled }
     },
   })
@@ -981,6 +1053,8 @@ export function create(deps: ModelsPort): ModelsParts {
       if (registry.models.getModel(model.provider, model.modelId) === undefined)
         throw new OpRejected("bad_args", `unknown model ${model.provider}/${model.modelId}`)
       await updateSettings(db, (settings) => {
+        if (isDisabled(settings, model))
+          throw new OpRejected("bad_args", `model ${model.provider}/${model.modelId} is disabled`)
         const defaults: MutableDefaults = { ...settings.defaults }
         defaults[role] = model
         return writeKv(db, "owner.defaults", defaults)
@@ -1154,6 +1228,7 @@ export function create(deps: ModelsPort): ModelsParts {
       return found === undefined ? false : found.input.includes("image")
     },
     credentialSecrets: () => credentialSecrets(db, store),
+    disabled: async (ref) => isDisabled(await readSettings(db), ref),
     spend: async () => ({ month: (await datedUsage(db)).month.spend, cap: await readCap(db) }),
     search: async (query) => {
       const { disabled } = await readSettings(db)
@@ -1178,6 +1253,7 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const ops: readonly Op[] = [
     configure,
+    contextOp,
     list,
     catalogOp,
     favoriteOp,
