@@ -22,7 +22,9 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy"
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models"
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
+import { estimateMessageTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate"
 import {
+  DEFAULT_COMPACTION_POLICY,
   ROOT_CONVERSATION_ID,
   UsageDoc,
   type AgentChange,
@@ -824,6 +826,63 @@ export function create(deps: ModelsPort): ModelsParts {
     },
   })
 
+  const contextOp = defineOp({
+    name: "conv.context",
+    args: obj({ conv: opt(int({ minimum: 0 })) }),
+    actors: ["owner", "agent"],
+    run: async (api, args) => {
+      const conversation =
+        args.conv === undefined
+          ? await api.harness.root(BACKGROUND_CONTEXT)
+          : await api.harness.conversation(args.conv as ConversationId, BACKGROUND_CONTEXT)
+      if (conversation === undefined) throw new OpRejected("bad_args", `no conversation ${args.conv ?? "root"}`)
+      if (!(await canConfigure(api.harness, api.actor, conversation.id)))
+        throw new OpRejected("forbidden", "an agent may read only its own conversation or a thread in its space")
+      const agent = await conversation.agent(BACKGROUND_CONTEXT)
+      const view = await conversation.context(BACKGROUND_CONTEXT)
+      const sections = await Promise.all(
+        agent.sections.map((section) =>
+          section.render(
+            { conversationId: conversation.id, agent, env: undefined, shown: {}, read: api.harness },
+            BACKGROUND_CONTEXT,
+          ),
+        ),
+      )
+      const system = estimateTextTokens(sections.join("\n"))
+      const tools = estimateTextTokens(
+        agent.tools.map((tool) => `${tool.name}${tool.description}${JSON.stringify(tool.parameters)}`).join(""),
+      )
+      const transcript = view.messages.filter((message) => message.role !== "system")
+      const afterHead = view.head?.id ?? Number.NEGATIVE_INFINITY
+      const reply = view.entries.flatMap((entry, index) =>
+        entry.id > afterHead ? (view.contributions[index] ?? []).filter((message) => message.role === "assistant") : [],
+      )
+      const usage = reply.findLast((message) => message.usage.input + message.usage.output > 0)
+      const measured =
+        usage === undefined
+          ? 0
+          : usage.usage.input + usage.usage.cacheRead + usage.usage.cacheWrite + usage.usage.output
+      const used =
+        measured > 0 ? measured : system + tools + transcript.reduce((sum, m) => sum + estimateMessageTokens(m), 0)
+      const model =
+        agent.model === undefined ? undefined : registry.models.getModel(agent.model.provider, agent.model.modelId)
+      const contextWindow = model?.contextWindow ?? 0
+      return {
+        conversation: conversation.id,
+        model: agent.model ?? null,
+        contextWindow,
+        used,
+        measured: measured > 0,
+        categories: [
+          { key: "system", tokens: system },
+          { key: "tools", tokens: tools },
+          { key: "conversation", tokens: Math.max(0, used - system - tools) },
+        ],
+        compactAt: Math.max(0, contextWindow - DEFAULT_COMPACTION_POLICY.reserveTokens),
+      }
+    },
+  })
+
   const list = defineOp({
     name: "models.list",
     args: obj({ query: opt(str()), includeUnkeyed: opt(bool()) }),
@@ -1098,6 +1157,7 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const ops: readonly Op[] = [
     configure,
+    contextOp,
     list,
     catalogOp,
     favoriteOp,
