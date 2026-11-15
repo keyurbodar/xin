@@ -36,6 +36,8 @@ import {
 } from "../../lib/issues.ts"
 import { ago } from "../../lib/format.ts"
 import { firstLoad } from "../../lib/loading.ts"
+import type { CaptainRow } from "../../lib/captains.ts"
+import { homeCaptains } from "../../state/captains.ts"
 import { homeProjects, projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { commentOnIssue, issueDetail, issueScreen, issuesRev, linkIssue, updateIssue } from "../../state/issues.ts"
 import { showPaneView } from "../../state/tabs.ts"
@@ -66,7 +68,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
     if (head !== undefined) setPages((current) => withHead(untrack(() => current), head))
   })
   const names = createMemo(() => issueNames(props.project))
-  const candidates = createMemo(() => assignableCandidates(props.project, homeProjects()))
+  const candidates = createMemo(() => assignableCandidates(props.project, homeProjects(), homeCaptains()))
   const action = createFieldAction()
   const stateOf = (id: string): IssueState | undefined => data.latest?.states.find((state) => state.id === id)
   const stateName = (id: string): string => stateOf(id)?.name ?? id
@@ -282,14 +284,17 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
   )
 }
 
-/** Everyone the owner can assign: themself, this project's threads, and each project's Captain. */
-function assignableCandidates(project: ProjectSummary, projects: readonly ProjectSummary[]): readonly Candidate[] {
+/** Everyone the owner can assign: themself, this pane's threads, every Captain, and each project's own coordinator. */
+function assignableCandidates(project: ProjectSummary, projects: readonly ProjectSummary[], captains: readonly CaptainRow[]): readonly Candidate[] {
+  const live = captains.filter((captain) => !captain.archived)
+  const named = new Set(live.map((captain) => captain.coordinatorId))
   return [
     { assignee: { kind: "person", id: "owner" }, name: "You", detail: "Person" },
     ...projectThreads(project).map((thread): Candidate => ({ assignee: { kind: "thread", id: thread.id }, name: thread.title, detail: "Thread" })),
+    ...live.map((captain): Candidate => ({ assignee: { kind: "captain", id: captain.coordinatorId }, name: captain.name, detail: "Captain" })),
     ...projects
-      .filter((entry) => !entry.archived)
-      .map((entry): Candidate => ({ assignee: { kind: "captain", id: entry.coordinatorId }, name: entry.name, detail: "Captain" })),
+      .filter((entry) => !entry.archived && !named.has(entry.coordinatorId))
+      .map((entry): Candidate => ({ assignee: { kind: "captain", id: entry.coordinatorId }, name: entry.name, detail: "Project lead" })),
   ]
 }
 
