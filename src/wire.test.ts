@@ -148,3 +148,118 @@ describe("wire protocol", () => {
     second.close()
   })
 })
+
+const bytes = (frame: unknown): number => new TextEncoder().encode(JSON.stringify(frame)).byteLength
+
+describe("stream resume", () => {
+  it("answers a conversation resubscribe with only the entries after its cursor, rebuilding the shared window", async () => {
+    const rootId = await runInDurableObject(owner(), async (home: Home) => {
+      home.script(["one", "two", "three"])
+      await home.chooseModel(FAUX_MODEL)
+      const root = await home.root()
+      await home.submit("first", "resume-1")
+      await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+      return root.id
+    })
+    const stream = `conv:${rootId}`
+    const watcher = await connect()
+    watcher.send({ t: "sub", stream })
+    await watcher.next((f) => f.t === "snap" && f.stream === stream)
+
+    const first = await connect()
+    first.send({ t: "sub", stream })
+    const held = await first.next((f) => f.t === "snap" && f.stream === stream)
+    first.close()
+    if (!isView(held.value)) throw new Error("snapshot is not a conversation view")
+    const ids = held.value.entries.map((entry) => entry.id)
+    const cursor = { start: ids[0] ?? 0, from: (ids.at(-1) ?? 0) + 1 }
+
+    await runInDurableObject(owner(), async (home: Home) => {
+      await home.submit("second", "resume-2")
+      await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+    })
+
+    const again = await connect()
+    again.send({ t: "sub", stream, resume: cursor })
+    const resumed = await again.next((f) => (f.t === "resume" || f.t === "snap") && f.stream === stream)
+    const fresh = await connect()
+    fresh.send({ t: "sub", stream })
+    const snap = await fresh.next((f) => f.t === "snap" && f.stream === stream)
+    if (!isView(resumed.value) || !isView(snap.value)) throw new Error("not a conversation view")
+
+    expect(resumed.t).toBe("resume")
+    expect(resumed.value.entries.length).toBeGreaterThan(0)
+    expect(resumed.value.entries.every((entry) => entry.id >= cursor.from)).toBe(true)
+    const start = field(resumed, "start")
+    if (typeof start !== "number") throw new Error("resume carries no window start")
+    const rebuilt = [...held.value.entries.filter((entry) => entry.id >= start), ...resumed.value.entries]
+    expect(rebuilt).toEqual(snap.value.entries)
+    expect(bytes(resumed)).toBeLessThan(bytes(snap) / 2)
+    for (const socket of [watcher, again, fresh]) socket.close()
+  })
+
+  it("sends nothing new to a resubscribe that already holds the newest entry", async () => {
+    const rootId = await runInDurableObject(owner(), async (home: Home) => {
+      home.script(["only"])
+      await home.chooseModel(FAUX_MODEL)
+      const root = await home.root()
+      await home.submit("hi", "resume-idle-1")
+      await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+      return root.id
+    })
+    const stream = `conv:${rootId}`
+    const socket = await connect()
+    socket.send({ t: "sub", stream })
+    const snap = await socket.next((f) => f.t === "snap" && f.stream === stream)
+    socket.close()
+    if (!isView(snap.value)) throw new Error("not a conversation view")
+    const ids = snap.value.entries.map((entry) => entry.id)
+    const again = await connect()
+    again.send({ t: "sub", stream, resume: { start: ids[0] ?? 0, from: (ids.at(-1) ?? 0) + 1 } })
+    const resumed = await again.next((f) => f.t === "resume" && f.stream === stream)
+    again.close()
+    if (!isView(resumed.value)) throw new Error("not a conversation view")
+    expect(resumed.value.entries).toEqual([])
+    expect(bytes(resumed)).toBeLessThan(bytes(snap))
+  })
+
+  it("falls back to a snapshot when the cursor does not reach back to the shared window", async () => {
+    const rootId = await runInDurableObject(owner(), async (home: Home) => {
+      home.script(["a"])
+      await home.chooseModel(FAUX_MODEL)
+      const root = await home.root()
+      await home.submit("hi", "resume-gap-1")
+      await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+      return root.id
+    })
+    const stream = `conv:${rootId}`
+    const socket = await connect()
+    socket.send({ t: "sub", stream, resume: { start: Number.MAX_SAFE_INTEGER, from: Number.MAX_SAFE_INTEGER } })
+    expect(await socket.next((f) => (f.t === "snap" || f.t === "resume") && f.stream === stream)).toMatchObject({
+      t: "snap",
+    })
+    socket.close()
+  })
+
+  it("tells a home resubscribe with the current revision that nothing changed", async () => {
+    const socket = await connect()
+    socket.send({ t: "sub", stream: "home" })
+    const snap = await socket.next((f) => f.t === "snap" && f.stream === "home")
+    socket.close()
+    const rev = field(snap, "rev")
+    if (typeof rev !== "string") throw new Error("home snapshot carries no revision")
+
+    const again = await connect()
+    again.send({ t: "sub", stream: "home", resume: { rev } })
+    const resumed = await again.next((f) => (f.t === "resume" || f.t === "snap") && f.stream === "home")
+    expect(resumed).toEqual({ t: "resume", stream: "home" })
+    expect(bytes(resumed)).toBeLessThan(64)
+    again.send({ t: "unsub", stream: "home" })
+    again.send({ t: "sub", stream: "home", resume: { rev: "stale" } })
+    expect(await again.next((f) => (f.t === "resume" || f.t === "snap") && f.stream === "home")).toMatchObject({
+      t: "snap",
+      rev,
+    })
+    again.close()
+  })
+})
