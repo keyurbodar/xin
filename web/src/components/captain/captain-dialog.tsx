@@ -1,4 +1,5 @@
 import { createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { isDefinitive } from "../../lib/api.ts"
 import { navigate } from "../../lib/router.ts"
 import { slugify } from "../../lib/slug.ts"
 import {
@@ -10,7 +11,7 @@ import {
   type CaptainProfile,
 } from "../../state/captains.ts"
 import { activeProjects, routeProject } from "../../state/home.ts"
-import { models, type ModelInfo, type ModelRef } from "../../state/settings.ts"
+import { searchModels, type ModelInfo, type ModelRef } from "../../state/settings.ts"
 import { setSidebarDrawer } from "../../state/tabs.ts"
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
 
@@ -41,25 +42,36 @@ type Draft = {
 const EMPTY: Draft = { name: "", alias: "", description: "", model: "", rules: "", crewRules: "" }
 
 function ModelSelect(props: { value: string; disabled: boolean; allowDefault: boolean; onChange: (value: string) => void }): JSX.Element {
-  const catalog = (): readonly ModelInfo[] => {
-    const state = models.state()
-    return state.kind === "ready" ? state.value.models.filter((model) => model.keyed) : []
-  }
+  const [query, setQuery] = createSignal("")
+  const [found] = createResource(query, searchModels)
+  const catalog = (): readonly ModelInfo[] => (found.latest?.models ?? []).filter((model) => model.keyed)
   return (
-    <select
-      class={`${FIELD_INPUT} h-[34px]`}
-      value={props.value}
-      disabled={props.disabled}
-      onChange={(event) => props.onChange(event.currentTarget.value)}
-    >
-      <Show when={props.allowDefault}>
-        <option value="">The project's coordinator model</option>
-      </Show>
-      <Show when={props.value !== "" && !catalog().some((model) => keyOf(model) === props.value)}>
-        <option value={props.value}>{props.value}</option>
-      </Show>
-      <For each={catalog()}>{(model) => <option value={keyOf(model)}>{model.name}</option>}</For>
-    </select>
+    <div class="flex flex-col gap-1.5">
+      <input
+        type="search"
+        class={`${FIELD_INPUT} h-8 text-sm`}
+        value={query()}
+        disabled={props.disabled}
+        placeholder="Search models"
+        aria-label="Search models"
+        onInput={(event) => setQuery(event.currentTarget.value)}
+      />
+      <select
+        class={`${FIELD_INPUT} h-[34px]`}
+        value={props.value}
+        disabled={props.disabled}
+        aria-label="Model"
+        onChange={(event) => props.onChange(event.currentTarget.value)}
+      >
+        <Show when={props.allowDefault}>
+          <option value="">The project's coordinator model</option>
+        </Show>
+        <Show when={props.value !== "" && !catalog().some((model) => keyOf(model) === props.value)}>
+          <option value={props.value}>{props.value}</option>
+        </Show>
+        <For each={catalog()}>{(model) => <option value={keyOf(model)}>{model.name}</option>}</For>
+      </select>
+    </div>
   )
 }
 
@@ -83,7 +95,7 @@ function DraftFields(props: { draft: Draft; busy: boolean; allowDefaultModel: bo
           <input
             class={`${FIELD_INPUT} h-[34px] font-mono text-sm`}
             value={props.draft.alias}
-            maxlength={64}
+            maxlength={40}
             disabled={props.busy}
             placeholder={slugify(props.draft.name) || "bosun"}
             onInput={(event) => set({ alias: event.currentTarget.value })}
@@ -163,7 +175,7 @@ function Footer(props: { busy: boolean; ready: boolean; label: string; busyLabel
   )
 }
 
-/** captain.create is idempotent per command id, so a retry after a lost ack reuses this opening's id. */
+/** captain.create is idempotent per command id: a retry after a lost ack reuses the id, and a rejection mints a new one, because the host replays a rejected id. */
 export function NewCaptainDialog(): JSX.Element {
   const [draft, setDraft] = createSignal<Draft>(EMPTY)
   const [projectId, setProjectId] = createSignal("")
@@ -175,7 +187,6 @@ export function NewCaptainDialog(): JSX.Element {
   }
 
   resetOnOpen(creating, () => {
-    void models.reload()
     setDraft(EMPTY)
     setProjectId(routeProject()?.id ?? activeProjects()[0]?.id ?? "")
     setCommandId(crypto.randomUUID())
@@ -205,6 +216,7 @@ export function NewCaptainDialog(): JSX.Element {
       close()
       navigate(`/c/${created.alias}`)
     } catch (problem) {
+      if (isDefinitive(problem)) setCommandId(crypto.randomUUID())
       setFailure(failureText(problem))
     } finally {
       setBusy(false)
@@ -255,8 +267,7 @@ export function CaptainSettings(props: { captain: CaptainProfile; open: boolean;
   resetOnOpen(
     () => props.open,
     () => {
-      void models.reload()
-      setTouched(false)
+        setTouched(false)
       setFailure(undefined)
       setConfirming(false)
       setBusy(false)

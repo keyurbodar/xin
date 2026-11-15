@@ -1,8 +1,9 @@
 import { createSignal, Show, type JSX } from "solid-js"
+import { isDefinitive } from "../../lib/api.ts"
 import { sideThread } from "../../state/captains.ts"
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
 
-/** A side thread forks this conversation at its newest entry, runs the task with the whole context, and reports back here. */
+/** One command id per draft, kept across transport failures so a lost ack never starts a second thread. A side thread forks this conversation at its newest entry, runs the task with the whole context, and reports back here. */
 export function SideThreadDialog(props: {
   open: boolean
   conv: number
@@ -12,6 +13,7 @@ export function SideThreadDialog(props: {
 }): JSX.Element {
   const [title, setTitle] = createSignal("")
   const [task, setTask] = createSignal("")
+  const [commandId, setCommandId] = createSignal("")
   const [busy, setBusy] = createSignal(false)
   const [failure, setFailure] = createSignal<string>()
 
@@ -20,6 +22,7 @@ export function SideThreadDialog(props: {
     () => {
       setTitle("")
       setTask("")
+      setCommandId(crypto.randomUUID())
       setFailure(undefined)
       setBusy(false)
     },
@@ -32,10 +35,11 @@ export function SideThreadDialog(props: {
     setBusy(true)
     setFailure(undefined)
     try {
-      const threadId = await sideThread(props.conv, title().trim(), task().trim())
+      const threadId = await sideThread(props.conv, title().trim(), task().trim(), commandId())
       props.onClose()
       props.onCreated(threadId)
     } catch (problem) {
+      if (isDefinitive(problem)) setCommandId(crypto.randomUUID())
       setFailure(problem instanceof Error ? problem.message : "That did not go through")
     } finally {
       setBusy(false)

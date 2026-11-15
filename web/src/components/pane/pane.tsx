@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
+import { createMemo, createSignal, For, Show, untrack, type JSX } from "solid-js"
 import { Dynamic, Portal } from "solid-js/web"
 import { Popover } from "@ark-ui/solid/popover"
 import { Listbox, createListCollection } from "@ark-ui/solid/listbox"
@@ -31,13 +31,21 @@ export function ProjectPane(props: {
   onOpenThread: (id: number) => void
 }): JSX.Element {
   const tabs = () => projectTabs(props.project.id)
-  const context = (): PaneContext => ({ project: props.project, captain: props.captain, onOpenThread: props.onOpenThread })
+  const context: PaneContext = {
+    get project() {
+      return props.project
+    },
+    get captain() {
+      return props.captain
+    },
+    onOpenThread: (id) => props.onOpenThread(id),
+  }
   const open = (): readonly PaneEntry[] =>
     [OVERVIEW, ...tabs().pane].flatMap((id) => {
-      const entry = paneEntry(id, context())
+      const entry = paneEntry(id, context)
       return entry === undefined ? [] : [entry]
     })
-  const view = (): PaneEntry => paneView(tabs().view, context())
+  const view = (): PaneEntry => paneView(tabs().view, context)
 
   return (
     <aside class="flex min-h-0 flex-col">
@@ -76,7 +84,7 @@ export function ProjectPane(props: {
             )}
           </For>
         </div>
-        <ViewMenu views={paneViews(context())} project={props.project} current={view().id} onOpenThread={props.onOpenThread} />
+        <ViewMenu views={paneViews(context)} project={props.project} current={view().id} onOpenThread={props.onOpenThread} />
         <button
           type="button"
           class={`${ICON_BUTTON} ml-auto`}
@@ -94,7 +102,7 @@ export function ProjectPane(props: {
       <Show when={view()} keyed>
         {(current) => (
           <div class="pane-swap min-h-0 flex-1 overflow-y-auto p-2">
-            {current.render(context())}
+            {untrack(() => current.render(context))}
           </div>
         )}
       </Show>

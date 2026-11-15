@@ -222,8 +222,8 @@ export async function removeFromCrew(id: string, threadId: number): Promise<void
 }
 
 /** thread.side forks a coordinator or a Captain at its newest entry into a thread in the same space. */
-export async function sideThread(conv: number, title: string, task: string): Promise<number> {
-  const threadId = numOf(recordOf(await cmd<unknown>("thread.side", { conv, title, task }))?.threadId)
+export async function sideThread(conv: number, title: string, task: string, commandId: string): Promise<number> {
+  const threadId = numOf(recordOf(await cmd<unknown>("thread.side", { conv, title, task }, { id: commandId }))?.threadId)
   if (threadId === undefined) throw new Error("thread.side answered without a thread id")
   return threadId
 }

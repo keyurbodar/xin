@@ -10,6 +10,11 @@ export class OpError extends Error {
   }
 }
 
+/** A rejection the host recorded against this command id; a retry with the same id replays it, so the next attempt needs a new id. */
+export function isDefinitive(problem: unknown): boolean {
+  return problem instanceof OpError && problem.code !== "http"
+}
+
 type Ack<T> =
   | { readonly t: "ack"; readonly id: string; readonly ok: true; readonly result: T }
   | { readonly t: "ack"; readonly id: string; readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
