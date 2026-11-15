@@ -1308,13 +1308,12 @@ export function create(deps: ModelsPort): ModelsParts {
     run: async () => {
       await flush()
       const dated = await datedUsage(db)
-      const { features } = await budget.breakdown()
       return {
         today: dated.today,
         month: dated.month,
         alert: await readDailyAlert(db),
         cap: await readCap(db),
-        features,
+        features: budget.features(),
       }
     },
   })
@@ -1336,7 +1335,7 @@ export function create(deps: ModelsPort): ModelsParts {
       return { catalog, matches: search(catalog, query) }
     },
     admit: async (feature) => budget.admit(feature),
-    admitConversation: async (conversation) => budget.admit(await budget.classify(conversation)),
+    admitConversation: (conversation) => budget.admitConversation(conversation),
     charge: (feature, conversation, message) => budget.charge(feature, conversation, message),
     track: (tracker) => budget.track(tracker),
     switchModel: ({ conversation, caller, model, thinking, callId }) =>

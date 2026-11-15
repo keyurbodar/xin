@@ -9,7 +9,7 @@ import {
   type Harness,
   type UsageState,
 } from "@earendil-works/pi-durable"
-import { compile, map, num, obj, opt, tuple } from "@earendil-works/pi-schema"
+import { compile, map, num, obj, opt, str, tuple } from "@earendil-works/pi-schema"
 import { FEATURES, type Admission, type Feature, type FeatureTracker } from "../../src/contracts/models.ts"
 import type { GoalsService } from "../../src/contracts/goals.ts"
 import { PuckDoc } from "../../src/contracts/puck.ts"
@@ -38,7 +38,10 @@ type Delta = { feature: Feature; model: string } & Amount
 
 const CapSchema = obj({ day: opt(num({ minimum: 0 })), month: opt(num({ minimum: 0 })) })
 const capsCheck = compile(map(CapSchema))
-const marksCheck = compile(map(map(tuple([num(), num()]))))
+const Pair = tuple([num(), num()])
+const ledgerCheck = compile(obj({ marks: map(map(Pair)), day: str(), totals: map(obj({ today: Pair, month: Pair })) }))
+/** Rows the owner's model breakdown reads at most; the month's feature totals come from memory. */
+const BREAKDOWN_ROWS = 100
 
 const zero = (): Amount => ({ spend: 0, tokens: 0 })
 
@@ -86,23 +89,29 @@ export function createBudget(port: BudgetPort) {
     return fresh
   }
 
+  /** 2 kv rows: the caps, and the marks with this month's feature totals, so a boot never scans `usage_feature`. */
   async function load(): Promise<void> {
     caps = (await readJson(db, CAPS, capsCheck.check)) ?? {}
-    marks = await readJson(db, MARKS, marksCheck.check)
-    today = dayOf(Date.now())
+    const stored = await readJson(db, MARKS, ledgerCheck.check)
+    marks = stored?.marks
     spent.clear()
-    const rows = await db.all<{ day: string; feature: string; spend: number; tokens: number }>(
-      "SELECT day, feature, SUM(spend) AS spend, SUM(tokens) AS tokens FROM usage_feature WHERE day >= ? GROUP BY day, feature",
-      `${today.slice(0, 7)}-01`,
-    )
-    for (const row of rows) {
-      if (!isFeature(row.feature)) continue
-      const entry = slot(row.feature)
-      entry.month.spend += row.spend
-      entry.month.tokens += row.tokens
-      if (row.day === today) entry.today = { spend: row.spend, tokens: row.tokens }
-    }
+    today = stored?.day ?? dayOf(Date.now())
+    for (const [feature, total] of Object.entries(stored?.totals ?? {}))
+      if (isFeature(feature))
+        spent.set(feature, {
+          today: { spend: total.today[0], tokens: total.today[1] },
+          month: { spend: total.month[0], tokens: total.month[1] },
+        })
+    roll()
   }
+
+  const totals = (): Record<string, { today: [number, number]; month: [number, number] }> =>
+    Object.fromEntries(
+      [...spent].map(([feature, entry]) => [
+        feature,
+        { today: [entry.today.spend, entry.today.tokens], month: [entry.month.spend, entry.month.tokens] },
+      ]),
+    )
 
   function roll(): void {
     const now = dayOf(Date.now())
@@ -197,20 +206,7 @@ export function createBudget(port: BudgetPort) {
   async function book(): Promise<boolean> {
     roll()
     const { next, deltas } = await measure()
-    await db.transaction(async (tx) => {
-      for (const delta of deltas.values())
-        await tx.run(
-          "INSERT INTO usage_feature (day, feature, model, spend, tokens) VALUES (?, ?, ?, ?, ?) ON CONFLICT (day, feature, model) DO UPDATE SET spend = spend + excluded.spend, tokens = tokens + excluded.tokens",
-          today,
-          delta.feature,
-          delta.model,
-          delta.spend,
-          delta.tokens,
-        )
-      if (marks === undefined || deltas.size > 0) await writeJson(tx, MARKS, next)
-    })
-    marks = next
-    classes.clear()
+    const before = new Map([...spent].map(([feature, entry]) => [feature, structuredClone(entry)] as const))
     for (const delta of deltas.values()) {
       const entry = slot(delta.feature)
       entry.today.spend += delta.spend
@@ -218,6 +214,27 @@ export function createBudget(port: BudgetPort) {
       entry.month.spend += delta.spend
       entry.month.tokens += delta.tokens
     }
+    try {
+      await db.transaction(async (tx) => {
+        for (const delta of deltas.values())
+          await tx.run(
+            "INSERT INTO usage_feature (day, feature, model, spend, tokens) VALUES (?, ?, ?, ?, ?) ON CONFLICT (day, feature, model) DO UPDATE SET spend = spend + excluded.spend, tokens = tokens + excluded.tokens",
+            today,
+            delta.feature,
+            delta.model,
+            delta.spend,
+            delta.tokens,
+          )
+        if (marks === undefined || deltas.size > 0)
+          await writeJson(tx, MARKS, { marks: next, day: today, totals: totals() })
+      })
+    } catch (error) {
+      spent.clear()
+      for (const [feature, entry] of before) spent.set(feature, entry)
+      throw error
+    }
+    marks = next
+    classes.clear()
     return deltas.size > 0
   }
 
@@ -292,13 +309,10 @@ export function createBudget(port: BudgetPort) {
     return next
   }
 
-  async function breakdown(): Promise<{ features: JsonValue[]; byModel: JsonValue[] }> {
+  /** Each feature's day and month from memory, with its cap; reads no row. */
+  function features(): JsonValue[] {
     roll()
-    const rows = await db.all<{ feature: string; model: string; spend: number; tokens: number }>(
-      "SELECT feature, model, SUM(spend) AS spend, SUM(tokens) AS tokens FROM usage_feature WHERE day >= ? GROUP BY feature, model",
-      `${today.slice(0, 7)}-01`,
-    )
-    const features = FEATURES.map((feature) => {
+    return FEATURES.map((feature) => {
       const entry = slot(feature)
       const cap = caps[feature]
       return {
@@ -309,9 +323,17 @@ export function createBudget(port: BudgetPort) {
         capped: check(feature, 0).kind === "capped",
       }
     })
+  }
+
+  /** `features()` plus this month's spend by (feature, model), the `BREAKDOWN_ROWS` largest. */
+  async function breakdown(): Promise<{ features: JsonValue[]; byModel: JsonValue[] }> {
+    const rows = await db.all<{ feature: string; model: string; spend: number; tokens: number }>(
+      "SELECT feature, model, SUM(spend) AS spend, SUM(tokens) AS tokens FROM usage_feature WHERE day >= ? GROUP BY feature, model ORDER BY spend DESC, model LIMIT ?",
+      `${today.slice(0, 7)}-01`,
+      BREAKDOWN_ROWS,
+    )
     const byModel = rows
       .flatMap((row) => (isFeature(row.feature) ? [row] : []))
-      .toSorted((left, right) => right.spend - left.spend || left.model.localeCompare(right.model))
       .map((row) => {
         const slash = row.model.indexOf("/")
         return {
@@ -322,7 +344,7 @@ export function createBudget(port: BudgetPort) {
           tokens: row.tokens,
         }
       })
-    return { features, byModel }
+    return { features: features(), byModel }
   }
 
   function track(tracker: FeatureTracker): () => void {
@@ -346,8 +368,12 @@ export function createBudget(port: BudgetPort) {
     classify: featureOf,
     setCap,
     breakdown,
+    features,
     track,
     todaySpend: () => spentToday(),
+    /** With no cap set there is nothing to check, so the conversation is not classified and no row is read. */
+    admitConversation: async (conversation: ConversationId): Promise<Admission> =>
+      Object.keys(caps).length === 0 ? { kind: "ok" } : admit(await featureOf(conversation)),
   }
 
   function spentToday(): { spend: number; capped: Feature[] } {

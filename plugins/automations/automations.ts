@@ -185,6 +185,7 @@ export type EnginePort = {
   readonly arm: () => Promise<void>
   readonly changed: () => Promise<void>
   readonly admit: () => Promise<Admission>
+  readonly admitConversation: (conversation: ConversationId) => Promise<Admission>
 }
 
 /** Who asked: the owner, or the conversation an agent runs in, which supplies the default project and thread. */
@@ -207,9 +208,17 @@ export class Engine {
     this.store = new Store(port.db)
   }
 
-  /** The threads automation runs started, which book their spend as `automation`; one read per process, then memory. */
+  /**
+   * The threads automations started, which book their spend as `automation`: one bounded read per process, then
+   * memory. A standing conversation that is a chat keeps its own feature.
+   */
   async threads(): Promise<readonly ConversationId[]> {
-    this.#threads ??= new Set(await this.store.runThreads())
+    if (this.#threads === undefined) {
+      const found = new Set<ConversationId>()
+      for (const id of await this.store.runThreads())
+        if ((await this.port.harness.snapshot(ThreadDoc, id, context)) !== undefined) found.add(id)
+      this.#threads = found
+    }
     return [...this.#threads]
   }
 
@@ -583,6 +592,11 @@ export class Engine {
         await this.store.started(run.id, "running", threadId, now, base)
         this.#threads?.add(conversationId)
       }
+      return true
+    }
+    const admission = await this.port.admitConversation(conversationId)
+    if (admission.kind === "capped") {
+      await this.store.failed(run.id, capReason(admission), now)
       return true
     }
     await this.port.intake.enqueue({

@@ -290,6 +290,27 @@ describe("automations", () => {
     expect(second.error).toContain("automation cap")
   }, 30_000)
 
+  it("fails a same-target run into a chat whose chat cap is reached", async () => {
+    const stub = fresh()
+    const root = await runInDurableObject(stub, async (home: Home) => (await home.root()).id)
+    const created = await op<AutomationView>(stub, "chat-cap-1", "automation.create", {
+      title: "Daily note",
+      prompt: "Write the daily note",
+      target: { kind: "same", threadId: root },
+      triggers: [],
+    })
+    await op(stub, "chat-cap-2", "usage.feature.cap.set", { feature: "chat", day: 0 })
+    const run = await op<RunView>(stub, "chat-cap-3", "automation.trigger", { id: created.id })
+    expect(run).toMatchObject({ status: "failed" })
+    expect(run.error).toContain("chat cap")
+    expect(
+      await runInDurableObject(
+        stub,
+        async (home: Home) => (await home.intake()).filter((item) => item.kind === "job").length,
+      ),
+    ).toBe(0)
+  }, 30_000)
+
   it("needs a project for fresh threads", async () => {
     const stub = fresh()
     const rejected = await cmd(stub, "p1", "automation.create", {

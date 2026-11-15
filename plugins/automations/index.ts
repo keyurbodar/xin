@@ -18,6 +18,7 @@ export async function apply(ctx: KernelContext): Promise<void> {
     arm: () => ctx.clock.arm(),
     changed: () => ctx.wire.publishHome(),
     admit: () => ctx.models.admit("automation"),
+    admitConversation: (conversation) => ctx.models.admitConversation(conversation),
   })
   ctx.provide("automations", engine)
   ctx.pi.install(retiredSchedules())

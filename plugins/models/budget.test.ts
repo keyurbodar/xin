@@ -1,4 +1,4 @@
-import { runInDurableObject } from "cloudflare:test"
+import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { fauxAssistantMessage } from "@earendil-works/pi-ai"
 import { type ConversationId, UsageDoc } from "@earendil-works/pi-durable"
@@ -279,5 +279,28 @@ describe("usage by feature", () => {
       home.db.all<{ spend: number }>("SELECT spend FROM usage_feature WHERE feature = 'chat'"),
     )
     expect(stored.reduce((sum, row) => sum + row.spend, 0)).toBe(1)
+  }, 30_000)
+
+  it("keeps the month's feature totals across an eviction without scanning the feature ledger", async () => {
+    const stub = fresh()
+    await breakdown(stub, "boot-seed")
+    await runInDurableObject(stub, async (home: Home) => {
+      await bill(home, (await home.root()).id, "faux/faux-1", 12, 0.3)
+    })
+    await breakdown(stub, "boot-flush")
+    await evictDurableObject(stub)
+    const scans = await runInDurableObject(stub, (home: Home) =>
+      Object.entries(home.meter().statements)
+        .filter(([sql]) => sql.includes("FROM usage_feature"))
+        .reduce((sum, [, bucket]) => sum + bucket.calls, 0),
+    )
+    expect(scans).toBe(0)
+    const today = await call(stub, "boot-today", "usage.today", {})
+    expect(today).toMatchObject({ ok: true })
+    const chat = (today.result as { features: { feature: string; today: unknown; month: unknown }[] }).features.find(
+      (entry) => entry.feature === "chat",
+    )
+    expect(chat?.today).toEqual({ spend: 0.3, tokens: 12 })
+    expect(chat?.month).toEqual({ spend: 0.3, tokens: 12 })
   }, 30_000)
 })

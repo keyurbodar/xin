@@ -161,10 +161,13 @@ export class Store {
     return this.db.run("UPDATE automation_triggers SET next_at = ? WHERE id = ?", next, triggerId)
   }
 
-  /** Threads automation runs started; a run delivered into a chat is left out, since the chat keeps its feature. */
+  /**
+   * The conversations automations hold or run in: each same-target automation's standing conversation and each open
+   * run's thread. Bounded by the automations and their open runs (the partial index), never by run history.
+   */
   async runThreads(): Promise<ConversationId[]> {
     const rows = await this.db.all<{ thread_id: number }>(
-      "SELECT DISTINCT thread_id FROM automation_runs WHERE thread_id IS NOT NULL AND status <> 'delivered'",
+      "SELECT thread_id FROM automations WHERE thread_id IS NOT NULL UNION ALL SELECT thread_id FROM automation_runs WHERE status IN ('queued', 'running') AND thread_id IS NOT NULL",
     )
     return rows.map((row) => row.thread_id as ConversationId)
   }

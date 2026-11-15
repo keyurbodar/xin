@@ -1,5 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
+import { FEATURES } from "../src/contracts/models.ts"
 import { describe, expect, it } from "vitest"
 import { defaultSpaceOf, ThreadDoc } from "../src/contracts/threaddoc.ts"
 import { WorkspaceDoc } from "../src/contracts/workspace.ts"
@@ -176,6 +177,19 @@ describe("load", () => {
       expect(result.sent, `fill message to ${id} was refused`).toBe(true)
       filled += 1
     }
+    // A month of per-feature detail: 28 days x 8 features x 3 models. A boot reads its totals from one kv row instead.
+    await runInDurableObject(stub, async (home: Home) => {
+      const month = new Date().toISOString().slice(0, 7)
+      for (let day = 1; day <= 28; day++)
+        for (const feature of FEATURES)
+          for (const model of ["faux/a", "faux/b", "faux/c"])
+            await home.db.run(
+              "INSERT OR IGNORE INTO usage_feature (day, feature, model, spend, tokens) VALUES (?, ?, ?, 0.01, 10)",
+              `${month}-${String(day).padStart(2, "0")}`,
+              feature,
+              model,
+            )
+    })
     const replayed = await journalRows(stub)
     await runInDurableObject(stub, (home: Home) => home.meterLabel("cold"))
     const beforeEvict = await meter(stub)
