@@ -28,9 +28,8 @@ import { presets as presetStore, prompts } from "../state/extensions.ts"
 import { Menu } from "lucide-solid"
 import {
   openThreadTab,
-  paneOpen,
   openThreadTabs,
-  projectTabs,
+  paneOpen,
   pruneThreadTabs,
   sidebarHidden,
   toggleSidebar,
