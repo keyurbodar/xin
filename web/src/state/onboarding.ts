@@ -1,29 +1,28 @@
 import { createSignal } from "solid-js"
 import { cmd } from "../lib/api.ts"
-import { recordOf, strOf } from "../lib/parse.ts"
+import {
+  ensureCaptain,
+  firstOpenStep,
+  readProgress,
+  type CaptainInput,
+  type CaptainResult,
+  type SendKey,
+} from "../lib/onboarding.ts"
 import { enablePush as enableBrowserPush } from "../lib/push.ts"
-import { slugify } from "../lib/slug.ts"
 import { models, saveCredential, type ModelInfo } from "./settings.ts"
 
-export type OnboardingStepId = "provider" | "project" | "message" | "notifications"
+export type OnboardingStepId = "signin" | "provider" | "captain" | "thread"
 
 export const ONBOARDING_STEPS: readonly { readonly id: OnboardingStepId; readonly label: string }[] = [
+  { id: "signin", label: "Sign in" },
   { id: "provider", label: "Model key" },
-  { id: "project", label: "First project" },
-  { id: "message", label: "First message" },
-  { id: "notifications", label: "Notifications" },
+  { id: "captain", label: "First Captain" },
+  { id: "thread", label: "First thread" },
 ]
 
 export type ProviderResult = {
   readonly provider: string
   readonly models: readonly ModelInfo[]
-}
-
-export type ProjectResult = {
-  readonly id: string
-  readonly slug: string
-  readonly name: string
-  readonly goal?: string
 }
 
 export type ProviderInput =
@@ -42,23 +41,28 @@ export type PushOutcome =
   | { readonly kind: "on"; readonly endpoint: string }
   | { readonly kind: "off"; readonly message: string }
 
-const [stepIndex, setStepIndex] = createSignal(0)
+const [stepIndex, setStepIndex] = createSignal(1)
+const [loaded, setLoaded] = createSignal(false)
 const [connectedProvider, setConnectedProvider] = createSignal<ProviderResult | undefined>(undefined)
-const [connectedProject, setConnectedProject] = createSignal<ProjectResult | undefined>(undefined)
+const [firstCaptain, setFirstCaptain] = createSignal<CaptainResult | undefined>(undefined)
+const [firstReport, setFirstReport] = createSignal(false)
+const [notifyOpen, setNotifyOpen] = createSignal(false)
 const [pushOutcome, setPushOutcome] = createSignal<PushOutcome>({ kind: "idle" })
 
 export const onboardingIndex = stepIndex
+export const onboardingLoaded = loaded
 export const onboardingProvider = connectedProvider
-export const onboardingProject = connectedProject
+export const onboardingCaptain = firstCaptain
+export const onboardingReported = firstReport
 export const onboardingPush = pushOutcome
+export const notificationsOpen = notifyOpen
 
 export function onboardingStep(): OnboardingStepId {
   return ONBOARDING_STEPS[stepIndex()]?.id ?? "provider"
 }
 
 export function goToStep(index: number): void {
-  const clamped = Math.max(0, Math.min(ONBOARDING_STEPS.length - 1, index))
-  setStepIndex(clamped)
+  setStepIndex(Math.max(1, Math.min(ONBOARDING_STEPS.length - 1, index)))
 }
 
 export function nextStep(): void {
@@ -73,6 +77,16 @@ export function forgetProvider(): void {
   setConnectedProvider(undefined)
 }
 
+export function openNotifications(open: boolean): void {
+  setNotifyOpen(open)
+}
+
+export function markFirstReport(): void {
+  if (firstReport()) return
+  setFirstReport(true)
+  if (pushOutcome().kind !== "on") setNotifyOpen(true)
+}
+
 export async function connectProvider(input: ProviderInput): Promise<ProviderResult> {
   switch (input.kind) {
     case "key":
@@ -82,42 +96,35 @@ export async function connectProvider(input: ProviderInput): Promise<ProviderRes
       await saveCredential(input.provider, input.key, { baseUrl: input.baseUrl, api: input.api })
       break
   }
-  const result: ProviderResult = { provider: input.provider, models: await modelsFor(input.provider) }
+  const state = models.state()
+  const listed = state.kind === "ready" ? state.value.models.filter((model) => model.provider === input.provider) : []
+  const result: ProviderResult = { provider: input.provider, models: listed }
   setConnectedProvider(result)
   return result
 }
 
-async function modelsFor(provider: string): Promise<readonly ModelInfo[]> {
-  if (models.state().kind !== "ready") await models.reload()
-  const state = models.state()
-  return state.kind === "ready" ? state.value.models.filter((model) => model.provider === provider) : []
+export async function loadProgress(): Promise<void> {
+  const progress = await readProgress()
+  if (progress.provider !== undefined) {
+    if (models.state().kind !== "ready") await models.reload()
+    const state = models.state()
+    const listed = state.kind === "ready" ? state.value.models.filter((model) => model.provider === progress.provider) : []
+    setConnectedProvider({ provider: progress.provider, models: listed })
+  }
+  setFirstCaptain(progress.captain)
+  setFirstReport(progress.reported)
+  setStepIndex(firstOpenStep(progress))
+  setLoaded(true)
 }
 
-export async function createFirstProject(name: string, goal: string): Promise<ProjectResult> {
-  const trimmedName = name.trim()
-  const trimmedGoal = goal.trim()
-  const slug = slugify(trimmedName)
-  if (slug === "") throw new Error("Use at least one letter or number in the name.")
-  const args: Record<string, unknown> = {
-    slug,
-    name: trimmedName,
-    ...(trimmedGoal === "" ? {} : { goal: trimmedGoal }),
-  }
-  const root = recordOf(await cmd<unknown>("project.create", args))
-  const id = strOf(root?.["id"])
-  const resolvedSlug = strOf(root?.["slug"])
-  const resolvedName = strOf(root?.["name"])
-  const resolvedGoal = strOf(root?.["goal"])
-  if (id === undefined || resolvedSlug === undefined || resolvedName === undefined)
-    throw new Error("The project was created, but the reply could not be read.")
-  const result: ProjectResult = {
-    id,
-    slug: resolvedSlug,
-    name: resolvedName,
-    ...(resolvedGoal === undefined ? {} : { goal: resolvedGoal }),
-  }
-  setConnectedProject(result)
+export async function createFirstCaptain(input: CaptainInput, commandId: string): Promise<CaptainResult> {
+  const result = await ensureCaptain(input, commandId)
+  setFirstCaptain(result)
   return result
+}
+
+export async function sendFirstMessage(captain: CaptainResult, key: SendKey): Promise<void> {
+  await cmd("message.send", { conv: captain.coordinatorId, text: key.text, clientTs: key.at }, { id: key.id })
 }
 
 export async function enablePush(): Promise<void> {
@@ -138,8 +145,4 @@ export async function enablePush(): Promise<void> {
 
 export function messageOf(failure: unknown, fallback: string): string {
   return failure instanceof Error && failure.message !== "" ? failure.message : fallback
-}
-
-export function projectPath(project: ProjectResult | undefined): string {
-  return project === undefined ? "/" : `/p/${project.slug}`
 }

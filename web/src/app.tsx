@@ -5,6 +5,7 @@ import { subscribeHome } from "./state/home.ts"
 import { navigate, route } from "./lib/router.ts"
 import { Shell } from "./components/shell/shell.tsx"
 import { SignIn } from "./screens/signin.tsx"
+import { readProgress } from "./lib/onboarding.ts"
 import { WelcomeScreen } from "./screens/welcome.tsx"
 
 function isPushMessage(value: unknown): boolean {
@@ -35,7 +36,13 @@ export function App(): JSX.Element {
 
   return (
     <Show when={authed() !== undefined} fallback={<div class="grid h-full place-items-center" />}>
-        <Show when={authed()} fallback={<SignIn onSignedIn={enter} />}>
+        <Show when={authed()} fallback={<SignIn
+              onSignedIn={async () => {
+                enter()
+                const progress = await readProgress().catch(() => undefined)
+                if (progress?.captain === undefined) navigate("/welcome")
+              }}
+            />}>
           <Show when={route().parts[0] === "welcome"} fallback={<Shell />}>
             <WelcomeScreen />
           </Show>

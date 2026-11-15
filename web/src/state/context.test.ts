@@ -42,8 +42,6 @@ test("a model or preset change reads the context again; a thinking change does n
   await ensureContext(5)
   await configureConversation(5, { thinking: "high" })
   await configureConversation(5, { model: { provider: "p", modelId: "m" } })
-  await refreshContext(5)
   await selectPreset(5, "lean")
-  await refreshContext(5)
   expect(ops).toEqual(["conv.context", "conv.configure", "conv.configure", "conv.context", "preset.select", "conv.context"])
 })
