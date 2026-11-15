@@ -1,10 +1,18 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import { type ConversationId, type Harness, LiveDoc } from "@earendil-works/pi-durable"
+import {
+  CompactionTask,
+  type ConversationId,
+  defineExtension,
+  type Harness,
+  hook,
+  LiveDoc,
+} from "@earendil-works/pi-durable"
 import { int, obj, opt, str } from "@earendil-works/pi-schema"
 import { type Context, defineOp, OpRejected } from "../../src/kernel/index.ts"
+import { beforeCompact } from "./summary.ts"
 
 export const name = "compact"
-export const inject = ["ops"]
+export const inject = ["ops", "pi", "models"]
 
 const context = BACKGROUND_CONTEXT
 const INSTRUCTIONS_LIMIT = 2000
@@ -34,4 +42,10 @@ const compact = defineOp({
 
 export function apply(ctx: Context): void {
   ctx.ops.define(compact)
+  ctx.pi.install(
+    defineExtension({
+      name: "xin.compact",
+      hooks: [hook(CompactionTask, { beforeCompact: beforeCompact(() => ctx.models.ownerDefaults()) })],
+    }),
+  )
 }
