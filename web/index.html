@@ -5,9 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#090a0c" />
     <title>Ingle</title>
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <script>
       const scheme = localStorage.getItem("ingle.theme.scheme") ?? localStorage.getItem("ingle.theme")
       document.documentElement.dataset.theme = ["light", "rose"].includes(scheme) ? scheme : "dark"
+      if (localStorage.getItem("ingle.motion") === "reduce") document.documentElement.dataset.motion = "reduce"
     </script>
   </head>
   <body>

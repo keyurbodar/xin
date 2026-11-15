@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import { KERNEL_OWNER, tableOwner } from "../src/kernel/dbtables.ts"
-import { permissionFor } from "../src/kernel/manifest.ts"
+import { reachViolations } from "./reach.ts"
 
 const ROOT = join(import.meta.dirname, "..")
 const PLUGINS = join(ROOT, "plugins")
@@ -47,10 +47,6 @@ const injected = (text: string): ReadonlySet<string> | undefined => {
     : new Set(lists.flatMap((list) => [...list.matchAll(/["']([^"']+)["']/g)].map((item) => item[1] ?? "")))
 }
 
-const NESTED_INJECT = /\.inject\(\s*\[([^\]]*)\]/g
-const GET = /\bctx\.get\(\s*([^)]*)\)/g
-const WORKERS_IMPORT = /["']cloudflare:workers["']/
-
 const declaredPermissions = (plugin: string): ReadonlySet<string> => {
   const manifest: unknown = JSON.parse(readFileSync(join(PLUGINS, plugin, "package.json"), "utf8"))
   const declared = Object.values(Object(Object(Object(manifest).ingle).plugins))
@@ -61,22 +57,7 @@ const declaredPermissions = (plugin: string): ReadonlySet<string> => {
 
 const violations: string[] = []
 const checkPermissions = (file: string, plugin: string, text: string): void => {
-  const permitted = declaredPermissions(plugin)
-  const where = relative(ROOT, file)
-  const need = (service: string, how: string): void => {
-    const permission = permissionFor(service)
-    if (permission !== undefined && !permitted.has(permission))
-      violations.push(`${where} ${how} ${service} without the ${permission} permission in its package.json`)
-  }
-  for (const match of [...text.matchAll(INJECT), ...text.matchAll(NESTED_INJECT)])
-    for (const item of (match[1] ?? "").matchAll(/["']([^"']+)["']/g)) need(item[1] ?? "", "injects")
-  for (const match of text.matchAll(GET)) {
-    const literal = /^["']([^"']+)["']$/.exec((match[1] ?? "").trim())
-    if (literal === null) violations.push(`${where} calls ctx.get with a computed name; name the service`)
-    else need(literal[1] ?? "", "gets")
-  }
-  if (WORKERS_IMPORT.test(text) && !permitted.has("runtime"))
-    violations.push(`${where} imports cloudflare:workers without the runtime permission in its package.json`)
+  violations.push(...reachViolations(relative(ROOT, file), text, declaredPermissions(plugin)))
 }
 const checkInject = (file: string, requireDeclaration: boolean, text: string): void => {
   if (file.endsWith(".test.ts")) return

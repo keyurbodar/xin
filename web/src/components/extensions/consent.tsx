@@ -30,7 +30,9 @@ export function ConsentPrompt(props: {
         )}
       </For>
       <div class="flex items-center gap-2 border-t border-line-1 px-3.5 py-2.5">
-        <span class="text-xs text-ink-3">Plugins run in your Home with no sandbox. Allow only what you trust.</span>
+        <span class="text-xs text-ink-3">
+          Plugin code runs in your Home with your authority. This list is what it declares, not a sandbox.
+        </span>
         <span class="ml-auto" />
         <Button size="sm" variant="quiet" disabled={props.busy} onClick={props.onCancel}>
           Cancel

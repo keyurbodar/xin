@@ -1,261 +1,271 @@
-import { For, onMount, Show, type JSX } from "solid-js"
-import { activeProjects, counts, type ProjectSummary } from "../../state/home.ts"
+import { createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js"
+import { Dynamic, Portal } from "solid-js/web"
+import { Menu } from "@ark-ui/solid/menu"
+import { Blocks, CalendarClock, Check, ChevronsUpDown, Flower2, Moon, PanelLeft, Plus, Search, Settings, SquarePen, Sun, X } from "lucide-solid"
+import { activeProjects, projectThreads, routeProject, routeThreadId, type ProjectSummary } from "../../state/home.ts"
+import { owner, ownerName } from "../../state/settings.ts"
 import { navigate, route } from "../../lib/router.ts"
-import { Icon, type IconName } from "../ui/icon.tsx"
-import { projectGlyph, PROJECT_GLYPHS } from "../../lib/project-glyphs.ts"
-import { Corner, projectState } from "../chat/project-glyph.tsx"
-import { money } from "../../lib/format.ts"
-import { usage, owner, ownerName } from "../../state/settings.ts"
-import { SlotList } from "../../plugins/slots.tsx"
+import { ago } from "../../lib/format.ts"
+import { stagger } from "../../lib/motion.ts"
+import { visualState } from "../../lib/status.ts"
+import { theme } from "../../lib/theme.ts"
+import { applyTheme, SlotList } from "../../plugins/slots.tsx"
+import { openThreadTab } from "../../state/tabs.ts"
+import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
+import { BrandMark } from "../ui/brand-mark.tsx"
+import { Signal } from "../ui/signal.tsx"
+import { openNewThread } from "./new-thread.tsx"
+import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL, MENU_SEPARATOR } from "./menu.ts"
 
-function summary(project: ProjectSummary): string {
-  const waiting = project.openRequests + project.threads.waiting.length
-  const working = project.threads.working.length
-  const failed = project.threads.failed.length
-  const parts: string[] = []
-  if (waiting > 0) parts.push(`${waiting} waiting`)
-  if (working > 0) parts.push(`${working} working`)
-  if (failed > 0) parts.push(`${failed} failed`)
-  if (parts.length === 0) {
-    const reports = project.threads.completed.length
-    parts.push(reports > 0 ? `Idle · ${reports} ${reports === 1 ? "report" : "reports"}` : "Idle")
-  }
-  return parts.join(" · ")
-}
+const ICON = { size: 16, "stroke-width": 1.5 } as const
 
-export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefined }): JSX.Element {
-  onMount(() => {
-    void usage.reload()
-    void owner.reload()
-  })
+const THEMES = [
+  { id: "dark", label: "Dark", icon: Moon },
+  { id: "light", label: "Light", icon: Sun },
+  { id: "rose", label: "Rose", icon: Flower2 },
+] as const
 
-  const initial = (): string | undefined => {
-    const state = owner.state()
-    if (state.kind !== "ready") return undefined
-    return state.value.name.trim().slice(0, 1).toUpperCase() || undefined
-  }
+const ROW =
+  "flex h-[var(--h-row)] w-full shrink-0 items-center gap-2.5 rounded-sm px-2 text-left text-sm im-hover"
 
-  const onProject = (slug: string): boolean => route().parts[0] === "p" && route().parts[1] === slug
-  const needsYou = (project: ProjectSummary): boolean =>
-    project.openRequests > 0 || project.threads.waiting.length > 0 || project.threads.failed.length > 0
-
-  if (props.rail === true)
-    return (
-      <aside class="flex h-full w-14 shrink-0 flex-col items-center gap-0.5 border-r border-line-1 bg-panel py-2">
-        <RailButton icon="search" label="Search" onClick={props.onSearch} />
-        <RailButton
-          icon="grid"
-          label="Extensions"
-          active={route().parts[0] === "extensions"}
-          onClick={() => navigate("/extensions")}
-        />
-        <div class="my-1.5 h-px w-6 shrink-0 bg-line-1" />
-        <div class="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto">
-          <For each={activeProjects()}>
-            {(project) => (
-              <button
-                type="button"
-                title={project.name}
-                onClick={() => navigate(`/p/${project.slug}`)}
-                class="relative grid h-9 w-9 shrink-0 place-items-center rounded-sm border bg-card"
-                classList={{
-                  "border-line-3 text-ink": onProject(project.slug),
-                  "border-line-2 text-ink-2 hover:border-line-3 hover:text-ink": !onProject(project.slug),
-                }}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width={20}
-                  height={20}
-                  class="project-mark"
-                  aria-hidden="true"
-                  innerHTML={PROJECT_GLYPHS[projectGlyph(project.slug, project.name, project.goal ?? "")]}
-                />
-                <Corner state={projectState(project)} />
-              </button>
-            )}
-          </For>
-          <button
-            type="button"
-            title="New project"
-            aria-label="New project"
-            onClick={() => navigate("/new")}
-            class="grid h-9 w-9 shrink-0 place-items-center rounded-sm border border-dashed border-line-2 text-ink-3 hover:border-line-3 hover:text-ink"
-          >
-            <Icon name="plus" size={14} />
-          </button>
-        </div>
-        <RailButton
-          icon="settings"
-          label="Settings"
-          active={route().parts[0] === "settings"}
-          onClick={() => navigate("/settings/general")}
-        />
-        <span
-          title={ownerName()}
-          class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-2xs text-ink-2"
-        >
-          {initial() ?? <Icon name="users" size={13} class="text-ink-3" />}
-        </span>
-      </aside>
-    )
+export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; drawer: boolean }): JSX.Element {
+  onMount(() => void owner.reload())
+  const first = (): string | undefined => route().parts[0]
+  let projects: HTMLDivElement | undefined
+  stagger(() => projects, () => activeProjects().length > 0)
 
   return (
-    <aside class="flex h-full w-[264px] shrink-0 flex-col border-r border-line-1 bg-panel p-2">
-      <button
-        type="button"
-        onClick={props.onSearch}
-        class="flex h-9 items-center gap-2.5 rounded-sm px-2 text-left hover:bg-secondary"
-      >
-        <IconBox name="search" />
-        <span class="text-sm text-ink">Search</span>
-        <span class="kbd ml-auto">⌘K</span>
-      </button>
-
-      <nav class="flex flex-col">
-        <NavRow
-          icon="grid"
-          label="Extensions"
-          active={route().parts[0] === "extensions"}
-          onClick={() => navigate("/extensions")}
-        />
-      </nav>
-
-      <div class="flex items-center px-2 pb-1.5 pt-4">
-        <span class="label">Projects</span>
+    <aside class="flex h-full w-[var(--w-sidebar)] shrink-0 flex-col bg-bg">
+      <div class="flex h-[var(--h-strip)] shrink-0 items-center gap-1 px-3">
+        <BrandMark class="ml-1 h-5 w-5 text-ink" />
+        <button type="button" class={`${ICON_BUTTON} ml-auto`} aria-label="Search (⌘K)" title="Search ⌘K" onClick={props.onSearch}>
+          <Search {...ICON} />
+        </button>
         <button
           type="button"
-          class="ml-auto text-icon hover:text-ink-2"
-          onClick={() => navigate("/new")}
-          aria-label="New project"
+          class={ICON_BUTTON}
+          aria-label={props.drawer ? "Close the sidebar" : "Collapse the sidebar"}
+          onClick={props.onCollapse}
         >
-          <Icon name="plus" size={12} />
+          <Show when={props.drawer} fallback={<PanelLeft {...ICON} />}>
+            <X {...ICON} />
+          </Show>
         </button>
       </div>
 
-      <div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <For each={activeProjects()}>
-          {(project) => (
-            <button
-              type="button"
-              onClick={() => navigate(`/p/${project.slug}`)}
-              class="flex h-10 w-full shrink-0 items-center gap-2.5 rounded-sm px-2 text-left hover:bg-secondary"
-              classList={{ "bg-hover hover:bg-hover": onProject(project.slug) }}
-            >
-              <span
-                class="relative grid h-6 w-6 shrink-0 place-items-center rounded-sm border border-line-2 bg-card"
-                classList={{ "text-ink": onProject(project.slug), "text-ink-2": !onProject(project.slug) }}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width={15}
-                  height={15}
-                  class="project-mark"
-                  aria-hidden="true"
-                  innerHTML={PROJECT_GLYPHS[projectGlyph(project.slug, project.name, project.goal ?? "")]}
-                />
-                <Corner state={projectState(project)} />
-              </span>
-              <span
-                class="min-w-0 flex-1 truncate text-sm"
-                classList={{ "text-ink": onProject(project.slug), "text-ink-2": !onProject(project.slug) }}
-              >
-                {project.name}
-              </span>
-              <Show when={needsYou(project)} fallback={<span class="mono-meta shrink-0">{summary(project)}</span>}>
-                <span class="shrink-0 font-mono text-2xs text-primary-ink">{summary(project)}</span>
-              </Show>
-            </button>
-          )}
-        </For>
+      <nav class="flex flex-col gap-px px-2 pt-1">
+        <NavRow label="New thread" disabled={routeProject() === undefined} onClick={openNewThread}>
+          <SquarePen {...ICON} />
+        </NavRow>
+        <NavRow label="Schedules" active={first() === "schedules"} onClick={() => navigate("/schedules")}>
+          <CalendarClock {...ICON} />
+        </NavRow>
+        <NavRow label="Extensions" active={first() === "extensions"} onClick={() => navigate("/extensions")}>
+          <Blocks {...ICON} />
+        </NavRow>
+        <NavRow label="Settings" active={first() === "settings"} onClick={() => navigate("/settings/general")}>
+          <Settings {...ICON} />
+        </NavRow>
+      </nav>
+
+      <div class="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
+        <SectionHead label="Projects">
+          <button type="button" class={ICON_BUTTON} aria-label="New project" onClick={() => navigate("/new")}>
+            <Plus {...ICON} />
+          </button>
+        </SectionHead>
+        <div ref={projects} class="flex flex-col gap-px px-2">
+          <For each={activeProjects()} fallback={<span class="px-2 py-1 text-sm text-ink-3">No projects yet</span>}>
+            {(project) => <ProjectRow project={project} />}
+          </For>
+        </div>
+
+        <Show when={routeProject()}>{(project) => <ThreadList project={project()} />}</Show>
         <SlotList slot="sidebar.section" />
       </div>
 
-      <div class="mt-auto flex flex-col">
-        <button
-          type="button"
-          onClick={() => navigate("/settings/general")}
-          class="flex h-9 w-full items-center gap-2.5 rounded-sm px-2 text-left hover:bg-secondary"
-        >
-          <IconBox name="settings" />
-          <span class="text-sm text-ink-2">Settings</span>
-        </button>
-        <div class="flex h-9 items-center gap-2.5 px-2">
-          <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-line-2 text-2xs text-ink-2">
-            {initial() ?? <Icon name="users" size={12} class="text-ink-3" />}
-          </span>
-          <span class="min-w-0 flex-1 truncate text-sm text-ink-2">{ownerName()}</span>
-          <span class="mono-meta">{spend() > 0 ? money(spend()) : "Owner"}</span>
-        </div>
-      </div>
+      <OwnerMenu />
     </aside>
   )
 }
 
-function IconBox(props: { name: IconName }): JSX.Element {
-  return (
-    <span class="grid h-6 w-6 shrink-0 place-items-center text-ink-3">
-      <Icon name={props.name} size={16} />
-    </span>
-  )
-}
-
-/** One icon in the 56px rail, with its name in the tooltip and its count as a dot. */
-function RailButton(props: {
-  icon: IconName
-  label: string
-  active?: boolean | undefined
-  count?: number | undefined
-  onClick: () => void
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      title={props.label}
-      aria-label={props.label}
-      onClick={props.onClick}
-      class="relative grid h-9 w-9 shrink-0 place-items-center rounded-sm hover:bg-secondary"
-      classList={{ "bg-hover": props.active === true }}
-    >
-      <span classList={{ "text-ink": props.active === true, "text-ink-3": props.active !== true }}>
-        <Icon name={props.icon} size={16} />
-      </span>
-      <Show when={(props.count ?? 0) > 0}>
-        <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
-      </Show>
-    </button>
-  )
-}
-
 function NavRow(props: {
-  icon: IconName
   label: string
-  active: boolean
+  active?: boolean
+  disabled?: boolean
   onClick: () => void
-  count?: number
+  children: JSX.Element
 }): JSX.Element {
   return (
     <button
       type="button"
-      onClick={props.onClick}
-      class="flex h-9 items-center gap-2.5 rounded-sm px-2 text-left hover:bg-secondary"
-      classList={{ "bg-hover hover:bg-hover": props.active }}
+      disabled={props.disabled === true}
+      onClick={() => props.onClick()}
+      class={`${ROW} disabled:opacity-50`}
+      classList={{ "bg-hover text-ink": props.active === true, "text-ink-2": props.active !== true }}
     >
-      <IconBox name={props.icon} />
-      <span class="text-sm" classList={{ "text-ink": props.active, "text-ink-2": !props.active }}>
-        {props.label}
-      </span>
-      <Show when={(props.count ?? 0) > 0}>
-        <span class="ml-auto grid h-4 min-w-4 place-items-center rounded-sm bg-primary px-1 font-mono text-2xs font-medium text-on-primary">
-          {props.count}
-        </span>
-      </Show>
+      <span class="text-ink-3">{props.children}</span>
+      {props.label}
     </button>
   )
 }
 
-function spend(): number {
-  const state = usage.state()
-  if (state.kind !== "ready" || !state.value.recorded) return 0
-  return state.value.today
+function SectionHead(props: { label: string; children?: JSX.Element }): JSX.Element {
+  return (
+    <div class="flex h-9 shrink-0 items-center gap-0.5 pl-4 pr-3 pt-3">
+      <span class="mr-auto text-xs text-ink-3">{props.label}</span>
+      {props.children}
+    </div>
+  )
+}
+
+function ProjectRow(props: { project: ProjectSummary }): JSX.Element {
+  const current = (): boolean => routeProject()?.id === props.project.id
+  const state = () => projectState(props.project)
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(`/p/${props.project.slug}`)}
+      class={ROW}
+      classList={{ "bg-hover text-ink": current(), "text-ink-2": !current() }}
+    >
+      <span class="grid h-5 w-5 shrink-0 place-items-center rounded-xs border border-line-2 bg-card text-ink-2">
+        <ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={13} />
+      </span>
+      <span class="min-w-0 flex-1 truncate">{props.project.name}</span>
+      <Show when={state()}>{(value) => <Signal state={value()} size={14} />}</Show>
+    </button>
+  )
+}
+
+function ThreadList(props: { project: ProjectSummary }): JSX.Element {
+  const [searching, setSearching] = createSignal(false)
+  const [query, setQuery] = createSignal("")
+  const threads = createMemo(() => {
+    const text = query().trim().toLowerCase()
+    return projectThreads(props.project)
+      .filter((thread) => text === "" || thread.title.toLowerCase().includes(text))
+      .toSorted((left, right) => (right.beatAt ?? 0) - (left.beatAt ?? 0))
+  })
+  const open = (id: number): void => {
+    openThreadTab(props.project.id, id)
+    navigate(`/p/${props.project.slug}/t/${id}`)
+  }
+  let list: HTMLDivElement | undefined
+  stagger(() => list, () => threads().length > 0)
+
+  return (
+    <>
+      <SectionHead label="Threads">
+        <button
+          type="button"
+          class={ICON_BUTTON}
+          classList={{ "bg-hover text-ink": searching() }}
+          aria-label="Search threads"
+          aria-pressed={searching()}
+          onClick={() => {
+            setSearching((value) => !value)
+            setQuery("")
+          }}
+        >
+          <Search {...ICON} />
+        </button>
+      </SectionHead>
+      <Show when={searching()}>
+        <div class="px-2 pb-1">
+          <input
+            ref={(element) => queueMicrotask(() => element.focus())}
+            value={query()}
+            onInput={(event) => setQuery(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return
+              setSearching(false)
+              setQuery("")
+            }}
+            placeholder="Filter threads"
+            class="h-[var(--h-control-sm)] w-full rounded-sm bg-secondary px-2 text-sm text-ink outline-none placeholder:text-placeholder"
+          />
+        </div>
+      </Show>
+      <div ref={list} class="flex flex-col gap-px px-2">
+        <For
+          each={threads()}
+          fallback={
+            <span class="px-2 py-1 text-sm text-ink-3">{query() === "" ? "No threads in this project" : "No match"}</span>
+          }
+        >
+          {(thread) => {
+            const current = (): boolean => routeThreadId() === thread.id
+            return (
+              <button
+                type="button"
+                onClick={() => open(thread.id)}
+                class={ROW}
+                classList={{ "bg-hover text-ink": current(), "text-ink-2": !current() }}
+              >
+                <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
+                <span class="min-w-0 flex-1 truncate">{thread.title}</span>
+                <span class="shrink-0 font-mono text-2xs text-ink-3">{ago(thread.beatAt)}</span>
+              </button>
+            )
+          }}
+        </For>
+      </div>
+    </>
+  )
+}
+
+function OwnerMenu(): JSX.Element {
+  const initial = (): string => ownerName().trim().slice(0, 1).toUpperCase() || "O"
+  return (
+    <div class="shrink-0 border-t border-line-1 p-2">
+      <Menu.Root
+        lazyMount
+        unmountOnExit
+        positioning={{ placement: "top-start", sameWidth: true, gutter: 6 }}
+        onSelect={(details) => {
+          if (details.value === "settings") navigate("/settings/general")
+        }}
+      >
+        <Menu.Trigger class={`${ROW} h-[var(--h-control)] text-ink data-[state=open]:bg-hover`}>
+          <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-medium text-on-primary">
+            {initial()}
+          </span>
+          <span class="min-w-0 flex-1 truncate">{ownerName()}</span>
+          <span class="text-icon">
+            <ChevronsUpDown size={14} stroke-width={1.5} />
+          </span>
+        </Menu.Trigger>
+        <Portal>
+          <Menu.Positioner>
+            <Menu.Content class={MENU_CONTENT}>
+              <Menu.Item value="settings" class={MENU_ITEM}>
+                <span class="text-ink-3">
+                  <Settings {...ICON} />
+                </span>
+                Settings
+              </Menu.Item>
+              <Menu.Separator class={MENU_SEPARATOR} />
+              <Menu.RadioItemGroup value={theme()} onValueChange={(details) => applyTheme(details.value)}>
+                <Menu.ItemGroupLabel class={MENU_LABEL}>Theme</Menu.ItemGroupLabel>
+                <For each={THEMES}>
+                  {(entry) => (
+                    <Menu.RadioItem value={entry.id} closeOnSelect={false} class={MENU_ITEM}>
+                      <span class="text-ink-3">
+                        <Dynamic component={entry.icon} {...ICON} />
+                      </span>
+                      <Menu.ItemText class="flex-1">{entry.label}</Menu.ItemText>
+                      <Menu.ItemIndicator class="text-ink-2">
+                        <Check {...ICON} />
+                      </Menu.ItemIndicator>
+                    </Menu.RadioItem>
+                  )}
+                </For>
+              </Menu.RadioItemGroup>
+            </Menu.Content>
+          </Menu.Positioner>
+        </Portal>
+      </Menu.Root>
+    </div>
+  )
 }

@@ -1,9 +1,11 @@
 import { For, Show, createResource, createSignal, type JSX } from "solid-js"
+import { firstLoad } from "../../lib/loading.ts"
 import { cmd } from "../../lib/api.ts"
 import { ago } from "../../lib/format.ts"
 import { Icon } from "../ui/icon.tsx"
-import { Skullet } from "../ui/skeleton.tsx"
-import { createPaneAction, EmptyState, PanelGhost, ResourceError } from "./ui.tsx"
+import { MorphIcon } from "../ui/morph-icon.tsx"
+import { Loading, RowSkeleton } from "../ui/skeleton.tsx"
+import { createPaneAction, EmptyState, ResourceError } from "./ui.tsx"
 
 type ListedNote = {
   readonly id: number
@@ -79,7 +81,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
     })
 
   return (
-    <Skullet loading={notes.loading} sample={() => <PanelGhost rows={6} />} label="Loading memory">
+    <Loading when={firstLoad(notes)} skeleton={<RowSkeleton rows={6} />} label="Loading memory">
       <Show when={notes.error} fallback={null}>
         <ResourceError what="memory" error={notes.error} onRetry={() => void refetch()} />
       </Show>
@@ -92,7 +94,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
           class="flex shrink-0 items-center gap-1.5 rounded-sm border border-line-1 px-2 py-1 text-sm text-ink-2 hover:border-line-3 hover:text-ink"
           onClick={() => setAdding((open) => !open)}
         >
-          <Icon name="plus" size={13} />
+          <MorphIcon kind="plus" on={adding()} size={13} />
           Add
         </button>
       </div>
@@ -265,6 +267,6 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
           </Show>
         )}
       </Show>
-    </Skullet>
+    </Loading>
   )
 }

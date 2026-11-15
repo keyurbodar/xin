@@ -11,6 +11,7 @@ import type { DbService } from "./kernel/db.ts"
 import type { Profile } from "./kernel/layers.ts"
 import { boot, type Composition, type Kernel, type IngleLoader } from "./kernel/loader.ts"
 import { parseProfilePatch } from "./kernel/patch.ts"
+import { OwnerAuth } from "./kernel/token.ts"
 import type { Provider } from "./module.ts"
 import type { Actor, Command, Outcome } from "./ops.ts"
 
@@ -26,9 +27,11 @@ export class Home extends DurableObject<Env> {
   /** Why the home cannot serve, from the kernel or from a boot that threw: a home that cannot boot answers only repair. */
   #failure: string | undefined
   #restarting: Promise<void> | undefined
+  readonly #auth: OwnerAuth
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
+    this.#auth = new OwnerAuth(ctx.storage.sql, env.OWNER_TOKEN)
     void ctx.blockConcurrencyWhile(() => this.#open())
   }
 
@@ -73,6 +76,7 @@ export class Home extends DurableObject<Env> {
           state: this.ctx,
           env: this.env,
           providers: this.providers(),
+          auth: this.#auth,
           abort: (reason) => this.ctx.abort(reason),
           restart: () =>
             (this.#restarting ??= this.ctx
@@ -121,7 +125,9 @@ export class Home extends DurableObject<Env> {
     return this.harness.root(BACKGROUND_CONTEXT)
   }
 
+  /** The home is the auth boundary: the Worker forwards a request unchecked, so every route is gated here. */
   override async fetch(request: Request): Promise<Response> {
+    if (!(await this.#auth.authorizes(request))) return new Response("unauthorized", { status: 401 })
     if (new URL(request.url).pathname === REPAIR) return this.#repair(request)
     if (this.#failure !== undefined)
       return Response.json({ error: "boot_failed", failure: this.#failure }, { status: 503 })
@@ -174,10 +180,10 @@ export class Home extends DurableObject<Env> {
   }
 
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    await this.#current.root.wire.sockets?.message(ws, message)
+    await this.#current.root.wire.message(ws, message)
   }
 
   override async webSocketClose(ws: WebSocket): Promise<void> {
-    await this.#current.root.wire.sockets?.closed(ws)
+    await this.#current.root.wire.closed(ws)
   }
 }

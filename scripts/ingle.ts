@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, watch, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, watch, writeFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
-import { integrityProblem } from "./lockfile.ts"
+import { integrityProblem, nameOf, permissionProblem, tarballProblem } from "./pin.ts"
+import { reachViolations } from "./reach.ts"
 import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
 
 const ROOT = join(import.meta.dirname, "..")
@@ -241,9 +242,37 @@ const readProfile = (): Profile => {
 
 const writeProfile = (profile: Profile) => writeFileSync(PROFILE, `${JSON.stringify(profile, null, 2)}\n`)
 
+const SOURCE = /\.(?:[cm]?[jt]s|tsx)$/
+const TEST = /\.test\.[cm]?[jt]sx?$/
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name)
+    if (statSync(path).isDirectory()) return name === "node_modules" ? [] : sourceFiles(path)
+    return SOURCE.test(path) && !path.endsWith(".d.ts") && !TEST.test(path) ? [path] : []
+  })
+}
+
+/** Refuses an npm code package whose source reaches past the permissions its plugins declare: lint never sees it. */
+function assertWithinPermissions(found: readonly Found[]): void {
+  const violations = found
+    .filter((entry) => !entry.local)
+    .flatMap((entry) =>
+      sourceFiles(entry.dir).flatMap((file) =>
+        reachViolations(
+          `${entry.pkg}/${relative(entry.dir, file)}`,
+          readFileSync(file, "utf8"),
+          new Set(Object.values(entry.plugins).flatMap((plugin) => plugin.manifest.permissions)),
+        ),
+      ),
+    )
+  if (violations.length > 0) throw new Error(`code packages reach past their permissions:\n${violations.join("\n")}`)
+}
+
 function generate(): Found[] {
   const found = discover()
   assertCoreFree(found)
+  assertWithinPermissions(found)
   const client = renderClient(found)
   writeFileSync(GENERATED, render(found))
   writeFileSync(CLIENT_GENERATED, client.module)
@@ -301,7 +330,20 @@ async function bun(args: readonly string[]): Promise<void> {
 type SyncPlan = {
   readonly add: readonly string[]
   readonly remove: readonly string[]
-  readonly integrity: Readonly<Record<string, string>>
+  readonly pins: Readonly<Record<string, SyncPin>>
+}
+
+type SyncPin = { readonly integrity: string; readonly tarball: string; readonly permissions: readonly string[] }
+
+function syncPin(spec: string, value: unknown): SyncPin {
+  const integrity = field(value, "integrity")
+  const tarball = field(value, "tarball")
+  const permissions = stringList(field(value, "permissions"))
+  if (typeof integrity !== "string" || !integrity.startsWith("sha512-") || typeof tarball !== "string")
+    throw new Error(`plugin sync: the pin for ${spec} needs a sha512 integrity and a tarball url`)
+  if (!tarball.startsWith("https://")) throw new Error(`plugin sync: the tarball for ${spec} must be an https url`)
+  if (permissions === undefined) throw new Error(`plugin sync: the pin for ${spec} needs its permissions`)
+  return { integrity, tarball, permissions }
 }
 
 const stringList = (value: unknown): string[] | undefined =>
@@ -313,14 +355,13 @@ function syncPlan(value: unknown): SyncPlan {
   const remove = stringList(field(packages, "remove") ?? [])
   if (add === undefined || remove === undefined)
     throw new Error("plugin sync needs { add: string[], remove: string[] }")
-  const integrity = field(packages, "integrity") ?? {}
-  if (
-    typeof integrity !== "object" ||
-    integrity === null ||
-    !Object.values(integrity).every((v) => typeof v === "string")
-  )
-    throw new Error("plugin sync: integrity must map a spec to its SRI string")
-  return { add, remove, integrity: Object.fromEntries(Object.entries(integrity).map(([k, v]) => [k, String(v)])) }
+  const pins = field(packages, "pins") ?? {}
+  if (typeof pins !== "object" || pins === null) throw new Error("plugin sync: pins must map a spec to its pin")
+  return {
+    add,
+    remove,
+    pins: Object.fromEntries(Object.entries(pins).map(([spec, pin]) => [spec, syncPin(spec, pin)])),
+  }
 }
 
 async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
@@ -335,12 +376,18 @@ async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
   for (const pkg of remove) await bun(["remove", pkg])
   const before = new Set(discover().map((entry) => entry.pkg))
   for (const spec of add) {
+    const pin = plan.pins[spec]
+    if (pin !== undefined) {
+      const response = await fetch(pin.tarball, { redirect: "error" })
+      if (!response.ok) throw new Error(`${spec}: fetching ${pin.tarball} answered ${response.status}`)
+      const swapped = await tarballProblem(spec, pin.integrity, new Uint8Array(await response.arrayBuffer()))
+      if (swapped !== undefined) throw new Error(swapped)
+    }
     await bun(["add", spec])
-    const expected = plan.integrity[spec]
+    if (pin === undefined) continue
     const problem =
-      expected === undefined
-        ? undefined
-        : integrityProblem(spec, expected, readFileSync(join(ROOT, "bun.lock"), "utf8"))
+      integrityProblem(spec, pin.integrity, readFileSync(join(ROOT, "bun.lock"), "utf8")) ??
+      permissionProblem(spec, pin.permissions, readJson(join(ROOT, "node_modules", nameOf(spec), "package.json")))
     if (problem !== undefined) throw new Error(problem)
   }
   for (const pkg of remove) setBundle(pkg, false)

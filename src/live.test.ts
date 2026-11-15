@@ -5,7 +5,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai"
 import type { ConversationId, EntryRecord } from "@earendil-works/pi-durable"
 import { beforeAll, describe, expect, it } from "vitest"
 import { answeringModels, LIVE_PROVIDER, liveEnabled, liveModels, type LiveModel } from "../test/live.ts"
-import { fresh } from "../test/support.ts"
+import { fresh, OWNER_HEADERS } from "../test/support.ts"
 import type { Home } from "../test/worker.ts"
 import { ThreadDoc } from "./contracts/threaddoc.ts"
 import { threadIdsOfProject, WorkspaceDoc } from "./contracts/workspace.ts"
@@ -17,7 +17,11 @@ type Ack = { readonly ok: boolean; readonly result?: unknown; readonly error?: u
 
 const cmd = async (stub: Stub, id: string, op: string, args: unknown): Promise<Ack> => {
   const reply = await stub.fetch(
-    new Request("https://ingle.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }),
+    new Request("https://ingle.test/v1/cmd", {
+      method: "POST",
+      headers: OWNER_HEADERS,
+      body: JSON.stringify({ id, op, args }),
+    }),
   )
   const ack = await reply.json<Ack>()
   expect(ack.ok, `${op}: ${JSON.stringify(ack)}`).toBe(true)
