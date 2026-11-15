@@ -221,8 +221,9 @@ export class FileIndex {
     this.changed(prefix)
   }
 
-  /** Moves the file and its revisions, so its history follows it. */
+  /** Moves the file and its revisions, so its history follows it and replaces any left at the destination. */
   async move(from: string, to: string): Promise<void> {
+    await this.db.run("DELETE FROM file_revisions WHERE path = ?", to)
     await this.db.run(
       "UPDATE files SET path = ?, project = ?, updated_at = ? WHERE path = ?",
       to,
