@@ -53,43 +53,43 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
         type="button"
         aria-label="Close add from URL"
         onClick={close}
-        class="absolute inset-0 bg-black/65 transition-opacity duration-[140ms]"
+        class="absolute inset-0 bg-scrim transition-opacity duration-[140ms]"
         classList={{ "opacity-0": closing() }}
       />
       <section
-        class="relative flex w-full max-w-[520px] flex-col rounded-[4px] border border-line-inner bg-raised shadow-2xl"
+        class="relative flex w-full max-w-[520px] flex-col rounded-md border border-line-2 bg-card shadow-2xl"
         classList={{ enter: !closing(), "dialog-out": closing() }}
       >
-        <header class="flex items-center border-b border-line px-4 py-3.5">
-          <span class="text-[15px] font-medium text-fg">Add from URL</span>
-          <button type="button" onClick={close} aria-label="Close" class="ml-auto text-fg-3 hover:text-fg">
+        <header class="flex items-center border-b border-line-1 px-4 py-3.5">
+          <span class="text-[15px] font-medium text-ink">Add from URL</span>
+          <button type="button" onClick={close} aria-label="Close" class="ml-auto text-ink-3 hover:text-ink">
             <Glyph name="x" size={16} />
           </button>
         </header>
 
         <div class="flex flex-col gap-3.5 px-4 py-4">
-          <div class="flex h-[34px] items-center gap-2 rounded-[2px] border border-line-inner bg-page px-2.5">
-            <Glyph name="git-branch" size={14} class="text-fg-3" />
+          <div class="flex h-[34px] items-center gap-2 rounded-sm border border-line-2 bg-bg px-2.5">
+            <Glyph name="git-branch" size={14} class="text-ink-3" />
             <input
               value={spec()}
               onInput={(event) => setSpec(event.currentTarget.value)}
               placeholder="github.com/owner/plugin#main or npm-name@1.2.0"
               spellcheck={false}
               aria-label="Package spec"
-              class="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-fg placeholder:text-fg-4 focus:outline-none"
+              class="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink placeholder:text-icon focus:outline-none"
             />
           </div>
           <Show when={spec().trim() !== "" && !valid()}>
-            <span class="text-[11.5px] text-bad">
+            <span class="text-xs text-failed">
               Use github:owner/repo, an https git URL, or a package name with an optional version.
             </span>
           </Show>
 
-          <div class="flex items-start gap-2.5 rounded-[4px] border border-warn/30 bg-warn-bg px-3 py-2.5">
-            <Glyph name="warning" size={14} class="mt-0.5 shrink-0 text-warn" />
+          <div class="flex items-start gap-2.5 rounded-md border border-working/30 bg-working-soft px-3 py-2.5">
+            <Glyph name="warning" size={14} class="mt-0.5 shrink-0 text-working" />
             <div>
-              <span class="block text-[12.5px] text-warn">Not from an index</span>
-              <p class="mt-0.5 text-[11.5px] leading-snug text-fg-2">
+              <span class="block text-sm text-working">Not from an index</span>
+              <p class="mt-0.5 text-xs leading-snug text-ink-2">
                 The package is recorded as pending and builds on the next update. Its rows stay off until you enable them in
                 Installed.
               </p>
@@ -98,11 +98,11 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
 
           <Show when={added()}>
             {(name) => (
-              <div class="flex items-start gap-2 rounded-[4px] border border-ok/30 bg-ok-bg px-3 py-2.5">
-                <Glyph name="check" size={13} class="mt-0.5 shrink-0 text-ok" />
+              <div class="flex items-start gap-2 rounded-md border border-done/30 bg-done-soft px-3 py-2.5">
+                <Glyph name="check" size={13} class="mt-0.5 shrink-0 text-done" />
                 <div>
-                  <span class="block font-mono text-[11.5px] text-fg">{name()}</span>
-                  <span class="block text-[11.5px] text-fg-3">Recorded. It appears after the next update.</span>
+                  <span class="block font-mono text-xs text-ink">{name()}</span>
+                  <span class="block text-xs text-ink-3">Recorded. It appears after the next update.</span>
                 </div>
               </div>
             )}
@@ -111,10 +111,10 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
           <Show when={pending().length > 0}>
             <div>
               <span class="label mb-1.5 block">Pending packages</span>
-              <div class="overflow-hidden rounded-[4px] border border-line">
+              <div class="overflow-hidden rounded-md border border-line-1">
                 <For each={pending()}>
                   {(entry) => (
-                    <div class="border-b border-line px-3 py-2 font-mono text-[11.5px] text-fg-2 last:border-0">{entry}</div>
+                    <div class="border-b border-line-1 px-3 py-2 font-mono text-xs text-ink-2 last:border-0">{entry}</div>
                   )}
                 </For>
               </div>
@@ -131,8 +131,8 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
           </Note>
         </div>
 
-        <footer class="flex items-center gap-2 border-t border-line px-4 py-3">
-          <span class="text-[11.5px] text-fg-3">Builds keep going if you close this</span>
+        <footer class="flex items-center gap-2 border-t border-line-1 px-4 py-3">
+          <span class="text-xs text-ink-3">Builds keep going if you close this</span>
           <span class="ml-auto" />
           <Button size="sm" variant="quiet" onClick={close}>Close</Button>
           <Button

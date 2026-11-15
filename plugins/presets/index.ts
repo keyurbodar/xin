@@ -10,6 +10,9 @@ export const name = "presets"
 export const inject = ["db", "harness", "kernel", "pi", "ops"]
 export const Config = Schema.object({
   default: Schema.string().default("full").description("The preset a new conversation runs until it is changed."),
+  threadOmits: Schema.array(Schema.string())
+    .default([])
+    .description("Plugins a delegated thread leaves out unless its owner selected a preset for it."),
 })
 
 const SelectArgs = obj({ conversation: int({ minimum: 0 }), preset: str({ minLength: 1 }) })
