@@ -26,7 +26,8 @@
     "ingle-plugin-watchdog",
     "ingle-plugin-web",
     "ingle-plugin-workspace",
-    "ingle-plugin-git-native"
+    "ingle-plugin-git-native",
+    "ingle-plugin-drive"
   ],
   "patch": [
     {
