@@ -6,6 +6,7 @@ const TABLE_OWNERS: Readonly<Record<string, string>> = {
   receipts: KERNEL_OWNER,
   credentials: "models",
   usage_daily: "models",
+  usage_feature: "models",
   files: "files",
   file_revisions: "files",
   notes: "memory",

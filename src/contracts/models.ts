@@ -1,4 +1,4 @@
-import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai"
+import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai"
 import type { ConversationId, ModelRef } from "@earendil-works/pi-durable"
 import { MODEL_THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema"
 import { obj, oneOf, str } from "@earendil-works/pi-schema"
@@ -28,6 +28,27 @@ export const ModelRefSchema = obj({ provider: str({ minLength: 1 }), modelId: st
 
 export const ThinkingSchema = oneOf(MODEL_THINKING_LEVELS)
 
+/** What a model call was for, as the usage breakdown and the per-feature caps name it. */
+export const FEATURES = ["chat", "thread", "captain", "automation", "dreamer", "goal", "compaction"] as const
+export type Feature = (typeof FEATURES)[number]
+export const FeatureSchema = oneOf(FEATURES)
+
+export type Admission =
+  | { readonly kind: "ok" }
+  | {
+      readonly kind: "capped"
+      readonly feature: Feature
+      readonly period: "day" | "month"
+      readonly spend: number
+      readonly cap: number
+    }
+
+/** A plugin that owns conversations of one feature (Captains, automations) lists them so their spend is booked there. */
+export type FeatureTracker = {
+  readonly feature: Feature
+  conversations(): Promise<readonly ConversationId[]>
+}
+
 export type ModelMatch = {
   readonly model: Model<Api>
   readonly score: number
@@ -54,6 +75,11 @@ export interface ModelsService {
   switchModel(input: ModelSwitch): Promise<Outcome>
   /** Month-to-date spend against the owner's cap, for a surface that has to stop before it spends more. */
   spend(): Promise<{ readonly month: number; readonly cap: number | null }>
+  /** Whether `feature` is under its daily and monthly caps; call it before a background model call starts. */
+  admit(feature: Feature): Promise<Admission>
+  /** Book a model call made outside a generation into `conversation`'s `pi.usage` under `feature`. */
+  charge(feature: Feature, conversation: ConversationId, message: AssistantMessage): Promise<void>
+  track(tracker: FeatureTracker): () => void
 }
 
 declare module "@deepseek-ai/cordis" {

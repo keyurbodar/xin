@@ -23,16 +23,23 @@ import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.l
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models"
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
 import {
+  defineExtension,
+  GenerationTask,
+  hook,
   ROOT_CONVERSATION_ID,
   UsageDoc,
   type AgentChange,
   type ConversationId,
+  type Extension,
   type Harness,
   type ModelRef,
   type UsageState,
 } from "@earendil-works/pi-durable"
 import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
+import { conversationCost, createBudget } from "./budget.ts"
+import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
+  FeatureSchema,
   ModelRefSchema,
   ThinkingSchema,
   type ModelDefaults,
@@ -463,11 +470,15 @@ export type ModelsPort = {
   run(command: Command, actor: Actor): Promise<Outcome>
   notify?: (notification: Notification) => Promise<void>
   alertsOn?: () => Promise<boolean>
+  goals?: () => GoalsService | undefined
+  publishHome?: () => Promise<void>
 }
 
 export type ModelsParts = {
   readonly service: ModelsService
   readonly ops: readonly Op[]
+  readonly extension: Extension
+  home(): JsonValue
   models(): Models
   flush(): Promise<UsageState>
   flushDue(): Promise<void>
@@ -759,10 +770,12 @@ const commandId = (value: string): CommandId => value as CommandId
 export function create(deps: ModelsPort): ModelsParts {
   const { db, harness, run } = deps
   const recordUsage = usageRecorder(db, harness)
+  const budget = createBudget({ db, harness, goals: deps.goals ?? (() => undefined) })
   let flushedAt = 0
   const flush = async (): Promise<UsageState> => {
     flushedAt = Date.now()
     const ledger = await recordUsage()
+    if (await budget.record()) await deps.publishHome?.()
     await alertSpend(db, deps.notify, deps.alertsOn ?? (async () => true))
     return ledger
   }
@@ -1054,6 +1067,86 @@ export function create(deps: ModelsPort): ModelsParts {
     },
   })
 
+  const featuresOp = defineOp({
+    name: "usage.features",
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => {
+      await flush()
+      return await budget.breakdown()
+    },
+  })
+
+  const featureCapOp = defineOp({
+    name: "usage.feature.cap.set",
+    args: obj({
+      feature: FeatureSchema,
+      day: opt(union([num({ minimum: 0 }), lit(null)])),
+      month: opt(union([num({ minimum: 0 }), lit(null)])),
+    }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      if (args.day === undefined && args.month === undefined)
+        throw new OpRejected("bad_args", "give day or month, or null to clear one")
+      const cap = await budget.setCap(args.feature, { day: args.day, month: args.month })
+      await deps.publishHome?.()
+      return { feature: args.feature, cap: { day: cap.day ?? null, month: cap.month ?? null } }
+    },
+  })
+
+  const costOp = defineOp({
+    name: "usage.cost",
+    args: obj({ convs: arr(int({ minimum: 0 }), { minItems: 1, maxItems: 500 }) }),
+    actors: ["owner"],
+    run: async (api, { convs }) => {
+      const rows = await Promise.all(
+        convs.map(async (conv) => {
+          const ledger = await api.harness.snapshot(UsageDoc, conv as ConversationId, BACKGROUND_CONTEXT)
+          return { conv, ...conversationCost(ledger) }
+        }),
+      )
+      return {
+        conversations: rows,
+        spend: rows.reduce((sum, row) => sum + row.spend, 0),
+        tokens: rows.reduce((sum, row) => sum + row.tokens, 0),
+      }
+    },
+  })
+
+  const todayOp = defineOp({
+    name: "usage.today",
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => {
+      await flush()
+      const dated = await datedUsage(db)
+      const { features } = await budget.breakdown()
+      return {
+        today: dated.today,
+        month: dated.month,
+        alert: await readDailyAlert(db),
+        cap: await readCap(db),
+        features,
+      }
+    },
+  })
+
+  const extension = defineExtension({
+    name: "usage-budget",
+    hooks: [
+      hook(GenerationTask, {
+        beforeRequest: async (_request, api) => {
+          const admission = budget.admit(await budget.classify(api.conversationId))
+          if (admission.kind === "capped")
+            throw new Error(
+              `the ${admission.period === "day" ? "daily" : "monthly"} ${admission.feature} cap of ${admission.cap.toFixed(2)} USD is reached; raise it in Usage`,
+            )
+          return undefined
+        },
+      }),
+    ],
+  })
+
   const service: ModelsService = {
     ownerDefaults: () => ownerDefaults(db),
     vision: async (ref) => {
@@ -1069,6 +1162,9 @@ export function create(deps: ModelsPort): ModelsParts {
       )
       return { catalog, matches: search(catalog, query) }
     },
+    admit: async (feature) => budget.admit(feature),
+    charge: (feature, conversation, message) => budget.charge(feature, conversation, message),
+    track: (tracker) => budget.track(tracker),
     switchModel: ({ conversation, caller, model, thinking, callId }) =>
       run(
         {
@@ -1094,17 +1190,24 @@ export function create(deps: ModelsPort): ModelsParts {
     setCapOp,
     alertOp,
     setAlertOp,
+    featuresOp,
+    featureCapOp,
+    costOp,
+    todayOp,
   ]
 
   return {
     service,
     ops,
+    extension,
+    home: () => ({ spend: budget.todaySpend() }),
     models: () => registry.models,
     flush,
     flushDue,
     start: async () => {
       await registry.sync()
       await seedUsage(db, harness)
+      await budget.load()
       // A fresh process records nothing until the ledger has had time to move; the first alarm after boot is usually
       // an eviction recovery, not new spend, and a full pass reads every conversation.
       flushedAt = Date.now()
