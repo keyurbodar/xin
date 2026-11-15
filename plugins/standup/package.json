@@ -13,7 +13,10 @@
         "description": "A /standup prompt, with a palette command and a composer button that start it.",
         "api": 1,
         "contributes": {},
-        "slots": ["palette.command", "composer.action"]
+        "slots": [
+          "palette.command",
+          "composer.action"
+        ]
       }
     },
     "bundle": [

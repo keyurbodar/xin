@@ -13,7 +13,9 @@
         "description": "Three extra themes, Harbor, Moss and Paper, as pure colour data.",
         "api": 1,
         "contributes": {},
-        "slots": ["theme"]
+        "slots": [
+          "theme"
+        ]
       }
     },
     "bundle": [

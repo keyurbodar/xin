@@ -13,7 +13,10 @@
         "description": "A right-pane tab that lists a conversation's messages and tool calls as a jump list.",
         "api": 1,
         "contributes": {},
-        "slots": ["pane.tab", "message.renderer"]
+        "slots": [
+          "pane.tab",
+          "message.renderer"
+        ]
       }
     },
     "bundle": [

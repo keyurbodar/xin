@@ -35,7 +35,10 @@
       "description": "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
       "package": "ingle-plugin-compact",
       "version": "0.1.0",
-      "permissions": [],
+      "permissions": [
+        "conversations",
+        "models"
+      ],
       "slots": [],
       "rows": [
         "compact"
@@ -78,6 +81,7 @@
       "version": "0.1.0",
       "permissions": [
         "routes",
+        "runtime",
         "storage"
       ],
       "slots": [],
@@ -122,6 +126,7 @@
       "version": "0.1.0",
       "permissions": [
         "network",
+        "runtime",
         "storage"
       ],
       "slots": [],
@@ -135,7 +140,9 @@
       "description": "One durable objective per conversation: create, edit, pause, resume, complete, block and clear.",
       "package": "ingle-plugin-goals",
       "version": "0.1.0",
-      "permissions": [],
+      "permissions": [
+        "runtime"
+      ],
       "slots": [],
       "rows": [
         "goals"
@@ -160,7 +167,8 @@
       "package": "ingle-plugin-goals",
       "version": "0.1.0",
       "permissions": [
-        "conversations"
+        "conversations",
+        "runtime"
       ],
       "slots": [],
       "rows": [
@@ -200,7 +208,8 @@
       "permissions": [
         "conversations",
         "files",
-        "models"
+        "models",
+        "runtime"
       ],
       "slots": [],
       "rows": [
@@ -230,6 +239,7 @@
       "permissions": [
         "network",
         "plugins",
+        "runtime",
         "storage"
       ],
       "slots": [],
@@ -244,6 +254,7 @@
       "package": "ingle-plugin-mcp",
       "version": "0.1.0",
       "permissions": [
+        "runtime",
         "storage"
       ],
       "slots": [],
@@ -285,6 +296,7 @@
       "permissions": [
         "conversations",
         "models",
+        "runtime",
         "storage"
       ],
       "slots": [],
@@ -313,6 +325,7 @@
       "permissions": [
         "conversations",
         "network",
+        "runtime",
         "storage"
       ],
       "slots": [],
@@ -356,7 +369,9 @@
       "description": "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running.",
       "package": "ingle-plugin-orchestrator",
       "version": "0.1.0",
-      "permissions": [],
+      "permissions": [
+        "plugins"
+      ],
       "slots": [],
       "rows": [
         "tool-orchestrator"
@@ -414,6 +429,7 @@
       "version": "0.1.0",
       "permissions": [
         "network",
+        "runtime",
         "storage"
       ],
       "slots": [],
@@ -577,7 +593,8 @@
       "package": "ingle-plugin-workspace",
       "version": "0.1.0",
       "permissions": [
-        "conversations"
+        "conversations",
+        "runtime"
       ],
       "slots": [],
       "rows": [

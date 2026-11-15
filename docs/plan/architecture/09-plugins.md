@@ -135,6 +135,8 @@ A package declares its plugins in `package.json`. Everything is optional; a plug
 | `requires` | `[]` | other plugins it needs, `name` or `name@range` |
 | `permissions` | `[]` | what it may ask the owner for, from the closed set below |
 | `contributes` | unchecked | `{ tools, ops }` it registers; a trailing `*` covers a prefix |
+| `client` | none | a web module (`client.tsx`) compiled into the web build |
+| `slots` | `[]` | the client slots that module fills; required with `client` |
 
 ### Permissions and contributions
 
@@ -167,6 +169,22 @@ The two fields earn their place:
 - `requires` catches the common failure of a plugin that calls a service another plugin provides.
 
 `scopes` joins the manifest with per-scope host mounting (slice 4). The agent surface is scoped today by presets, which need no declaration from the plugin.
+
+### Client plugins
+
+A plugin may ship a web module beside its server row. It declares `client: "./client.tsx"` and the `slots` it fills, and the module default-exports `definePlugin({ name, slots })` from `@ingle/sdk` (`web/src/plugins/sdk.ts`). `plugin generate` writes `web/src/plugins.gen.ts` (static imports, so Vite bundles each module into `web/dist`) and `web/public/plugins.json` (the static manifest: title, description, slots, config form). Nothing is loaded from outside the build.
+
+| Slot | Where the shell renders it |
+| --- | --- |
+| `sidebar.section` | a sidebar section below the first-party ones |
+| `pane.tab` | a tab in a conversation's right pane |
+| `composer.action` | a button in the composer toolbar |
+| `message.renderer` | the transcript card for one tool's result |
+| `palette.command` | a command palette row |
+| `settings.page` | a page under Settings, Plugins |
+| `theme` | an Appearance theme: a base scheme and colour tokens, data only |
+
+A registration shows while one of its package's rows is `active` in the home snapshot's `plugins` part, so the existing `plugin.enable` switch governs the server and client halves together, and `plugin.enable` republishes the home snapshot so the shell updates at once. A client module reaches the backend only through `host.cmd(op, args)`, the same ops any client uses. Cost: the modules are static assets and their state rides in the snapshot already sent, so 0 Worker requests and 0 rows per user action; a toggle is the one `plugin.enable` op it always was, plus one snapshot frame to open sockets.
 
 ## Discovery
 

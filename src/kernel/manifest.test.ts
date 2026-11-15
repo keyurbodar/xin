@@ -28,6 +28,7 @@ describe("plugin manifest", () => {
     expect(() => readManifest({ requires: ["time ^1"] }, "x")).toThrow(/requires/)
     expect(() => readManifest({ module: "./index.ts" }, "x")).toThrow()
     expect(() => readManifest({ permissions: ["root"] }, "x")).toThrow(/permission root/)
+    expect(() => readManifest({ slots: ["header"] }, "x")).toThrow(/slot header/)
   })
 
   it("refuses a build whose plugin API differs from the one the module was written against", () => {
@@ -57,12 +58,13 @@ describe("plugin manifest", () => {
     expect(checkManifest(manifest, versions({}))?.kind).toBe("require")
   })
 
-  it("reads permissions and contributions, sorting and deduplicating permissions", () => {
+  it("reads permissions, contributions and slots, sorting and deduplicating permissions", () => {
     expect(
       readManifest(
         {
           permissions: ["storage", "network", "storage"],
           contributes: { tools: ["weather_*"], ops: ["weather.get"] },
+          slots: ["pane.tab"],
         },
         "x",
       ),
@@ -70,6 +72,7 @@ describe("plugin manifest", () => {
       ...DEFAULT_MANIFEST,
       permissions: ["network", "storage"],
       contributes: { tools: ["weather_*"], ops: ["weather.get"] },
+      slots: ["pane.tab"],
     })
   })
 
