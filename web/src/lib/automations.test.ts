@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test"
 import {
+  attemptFor,
   automationsRevisionOf,
+  automationsTouchedOf,
   batchGroupLabel,
   createArgs,
   cronInWords,
@@ -16,6 +18,7 @@ import {
   parseAutomationList,
   parseRuns,
   rotated,
+  spentOnce,
   runDuration,
   runNowArgs,
   runSignal,
@@ -229,4 +232,74 @@ test("the dialog refuses exactly the crons the server's parser refuses, in its w
   expect(cronProblem("0 0 31 2 *", "UTC")).toBe('"0 0 31 2 *" never fires')
   expect(cronProblem("*/45 * * * *", "UTC")).toBeUndefined()
   expect(cronProblem("0 9 * * MON-FRI", "UTC")).toBeUndefined()
+})
+
+const served = {
+  ...wire,
+  id: "a9",
+  project: null,
+  target: "same",
+  threadId: 4,
+  triggers: [
+    {
+      id: "w1",
+      kind: "webhook",
+      path: "/hooks/secret",
+      contains: ["foo,bar"],
+      regex: " ^ci ",
+      rules: [{ when: {}, groupBy: ["repo"], count: 5, maxWaitSeconds: null, quietSeconds: 600 }],
+    },
+    { id: "o1", kind: "once", at: "2026-11-01T09:30:15.250Z", nextAt: null },
+    { id: "s1", kind: "schedule", cron: "0 9 * * 1-5", tz: "UTC", nextAt: "2026-11-17T09:00:00.000Z" },
+  ],
+}
+const servedAutomation = parseAutomationList({ automations: [served] })[0]
+if (servedAutomation === undefined) throw new Error("served fixture did not parse")
+
+test("rules from automation.get go back without their nulls, so the validator takes them", () => {
+  const draft = draftOf(servedAutomation)
+  const [hook, , schedule] = draft.triggers
+  if (hook?.kind !== "webhook" || schedule?.kind !== "schedule") throw new Error("fixture triggers")
+  const args = updateArgs(servedAutomation, { ...draft, triggers: [rotated(hook), schedule] }, now)
+  expect(args.triggers).toEqual([
+    { kind: "webhook", contains: ["foo", "bar"], regex: "^ci", rules: [{ groupBy: ["repo"], count: 5, quietSeconds: 600 }] },
+    { kind: "schedule", cron: "0 9 * * 1-5", tz: "UTC" },
+  ])
+})
+
+test("an untouched trigger goes back exactly as served while another one changes, and a spent once drops out", () => {
+  const draft = draftOf(servedAutomation)
+  const [hook, once, schedule] = draft.triggers
+  if (hook === undefined || once === undefined || schedule?.kind !== "schedule") throw new Error("fixture triggers")
+  expect(spentOnce(once, now)).toBe(true)
+  expect(updateArgs(servedAutomation, draft, now)).toEqual({ id: "a9" })
+  expect(updateArgs(servedAutomation, { ...draft, triggers: [hook, once, { ...schedule, cron: "0 10 * * 1-5" }] }, now).triggers).toEqual([
+    { kind: "webhook", id: "w1", contains: ["foo,bar"], regex: " ^ci ", rules: [{ groupBy: ["repo"], count: 5, quietSeconds: 600 }] },
+    { kind: "schedule", cron: "0 10 * * 1-5", tz: "UTC" },
+  ])
+})
+
+test("an automation outside any project can still be edited, but a new one needs a project", () => {
+  const draft = { ...draftOf(servedAutomation), title: "Renamed" }
+  expect(draft.project).toBe("")
+  expect(draftReady(draft, servedAutomation)).toBe(true)
+  expect(draftReady(draft)).toBe(false)
+  expect(updateArgs(servedAutomation, draft, now)).toEqual({ id: "a9", title: "Renamed" })
+})
+
+test("a retry of the same args reuses its command id, and changed args get a new one", () => {
+  let minted = 0
+  const mint = () => `c${(minted += 1)}`
+  const first = attemptFor(undefined, { id: "a1", input: "x" }, mint)
+  expect(first.id).toBe("c1")
+  expect(attemptFor(first, { id: "a1", input: "x" }, mint).id).toBe("c1")
+  expect(attemptFor(first, { id: "a1", input: "y" }, mint).id).toBe("c2")
+})
+
+test("each automation's own revision comes from the home snapshot, ignoring what is not a number", () => {
+  expect([...automationsTouchedOf({ automations: { revision: 9, touched: { a1: 7, a2: 9, bad: "x" } } })]).toEqual([
+    ["a1", 7],
+    ["a2", 9],
+  ])
+  expect(automationsTouchedOf({ automations: { revision: 1 } }).size).toBe(0)
 })

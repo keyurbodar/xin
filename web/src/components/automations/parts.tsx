@@ -2,7 +2,8 @@ import { createEffect, createSignal, Show, type Accessor, type JSX } from "solid
 import { Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
 import { Ellipsis, History, Pause, Pencil, Play, SkipForward, Trash2 } from "lucide-solid"
-import { runNowArgs, runSignal, type Automation } from "../../lib/automations.ts"
+import { attemptFor, runNowArgs, runSignal, type Attempt, type Automation } from "../../lib/automations.ts"
+import { isDefinitive } from "../../lib/api.ts"
 import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import { STATE_WORD } from "../../lib/status.ts"
@@ -196,12 +197,14 @@ export function RunNowDialog(props: { automation: Automation | undefined; onClos
   const [busy, setBusy] = createSignal(false)
   const [failure, setFailure] = createSignal<string>()
   const [kept, setKept] = createSignal<Automation>()
+  const [attempt, setAttempt] = createSignal<Attempt>()
   createEffect(() => {
     if (props.automation !== undefined) setKept(props.automation)
   })
   resetOnOpen(
     () => props.automation !== undefined,
     () => {
+      setAttempt(undefined)
       setInput("")
       setFailure(undefined)
       setBusy(false)
@@ -213,9 +216,13 @@ export function RunNowDialog(props: { automation: Automation | undefined; onClos
     setBusy(true)
     setFailure(undefined)
     try {
-      await runAutomation(runNowArgs(target.id, input()))
+      const args = runNowArgs(target.id, input())
+      const sent = attemptFor(attempt(), args, () => crypto.randomUUID())
+      setAttempt(sent)
+      await runAutomation(args, sent.id)
       props.onClose()
     } catch (problem) {
+      if (isDefinitive(problem)) setAttempt(undefined)
       setFailure(failureText(problem))
     } finally {
       setBusy(false)

@@ -23,7 +23,7 @@ export async function apply(ctx: KernelContext): Promise<void> {
   for (const op of automationOps(engine)) ctx.ops.define(op)
   ctx.clock.timer({ due: () => engine.due(), fire: (now) => engine.fire(now) })
   ctx.http.route("POST /hooks/*", (request) => engine.webhook(request, Date.now()))
-  ctx.wire.home(name, async () => ({ automations: { revision: engine.revision } }))
+  ctx.wire.home(name, async () => ({ automations: { revision: engine.revision, touched: engine.touched } }))
   ctx.on("thread/settled", (event) => engine.settled(event, Date.now()))
   await importSchedules(engine, ctx.harness, Date.now()).catch((error: unknown) => {
     console.warn("automations: importing old schedules failed; it retries on the next boot", error)

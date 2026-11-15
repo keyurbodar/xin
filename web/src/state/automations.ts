@@ -9,7 +9,7 @@ import {
   type AutomationDetail,
   type AutomationRun,
 } from "../lib/automations.ts"
-import { homeAutomationsRevision, homeLoaded } from "./home.ts"
+import { automationTouched, homeAutomationsRevision, homeLoaded } from "./home.ts"
 
 /**
  * `automation.list` once for the view, then again only when the home snapshot's `automations.revision` moves.
@@ -44,12 +44,12 @@ export function createAutomation(args: Record<string, unknown>, commandId: strin
   return cmd("automation.create", args, { id: commandId })
 }
 
-export function updateAutomation(args: Record<string, unknown>): Promise<unknown> {
-  return cmd("automation.update", args)
+export function updateAutomation(args: Record<string, unknown>, commandId: string): Promise<unknown> {
+  return cmd("automation.update", args, { id: commandId })
 }
 
-export function runAutomation(args: Record<string, unknown>): Promise<unknown> {
-  return cmd("automation.trigger", args)
+export function runAutomation(args: Record<string, unknown>, commandId: string): Promise<unknown> {
+  return cmd("automation.trigger", args, { id: commandId })
 }
 
 const PAGE = 20
@@ -66,13 +66,14 @@ export type AutomationHistory = {
 }
 
 /**
- * `automation.get` with the newest runs and open batches, reloaded on each revision bump like the list.
+ * `automation.get` with the newest runs and open batches, reloaded only when this automation's own revision
+ * (`automations.touched[id]` in the home snapshot) moves, so other automations' changes and runs cost it nothing.
  * Older pages come from `automation.runs` and stay merged under every reload until the id changes.
  */
 export function createAutomationHistory(id: Accessor<string>): AutomationHistory {
   const [detail, { refetch }] = createResource(
-    () => (homeLoaded() ? ([id(), homeAutomationsRevision() ?? 0] as const) : false),
-    async ([current]) => parseAutomationDetail(await cmd("automation.get", { id: current, runs: PAGE })),
+    () => (homeLoaded() ? `${automationTouched(id()) ?? 0}:${id()}` : false),
+    async () => parseAutomationDetail(await cmd("automation.get", { id: id(), runs: PAGE })),
   )
   const [older, setOlder] = createSignal<readonly AutomationRun[]>([])
   const [olderEnded, setOlderEnded] = createSignal(false)

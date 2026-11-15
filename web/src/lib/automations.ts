@@ -14,8 +14,32 @@ export type AutomationTrigger =
       readonly rules: readonly WebhookRule[]
     }
 
-/** A batching rule, kept as the server sent it: the editor carries rules through untouched. */
-export type WebhookRule = Readonly<Record<string, unknown>>
+/** A batching rule. The server's view fills every unset field with null, and its validator wants them absent, so nulls drop here. */
+export type WebhookRule = {
+  readonly when?: Readonly<Record<string, string>>
+  readonly groupBy?: readonly string[]
+  readonly count?: number
+  readonly maxWaitSeconds?: number
+  readonly quietSeconds?: number
+}
+
+export function ruleOf(value: unknown): WebhookRule | undefined {
+  const record = recordOf(value)
+  if (record === undefined) return undefined
+  const when = recordOf(record.when)
+  const pairs = when === undefined ? [] : Object.entries(when).filter((pair): pair is [string, string] => typeof pair[1] === "string")
+  const groupBy = stringsOf(record.groupBy)
+  const count = numOf(record.count)
+  const maxWaitSeconds = numOf(record.maxWaitSeconds)
+  const quietSeconds = numOf(record.quietSeconds)
+  return {
+    ...(pairs.length === 0 ? {} : { when: Object.fromEntries(pairs) }),
+    ...(groupBy.length === 0 ? {} : { groupBy }),
+    ...(count === undefined ? {} : { count }),
+    ...(maxWaitSeconds === undefined ? {} : { maxWaitSeconds }),
+    ...(quietSeconds === undefined ? {} : { quietSeconds }),
+  }
+}
 
 export type RunStatus = "queued" | "running" | "delivered" | "completed" | "failed" | "cancelled"
 
@@ -87,7 +111,7 @@ function triggerOf(value: unknown): AutomationTrigger | undefined {
       const path = strOf(record.path)
       if (path === undefined) return undefined
       const rules = listOf(record.rules).flatMap((rule) => {
-        const read = recordOf(rule)
+        const read = ruleOf(rule)
         return read === undefined ? [] : [read]
       })
       return { id, kind: "webhook", path, contains: stringsOf(record.contains), regex: nullableStr(record.regex), rules }
@@ -186,6 +210,17 @@ export function parseAutomationList(value: unknown): readonly Automation[] {
 /** The home snapshot's `automations.revision`; it bumps on every create, update, delete, run start and run finish. */
 export function automationsRevisionOf(home: unknown): number | undefined {
   return numOf(recordOf(recordOf(home)?.automations)?.revision)
+}
+
+/** The home snapshot's `automations.touched`: each automation's latest change since the home booted. */
+export function automationsTouchedOf(home: unknown): ReadonlyMap<string, number> {
+  const touched = recordOf(recordOf(recordOf(home)?.automations)?.touched) ?? {}
+  return new Map(
+    Object.entries(touched).flatMap(([id, value]) => {
+      const revision = numOf(value)
+      return revision === undefined ? [] : [[id, revision] as const]
+    }),
+  )
 }
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const
@@ -355,11 +390,15 @@ export function webhookUrl(origin: string, path: string): string {
   return `${origin.replace(/\/$/u, "")}${path}`
 }
 
+/** A trigger as loaded: its editable fields then, and the exact args that keep it as it is. */
+export type SavedTrigger = { readonly fields: string; readonly arg: Readonly<Record<string, unknown>>; readonly at?: number }
+
 export type TriggerDraft =
-  | { readonly key: string; readonly kind: "schedule"; readonly cron: string; readonly tz: string }
-  | { readonly key: string; readonly kind: "once"; readonly at: string }
+  | { readonly key: string; readonly saved?: SavedTrigger; readonly kind: "schedule"; readonly cron: string; readonly tz: string }
+  | { readonly key: string; readonly saved?: SavedTrigger; readonly kind: "once"; readonly at: string }
   | {
       readonly key: string
+      readonly saved?: SavedTrigger
       readonly kind: "webhook"
       readonly id: string | undefined
       readonly path: string | undefined
@@ -383,7 +422,30 @@ export function localInput(iso: string): string {
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`
 }
 
-function triggerDraft(trigger: AutomationTrigger): TriggerDraft {
+const fieldsOf = (trigger: TriggerDraft): string => JSON.stringify({ ...trigger, key: undefined, saved: undefined })
+
+function savedArg(trigger: AutomationTrigger): Readonly<Record<string, unknown>> {
+  switch (trigger.kind) {
+    case "schedule":
+      return { kind: "schedule", cron: trigger.cron, tz: trigger.tz }
+    case "once":
+      return { kind: "once", at: trigger.at }
+    case "webhook":
+      return {
+        kind: "webhook",
+        id: trigger.id,
+        ...(trigger.contains.length === 0 ? {} : { contains: trigger.contains }),
+        ...(trigger.regex === null ? {} : { regex: trigger.regex }),
+        ...(trigger.rules.length === 0 ? {} : { rules: trigger.rules }),
+      }
+    default: {
+      const _exhaustive: never = trigger
+      return _exhaustive
+    }
+  }
+}
+
+function editable(trigger: AutomationTrigger): TriggerDraft {
   switch (trigger.kind) {
     case "schedule":
       return { key: trigger.id, kind: "schedule", cron: trigger.cron, tz: trigger.tz }
@@ -404,6 +466,21 @@ function triggerDraft(trigger: AutomationTrigger): TriggerDraft {
       return _exhaustive
     }
   }
+}
+
+/**
+ * An untouched trigger goes back exactly as the server sent it, so the editor's lossy fields (minutes-only times,
+ * comma-split filters, trimmed regexes) never rewrite a trigger nobody edited.
+ */
+function triggerDraft(trigger: AutomationTrigger): TriggerDraft {
+  const draft = editable(trigger)
+  const at = trigger.kind === "once" ? Date.parse(trigger.at) : undefined
+  return { ...draft, saved: { fields: fieldsOf(draft), arg: savedArg(trigger), ...(at === undefined ? {} : { at }) } }
+}
+
+/** A once trigger that already fired, left as it was: it has nothing left to do, and the server refuses past times. */
+export function spentOnce(trigger: TriggerDraft, now = Date.now()): boolean {
+  return trigger.kind === "once" && trigger.saved?.at !== undefined && trigger.saved.at <= now && fieldsOf(trigger) === trigger.saved.fields
 }
 
 export function draftOf(automation: Automation): AutomationDraft {
@@ -451,8 +528,10 @@ function triggerReady(trigger: TriggerDraft): boolean {
   }
 }
 
-export function draftReady(draft: AutomationDraft): boolean {
-  return draft.title.trim() !== "" && draft.prompt.trim() !== "" && draft.project !== "" && draft.triggers.every(triggerReady)
+/** A project is required, except when editing an automation that never had one (a standing thread outside projects). */
+export function draftReady(draft: AutomationDraft, editing?: Pick<Automation, "project">): boolean {
+  const project = draft.project !== "" || (editing !== undefined && editing.project === null)
+  return draft.title.trim() !== "" && draft.prompt.trim() !== "" && project && draft.triggers.every(triggerReady)
 }
 
 function triggerArg(trigger: TriggerDraft): Record<string, unknown> {
@@ -482,14 +561,22 @@ function triggerArg(trigger: TriggerDraft): Record<string, unknown> {
   }
 }
 
+function triggersArg(triggers: readonly TriggerDraft[], now: number): readonly Readonly<Record<string, unknown>>[] {
+  return triggers.flatMap((trigger) => {
+    if (spentOnce(trigger, now)) return []
+    if (trigger.saved !== undefined && fieldsOf(trigger) === trigger.saved.fields) return [trigger.saved.arg]
+    return [triggerArg(trigger)]
+  })
+}
+
 /** `automation.create` args from the dialog. */
-export function createArgs(draft: AutomationDraft): Record<string, unknown> {
+export function createArgs(draft: AutomationDraft, now = Date.now()): Record<string, unknown> {
   return {
     title: draft.title.trim(),
     prompt: draft.prompt.trim(),
     project: draft.project,
     target: { kind: draft.target },
-    triggers: draft.triggers.map(triggerArg),
+    triggers: triggersArg(draft.triggers, now),
   }
 }
 
@@ -497,9 +584,9 @@ export function createArgs(draft: AutomationDraft): Record<string, unknown> {
  * `automation.update` args holding only what changed. Triggers go as a whole set and only when the set changed,
  * so saving a title never re-mints schedules or touches a webhook's URL. A standing thread keeps its thread.
  */
-export function updateArgs(automation: Automation, draft: AutomationDraft): Record<string, unknown> {
-  const before = createArgs(draftOf(automation))
-  const after = createArgs(draft)
+export function updateArgs(automation: Automation, draft: AutomationDraft, now = Date.now()): Record<string, unknown> {
+  const before = createArgs(draftOf(automation), now)
+  const after = createArgs(draft, now)
   const changed = (key: string): boolean => JSON.stringify(before[key]) !== JSON.stringify(after[key])
   const target =
     draft.target === "same" && automation.target === "same" && automation.threadId !== null
@@ -540,4 +627,15 @@ export function batchGroupLabel(group: string): string {
     return group
   }
   return group
+}
+
+export type Attempt = { readonly id: string; readonly body: string }
+
+/**
+ * The command id for a send. A retry of the same args reuses the last id, so the host replays a run or a
+ * rotation that already landed instead of doing it twice; different args, or a rejection the host recorded, get a new id.
+ */
+export function attemptFor(previous: Attempt | undefined, args: unknown, mint: () => string): Attempt {
+  const body = JSON.stringify(args)
+  return previous !== undefined && previous.body === body ? previous : { id: mint(), body }
 }

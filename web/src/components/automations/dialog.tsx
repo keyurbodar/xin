@@ -1,6 +1,7 @@
 import { createSignal, For, Show, type JSX } from "solid-js"
 import { isDefinitive } from "../../lib/api.ts"
 import {
+  attemptFor,
   createArgs,
   draftOf,
   draftReady,
@@ -8,6 +9,7 @@ import {
   parseAutomation,
   TARGET_WORD,
   updateArgs,
+  type Attempt,
   type Automation,
   type AutomationDraft,
 } from "../../lib/automations.ts"
@@ -44,7 +46,7 @@ export function AutomationDialog(props: {
     }
   }
   const [draft, setDraft] = createSignal<AutomationDraft>(empty())
-  const [commandId, setCommandId] = createSignal("")
+  const [attempt, setAttempt] = createSignal<Attempt>()
   const [busy, setBusy] = createSignal(false)
   const [failure, setFailure] = createSignal<string>()
   const set = (patch: Partial<AutomationDraft>): void => {
@@ -55,7 +57,7 @@ export function AutomationDialog(props: {
     () => props.open,
     () => {
       setDraft(empty())
-      setCommandId(crypto.randomUUID())
+      setAttempt(undefined)
       setFailure(undefined)
       setBusy(false)
     },
@@ -69,7 +71,7 @@ export function AutomationDialog(props: {
     const update = patch()
     return update === undefined || Object.keys(update).length > 1
   }
-  const ready = (): boolean => !busy() && draftReady(draft()) && changed()
+  const ready = (): boolean => !busy() && draftReady(draft(), props.editing) && changed()
 
   const submit = async (): Promise<void> => {
     if (!ready()) return
@@ -77,13 +79,15 @@ export function AutomationDialog(props: {
     setFailure(undefined)
     try {
       const update = patch()
-      const saved =
-        update === undefined ? await createAutomation(createArgs(draft()), commandId()) : await updateAutomation(update)
+      const args = update ?? createArgs(draft())
+      const sent = attemptFor(attempt(), args, () => crypto.randomUUID())
+      setAttempt(sent)
+      const saved = update === undefined ? await createAutomation(args, sent.id) : await updateAutomation(args, sent.id)
       const automation = parseAutomation(saved)
       props.onClose()
       if (automation !== undefined) props.onSaved?.(automation)
     } catch (problem) {
-      if (isDefinitive(problem)) setCommandId(crypto.randomUUID())
+      if (isDefinitive(problem)) setAttempt(undefined)
       setFailure(problem instanceof Error ? problem.message : "That did not go through")
     } finally {
       setBusy(false)

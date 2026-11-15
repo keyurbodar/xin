@@ -1,7 +1,7 @@
 import { createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { CalendarClock, Check, Copy, Plus, RefreshCw, Timer, Webhook, X } from "lucide-solid"
 import { count } from "../../lib/format.ts"
-import { cronInWords, cronProblem, newTrigger, rotated, webhookUrl, type TriggerDraft } from "../../lib/automations.ts"
+import { cronInWords, cronProblem, newTrigger, spentOnce, rotated, webhookUrl, type TriggerDraft } from "../../lib/automations.ts"
 import { FIELD_INPUT } from "../ui/dialog.tsx"
 
 const ICON = { size: 14, "stroke-width": 1.5 } as const
@@ -133,7 +133,7 @@ function WebhookFields(props: { trigger: Extract<TriggerDraft, { kind: "webhook"
         when={props.trigger.path}
         fallback={
           <span class="text-xs text-ink-3">
-            {props.trigger.key.startsWith("new-") ? "The URL appears once you save." : "A new URL is minted when you save; the old one stops answering."}
+            {props.trigger.key.startsWith("new-") ? "The URL appears once you save." : "A new URL is minted when you save; the old one stops answering, and deliveries it already batched run first."}
           </span>
         }
       >
@@ -181,7 +181,14 @@ function WebhookFields(props: { trigger: Extract<TriggerDraft, { kind: "webhook"
   )
 }
 
-/** The whole trigger set: the editor sends it as one list, and an untouched list is not sent at all. */
+function narrow<K extends TriggerDraft["kind"]>(trigger: TriggerDraft, kind: K): Extract<TriggerDraft, { kind: K }> | undefined {
+  return trigger.kind === kind ? (trigger as Extract<TriggerDraft, { kind: K }>) : undefined
+}
+
+/**
+ * The whole trigger set: the editor sends it as one list, and an untouched list is not sent at all. Rows are keyed
+ * by the trigger's key, not its object, so typing into a field never remounts it and drops focus.
+ */
 export function TriggersEditor(props: {
   triggers: readonly TriggerDraft[]
   busy: boolean
@@ -198,45 +205,52 @@ export function TriggersEditor(props: {
   return (
     <div class="flex flex-col gap-2">
       <span class="text-sm font-medium text-ink-2">Triggers</span>
-      <For each={props.triggers}>
-        {(trigger) => (
-          <div class="im-event flex flex-col gap-2 rounded-md border border-line-1 bg-panel p-2.5">
-            <div class="flex h-5 items-center gap-1.5 text-sm text-ink-2">
-              <span class="text-ink-3">
-                <KindIcon kind={trigger.kind} />
-              </span>
-              {KIND_WORD[trigger.kind]}
-              <button
-                type="button"
-                disabled={props.busy}
-                onClick={() => remove(trigger.key)}
-                aria-label={`Remove ${KIND_WORD[trigger.kind].toLowerCase()} trigger`}
-                class="im-press im-hover ml-auto grid h-6 w-6 place-items-center rounded-sm text-ink-3"
-              >
-                <X {...ICON} />
-              </button>
-            </div>
-            <Switch>
-              <Match when={trigger.kind === "schedule" ? trigger : undefined}>
-                {(schedule) => <ScheduleFields trigger={schedule()} busy={props.busy} onChange={(next) => replace(trigger.key, next)} />}
-              </Match>
-              <Match when={trigger.kind === "once" ? trigger : undefined}>
-                {(once) => (
-                  <input
-                    type="datetime-local"
-                    class={`${FIELD_INPUT} h-8 text-sm`}
-                    value={once().at}
+      <For each={props.triggers.map((trigger) => trigger.key)}>
+        {(key) => (
+          <Show when={props.triggers.find((trigger) => trigger.key === key)}>
+            {(trigger) => (
+              <div class="im-event flex flex-col gap-2 rounded-md border border-line-1 bg-panel p-2.5">
+                <div class="flex h-5 items-center gap-1.5 text-sm text-ink-2">
+                  <span class="text-ink-3">
+                    <KindIcon kind={trigger().kind} />
+                  </span>
+                  {KIND_WORD[trigger().kind]}
+                  <Show when={spentOnce(trigger())}>
+                    <span class="text-xs text-ink-3">already ran; it drops out when you save other trigger changes</span>
+                  </Show>
+                  <button
+                    type="button"
                     disabled={props.busy}
-                    aria-label="Run once at"
-                    onInput={(event) => replace(trigger.key, { ...once(), at: event.currentTarget.value })}
-                  />
-                )}
-              </Match>
-              <Match when={trigger.kind === "webhook" ? trigger : undefined}>
-                {(hook) => <WebhookFields trigger={hook()} busy={props.busy} onChange={(next) => replace(trigger.key, next)} />}
-              </Match>
-            </Switch>
-          </div>
+                    onClick={() => remove(key)}
+                    aria-label={`Remove ${KIND_WORD[trigger().kind].toLowerCase()} trigger`}
+                    class="im-press im-hover ml-auto grid h-6 w-6 place-items-center rounded-sm text-ink-3"
+                  >
+                    <X {...ICON} />
+                  </button>
+                </div>
+                <Switch>
+                  <Match when={narrow(trigger(), "schedule")}>
+                    {(schedule) => <ScheduleFields trigger={schedule()} busy={props.busy} onChange={(next) => replace(key, next)} />}
+                  </Match>
+                  <Match when={narrow(trigger(), "once")}>
+                    {(once) => (
+                      <input
+                        type="datetime-local"
+                        class={`${FIELD_INPUT} h-8 text-sm`}
+                        value={once().at}
+                        disabled={props.busy}
+                        aria-label="Run once at"
+                        onInput={(event) => replace(key, { ...once(), at: event.currentTarget.value })}
+                      />
+                    )}
+                  </Match>
+                  <Match when={narrow(trigger(), "webhook")}>
+                    {(hook) => <WebhookFields trigger={hook()} busy={props.busy} onChange={(next) => replace(key, next)} />}
+                  </Match>
+                </Switch>
+              </div>
+            )}
+          </Show>
         )}
       </For>
       <Show when={props.triggers.length === 0}>
