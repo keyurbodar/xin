@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js"
 import { cmd } from "../lib/api.ts"
-import { THINKING_LEVELS, type ThinkingLevel } from "./conversation.ts"
+import { THINKING_LEVELS, type ThinkingLevel } from "../lib/thinking.ts"
 import { errorMessage, isKnownOpError, isRecord, remote, type RemoteHandle } from "./extensions.ts"
 
 

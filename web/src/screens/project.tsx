@@ -18,8 +18,8 @@ import {
   type EntryView,
   type RequestRow,
   type Snapshot,
-  type ThinkingLevel,
 } from "../state/conversation.ts"
+import { modelSwitch, type ThinkingLevel } from "../lib/thinking.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
 import { recordOf, numOf } from "../lib/parse.ts"
 import { openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
@@ -139,7 +139,8 @@ function ProjectChat(props: {
   const currentInfo = (): ModelInfo | undefined => {
     const ref = chosenModel()
     if (ref === undefined) return undefined
-    return choices().find((model) => model.provider === ref.provider && model.modelId === ref.modelId)
+    const same = (model: ModelInfo): boolean => model.provider === ref.provider && model.modelId === ref.modelId
+    return choices().find(same) ?? catalog().find(same)
   }
   const presetRows = () => {
     const state = presetStore.state()
@@ -204,7 +205,7 @@ function ProjectChat(props: {
             effort={agentThinkingOf(snapshot())}
             efforts={currentInfo()?.thinking ?? []}
             onPickModel={async (model) => {
-              await configureConversation(props.project.coordinatorId, { model })
+              await configureConversation(props.project.coordinatorId, modelSwitch(model, agentThinkingOf(snapshot())))
             }}
             onPickPreset={async (preset) => {
               await selectPreset(props.project.coordinatorId, preset)
