@@ -45,6 +45,7 @@ import { Transcript, type PendingMessage } from "../components/chat/transcript.t
 import { Composer } from "../components/chat/composer.tsx"
 import { ThreadConversation } from "../components/chat/panel.tsx"
 import { ConversationTabs } from "../components/shell/conversation-tabs.tsx"
+import { configureConversation, selectPreset } from "../state/context.ts"
 import { forgetProjectFiles } from "../components/pane/bodies.tsx"
 import { ProjectPane } from "../components/pane/pane.tsx"
 import { ProjectSettings } from "../components/project/settings.tsx"
@@ -52,7 +53,12 @@ import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 
-function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | undefined; onOpenThread: (id: number) => void }): JSX.Element {
+function ProjectChat(props: {
+  project: ProjectSummary
+  snapshot: Snapshot | undefined
+  active: boolean
+  onOpenThread: (id: number) => void
+}): JSX.Element {
   const snapshot = (): Snapshot | undefined => props.snapshot
   const [optimistic, setOptimistic] = createSignal<readonly PendingMessage[]>([])
   const [answered, setAnswered] = createSignal<readonly AnsweredView[]>([])
@@ -184,6 +190,7 @@ function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | unde
       </Loading>
           <Composer
             project={props.project}
+            active={props.active}
             modelLabel={currentInfo()?.name ?? modelLabel()}
             model={chosenModel()}
             models={choices()}
@@ -197,14 +204,14 @@ function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | unde
             effort={agentThinkingOf(snapshot())}
             reasoning={currentInfo()?.reasoning === true}
             onPickModel={async (model) => {
-              await cmd("conv.configure", { conv: props.project.coordinatorId, model })
+              await configureConversation(props.project.coordinatorId, { model })
             }}
             onPickPreset={async (preset) => {
-              await cmd("preset.select", { conversation: props.project.coordinatorId, preset })
+              await selectPreset(props.project.coordinatorId, preset)
               await presetStore.reload()
             }}
             onPickEffort={async (thinking: ThinkingLevel) => {
-              await cmd("conv.configure", { conv: props.project.coordinatorId, thinking })
+              await configureConversation(props.project.coordinatorId, { thinking })
             }}
             onAttach={async (file, onProgress, signal) => {
               const uploaded = await uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress, signal)
@@ -348,7 +355,7 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
             {(path) => <FileScreen project={props.project} path={path()} />}
           </Show>
           <div class="flex min-h-0 flex-1 flex-col" classList={{ hidden: !onCoordinator() }}>
-            <ProjectChat project={props.project} snapshot={coordinatorSnapshot()} onOpenThread={openThread} />
+            <ProjectChat project={props.project} snapshot={coordinatorSnapshot()} active={onCoordinator()} onOpenThread={openThread} />
           </div>
         </section>
       </Show>

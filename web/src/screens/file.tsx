@@ -80,7 +80,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
   }
 
   const ask = (): void => {
-    setPendingDraft(`About ${name(props.path)}: `)
+    setPendingDraft(props.project.coordinatorId, `About ${name(props.path)}: `)
     navigate(`/p/${props.project.slug}`)
   }
 
