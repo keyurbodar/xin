@@ -76,6 +76,7 @@ function parse(
         slots: field(entry, "slots"),
       },
       `${pkg}: ingle.plugins.${name}`,
+      local ? pkg : undefined,
     )
     if ((client === undefined) !== (parsedManifest.slots.length === 0))
       throw new Error(`${pkg}: ingle.plugins.${name} needs both a client module and the slots it fills, or neither`)

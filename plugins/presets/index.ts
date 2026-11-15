@@ -31,7 +31,7 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
     db: ctx.db,
     harness: ctx.harness,
     extensions: () =>
-      [...ctx.pi.installed.values()].map(({ extension, row }) => ({
+      ctx.pi.extensions().map(({ extension, row }) => ({
         extension,
         plugin: row === undefined ? undefined : ctx.kernel.pluginOfRow(row),
       })),
@@ -91,6 +91,7 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
   ctx.ops.define(
     defineOp({
       name: "preset.list",
+      read: true,
       args: obj({}),
       actors: ["owner"],
       run: async () => ({

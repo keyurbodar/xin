@@ -352,6 +352,9 @@ function createFiles(store: MemoryStore): FilesService {
     move: async () => false,
     watch: () => () => {},
     grant: () => () => {},
+    textOf: async () => null,
+    share: async () => {},
+    unshare: async () => {},
   }
 }
 

@@ -12,6 +12,7 @@
         "description": "Projects and thread documents.",
         "permissions": [
           "conversations",
+          "models",
           "runtime"
         ],
         "contributes": {

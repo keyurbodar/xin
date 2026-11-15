@@ -27,9 +27,12 @@ export const PERMISSIONS = {
 
 export type Permission = keyof typeof PERMISSIONS
 
-/** Whether a declaration grants `permission`: `runtime` reaches the raw Home, so it grants every other one. */
+/** Whether a declaration grants `permission`: `runtime` reaches the raw Home, so it grants every other one but `owner`. */
 export const grants = (permissions: readonly Permission[], permission: Permission): boolean =>
-  permissions.includes(permission) || permissions.includes("runtime")
+  permissions.includes(permission) || (permission !== "owner" && permissions.includes("runtime"))
+
+/** The one package that may declare `owner`: first-party Automations, which runs ops as the owner by design. */
+export const OWNER_PACKAGE = "ingle-plugin-automations"
 
 export const isPermission = (value: string): value is Permission => Object.hasOwn(PERMISSIONS, value)
 
@@ -91,7 +94,8 @@ const PLUGIN_NAME = /^[a-z][a-z0-9-]*$/
 const REQUIRE = /^([a-z][a-z0-9-]*)(?:@(.+))?$/
 
 /** Parse the declaration keys of one plugin entry. Throws with the entry's location on a bad value. */
-export function readManifest(value: unknown, where: string): Manifest {
+/** `firstParty` names the package when it ships in this repository; only then may it declare `owner`. */
+export function readManifest(value: unknown, where: string, firstParty?: string): Manifest {
   if (!manifestCheck.check(value)) {
     const detail = manifestCheck
       .errors(value)
@@ -107,6 +111,8 @@ export function readManifest(value: unknown, where: string): Manifest {
   const permissions = (value.permissions ?? []).map((permission) => {
     if (!isPermission(permission))
       throw new Error(`${where}: permission ${permission} is not one of ${Object.keys(PERMISSIONS).join(", ")}`)
+    if (permission === "owner" && firstParty !== OWNER_PACKAGE)
+      throw new Error(`${where}: only first-party ${OWNER_PACKAGE} may declare the owner permission`)
     return permission
   })
   const slots = (value.slots ?? []).map((slot) => {

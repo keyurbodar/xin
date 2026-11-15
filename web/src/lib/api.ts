@@ -1,4 +1,5 @@
 import { token } from "./auth.ts"
+import { READS } from "./reads.ts"
 import { parseRepairReply, type Drop, type RepairAnswer } from "./repair.ts"
 
 export class OpError extends Error {
@@ -26,7 +27,7 @@ export type CmdOptions = { readonly id?: string }
 /** Commands one `POST /v1/cmd` may carry; the host refuses more. */
 export const MAX_BATCH = 32
 
-type Frame = { readonly id: string; readonly op: string; readonly args: Record<string, unknown>; readonly read?: true }
+type Frame = { readonly id: string; readonly op: string; readonly args: Record<string, unknown> }
 
 type Queued = {
   readonly frame: Frame
@@ -66,8 +67,8 @@ async function flush(): Promise<void> {
   }
 }
 
-function send<T>(op: string, args: Record<string, unknown>, options: CmdOptions & { readonly read?: true }): Promise<T> {
-  const frame: Frame = { id: options.id ?? crypto.randomUUID(), op, args, ...(options.read ? { read: true } : {}) }
+function send<T>(op: string, args: Record<string, unknown>, options: CmdOptions): Promise<T> {
+  const frame: Frame = { id: options.id ?? crypto.randomUUID(), op, args }
   return new Promise<Ack<unknown>>((resolve, reject) => {
     if (queue.length === 0) queueMicrotask(() => void flush())
     queue.push({ frame, resolve, reject })
@@ -94,57 +95,6 @@ export function noteHomeRev(rev: string): void {
   seenRev = rev
 }
 
-/**
- * The ops that change nothing, in one place. A `cached` read is served from the cache, because only a command changes
- * it, and the TTL covers the rest. A `live` read changes without a command (sessions, metrics, logs, files and drive entries an agent writes)
- * and is never cached. Neither one drops the cache, and both carry `read`, so the home does not bump its revision for
- * them. Any other op may write.
- */
-const READS: Readonly<Record<string, "cached" | "live">> = {
-  "automation.list": "cached",
-  "market.entry": "cached",
-  "market.policy": "cached",
-  "market.search": "cached",
-  "market.skipped": "cached",
-  "mcp.list": "cached",
-  "mcp.tools": "cached",
-  "memory.list": "cached",
-  "memory.profile": "cached",
-  "models.list": "cached",
-  "notify.prefs": "cached",
-  "notify.quiet": "cached",
-  "owner.read": "cached",
-  "plugin.catalog": "cached",
-  "plugin.list": "cached",
-  "plugin.packages": "cached",
-  "preset.list": "cached",
-  "prompt.list": "cached",
-  "push.key": "cached",
-  "push.list": "cached",
-  "skill.list": "cached",
-  "skill.read": "cached",
-  "system.version": "cached",
-  "workspace.read": "cached",
-  "captain.get": "live",
-  "captain.list": "live",
-  "conv.context": "live",
-  "drive.history": "live",
-  "drive.list": "live",
-  "drive.read": "live",
-  "drive.scopes": "live",
-  "file.list": "live",
-  "file.read": "live",
-  "file.revision": "live",
-  "file.revisions": "live",
-  "history.page": "live",
-  "job.list": "live",
-  "memory.suggested": "live",
-  "request.list": "live",
-  "session.list": "live",
-  "system.logs": "live",
-  "system.metrics": "live",
-  "usage.summary": "live",
-}
 
 /**
  * Sends one op, batched with every other op issued in the same task. An op listed in `READS` is served or sent the
@@ -154,7 +104,7 @@ const READS: Readonly<Record<string, "cached" | "live">> = {
 export async function cmd<T>(op: string, args: Record<string, unknown> = {}, options: CmdOptions = {}): Promise<T> {
   const read = READS[op]
   if (read === "cached") return cached<T>(op, args)
-  if (read === "live") return send<T>(op, args, { read: true })
+  if (read === "live") return send<T>(op, args, {})
   try {
     return await send<T>(op, args, options)
   } finally {
@@ -167,7 +117,7 @@ function cached<T>(op: string, args: Record<string, unknown>): Promise<T> {
   const key = `${op}\u0000${JSON.stringify(args)}`
   const hit = reads.get(key)
   if (hit !== undefined && Date.now() - hit.at < READ_TTL_MS) return hit.value as Promise<T>
-  const started = send<T>(op, args, { read: true })
+  const started = send<T>(op, args, {})
   const entry = { value: started, at: Date.now() }
   reads.set(key, entry)
   started.catch(() => {

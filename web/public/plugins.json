@@ -97,7 +97,6 @@
       "permissions": [
         "conversations",
         "files",
-        "runtime",
         "storage"
       ],
       "slots": [],
@@ -614,6 +613,7 @@
       "version": "0.1.0",
       "permissions": [
         "conversations",
+        "models",
         "runtime"
       ],
       "slots": [],
