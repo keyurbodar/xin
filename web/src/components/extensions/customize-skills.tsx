@@ -16,8 +16,8 @@ export function Skills(): JSX.Element {
 
   return (
     <>
-      <div class="flex w-[380px] shrink-0 flex-col border-r border-line">
-        <div class="flex items-center gap-2 border-b border-line px-3.5 py-3">
+      <div class="flex w-[380px] shrink-0 flex-col border-r border-line-1">
+        <div class="flex items-center gap-2 border-b border-line-1 px-3.5 py-3">
           <span class="label">Skills</span>
           <Button
             size="sm"
@@ -52,13 +52,13 @@ export function Skills(): JSX.Element {
                       setSelected(skill.name)
                       setCreating(false)
                     }}
-                    class="flex w-full items-start gap-2.5 border-b border-line px-3.5 py-3 text-left hover:bg-hover"
-                    classList={{ "bg-hover": selected() === skill.name }}
+                    class="flex w-full items-start gap-2.5 border-b border-line-1 px-3.5 py-3 text-left hover:bg-secondary"
+                    classList={{ "bg-secondary": selected() === skill.name }}
                   >
-                    <Glyph name="book-open" size={15} class="mt-0.5 shrink-0 text-fg-3" />
+                    <Glyph name="book-open" size={15} class="mt-0.5 shrink-0 text-ink-3" />
                     <span class="min-w-0 flex-1">
-                      <span class="block truncate text-[12.5px] font-medium text-fg">{skill.name}</span>
-                      <span class="line-clamp-2 block text-[11.5px] leading-snug text-fg-3">{skill.description}</span>
+                      <span class="block truncate text-sm font-medium text-ink">{skill.name}</span>
+                      <span class="line-clamp-2 block text-xs leading-snug text-ink-3">{skill.description}</span>
                     </span>
                   </button>
                 )}
@@ -147,11 +147,11 @@ function SkillDetail(props: { name: string; description: string; onRemoved: () =
 
   return (
     <>
-      <header class="flex items-center gap-3 border-b border-line px-6 py-4">
-        <Glyph name="book-open" size={16} class="text-fg-3" />
+      <header class="flex items-center gap-3 border-b border-line-1 px-6 py-4">
+        <Glyph name="book-open" size={16} class="text-ink-3" />
         <div class="min-w-0 flex-1">
-          <span class="block truncate text-[16px] font-medium text-fg">{props.name}.md</span>
-          <span class="block truncate text-[12px] text-fg-3">{props.description}</span>
+          <span class="block truncate text-lg font-medium text-ink">{props.name}.md</span>
+          <span class="block truncate text-sm text-ink-3">{props.description}</span>
         </div>
         <Show when={editing()}>
           <Button size="sm" variant="primary" disabled={busy() || draft().trim() === ""} onClick={() => void saveSkill()}>
@@ -194,7 +194,7 @@ function SkillDetail(props: { name: string; description: string; onRemoved: () =
               <Show when={body()}>
                 {(skill) => (
                   <Panel>
-                    <pre class="max-h-[420px] overflow-auto px-3.5 py-3 font-mono text-[11.5px] leading-relaxed text-fg-2">
+                    <pre class="max-h-[420px] overflow-auto px-3.5 py-3 font-mono text-xs leading-relaxed text-ink-2">
                       {skill().markdown}
                     </pre>
                   </Panel>
@@ -209,7 +209,7 @@ function SkillDetail(props: { name: string; description: string; onRemoved: () =
                 rows={16}
                 spellcheck={false}
                 aria-label="Skill markdown"
-                class="w-full resize-y bg-transparent px-3.5 py-3 font-mono text-[11.5px] leading-relaxed text-fg outline-none"
+                class="w-full resize-y bg-transparent px-3.5 py-3 font-mono text-xs leading-relaxed text-ink outline-none"
               />
             </Panel>
           </Show>
@@ -255,10 +255,10 @@ function NewSkill(props: { onCreated: (name: string) => void; onCancel: () => vo
 
   return (
     <>
-      <header class="flex items-center gap-3 border-b border-line px-6 py-4">
+      <header class="flex items-center gap-3 border-b border-line-1 px-6 py-4">
         <div class="min-w-0 flex-1">
-          <span class="block text-[16px] font-medium text-fg">New skill</span>
-          <span class="block text-[12px] text-fg-3">Frontmatter names the skill; the body says what it does</span>
+          <span class="block text-lg font-medium text-ink">New skill</span>
+          <span class="block text-sm text-ink-3">Frontmatter names the skill; the body says what it does</span>
         </div>
       </header>
       <div class="flex min-h-0 flex-1 flex-col gap-4 px-6 py-5">
@@ -266,15 +266,15 @@ function NewSkill(props: { onCreated: (name: string) => void; onCancel: () => vo
           value={markdown()}
           onInput={(event) => setMarkdown(event.currentTarget.value)}
           spellcheck={false}
-          class="min-h-0 flex-1 resize-none rounded-[2px] border border-line-inner bg-page p-3 font-mono text-[12px] leading-relaxed text-fg focus:border-line-strong focus:outline-none"
+          class="min-h-0 flex-1 resize-none rounded-sm border border-line-2 bg-bg p-3 font-mono text-sm leading-relaxed text-ink focus:border-line-3 focus:outline-none"
           aria-label="Skill markdown"
         />
         <Show when={error()}>
           {(message) => <Failure message={message()} />}
         </Show>
       </div>
-      <footer class="flex items-center gap-2 border-t border-line px-6 py-3">
-        <span class="text-[11.5px] text-fg-3">The frontmatter name must match what you type after name:</span>
+      <footer class="flex items-center gap-2 border-t border-line-1 px-6 py-3">
+        <span class="text-xs text-ink-3">The frontmatter name must match what you type after name:</span>
         <span class="ml-auto" />
         <Button size="sm" variant="quiet" onClick={props.onCancel}>Cancel</Button>
         <Button size="sm" variant="primary" disabled={busy() || !named()} onClick={() => void submit()}>{busy() ? "Saving" : "Create skill"}</Button>

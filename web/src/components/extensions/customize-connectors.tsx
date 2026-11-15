@@ -16,8 +16,8 @@ export function Connectors(): JSX.Element {
 
   return (
     <>
-      <div class="flex w-[380px] shrink-0 flex-col border-r border-line">
-        <div class="flex items-center gap-2 border-b border-line px-3.5 py-3">
+      <div class="flex w-[380px] shrink-0 flex-col border-r border-line-1">
+        <div class="flex items-center gap-2 border-b border-line-1 px-3.5 py-3">
           <span class="label">MCP connectors</span>
           <Button
             size="sm"
@@ -55,23 +55,23 @@ export function Connectors(): JSX.Element {
                   setSelected(server.name)
                   setAdding(false)
                 }}
-                class="flex w-full items-center gap-2.5 border-b border-line px-3.5 py-3 text-left hover:bg-hover"
-                classList={{ "bg-hover": selected() === server.name }}
+                class="flex w-full items-center gap-2.5 border-b border-line-1 px-3.5 py-3 text-left hover:bg-secondary"
+                classList={{ "bg-secondary": selected() === server.name }}
               >
-                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg-2">
+                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary text-ink-2">
                   <Glyph name="plug" size={15} />
                 </span>
                 <span class="min-w-0 flex-1">
-                  <span class="block truncate text-[12.5px] font-medium text-fg">{server.name}</span>
-                  <span class="flex items-center gap-1.5 text-[11.5px] text-fg-3">
+                  <span class="block truncate text-sm font-medium text-ink">{server.name}</span>
+                  <span class="flex items-center gap-1.5 text-xs text-ink-3">
                     <span
-                      class="h-1.5 w-1.5 rounded-[1px]"
-                      classList={{ "bg-ok": server.error === undefined, "bg-bad": server.error !== undefined }}
+                      class="h-1.5 w-1.5 rounded-2xs"
+                      classList={{ "bg-done": server.error === undefined, "bg-failed": server.error !== undefined }}
                     />
                     {server.error ?? `${server.tools} ${server.tools === 1 ? "tool" : "tools"}`}
                   </span>
                 </span>
-                <Glyph name="chevron-right" size={13} class="text-fg-4" />
+                <Glyph name="chevron-right" size={13} class="text-icon" />
               </button>
             )}
           </For>
@@ -124,13 +124,13 @@ function ConnectorDetail(props: { server: McpServer; onRemoved: () => void }): J
 
   return (
     <>
-      <header class="flex items-center gap-3 border-b border-line px-6 py-4">
-        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg">
+      <header class="flex items-center gap-3 border-b border-line-1 px-6 py-4">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary text-ink">
           <Glyph name="plug" size={18} />
         </span>
         <div class="min-w-0 flex-1">
-          <span class="block truncate text-[16px] font-medium text-fg">{props.server.name}</span>
-          <span class="block truncate text-[12px] text-fg-3">
+          <span class="block truncate text-lg font-medium text-ink">{props.server.name}</span>
+          <span class="block truncate text-sm text-ink-3">
             MCP · {props.server.tools} tools
             <Show when={props.server.source}>
               {(source) => <span> · contributed by {source()}</span>}
@@ -153,17 +153,17 @@ function ConnectorDetail(props: { server: McpServer; onRemoved: () => void }): J
             {(message) => <Failure message={`The server answered with: ${message()}`} />}
           </Show>
           <Panel>
-            <div class="flex items-center justify-between border-b border-line px-3.5 py-2.5 text-[12.5px]">
-              <span class="text-fg-3">Endpoint</span>
-              <span class="font-mono text-[12px] text-fg-2">{props.server.url}</span>
+            <div class="flex items-center justify-between border-b border-line-1 px-3.5 py-2.5 text-sm">
+              <span class="text-ink-3">Endpoint</span>
+              <span class="font-mono text-sm text-ink-2">{props.server.url}</span>
             </div>
-            <div class="flex items-center justify-between border-b border-line px-3.5 py-2.5 text-[12.5px]">
-              <span class="text-fg-3">Tools</span>
-              <span class="font-mono text-[12px] text-fg-2">{props.server.tools}</span>
+            <div class="flex items-center justify-between border-b border-line-1 px-3.5 py-2.5 text-sm">
+              <span class="text-ink-3">Tools</span>
+              <span class="font-mono text-sm text-ink-2">{props.server.tools}</span>
             </div>
-            <div class="flex items-center justify-between px-3.5 py-2.5 text-[12.5px]">
-              <span class="text-fg-3">Headers</span>
-              <span class="text-[11.5px] text-fg-3">{props.server.source === undefined ? "Sealed, never shown" : "Supplied by a row"}</span>
+            <div class="flex items-center justify-between px-3.5 py-2.5 text-sm">
+              <span class="text-ink-3">Headers</span>
+              <span class="text-xs text-ink-3">{props.server.source === undefined ? "Sealed, never shown" : "Supplied by a row"}</span>
             </div>
           </Panel>
           <Note>
@@ -197,9 +197,9 @@ function ToolsList(props: { name: string }): JSX.Element {
             <Panel>
               <For each={list()}>
                 {(tool) => (
-                  <div class="flex items-baseline gap-2.5 border-b border-line px-3.5 py-2 last:border-0">
-                    <code class="shrink-0 font-mono text-[11.5px] text-fg">{tool.name}</code>
-                    <span class="min-w-0 truncate text-[11.5px] text-fg-3">{tool.description ?? ""}</span>
+                  <div class="flex items-baseline gap-2.5 border-b border-line-1 px-3.5 py-2 last:border-0">
+                    <code class="shrink-0 font-mono text-xs text-ink">{tool.name}</code>
+                    <span class="min-w-0 truncate text-xs text-ink-3">{tool.description ?? ""}</span>
                   </div>
                 )}
               </For>
@@ -256,40 +256,40 @@ function AddServer(props: { onAdded: (name: string) => void; onCancel: () => voi
 
   return (
     <>
-      <header class="flex items-center gap-3 border-b border-line px-6 py-4">
+      <header class="flex items-center gap-3 border-b border-line-1 px-6 py-4">
         <div class="min-w-0 flex-1">
-          <span class="block text-[16px] font-medium text-fg">Add MCP server</span>
-          <span class="block text-[12px] text-fg-3">Streamable HTTP over https</span>
+          <span class="block text-lg font-medium text-ink">Add MCP server</span>
+          <span class="block text-sm text-ink-3">Streamable HTTP over https</span>
         </div>
       </header>
       <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <div class="flex max-w-[520px] flex-col gap-4">
           <label class="flex flex-col gap-1.5">
-            <span class="text-[12px] font-medium text-fg-2">Name</span>
+            <span class="text-sm font-medium text-ink-2">Name</span>
             <input
               value={name()}
               onInput={(event) => setName(event.currentTarget.value)}
               placeholder="ats-sync"
               spellcheck={false}
               class={MONO_INPUT}
-              classList={{ "border-bad/50": name() !== "" && !validName() }}
+              classList={{ "border-failed/50": name() !== "" && !validName() }}
             />
-            <span class="text-[11.5px] text-fg-3">Lowercase, hyphen separated. This is the tool prefix.</span>
+            <span class="text-xs text-ink-3">Lowercase, hyphen separated. This is the tool prefix.</span>
           </label>
           <label class="flex flex-col gap-1.5">
-            <span class="text-[12px] font-medium text-fg-2">Endpoint</span>
+            <span class="text-sm font-medium text-ink-2">Endpoint</span>
             <input
               value={url()}
               onInput={(event) => setUrl(event.currentTarget.value)}
               placeholder="https://mcp.example.com/mcp"
               spellcheck={false}
               class={MONO_INPUT}
-              classList={{ "border-bad/50": url() !== "" && !validUrl() }}
+              classList={{ "border-failed/50": url() !== "" && !validUrl() }}
             />
-            <span class="text-[11.5px] text-fg-3">Must be https. Credentials belong in headers, not the URL.</span>
+            <span class="text-xs text-ink-3">Must be https. Credentials belong in headers, not the URL.</span>
           </label>
           <label class="flex flex-col gap-1.5">
-            <span class="text-[12px] font-medium text-fg-2">Headers</span>
+            <span class="text-sm font-medium text-ink-2">Headers</span>
             <textarea
               value={headers()}
               onInput={(event) => setHeaders(event.currentTarget.value)}
@@ -297,14 +297,14 @@ function AddServer(props: { onAdded: (name: string) => void; onCancel: () => voi
               spellcheck={false}
               class={`${MONO_INPUT} h-auto min-h-[72px] resize-y py-2 leading-relaxed`}
             />
-            <span class="text-[11.5px] text-fg-3">Optional JSON object. Stored sealed; models never see it.</span>
+            <span class="text-xs text-ink-3">Optional JSON object. Stored sealed; models never see it.</span>
           </label>
           <Show when={error()}>
             {(message) => <Failure message={message()} />}
           </Show>
         </div>
       </div>
-      <footer class="flex items-center gap-2 border-t border-line px-6 py-3">
+      <footer class="flex items-center gap-2 border-t border-line-1 px-6 py-3">
         <span class="ml-auto" />
         <Button size="sm" variant="quiet" onClick={props.onCancel}>Cancel</Button>
         <Button
