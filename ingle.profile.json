@@ -27,9 +27,13 @@
     "ingle-plugin-web",
     "ingle-plugin-workspace",
     "ingle-plugin-git-native",
+<<<<<<< HEAD
     "ingle-plugin-theme-pack",
     "ingle-plugin-outline",
     "ingle-plugin-standup"
+=======
+    "ingle-plugin-drive"
+>>>>>>> capy/plugin-manifest-v3
   ],
   "patch": [
     {
