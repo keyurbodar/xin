@@ -174,10 +174,10 @@ export class Home extends DurableObject<Env> {
   }
 
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    await this.#current.root.wire.sockets?.message(ws, message)
+    await this.#current.root.wire.message(ws, message)
   }
 
   override async webSocketClose(ws: WebSocket): Promise<void> {
-    await this.#current.root.wire.sockets?.closed(ws)
+    await this.#current.root.wire.closed(ws)
   }
 }
