@@ -1,7 +1,7 @@
 import type { JSX } from "solid-js"
 
 /** I4: a 64 grid, a 1.5px stroke that never scales, one orange detail, and one small loop per drawing. */
-export const PICTOGRAMS = {
+const PICTOGRAMS = {
   threads:
     '<circle class="l" cx="13" cy="32" r="5"/><path class="l" d="M18 32h26M24 32c9 0 9-14 20-14M24 32c9 0 9 14 20 14"/><circle class="l m-pop" style="animation-delay:.12s" cx="49" cy="18" r="4"/><circle class="a m-pop" cx="49" cy="32" r="4"/><circle class="l m-pop" style="animation-delay:.24s" cx="49" cy="46" r="4"/>',
   report:

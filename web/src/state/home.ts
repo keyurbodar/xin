@@ -1,7 +1,6 @@
 import { createSignal } from "solid-js"
 import type { Streams } from "../lib/api.ts"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
-import { parseRequestList, type RequestRow } from "./conversation.ts"
 
 export type ThreadSummary = {
   readonly id: number
@@ -37,11 +36,9 @@ export type HomeSnapshot = { readonly projects: readonly ProjectSummary[] }
 
 const [projects, setProjects] = createSignal<readonly ProjectSummary[]>([])
 const [loaded, setLoaded] = createSignal(false)
-const [requests, setRequests] = createSignal<readonly RequestRow[]>([])
 
 export const homeProjects = projects
 export const homeLoaded = loaded
-export const homeRequests = requests
 
 function threadsOf(value: unknown): readonly ThreadSummary[] {
   return listOf(value).flatMap((entry) => {
@@ -113,7 +110,6 @@ export function subscribeHome(streams: Streams): () => void {
   return streams.subscribe("home", {
     value: (value) => {
       setProjects(parse(value))
-      setRequests(isRecord(value) ? parseRequestList({ requests: value.requests }) : [])
       setLoaded(true)
     },
     delta: () => undefined,

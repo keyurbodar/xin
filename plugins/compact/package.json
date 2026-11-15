@@ -2,14 +2,14 @@
   "name": "ingle-plugin-compact",
   "version": "0.1.0",
   "private": true,
-  "description": "Manual conversation compaction for the owner.",
+  "description": "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
   "type": "module",
   "ingle": {
     "plugins": {
       "compact": {
         "module": "./index.ts",
         "title": "Compaction",
-        "description": "Manual conversation compaction for the owner.",
+        "description": "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
         "contributes": {
           "ops": [
             "conv.compact"

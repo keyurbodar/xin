@@ -50,7 +50,7 @@ export function Models(): JSX.Element {
               <Show
                 when={providers(list()).length > 0}
                 fallback={
-                  <div class="px-3.5 py-3 text-[12.5px] text-fg-3">
+                  <div class="px-3.5 py-3 text-sm text-ink-3">
                     No provider has a key yet. Add one to see its models.
                   </div>
                 }
@@ -64,7 +64,7 @@ export function Models(): JSX.Element {
                 Add provider
               </Button>
               <Show when={list().omitted > 0}>
-                <span class="text-[11.5px] text-fg-3">{list().omitted} more models are not listed</span>
+                <span class="text-xs text-ink-3">{list().omitted} more models are not listed</span>
               </Show>
             </div>
           </div>
@@ -76,7 +76,7 @@ export function Models(): JSX.Element {
 
       <Group title="Catalog" detail="The list comes from your providers; nothing is hard-coded">
         <Panel>
-          <div class="grid grid-cols-[minmax(0,1fr)_120px_100px_80px_90px] gap-2 border-b border-line px-3.5 py-2">
+          <div class="grid grid-cols-[minmax(0,1fr)_120px_100px_80px_90px] gap-2 border-b border-line-1 px-3.5 py-2">
             <span class="label">Model</span>
             <span class="label">Provider</span>
             <span class="label">Context</span>
@@ -85,7 +85,7 @@ export function Models(): JSX.Element {
           </div>
           <Show
             when={list().models.length > 0}
-            fallback={<div class="px-3.5 py-3 text-[12.5px] text-fg-3">The catalog is empty.</div>}
+            fallback={<div class="px-3.5 py-3 text-sm text-ink-3">The catalog is empty.</div>}
           >
             <For each={list().models}>{(model) => <CatalogRow model={model} />}</For>
           </Show>
@@ -133,19 +133,19 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
   }
 
   return (
-    <div class="border-b border-line px-3.5 py-3 last:border-0">
+    <div class="border-b border-line-1 px-3.5 py-3 last:border-0">
       <div class="flex items-center gap-3">
-        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover font-mono text-[12px] uppercase text-fg-2">
+        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary font-mono text-sm uppercase text-ink-2">
           {props.provider.id.slice(0, 1)}
         </span>
         <div class="min-w-0 flex-1">
-          <span class="block truncate text-[12.5px] font-medium text-fg">{props.provider.id}</span>
-          <span class="flex items-center gap-1.5 text-[11.5px] text-fg-3">
-            <span class="h-1.5 w-1.5 rounded-[1px] bg-ok" />
+          <span class="block truncate text-sm font-medium text-ink">{props.provider.id}</span>
+          <span class="flex items-center gap-1.5 text-xs text-ink-3">
+            <span class="h-1.5 w-1.5 rounded-2xs bg-done" />
             Connected · {props.provider.models.length} {props.provider.models.length === 1 ? "model" : "models"}
           </span>
         </div>
-        <span class="font-mono text-[11px] text-fg-4">stored sealed</span>
+        <span class="font-mono text-2xs text-icon">stored sealed</span>
         <Show when={!confirming()}>
           <Button size="sm" variant="quiet" onClick={() => setEditing((open) => !open)}>Edit</Button>
           <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>Remove</Button>
@@ -177,8 +177,8 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
       </Show>
 
       <Show when={confirming()}>
-        <div class="mt-2.5 flex items-center gap-2 rounded-[4px] border border-bad/30 bg-bad-bg px-3 py-2">
-          <span class="min-w-0 flex-1 text-[12px] text-fg-2">
+        <div class="mt-2.5 flex items-center gap-2 rounded-md border border-failed/30 bg-failed-soft px-3 py-2">
+          <span class="min-w-0 flex-1 text-sm text-ink-2">
             Removing the key hides {props.provider.id}'s models from every picker.
           </span>
           <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
@@ -227,9 +227,9 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
   }
 
   return (
-    <div class="flex flex-col gap-3 rounded-[4px] border border-line bg-surface p-3.5">
+    <div class="flex flex-col gap-3 rounded-md border border-line-1 bg-panel p-3.5">
       <div class="grid grid-cols-[180px_minmax(0,1fr)] items-center gap-3">
-        <span class="text-[12.5px] text-fg-2">Provider id</span>
+        <span class="text-sm text-ink-2">Provider id</span>
         <input
           value={id()}
           onInput={(event) => setId(event.currentTarget.value)}
@@ -238,7 +238,7 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
           class={MONO_INPUT}
           aria-label="Provider id"
         />
-        <span class="text-[12.5px] text-fg-2">API key</span>
+        <span class="text-sm text-ink-2">API key</span>
         <input
           type="password"
           value={key()}
@@ -249,18 +249,18 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
           aria-label="API key"
         />
       </div>
-      <label class="flex items-center gap-2 text-[12.5px] text-fg-2">
+      <label class="flex items-center gap-2 text-sm text-ink-2">
         <input
           type="checkbox"
           checked={custom()}
           onChange={(event) => setCustom(event.currentTarget.checked)}
-          class="h-3.5 w-3.5 accent-accent"
+          class="h-3.5 w-3.5 accent-primary"
         />
         Custom endpoint
       </label>
       <Show when={custom()}>
         <div class="grid grid-cols-[180px_minmax(0,1fr)] items-center gap-3">
-          <span class="text-[12.5px] text-fg-2">Base URL</span>
+          <span class="text-sm text-ink-2">Base URL</span>
           <input
             value={baseUrl()}
             onInput={(event) => setBaseUrl(event.currentTarget.value)}
@@ -269,7 +269,7 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
             class={MONO_INPUT}
             aria-label="Base URL"
           />
-          <span class="text-[12.5px] text-fg-2">API</span>
+          <span class="text-sm text-ink-2">API</span>
           <select
             value={api()}
             onChange={(event) => setApi(event.currentTarget.value)}
@@ -295,13 +295,13 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
 
 function CatalogRow(props: { model: ModelInfo }): JSX.Element {
   return (
-    <div class="grid grid-cols-[minmax(0,1fr)_120px_100px_80px_90px] items-center gap-2 border-b border-line px-3.5 py-2 text-[12.5px] last:border-0">
+    <div class="grid grid-cols-[minmax(0,1fr)_120px_100px_80px_90px] items-center gap-2 border-b border-line-1 px-3.5 py-2 text-sm last:border-0">
       <span class="min-w-0">
-        <span class="block truncate text-fg">{props.model.name}</span>
-        <span class="block truncate font-mono text-[10.5px] text-fg-4">{props.model.modelId}</span>
+        <span class="block truncate text-ink">{props.model.name}</span>
+        <span class="block truncate font-mono text-2xs text-icon">{props.model.modelId}</span>
       </span>
-      <span class="truncate text-[11.5px] text-fg-2">{props.model.provider}</span>
-      <span class="font-mono text-[11.5px] text-fg-2">
+      <span class="truncate text-xs text-ink-2">{props.model.provider}</span>
+      <span class="font-mono text-xs text-ink-2">
         {props.model.contextWindow === 0 ? "—" : `${Math.round(props.model.contextWindow / 1000)}k`}
       </span>
       <Chip tone={props.model.vision ? "ok" : "default"}>{props.model.vision ? "Yes" : "No"}</Chip>
