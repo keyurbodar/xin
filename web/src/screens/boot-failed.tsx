@@ -1,37 +1,12 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
-import { repair, type RepairReport } from "../lib/api.ts"
+import { repair } from "../lib/api.ts"
 import { probe, token } from "../lib/auth.ts"
+import { confirmed, KEPT, repairOffers, type Drop, type RepairOffer, type RepairReport } from "../lib/repair.ts"
 import { errorMessage } from "../state/extensions.ts"
 import { Button } from "../components/ui/button.tsx"
 import { Failure } from "../components/ui/state.tsx"
 import { StatusGlyph } from "../components/ui/status-glyph.tsx"
 import { Glyph } from "../components/extensions/glyph.tsx"
-
-type Drop = "journal" | "all"
-
-type Action = {
-  readonly drop: Drop
-  readonly title: string
-  readonly detail: (report: RepairReport) => string
-  readonly confirm: string
-}
-
-const ACTIONS: readonly Action[] = [
-  {
-    drop: "journal",
-    title: "Drop the journal",
-    detail: (report) =>
-      `Discards the ${count(report.journal, "change")} written since the last checkpoint and opens the home from that checkpoint.`,
-    confirm: "Drop journal",
-  },
-  {
-    drop: "all",
-    title: "Start from empty",
-    detail: () =>
-      "Discards the checkpoint and the journal too, so everything pi keeps (conversations and their transcripts) is gone and the home opens empty.",
-    confirm: "Drop everything",
-  },
-]
 
 function count(value: number, noun: string): string {
   return `${value.toLocaleString("en-US")} ${noun}${value === 1 ? "" : "s"}`
@@ -44,7 +19,6 @@ export function BootFailedScreen(props: {
 }): JSX.Element {
   const [failure, setFailure] = createSignal(props.failure)
   const [report, setReport] = createSignal<RepairReport | undefined>(undefined)
-  const [refused, setRefused] = createSignal<number | undefined>(undefined)
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [confirming, setConfirming] = createSignal<Drop | undefined>(undefined)
   const [busy, setBusy] = createSignal<Drop | "check" | undefined>(undefined)
@@ -59,8 +33,8 @@ export function BootFailedScreen(props: {
         props.onRecovered()
         return
       }
-      if (answer.kind === "refused") {
-        setRefused(answer.status)
+      if (answer.kind === "unauthorized") {
+        props.onSignedOut()
         return
       }
       if (answer.report.failure === null) {
@@ -103,9 +77,6 @@ export function BootFailedScreen(props: {
     }
   }
 
-  const offered = (stored: RepairReport): readonly Action[] =>
-    ACTIONS.filter((action) => (action.drop === "journal" ? stored.journal > 0 : stored.checkpoint > 0))
-
   return (
     <div class="fixed inset-0 z-50 flex flex-col bg-bg text-ink" role="alertdialog" aria-labelledby="boot-title">
       <div class="flex min-h-0 flex-1 justify-center overflow-y-auto px-6 pb-16 pt-[12vh]">
@@ -141,7 +112,7 @@ export function BootFailedScreen(props: {
               {(stored) => (
                 <div class="grid grid-cols-2 border-t border-line-1">
                   <div class="border-r border-line-1 px-3.5 py-2.5">
-                    <span class="block text-xs text-ink-3">Journal since checkpoint</span>
+                    <span class="block text-xs text-ink-3">{stored().checkpoint === 0 ? "Journal" : "Journal since checkpoint"}</span>
                     <span class="mt-0.5 block font-mono text-sm text-ink">{count(stored().journal, "row")}</span>
                   </div>
                   <div class="px-3.5 py-2.5">
@@ -154,23 +125,6 @@ export function BootFailedScreen(props: {
               )}
             </Show>
           </div>
-
-          <Show when={refused()}>
-            {(status) => (
-              <div class="mt-4 flex flex-col gap-3 rounded-lg border border-line-2 bg-panel px-3.5 py-3" style={{ "--i": 4 }}>
-                <p class="text-sm text-ink-2">
-                  The home refused repair (HTTP {status()}). Repair is checked against the deploy’s{" "}
-                  <span class="font-mono text-xs text-ink">OWNER_TOKEN</span>, because a rotated token is verified by the
-                  home that can’t open.
-                </p>
-                <div>
-                  <Button size="sm" onClick={props.onSignedOut}>
-                    Sign in with the deploy token
-                  </Button>
-                </div>
-              </div>
-            )}
-          </Show>
 
           <span class="mt-8 text-sm font-medium text-ink" style={{ "--i": 4 }}>
             Repair
@@ -190,46 +144,16 @@ export function BootFailedScreen(props: {
             </div>
             <Show when={report()}>
               {(stored) => (
-                <For each={offered(stored())}>
-                  {(action) => (
-                    <div class="flex flex-col gap-2.5 border-b border-line-1 px-3.5 py-3 last:border-0">
-                      <div class="flex items-center gap-4">
-                        <div class="min-w-0 flex-1">
-                          <span class="block text-sm font-medium text-ink">{action.title}</span>
-                          <span class="mt-0.5 block text-xs leading-snug text-ink-3">{action.detail(stored())}</span>
-                        </div>
-                        <Show when={confirming() !== action.drop}>
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            class="im-press"
-                            disabled={busy() !== undefined || refused() !== undefined}
-                            onClick={() => setConfirming(action.drop)}
-                          >
-                            <Glyph name="trash" size={14} />
-                            {action.title}
-                          </Button>
-                        </Show>
-                      </div>
-                      <Show when={confirming() === action.drop}>
-                        <div class="im-arrive flex items-center gap-2 rounded-md bg-failed-soft px-3 py-2">
-                          <Glyph name="warning" size={14} class="shrink-0 text-failed" />
-                          <span class="min-w-0 flex-1 text-xs text-ink-2">This can’t be undone.</span>
-                          <Button size="sm" variant="quiet" onClick={() => setConfirming(undefined)}>
-                            Keep
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            class="im-press"
-                            disabled={busy() !== undefined}
-                            onClick={() => void run(action.drop)}
-                          >
-                            {busy() === action.drop ? "Dropping" : action.confirm}
-                          </Button>
-                        </div>
-                      </Show>
-                    </div>
+                <For each={repairOffers(stored())}>
+                  {(offer) => (
+                    <OfferRow
+                      offer={offer}
+                      open={confirming() === offer.drop}
+                      busy={busy()}
+                      onOpen={() => setConfirming(offer.drop)}
+                      onClose={() => setConfirming(undefined)}
+                      onConfirm={() => void run(offer.drop)}
+                    />
                   )}
                 </For>
               )}
@@ -245,11 +169,113 @@ export function BootFailedScreen(props: {
           </Show>
 
           <p class="mt-4 text-xs leading-relaxed text-ink-3">
-            Credentials, files, settings and plugin rows live in the home’s own tables and survive both drops. If a drop
-            doesn’t clear the failure, the cause is in code, not stored state: copy the details into an issue.
+            {KEPT} If a drop doesn’t clear the failure, the cause is in code, not stored state: copy the details into an
+            issue.
           </p>
         </div>
       </div>
+    </div>
+  )
+}
+
+function OfferRow(props: {
+  offer: RepairOffer
+  open: boolean
+  busy: Drop | "check" | undefined
+  onOpen: () => void
+  onClose: () => void
+  onConfirm: () => void
+}): JSX.Element {
+  let opener: HTMLSpanElement | undefined
+
+  const close = (): void => {
+    props.onClose()
+    requestAnimationFrame(() => opener?.querySelector<HTMLElement>("button")?.focus())
+  }
+
+  return (
+    <div class="flex flex-col gap-2.5 border-b border-line-1 px-3.5 py-3 last:border-0">
+      <div class="flex items-center gap-4">
+        <div class="min-w-0 flex-1">
+          <span class="block text-sm font-medium text-ink">{props.offer.title}</span>
+          <span class="mt-0.5 block text-xs leading-snug text-ink-3">{props.offer.detail}</span>
+        </div>
+        <span ref={opener} class="shrink-0">
+          <Button
+            size="sm"
+            variant="danger"
+            class="im-press"
+            disabled={props.busy !== undefined || props.open}
+            onClick={props.onOpen}
+          >
+            <Glyph name="trash" size={14} />
+            {props.offer.title}
+          </Button>
+        </span>
+      </div>
+      <Show when={props.open}>
+        <Confirm offer={props.offer} busy={props.busy === props.offer.drop} onClose={close} onConfirm={props.onConfirm} />
+      </Show>
+    </div>
+  )
+}
+
+function Confirm(props: { offer: RepairOffer; busy: boolean; onClose: () => void; onConfirm: () => void }): JSX.Element {
+  const [typed, setTyped] = createSignal("")
+  let box: HTMLDivElement | undefined
+
+  onMount(() => box?.querySelector<HTMLElement>("input, button")?.focus())
+
+  const ready = (): boolean => confirmed(props.offer, typed())
+
+  return (
+    <div
+      ref={box}
+      role="group"
+      aria-label={`Confirm ${props.offer.title}`}
+      class="im-arrive flex flex-col gap-2 rounded-md bg-failed-soft px-3 py-2.5"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return
+        event.stopPropagation()
+        props.onClose()
+      }}
+    >
+      <div class="flex items-center gap-2">
+        <Glyph name="warning" size={14} class="shrink-0 text-failed" />
+        <span class="min-w-0 flex-1 text-xs text-ink-2">
+          This can’t be undone.
+          <Show when={props.offer.word}>{(word) => <> Type <span class="font-mono text-ink">{word()}</span> to confirm.</>}</Show>
+        </span>
+      </div>
+      <form
+        class="flex items-center gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (ready() && !props.busy) props.onConfirm()
+        }}
+      >
+        <Show when={props.offer.word}>
+          {(word) => (
+            <input
+              value={typed()}
+              onInput={(event) => setTyped(event.currentTarget.value)}
+              aria-label={`Type ${word()} to confirm`}
+              placeholder={word()}
+              spellcheck={false}
+              autocomplete="off"
+              class="h-7 min-w-0 flex-1 rounded-sm border border-failed/40 bg-bg px-2 font-mono text-xs text-ink placeholder:text-placeholder focus:border-failed focus:outline-none"
+            />
+          )}
+        </Show>
+        <span class="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="quiet" onClick={props.onClose}>
+            Keep
+          </Button>
+          <Button size="sm" variant="danger" type="submit" class="im-press" disabled={props.busy || !ready()}>
+            {props.busy ? "Dropping" : props.offer.confirm}
+          </Button>
+        </span>
+      </form>
     </div>
   )
 }

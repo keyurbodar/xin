@@ -1,4 +1,5 @@
 import { token } from "./auth.ts"
+import { parseRepairReply, type Drop, type RepairAnswer } from "./repair.ts"
 
 export class OpError extends Error {
   readonly code: string
@@ -52,6 +53,8 @@ export class Streams {
   #ws: WebSocket | undefined
   #subs = new Map<string, Set<Subscription>>()
   #retry = 0
+  #timer: ReturnType<typeof setTimeout> | undefined
+  #waiting: (() => void) | undefined
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
   readonly #onSession: (socket: string | undefined) => void
   readonly #onRetry: (at: number) => void
@@ -82,6 +85,7 @@ export class Streams {
 
   open(): void {
     if (this.#ws !== undefined) return
+    this.#cancelPending()
     this.#onStatus("connecting")
     const url = new URL("/v1/socket", location.href)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
@@ -109,17 +113,43 @@ export class Streams {
     else this.#ws.close()
   }
 
+  /** Dials now in place of the pending backoff; a dial already in flight is left to finish, so there is one chain. */
+  dialNow(): void {
+    this.#retry = 0
+    this.open()
+  }
+
+  #cancelPending(): void {
+    clearTimeout(this.#timer)
+    this.#timer = undefined
+    if (this.#waiting === undefined) return
+    document.removeEventListener("visibilitychange", this.#waiting)
+    this.#waiting = undefined
+  }
+
   #reconnect(): void {
+    this.#cancelPending()
     const delay = Math.min(15_000, 500 * 2 ** this.#retry)
     this.#retry += 1
     this.#onRetry(Date.now() + delay)
-    setTimeout(() => this.#openWhenVisible(), delay)
+    this.#timer = setTimeout(() => {
+      this.#timer = undefined
+      this.#openWhenVisible()
+    }, delay)
   }
 
   /** A hidden tab waits to be seen before it dials again, so a dead socket in a background tab costs no requests. */
   #openWhenVisible(): void {
-    if (document.visibilityState === "visible") this.open()
-    else document.addEventListener("visibilitychange", () => this.#openWhenVisible(), { once: true })
+    if (document.visibilityState === "visible") {
+      this.open()
+      return
+    }
+    const waiting = (): void => {
+      this.#waiting = undefined
+      this.#openWhenVisible()
+    }
+    this.#waiting = waiting
+    document.addEventListener("visibilitychange", waiting, { once: true })
   }
 
   #send(frame: Record<string, unknown>): void {
@@ -157,35 +187,14 @@ function parseFrame(raw: string): ServerFrame | undefined {
   return undefined
 }
 
-export type RepairReport = { readonly failure: string | null; readonly journal: number; readonly checkpoint: number }
-
-export type RepairAnswer =
-  | { readonly kind: "report"; readonly report: RepairReport }
-  | { readonly kind: "open" }
-  | { readonly kind: "refused"; readonly status: number }
-
 /** The one route a home that cannot boot still answers. Without `drop` it only reports what is stored. */
-export async function repair(drop?: "journal" | "all"): Promise<RepairAnswer> {
+export async function repair(drop?: Drop): Promise<RepairAnswer> {
   const response = await fetch("/v1/repair", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${token()}` },
     ...(drop === undefined ? {} : { body: JSON.stringify({ drop }) }),
   })
-  if (response.status === 409) return { kind: "open" }
-  if (!response.ok) return { kind: "refused", status: response.status }
-  const body: unknown = await response.json()
-  if (typeof body !== "object" || body === null) throw new OpError("http", "repair: unreadable reply")
-  const failure = Reflect.get(body, "failure")
-  const journal = Reflect.get(body, "journal")
-  const checkpoint = Reflect.get(body, "checkpoint")
-  return {
-    kind: "report",
-    report: {
-      failure: typeof failure === "string" ? failure : null,
-      journal: typeof journal === "number" ? journal : 0,
-      checkpoint: typeof checkpoint === "number" ? checkpoint : 0,
-    },
-  }
+  return parseRepairReply(response)
 }
 
 export type UploadedFile = {

@@ -1,7 +1,8 @@
 import { createEffect, createSignal, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 import { probe, token } from "../lib/auth.ts"
 import { ago } from "../lib/format.ts"
-import { connectionState, disconnectedSince, lastConnected, networkOnline, nextRetry, reauthorize } from "../state/connection.ts"
+import { connectionState, dialNow, disconnectedSince, lastConnected, networkOnline, nextRetry } from "../state/connection.ts"
+import { trapTab } from "../lib/focus.ts"
 import { Button } from "../components/ui/button.tsx"
 import { Pictogram } from "../components/ui/pictogram.tsx"
 import { Glyph } from "../components/extensions/glyph.tsx"
@@ -37,13 +38,21 @@ export function OfflineScreen(props: { onBootFailed: (failure: string) => void; 
     return answer.kind === "ok" || answer.kind === "unreachable"
   }
 
+  let dialog: HTMLDivElement | undefined
+  const returnTo = document.activeElement
+
   onMount(() => {
+    dialog?.querySelector<HTMLElement>("button")?.focus()
     if (networkOnline()) void socketIsTheProblem()
+  })
+
+  onCleanup(() => {
+    if (returnTo instanceof HTMLElement) requestAnimationFrame(() => returnTo.isConnected && returnTo.focus())
   })
 
   const reconnect = async (): Promise<void> => {
     setChecking(true)
-    if (await socketIsTheProblem()) reauthorize()
+    if (await socketIsTheProblem()) dialNow()
     setChecking(false)
   }
 
@@ -60,7 +69,16 @@ export function OfflineScreen(props: { onBootFailed: (failure: string) => void; 
   }
 
   return (
-    <div class="fixed inset-0 z-50 flex flex-col bg-bg text-ink" role="alertdialog" aria-labelledby="offline-title">
+    <div
+      ref={dialog}
+      class="fixed inset-0 z-50 flex flex-col bg-bg text-ink"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="offline-title"
+      onKeyDown={(event) => {
+        if (dialog !== undefined) trapTab(dialog, event)
+      }}
+    >
       <div class="flex min-h-0 flex-1 justify-center overflow-y-auto px-6 pb-16 pt-[18vh]">
         <div class="im-stagger flex w-full max-w-[440px] flex-col items-center text-center">
           <Pictogram name="offline" size={88} />

@@ -73,9 +73,11 @@ export function App(): JSX.Element {
         {(failure) => <BootFailedScreen failure={failure()} onRecovered={() => void start()} onSignedOut={signOut} />}
       </Match>
       <Match when={gate().kind === "ready"}>
-        <Show when={route().parts[0] === "welcome"} fallback={<Shell />}>
-          <WelcomeScreen />
-        </Show>
+        <div class="contents" inert={offline()}>
+          <Show when={route().parts[0] === "welcome"} fallback={<Shell />}>
+            <WelcomeScreen />
+          </Show>
+        </div>
         <Show when={offline()}>
           <OfflineScreen
             onBootFailed={(failure) => setGate({ kind: "boot_failed", failure })}

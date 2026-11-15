@@ -45,7 +45,7 @@ export function connect(): Streams {
     )
     window.addEventListener("online", () => {
       setOnline(true)
-      opened.reconnectNow()
+      opened.dialNow()
     })
     window.addEventListener("offline", () => setOnline(false))
     streams = opened
@@ -53,6 +53,11 @@ export function connect(): Streams {
   }
   streams.open()
   return streams
+}
+
+/** Dials now when no socket is open, as one chain with the pending backoff. */
+export function dialNow(): void {
+  streams?.dialNow()
 }
 
 /** Bounces the socket after the owner token changed, so the handshake carries the new one. */

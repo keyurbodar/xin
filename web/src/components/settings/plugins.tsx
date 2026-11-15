@@ -42,6 +42,8 @@ export function Plugins(): JSX.Element {
     )
   }
 
+  const byId = (): ReadonlyMap<string, PluginRow> => new Map(all().map((row) => [row.id, row]))
+
   const optional = (): readonly PluginRow[] => shown().filter((row) => !row.required)
   const core = (): readonly PluginRow[] => shown().filter((row) => row.required)
 
@@ -101,9 +103,17 @@ export function Plugins(): JSX.Element {
           <Show when={optional().length > 0}>
             <Group title="Optional" detail="A row that is off doesn’t start, so its tools and ops are gone until it’s on">
               <div class="overflow-hidden rounded-lg border border-line-1 bg-panel">
-                <For each={optional()}>
-                  {(row) => (
-                    <PluginLine row={row} entry={entryFor(row.plugin)} onToggle={(next) => void toggle(row, next)} />
+                <For each={optional().map((row) => row.id)}>
+                  {(id) => (
+                    <Show when={byId().get(id)}>
+                      {(row) => (
+                        <PluginLine
+                          row={row()}
+                          entry={entryFor(row().plugin)}
+                          onToggle={(next) => void toggle(row(), next)}
+                        />
+                      )}
+                    </Show>
                   )}
                 </For>
               </div>
@@ -112,7 +122,11 @@ export function Plugins(): JSX.Element {
           <Show when={core().length > 0}>
             <Group title="Core" detail="The kernel needs these to run; they can’t be turned off">
               <div class="overflow-hidden rounded-lg border border-line-1 bg-panel">
-                <For each={core()}>{(row) => <PluginLine row={row} entry={entryFor(row.plugin)} />}</For>
+                <For each={core().map((row) => row.id)}>
+                  {(id) => (
+                    <Show when={byId().get(id)}>{(row) => <PluginLine row={row()} entry={entryFor(row().plugin)} />}</Show>
+                  )}
+                </For>
               </div>
             </Group>
           </Show>
@@ -210,12 +224,7 @@ function PluginLine(props: {
           <div class="im-grow" data-open={open() ? "" : undefined} inert={!open()}>
             <div>
               <div class="border-t border-line-1 bg-bg/40 px-3.5 py-3.5 pl-[54px]">
-                <ConfigForm
-                  rowId={props.row.id}
-                  schema={entry().schema}
-                  config={props.row.config}
-                  onSaved={() => void rows.reload()}
-                />
+                <ConfigForm rowId={props.row.id} schema={entry().schema} config={props.row.config} />
               </div>
             </div>
           </div>
