@@ -175,6 +175,9 @@ export type TestEnv = Omit<Env, "HOME"> & {
   readonly ECHO: Fetcher
 }
 
+/** Module state outlives an eviction, which replaces only the instance. */
+let answered = 0
+
 export class Home extends ProductHome {
   readonly hanging = Promise.withResolvers<void>()
 
@@ -185,6 +188,16 @@ export class Home extends ProductHome {
 
   meter(): Sample {
     return sample()
+  }
+
+  override fetch(request: Request): Promise<Response> {
+    answered += 1
+    return super.fetch(request)
+  }
+
+  /** Requests this isolate's homes have answered, kept across evictions like the meter. */
+  requests(): number {
+    return answered
   }
 
   meterLabel(label: string): void {

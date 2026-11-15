@@ -10,6 +10,7 @@ import type { Manager } from "./manager.ts"
 import type { Ops } from "./ops.ts"
 import type { Pi } from "./pi.ts"
 import type { Secrets } from "./secrets.ts"
+import type { OwnerAuth } from "./token.ts"
 import type { Deployer, System } from "./system.ts"
 import type { Wire } from "./wire.ts"
 
@@ -17,6 +18,7 @@ export type Runtime = {
   readonly state: DurableObjectState
   readonly env: Env
   readonly providers: readonly Provider[]
+  readonly auth: OwnerAuth
   abort(reason: string): void
   restart(): Promise<void>
 }

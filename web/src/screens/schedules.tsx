@@ -1,9 +1,11 @@
 import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { firstLoad } from "../lib/loading.ts"
 import { cmd, OpError } from "../lib/api.ts"
 import { TopBar, TopButton } from "../components/shell/topbar.tsx"
 import { Icon } from "../components/ui/icon.tsx"
+import { MorphIcon } from "../components/ui/morph-icon.tsx"
 import { ago, describeRule } from "../lib/format.ts"
-import { Skullet } from "../components/ui/skeleton.tsx"
+import { Loading, RowSkeleton } from "../components/ui/skeleton.tsx"
 import { CreateSchedule } from "../components/schedules/create.tsx"
 import { EmptyState } from "../components/chat/ui.tsx"
 
@@ -54,7 +56,7 @@ export function SchedulesScreen(): JSX.Element {
         actions={<TopButton icon={<Icon name="plus" size={14} />} label="New schedule" onClick={() => setCreating(true)} />}
       />
       <div class="min-h-0 flex-1 overflow-y-auto px-10 pb-12 pt-7">
-        <Skullet loading={page.loading} sample={() => <ScheduleRows items={[]} />} label="Loading schedules">
+        <Loading when={firstLoad(page)} skeleton={<RowSkeleton rows={3} />} label="Loading schedules">
           <Show
             when={schedules().length > 0}
             fallback={
@@ -67,7 +69,7 @@ export function SchedulesScreen(): JSX.Element {
           >
             <ScheduleRows items={schedules()} onChanged={reload} />
           </Show>
-        </Skullet>
+        </Loading>
       </div>
       <CreateSchedule open={creating()} onClose={() => setCreating(false)} onCreated={reload} />
     </>
@@ -124,8 +126,9 @@ function ScheduleRow(props: { item: Schedule; onChanged?: (() => void) | undefin
         type="button"
         disabled={busy()}
         onClick={() => void edit({ action: "update", active: !props.item.active })}
-        class="h-7 shrink-0 rounded-sm border border-line-2 px-2.5 text-sm text-ink-2 hover:border-line-3 hover:text-ink disabled:opacity-50"
+        class="flex h-7 shrink-0 items-center gap-1.5 rounded-sm border border-line-2 px-2.5 text-sm text-ink-2 hover:border-line-3 hover:text-ink disabled:opacity-50"
       >
+        <MorphIcon kind="pause" on={!props.item.active} size={13} />
         {props.item.active ? "Pause" : "Resume"}
       </button>
       <button

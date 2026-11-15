@@ -1,6 +1,8 @@
 import { createSignal } from "solid-js"
 import type { Streams } from "../lib/api.ts"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
+import { route } from "../lib/router.ts"
+import { parseRequestList, type RequestRow } from "./conversation.ts"
 
 export type ThreadSummary = {
   readonly id: number
@@ -32,15 +34,15 @@ export type ProjectSummary = {
   readonly openRequests: number
 }
 
-export type HomeSnapshot = { readonly projects: readonly ProjectSummary[] }
-
 const [projects, setProjects] = createSignal<readonly ProjectSummary[]>([])
+const [requests, setRequests] = createSignal<readonly RequestRow[]>([])
 const [loaded, setLoaded] = createSignal(false)
 const [plugins, setPlugins] = createSignal<Readonly<Record<string, string>>>({})
 
 export const homeProjects = projects
 export const homeLoaded = loaded
 export const homePlugins = plugins
+export const homeRequests = requests
 
 function threadsOf(value: unknown): readonly ThreadSummary[] {
   return listOf(value).flatMap((entry) => {
@@ -118,6 +120,7 @@ export function subscribeHome(streams: Streams): () => void {
     value: (value) => {
       setProjects(parse(value))
       setPlugins(isRecord(value) ? pluginStates(value.plugins) : {})
+      setRequests(parseRequestList(value))
       setLoaded(true)
     },
     delta: () => undefined,
@@ -128,16 +131,23 @@ export function activeProjects(): readonly ProjectSummary[] {
   return projects().filter((project) => !project.archived)
 }
 
-export function counts(): { waiting: number; working: number; finished: number; failed: number } {
-  let waiting = 0
-  let working = 0
-  let finished = 0
-  let failed = 0
-  for (const project of activeProjects()) {
-    waiting += project.threads.waiting.length + project.openRequests
-    working += project.threads.working.length
-    finished += project.threads.completed.length
-    failed += project.threads.failed.length
-  }
-  return { waiting, working, finished, failed }
+export function projectThreads(project: ProjectSummary): readonly ThreadSummary[] {
+  const groups = project.threads
+  return [...groups.working, ...groups.waiting, ...groups.failed, ...groups.completed, ...groups.cancelled]
+}
+
+/** The project the address names, or the first live one on the home route. */
+export function routeProject(): ProjectSummary | undefined {
+  const parts = route().parts
+  if (parts[0] === undefined || parts[0] === "new") return activeProjects()[0]
+  if (parts[0] !== "p") return undefined
+  return projects().find((project) => project.slug === parts[1])
+}
+
+/** The thread tab the address names: #/p/<slug>/t/<id>. */
+export function routeThreadId(): number | undefined {
+  const parts = route().parts
+  if (parts[0] !== "p" || parts[2] !== "t") return undefined
+  const id = Number(parts[3])
+  return Number.isSafeInteger(id) && id >= 0 ? id : undefined
 }

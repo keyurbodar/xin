@@ -1,4 +1,5 @@
 import { For, Show, type JSX } from "solid-js"
+import { BrandMark } from "../ui/brand-mark.tsx"
 import { Icon } from "../ui/icon.tsx"
 
 export type RailState = "done" | "current" | "todo"
@@ -7,8 +8,9 @@ export type RailItem = { readonly label: string; readonly state: RailState }
 
 function Wordmark(): JSX.Element {
   return (
-    <span class="rounded-sm border border-dashed border-line-3 px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em] text-ink-3">
-      Name TBD
+    <span class="flex items-center gap-2 text-sm font-medium text-ink">
+      <BrandMark />
+      <span aria-hidden="true">Ingle</span>
     </span>
   )
 }
