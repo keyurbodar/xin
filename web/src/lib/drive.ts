@@ -1,4 +1,5 @@
-import { cmd, isDefinitive, OpError } from "./api.ts"
+import { cmd, isDefinitive, MAX_UPLOAD_BYTES, OpError } from "./api.ts"
+import { bytes } from "./format.ts"
 
 export type DriveScope =
   | { readonly kind: "user" }
@@ -166,13 +167,54 @@ async function change<T>(op: string, args: Record<string, unknown>): Promise<T> 
   }
 }
 
+/** Why Save is held back, or undefined when the text can be written. AGENTS.md past the cap would be clipped when injected, so it is refused instead. */
+export function saveBlock(path: string, text: string): string | undefined {
+  if (reservedOf(path)?.kind !== "instructions" || text.length <= INSTRUCTIONS_CAP) return undefined
+  return `AGENTS.md is ${text.length.toLocaleString("en")} characters; conversations read only the first ${INSTRUCTIONS_CAP.toLocaleString("en")}. Shorten it to save.`
+}
+
+/** The host's answer to a write whose `base` is no longer the file's current version. */
+export function isStale(problem: unknown): boolean {
+  const answer = problem instanceof Error && problem.cause !== undefined ? problem.cause : problem
+  return answer instanceof OpError && answer.code === "bad_args" && answer.message.startsWith("stale base:")
+}
+
+export type ConflictChoice = "reload" | "overwrite"
+
+/** After a stale write: Reload drops the edits and reads the file again; Overwrite writes them over the version now current. */
+export function resolveConflict(
+  choice: ConflictChoice,
+  draft: string,
+  current: { readonly sha256: string },
+): { readonly kind: "reload" } | { readonly kind: "write"; readonly text: string; readonly base: string } {
+  return choice === "reload" ? { kind: "reload" } : { kind: "write", text: draft, base: current.sha256 }
+}
+
+/** Files over the upload limit never leave the browser; the rest are sent. */
+export function splitUploads<T extends { readonly name: string; readonly size: number }>(
+  files: readonly T[],
+  limit: number = MAX_UPLOAD_BYTES,
+): { readonly send: readonly T[]; readonly tooBig: readonly T[] } {
+  return { send: files.filter((file) => file.size <= limit), tooBig: files.filter((file) => file.size > limit) }
+}
+
+/** What a partly failed upload says, or undefined when every file landed. */
+export function uploadSummary(tooBig: readonly string[], failed: readonly string[], limit: number = MAX_UPLOAD_BYTES): string | undefined {
+  const parts = [
+    ...(tooBig.length === 0 ? [] : [`Over ${bytes(limit)}, not sent: ${tooBig.join(", ")}.`]),
+    ...(failed.length === 0 ? [] : [`Failed to upload: ${failed.join(", ")}.`]),
+  ]
+  return parts.length === 0 ? undefined : parts.join(" ")
+}
+
 export const drive = {
   scopes: (conversationId: number) => cmd<readonly MountedScope[]>("drive.scopes", { conversationId }),
   list: (scope: DriveScope, prefix: string) =>
     cmd<DriveListing>("drive.list", prefix === "" ? { scope } : { scope, prefix }),
   read: (scope: DriveScope, path: string, sha256?: string) =>
     cmd<DriveFile>("drive.read", sha256 === undefined ? { scope, path } : { scope, path, sha256 }),
-  write: (scope: DriveScope, path: string, text: string) => change<DriveEntry>("drive.write", { scope, path, text }),
+  write: (scope: DriveScope, path: string, text: string, base?: string) =>
+    change<DriveEntry>("drive.write", base === undefined ? { scope, path, text } : { scope, path, text, base }),
   move: (scope: DriveScope, from: string, to: string, toScope: DriveScope) =>
     change<DriveEntry>("drive.move", { scope, from, to, toScope }),
   remove: (scope: DriveScope, path: string) => change<{ readonly deleted: boolean }>("drive.delete", { scope, path }),
