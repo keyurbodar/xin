@@ -1,9 +1,9 @@
-import { createEffect, createSignal, For, onMount, Show, type JSX } from "solid-js"
+import { createEffect, createSignal, For, Show, type JSX } from "solid-js"
 import { cmd } from "../../lib/api.ts"
 import { visualState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { parseHistoryPage, type AnsweredView, type EntryView, type RequestRow, type Snapshot } from "../../state/conversation.ts"
-import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../../state/requests.ts"
+import { openRequests, respondToQuestion } from "../../state/requests.ts"
 import { Skullet } from "../ui/skeleton.tsx"
 import { Transcript, TranscriptSkeleton } from "./transcript.tsx"
 import { SteerComposer } from "./composer.tsx"
@@ -24,12 +24,6 @@ export function ThreadConversation(props: {
   const busy = (): boolean => state() === "working"
   const requests = (): readonly RequestRow[] =>
     openRequests().filter((request) => request.conversationId === props.thread.id)
-
-  onMount(loadRequests)
-  createEffect(() => {
-    void props.project.openRequests
-    void refreshRequests()
-  })
 
   createEffect(() => {
     void props.thread.id

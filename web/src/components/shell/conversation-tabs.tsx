@@ -141,6 +141,7 @@ export function ConversationTabs(props: {
                   if (!moved) openTab(thread.id)
                 }}
                 onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return
                   if (event.key === "Enter" || event.key === " ") openTab(thread.id)
                 }}
                 onAuxClick={(event) => {
