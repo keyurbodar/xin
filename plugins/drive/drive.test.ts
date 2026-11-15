@@ -1,5 +1,5 @@
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
-import { env } from "cloudflare:workers"
+import { env, exports } from "cloudflare:workers"
 import { fauxAssistantMessage, getCurrentSystemPrompt } from "@earendil-works/pi-ai"
 import { describe, expect, it } from "vitest"
 import type { CommandId } from "../../src/ids.ts"
@@ -34,6 +34,8 @@ const reads = (stub: Stub): Promise<number> =>
     const meter = home.meter()
     return meter.sql.reads + meter.kv.reads
   })
+
+const get = (path: string) => exports.default.fetch(new Request(`https://ingle.test${path}`))
 
 const skillMarkdown = (name: string, body: string) =>
   `---\nname: ${name}\ndescription: The ${name} skill.\n---\n${body}`
@@ -182,5 +184,41 @@ describe("drive", () => {
     } finally {
       captainOf.delete(thread.id)
     }
+  })
+
+  it("serves a share link from R2 without auth, follows writes and moves, and stops on unshare or delete", async () => {
+    const stub = fresh()
+    const user = { kind: "user" }
+    await ok(stub, "w1", "drive.write", { scope: user, path: "pages/report.html", text: "<p>v1</p>" })
+    const link = await ok(stub, "sh1", "drive.share", { scope: user, path: "pages/report.html" })
+    const url = field(link, "url")
+    if (typeof url !== "string") throw new Error("no url")
+    expect(url).toMatch(/^\/s\/[0-9a-f]{32}\/report\.html$/)
+    expect(await ok(stub, "sh2", "drive.share", { scope: user, path: "pages/report.html" })).toEqual(link)
+
+    const first = await get(url)
+    expect(first.status).toBe(200)
+    expect(first.headers.get("content-type")).toBe("text/html")
+    expect(first.headers.get("content-security-policy")).toBe("sandbox")
+    expect(await first.text()).toBe("<p>v1</p>")
+
+    await ok(stub, "w2", "drive.write", { scope: user, path: "pages/report.html", text: "<p>v2</p>" })
+    expect(await (await get(url)).text()).toBe("<p>v2</p>")
+
+    await ok(stub, "m1", "drive.move", { scope: user, from: "pages/report.html", to: "report.html" })
+    expect(await (await get(url)).text()).toBe("<p>v2</p>")
+    expect(await ok(stub, "l1", "drive.list", { scope: user })).toMatchObject({
+      shares: { "report.html": field(link, "id") },
+    })
+
+    expect(await ok(stub, "u1", "drive.unshare", { scope: user, path: "report.html" })).toEqual({ revoked: true })
+    expect((await get(url)).status).toBe(404)
+
+    const again = field(await ok(stub, "sh3", "drive.share", { scope: user, path: "report.html" }), "url")
+    if (typeof again !== "string") throw new Error("no url")
+    expect(again).not.toBe(url)
+    await ok(stub, "d1", "drive.delete", { scope: user, path: "report.html" })
+    expect((await get(again)).status).toBe(404)
+    expect((await get("/s/not-an-id")).status).toBe(401)
   })
 })

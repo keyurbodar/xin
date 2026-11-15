@@ -1,6 +1,7 @@
 import type { Env } from "./env.ts"
 
 export { Home } from "./host.ts"
+import { serveShare } from "./share.ts"
 import { upload } from "./upload.ts"
 
 const encoder = new TextEncoder()
@@ -50,6 +51,8 @@ const home = (env: Env) => env.HOME.get(env.HOME.idFromName("owner"))
 export default {
   async fetch(request, env): Promise<Response> {
     if (new URL(request.url).pathname === "/health") return new Response("ok")
+    const shared = await serveShare(request, env)
+    if (shared !== undefined) return shared
     if (!authorizedByDeploy(request, env)) {
       const reply = await rotationCheck(request, env)
       // A home that cannot boot answers 503 for every path: pass that through, so a rotated-token client is told the

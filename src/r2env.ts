@@ -43,7 +43,7 @@ export type FileRow = {
 }
 
 /** Told the path of every file the index changed, or a prefix ending in `/` when everything under it went. */
-export type FileChange = (path: string) => void
+export type FileChange = (path: string) => void | Promise<void>
 
 export type R2EnvOptions = {
   readonly cwd?: string
@@ -178,7 +178,7 @@ export class FileIndex {
     )
     if (row === undefined) throw new Error("files upsert returned no row")
     if (previous !== undefined && previous.sha256 !== entry.sha256) await this.addRevision(previous)
-    this.changed(entry.path)
+    await this.changed(entry.path)
     return row
   }
 
@@ -211,14 +211,14 @@ export class FileIndex {
     await this.db.run("DELETE FROM file_revisions WHERE path = ?", path)
     const rows = await this.db.all<{ path: string }>("DELETE FROM files WHERE path = ? RETURNING path", path)
     if (rows.length === 0) return false
-    this.changed(path)
+    await this.changed(path)
     return true
   }
 
   async dropUnder(prefix: string): Promise<void> {
     await this.db.run("DELETE FROM file_revisions WHERE substr(path, 1, ?) = ?", prefix.length, prefix)
     await this.db.run("DELETE FROM files WHERE substr(path, 1, ?) = ?", prefix.length, prefix)
-    this.changed(prefix)
+    await this.changed(prefix)
   }
 
   /** Moves the file and its revisions, so its history follows it. */
@@ -231,8 +231,8 @@ export class FileIndex {
       from,
     )
     await this.db.run("UPDATE file_revisions SET path = ? WHERE path = ?", to, from)
-    this.changed(from)
-    this.changed(to)
+    await this.changed(from)
+    await this.changed(to)
   }
 }
 
