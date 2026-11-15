@@ -31,7 +31,7 @@ ops: message.send · message.withdraw · conv.configure(model, thinking) · conv
      project.create/update/archive · space.create/update/archive · thread.create · thread.archive · thread.send(mode) · thread.stop · thread.rename
      puck.create/rename/archive · puck.list · artifact.list/read/write/delete
      request.respond · file.put/read/revision/revisions/delete · memory.add/forget/pin/edit/dismiss · plugin.enable/configure · credential.set
-reads (owner): history.page(conversationId, before?, limit?) · request.list(limit?, projectId?) · job.list(limit?)
+reads (owner): conv.context(conv?) · history.page(conversationId, before?, limit?) · request.list(limit?, projectId?) · job.list(limit?)
                usage.summary · usage.cap · usage.cap.set(usd?, clear?) · usage.alert · usage.alert.set(usd)
                notify.prefs · notify.set(waiting?, finished?, failed?, spend?, schedule?) · notify.quiet · notify.quiet.set(enabled?, start?, end?)
                push.list · push.test · owner.read · owner.set(name?, instructions?)
