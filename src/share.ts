@@ -78,8 +78,10 @@ export async function serveShare(request: Request, env: Env): Promise<Response |
   const headers = served(manifest, object)
   if (!("body" in object)) return notModified(headers)
   if (!ranged || object.range === undefined) return new Response(object.body, { headers })
+  const asked = /^bytes=(\d+)-/.exec(request.headers.get("range") ?? "")?.[1]
   const { start, end } = spanOf(object.range, object.size)
-  if (start > end) return new Response(null, { status: 416, headers: { "content-range": `bytes */${object.size}` } })
+  if (start > end || (asked !== undefined && Number(asked) >= object.size))
+    return new Response(null, { status: 416, headers: { "content-range": `bytes */${object.size}` } })
   headers.set("content-range", `bytes ${start}-${end}/${object.size}`)
   headers.set("content-length", String(end - start + 1))
   return new Response(object.body, { status: 206, headers })
