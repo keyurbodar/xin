@@ -144,7 +144,9 @@ export class Streams {
 
   #holding(): boolean {
     if (this.#held === undefined) return false
-    if (token() === this.#held) return true
+    const stored = token()
+    // Another tab signing out empties the shared token; that is not the replacement, so the hold stays.
+    if (stored === this.#held || stored === "") return true
     this.#held = undefined
     return false
   }

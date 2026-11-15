@@ -238,4 +238,33 @@ describe("Streams when the token changes under a check", () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(dialled).toEqual(["bearer.own_revoked", "bearer.own_revoked"])
   })
+
+  it("keeps the hold when another tab signs out and empties the shared token", async () => {
+    let signedOut = 0
+    const streams = new Streams(
+      () => undefined,
+      () => undefined,
+      () => {
+        signedOut += 1
+      },
+    )
+    accept = true
+    streams.open()
+    await vi.advanceTimersByTimeAsync(0)
+    streams.pause()
+    accept = false
+    stored = ""
+    for (let push = 0; push < 5; push += 1) {
+      streams.reconnectNow()
+      await vi.advanceTimersByTimeAsync(10_000)
+    }
+    await vi.advanceTimersByTimeAsync(HOUR)
+    expect(signedOut).toBe(0)
+    expect(requests).toEqual(["socket /v1/socket"])
+    stored = "own_replacement"
+    accept = true
+    streams.reconnectNow()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(dialled).toEqual(["bearer.own_revoked", "bearer.own_replacement"])
+  })
 })
