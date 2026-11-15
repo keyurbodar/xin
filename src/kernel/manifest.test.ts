@@ -28,6 +28,9 @@ describe("plugin manifest", () => {
     expect(() => readManifest({ requires: ["time ^1"] }, "x")).toThrow(/requires/)
     expect(() => readManifest({ module: "./index.ts" }, "x")).toThrow()
     expect(() => readManifest({ permissions: ["root"] }, "x")).toThrow(/permission root/)
+    expect(() => readManifest({ permissions: ["owner"] }, "x")).toThrow(/only first-party ingle-plugin-automations/)
+    expect(() => readManifest({ permissions: ["owner"] }, "x", "ingle-plugin-drive")).toThrow(/owner/)
+    expect(readManifest({ permissions: ["owner"] }, "x", "ingle-plugin-automations").permissions).toEqual(["owner"])
   })
 
   it("refuses a build whose plugin API differs from the one the module was written against", () => {

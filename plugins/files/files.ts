@@ -19,6 +19,7 @@ import type { Env } from "../../src/env.ts"
 import type { Route } from "../../src/module.ts"
 import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import { blobKey, FileIndex, type FileRow, normalizePath, putFile, R2Env, resolvePath } from "../../src/r2env.ts"
+import { shareKey } from "../../src/share.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -198,6 +199,19 @@ export function create(deps: FilesPort): FilesPlugin {
       return true
     },
     watch: subscribe(listeners),
+    textOf: async (sha256) => {
+      const object = await deps.env.FILES.get(blobKey(sha256))
+      return object === null ? null : object.text()
+    },
+    share: async (id, version) => {
+      await deps.env.FILES.put(
+        shareKey(id),
+        JSON.stringify({ key: blobKey(version.sha256), type: version.type, name: version.name }),
+      )
+    },
+    unshare: async (id) => {
+      await deps.env.FILES.delete(shareKey(id))
+    },
     grant: subscribe(grants),
   }
 

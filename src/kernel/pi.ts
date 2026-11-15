@@ -101,6 +101,11 @@ export class Pi extends Service {
     }, "pi.env")
   }
 
+  /** Every installed extension with the row that installed it, as a copy. */
+  extensions(): readonly Installed[] {
+    return [...this.installed.values()]
+  }
+
   currentModels(): Models {
     const source = this.modelSources[0]
     if (source !== undefined) return source()

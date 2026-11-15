@@ -13,7 +13,6 @@ import type { FileEntry, FilesService } from "../../src/contracts/files.ts"
 import { projectByRef, scopeOf } from "../../src/contracts/scope.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
-import { blobKey } from "../../src/r2env.ts"
 import { createShares } from "./shares.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -38,7 +37,6 @@ export type DrivePort = {
   readonly db: SqliteDatabase
   readonly files: FilesService
   readonly harness: Harness
-  readonly bucket: R2Bucket
 }
 
 type Reserved = {
@@ -206,11 +204,8 @@ export function create(deps: DrivePort): DrivePlugin {
     return lines.length === 0 ? undefined : lines.join("\n")
   })
 
-  const textOf = async (key: string, type: string): Promise<string | null> => {
-    if (!PREVIEWABLE.test(type)) return null
-    const object = await deps.bucket.get(key)
-    return object === null ? null : object.text()
-  }
+  const textOf = async (sha256: string, type: string): Promise<string | null> =>
+    PREVIEWABLE.test(type) ? deps.files.textOf(sha256) : null
 
   const list = defineOp({
     name: "drive.list",
@@ -239,14 +234,14 @@ export function create(deps: DrivePort): DrivePlugin {
       const entry = await deps.files.stat(target)
       if (entry === undefined) throw new OpRejected("bad_args", `no file ${path}`)
       if (sha256 === undefined || sha256 === entry.sha256)
-        return { ...relative(root, entry), text: await textOf(blobKey(entry.sha256), entry.type) }
+        return { ...relative(root, entry), text: await textOf(entry.sha256, entry.type) }
       const version = (await deps.files.revisions(target)).find((candidate) => candidate.sha256 === sha256)
       if (version === undefined) throw new OpRejected("bad_args", `no version ${sha256} of ${path}`)
       return {
         path: entry.path.slice(root.length),
         ...version,
         updated_at: version.at,
-        text: await textOf(blobKey(version.sha256), version.type),
+        text: await textOf(version.sha256, version.type),
       }
     },
   })

@@ -27,7 +27,7 @@ export type Op = {
    * only repeat it. The command still runs through `ops/before`.
    */
   readonly receipts?: boolean
-  /** Arg fields that carry a credential: `ops/before` listeners see them redacted. */
+  /** Arg field names that carry a credential, at any depth: `ops/before` listeners see them redacted. */
   readonly credentials?: readonly string[]
   invoke(api: OpApi, args: unknown): Promise<Outcome>
 }
@@ -51,7 +51,7 @@ export function defineOp<A>(definition: {
   readonly args: Schema<A>
   readonly actors: readonly Actor["kind"][]
   readonly receipts?: boolean
-  readonly credentials?: readonly (keyof A & string)[]
+  readonly credentials?: readonly string[]
   run(api: OpApi, args: A): Promise<JsonValue>
 }): Op {
   const validator = compile(definition.args)
@@ -78,13 +78,18 @@ export function defineOp<A>(definition: {
   }
 }
 
-/** The command as `ops/before` listeners see it: the op's credential fields replaced, so no policy row reads them. */
+const scrub = (value: unknown, fields: ReadonlySet<string>): unknown => {
+  if (Array.isArray(value)) return value.map((item) => scrub(item, fields))
+  if (typeof value !== "object" || value === null) return value
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, fields.has(key) ? "[redacted]" : scrub(item, fields)]),
+  )
+}
+
+/** The command as `ops/before` listeners see it: every credential field, however deep, replaced, so no policy row reads one. */
 export function redacted(command: Command, op: Op | undefined): Command {
   const fields = op?.credentials
-  if (fields === undefined || typeof command.args !== "object" || command.args === null) return command
-  const args: Record<string, unknown> = { ...command.args }
-  for (const field of fields) if (field in args) args[field] = "[redacted]"
-  return { ...command, args }
+  return fields === undefined ? command : { ...command, args: scrub(command.args, new Set(fields)) }
 }
 
 const isOutcome = (value: unknown): value is Outcome =>

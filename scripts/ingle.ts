@@ -63,6 +63,7 @@ function parse(path: string, specifier: (module: string) => string, local: boole
         contributes: field(entry, "contributes"),
       },
       `${pkg}: ingle.plugins.${name}`,
+      local ? pkg : undefined,
     )
     plugins[name] = {
       module,
