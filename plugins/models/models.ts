@@ -753,29 +753,31 @@ function defaultRole(defaults: ModelDefaults, ref: ModelRef): Role | undefined {
  * request on; one with no default left has its model cleared, so its next turn asks for one. One commit per moved
  * conversation, none for the rest.
  */
-async function moveOff(harness: Harness, models: Models, ref: ModelRef, owner: ModelDefaults): Promise<number[]> {
+/** Every conversation on the home that runs `ref`, moved to the default its role resolves to (project, then owner). */
+async function moveOff(
+  harness: Harness,
+  conversations: readonly ConversationId[],
+  models: Models,
+  ref: ModelRef,
+  owner: ModelDefaults,
+): Promise<number[]> {
   const workspace = await harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
-  const targets: { conv: ConversationId; role: Role; project?: ModelDefaults }[] = [
-    { conv: ROOT_CONVERSATION_ID, role: "chat" },
-  ]
-  if (workspace !== undefined && parseWorkspace.check(workspace))
-    for (const space of Object.values(workspace.spaces)) {
-      const project = workspace.projects[space.projectId]?.settings.models
-      const scoped = project === undefined ? {} : { project }
-      targets.push({ conv: space.coordinatorId as ConversationId, role: "chat", ...scoped })
-      for (const threadId of space.threadIds) {
-        const thread = await harness.snapshot(ThreadDoc, threadId as ConversationId, BACKGROUND_CONTEXT)
-        targets.push({ conv: threadId as ConversationId, role: thread?.role ?? "thread", ...scoped })
-      }
-    }
+  const parsed = workspace !== undefined && parseWorkspace.check(workspace) ? workspace : undefined
+  const projectModels = (projectId: string | undefined): ModelDefaults | undefined =>
+    projectId === undefined ? undefined : parsed?.projects[projectId]?.settings.models
+  const coordinators = new Map(
+    Object.values(parsed?.spaces ?? {}).map((space) => [String(space.coordinatorId), space.projectId] as const),
+  )
   const moved: number[] = []
-  for (const target of targets) {
-    const conversation = await harness.conversation(target.conv, BACKGROUND_CONTEXT)
+  for (const id of conversations) {
+    const conversation = await harness.conversation(id, BACKGROUND_CONTEXT)
     const agent = conversation === undefined ? undefined : await conversation.agent(BACKGROUND_CONTEXT)
     if (conversation === undefined || agent?.model === undefined || !same(agent.model, ref)) continue
+    const thread = await harness.snapshot(ThreadDoc, id, BACKGROUND_CONTEXT)
+    const project = projectModels(thread?.projectId ?? coordinators.get(String(id)))
     const resolved = resolveModel({
-      role: target.role,
-      ...(target.project === undefined ? {} : { project: target.project }),
+      role: thread?.role ?? "chat",
+      ...(project === undefined ? {} : { project }),
       owner,
     })
     const next = resolved.kind === "model" ? resolved.model : null
@@ -784,7 +786,7 @@ async function moveOff(harness: Harness, models: Models, ref: ModelRef, owner: M
       { model: next, ...(found?.reasoning === true ? {} : { thinkingLevel: null }) },
       BACKGROUND_CONTEXT,
     )
-    moved.push(target.conv)
+    moved.push(id)
   }
   return moved
 }
@@ -1067,7 +1069,7 @@ export function create(deps: ModelsPort): ModelsParts {
         await writeKv(db, "owner.disabled", toggled(settings.disabled, ref, !enabled))
         return settings.defaults
       })
-      const moved = enabled ? [] : await moveOff(api.harness, registry.models, ref, owner)
+      const moved = enabled ? [] : await moveOff(api.harness, await deps.conversations(), registry.models, ref, owner)
       return { model: ref, enabled, moved }
     },
   })
