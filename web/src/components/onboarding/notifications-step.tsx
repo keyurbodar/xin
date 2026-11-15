@@ -1,8 +1,8 @@
 import { For, onMount, type JSX } from "solid-js"
 import { Icon, type IconName } from "../ui/icon.tsx"
 import { navigate } from "../../lib/router.ts"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
-import type { VisualState } from "../../lib/status.ts"
+import { Signal } from "../ui/signal.tsx"
+import type { SignalState } from "../../lib/status.ts"
 import { GhostButton, PrimaryButton, StatusLine } from "./controls.tsx"
 import { enablePush, onboardingProject, onboardingPush, previousStep, projectPath } from "../../state/onboarding.ts"
 import { notifyNow, notifyPrefs, setNotifyPrefs, type NotifyKind } from "../../state/settings.ts"
@@ -37,11 +37,11 @@ const PREVIEWS: readonly Preview[] = [
 
 const KINDS: readonly {
   readonly key: NotifyKind
-  readonly state: VisualState
+  readonly state: SignalState
   readonly title: string
   readonly detail: string
 }[] = [
-  { key: "waiting", state: "waiting", title: "Waiting on you", detail: "A question, with the choices as buttons" },
+  { key: "waiting", state: "needs", title: "Waiting on you", detail: "A question, with the choices as buttons" },
   { key: "finished", state: "done", title: "Finished", detail: "When a report lands" },
   { key: "failed", state: "failed", title: "Failed", detail: "With what broke and a Retry link" },
 ]
@@ -85,7 +85,7 @@ export function NotificationsStep(): JSX.Element {
   })
 
   return (
-    <div class="enter px-6 pb-16 pt-12 md:pt-16">
+    <div class="im-content px-6 pb-16 pt-12 md:pt-16">
       <div class="mx-auto w-full max-w-[560px] overflow-hidden rounded-md border border-line-2 bg-card shadow-[0_24px_64px_rgba(0,0,0,0.45)]">
         <div class="relative h-[200px] overflow-hidden border-b border-line-1 bg-bg">
           <For each={PREVIEWS}>
@@ -127,7 +127,7 @@ export function NotificationsStep(): JSX.Element {
               {(kind) => (
                 <div class="flex items-center gap-3 border-b border-line-1 py-2.5 last:border-0">
                   <span class="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-line-2 bg-panel">
-                    <StatusGlyph state={kind.state} size={14} />
+                    <Signal state={kind.state} size={14} />
                   </span>
                   <div class="min-w-0 flex-1">
                     <div class="text-base font-medium">{kind.title}</div>
@@ -139,13 +139,10 @@ export function NotificationsStep(): JSX.Element {
                     aria-checked={notifyNow()[kind.key]}
                     aria-label={kind.title}
                     onClick={() => void setNotifyPrefs({ [kind.key]: !notifyNow()[kind.key] })}
-                    class="knob relative ml-auto h-4 w-7 shrink-0 rounded-sm"
+                    class="im-switch relative ml-auto h-4 w-7 shrink-0 rounded-sm"
                     classList={{ "bg-ink": notifyNow()[kind.key], "bg-line-2": !notifyNow()[kind.key] }}
                   >
-                    <span
-                      class="knob absolute top-0.5 h-3 w-3 rounded-2xs bg-bg"
-                      classList={{ "left-3.5": notifyNow()[kind.key], "left-0.5": !notifyNow()[kind.key] }}
-                    />
+                    <i class="absolute left-0.5 top-0.5 h-3 w-3 rounded-2xs bg-bg" />
                   </button>
                 </div>
               )}

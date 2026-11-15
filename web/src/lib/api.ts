@@ -1,4 +1,5 @@
 import { token } from "./auth.ts"
+import { parseRepairReply, type Drop, type RepairAnswer } from "./repair.ts"
 
 export class OpError extends Error {
   readonly code: string
@@ -52,15 +53,20 @@ export class Streams {
   #ws: WebSocket | undefined
   #subs = new Map<string, Set<Subscription>>()
   #retry = 0
+  #timer: ReturnType<typeof setTimeout> | undefined
+  #waiting: (() => void) | undefined
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
   readonly #onSession: (socket: string | undefined) => void
+  readonly #onRetry: (at: number) => void
 
   constructor(
     onStatus: (status: "connecting" | "open" | "closed") => void,
     onSession: (socket: string | undefined) => void,
+    onRetry: (at: number) => void,
   ) {
     this.#onStatus = onStatus
     this.#onSession = onSession
+    this.#onRetry = onRetry
   }
 
   subscribe(stream: string, subscription: Subscription): () => void {
@@ -79,6 +85,7 @@ export class Streams {
 
   open(): void {
     if (this.#ws !== undefined) return
+    this.#cancelPending()
     this.#onStatus("connecting")
     const url = new URL("/v1/socket", location.href)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
@@ -99,22 +106,50 @@ export class Streams {
     socket.addEventListener("error", () => socket.close())
   }
 
-  /** Drops the socket so the next handshake carries the current token; subscriptions survive the bounce. */
+  /** Drops the socket so the next handshake carries the current token, or dials at once when none is open. */
   reconnectNow(): void {
     this.#retry = 0
-    this.#ws?.close()
+    if (this.#ws === undefined) this.open()
+    else this.#ws.close()
+  }
+
+  /** Dials now in place of the pending backoff; a dial already in flight is left to finish, so there is one chain. */
+  dialNow(): void {
+    this.#retry = 0
+    this.open()
+  }
+
+  #cancelPending(): void {
+    clearTimeout(this.#timer)
+    this.#timer = undefined
+    if (this.#waiting === undefined) return
+    document.removeEventListener("visibilitychange", this.#waiting)
+    this.#waiting = undefined
   }
 
   #reconnect(): void {
+    this.#cancelPending()
     const delay = Math.min(15_000, 500 * 2 ** this.#retry)
     this.#retry += 1
-    setTimeout(() => this.#openWhenVisible(), delay)
+    this.#onRetry(Date.now() + delay)
+    this.#timer = setTimeout(() => {
+      this.#timer = undefined
+      this.#openWhenVisible()
+    }, delay)
   }
 
   /** A hidden tab waits to be seen before it dials again, so a dead socket in a background tab costs no requests. */
   #openWhenVisible(): void {
-    if (document.visibilityState === "visible") this.open()
-    else document.addEventListener("visibilitychange", () => this.#openWhenVisible(), { once: true })
+    if (document.visibilityState === "visible") {
+      this.open()
+      return
+    }
+    const waiting = (): void => {
+      this.#waiting = undefined
+      this.#openWhenVisible()
+    }
+    this.#waiting = waiting
+    document.addEventListener("visibilitychange", waiting, { once: true })
   }
 
   #send(frame: Record<string, unknown>): void {
@@ -152,6 +187,16 @@ function parseFrame(raw: string): ServerFrame | undefined {
   return undefined
 }
 
+/** The one route a home that cannot boot still answers. Without `drop` it only reports what is stored. */
+export async function repair(drop?: Drop): Promise<RepairAnswer> {
+  const response = await fetch("/v1/repair", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token()}` },
+    ...(drop === undefined ? {} : { body: JSON.stringify({ drop }) }),
+  })
+  return parseRepairReply(response)
+}
+
 export type UploadedFile = {
   readonly path: string
   readonly name: string
@@ -165,6 +210,7 @@ export function uploadFile(
   file: File,
   folder: string,
   onProgress?: (fraction: number) => void,
+  signal?: AbortSignal,
 ): Promise<UploadedFile> {
   const safe = file.name.replace(/[^\w.\-]+/gu, "-").slice(-80)
   const type = file.type === "" ? "application/octet-stream" : file.type
@@ -183,6 +229,12 @@ export function uploadFile(
       else reject(new OpError("upload", `${file.name}: HTTP ${request.status}`))
     }
     request.onerror = () => reject(new OpError("upload", `${file.name}: the upload did not reach the Worker`))
+    request.onabort = () => reject(new OpError("aborted", `${file.name}: upload cancelled`))
+    if (signal?.aborted === true) {
+      reject(new OpError("aborted", `${file.name}: upload cancelled`))
+      return
+    }
+    signal?.addEventListener("abort", () => request.abort(), { once: true })
     request.send(file)
   })
 }

@@ -12,7 +12,7 @@ export function resetOnOpen(open: Accessor<boolean>, reset: () => void): void {
   })
 }
 
-/** V3: one dialog shell. It fades and scales in over 200, leaves in 140, traps focus, and closes on Escape or the scrim. */
+/** V3: one dialog shell. It fades and scales in from .96 over 200 (`im-dialog`), leaves in 140, traps focus, and closes on Escape or the scrim. */
 export function Dialog(props: {
   open: boolean
   onClose: () => void
@@ -98,19 +98,19 @@ function Frame(props: {
 
   return (
     <div
-      class="fixed inset-0 z-50 grid place-items-center bg-scrim p-4 transition-opacity duration-[140ms]"
-      classList={{ "opacity-0": props.closing }}
+      class="fixed inset-0 z-50 grid place-items-center p-4"
       onMouseDown={() => {
         if (!props.busy) props.onClose()
       }}
     >
+      <div class="im-scrim absolute inset-0 bg-scrim" data-state={props.closing ? "closed" : "open"} />
       <form
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-label={props.title}
-        class={`relative max-h-[calc(100vh-32px)] ${props.width} max-w-[calc(100vw-32px)] overflow-y-auto rounded-md border border-line-2 bg-card shadow-[0_24px_64px_rgba(0,0,0,0.65)]`}
-        classList={{ enter: !props.closing, "dialog-out": props.closing }}
+        class={`im-dialog relative max-h-[calc(100vh-32px)] ${props.width} max-w-[calc(100vw-32px)] overflow-y-auto rounded-md border border-line-2 bg-card shadow-[0_24px_64px_rgba(0,0,0,0.65)]`}
+        data-state={props.closing ? "closed" : "open"}
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault()
