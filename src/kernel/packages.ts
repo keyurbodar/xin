@@ -22,7 +22,12 @@ export type PackageSpec =
   | { readonly kind: "registry"; readonly name: string; readonly range?: string }
   | { readonly kind: "git"; readonly url: string; readonly ref?: string; readonly path?: string }
 
-export type PendingPackages = { readonly add: readonly string[]; readonly remove: readonly string[] }
+export type PendingPackages = {
+  readonly add: readonly string[]
+  readonly remove: readonly string[]
+  /** The SRI the build must find in its lockfile for each added spec that has one. */
+  readonly integrity?: Readonly<Record<string, string>>
+}
 
 export type InstalledPackage = { readonly package: string; readonly version: string }
 
@@ -38,14 +43,20 @@ export type PackagesService = {
   readonly local: readonly string[]
   list(): Packages
   pending(): PendingPackages
-  install(spec: string): PendingPackages
+  install(spec: string, integrity?: string): PendingPackages
   cancel(name: string): PendingPackages
   bundles(): Promise<readonly BundleView[]>
   put(bundle: RuntimeBundle): Promise<BundleApplication>
   remove(name: string): Promise<{ readonly application: "applied"; readonly package: string }>
 }
 
-export type AddEntry = { readonly spec: PackageSpec; readonly build: string; readonly name?: string }
+/** A pending add. `integrity` is the registry's SRI for the exact version the owner consented to; the build refuses a lockfile that resolves it to other bytes. */
+export type AddEntry = {
+  readonly spec: PackageSpec
+  readonly build: string
+  readonly name?: string
+  readonly integrity?: string
+}
 
 export type RemoveEntry = { readonly name: string; readonly build: string }
 
@@ -73,7 +84,7 @@ const SpecSchema = union([
   }),
 ])
 const StoredSchema = obj({
-  add: arr(obj({ spec: SpecSchema, build: str(), name: opt(str()) })),
+  add: arr(obj({ spec: SpecSchema, build: str(), name: opt(str()), integrity: opt(str()) })),
   remove: arr(obj({ name: str(), build: str() })),
 })
 const storedCheck = compile(StoredSchema)
@@ -193,10 +204,16 @@ export function writePending(storage: DurableObjectStorage, pending: StoredPendi
   else storage.kv.put(PENDING_KEY, { add: [...pending.add], remove: [...pending.remove] })
 }
 
-export const pendingWire = (pending: StoredPending): PendingPackages => ({
-  add: pending.add.map((entry) => specText(entry.spec)),
-  remove: pending.remove.map((entry) => entry.name),
-})
+export function pendingWire(pending: StoredPending): PendingPackages {
+  const integrity = pending.add.flatMap((entry) =>
+    entry.integrity === undefined ? [] : [[specText(entry.spec), entry.integrity] as const],
+  )
+  return {
+    add: pending.add.map((entry) => specText(entry.spec)),
+    remove: pending.remove.map((entry) => entry.name),
+    ...(integrity.length === 0 ? {} : { integrity: Object.fromEntries(integrity) }),
+  }
+}
 
 export function reconcilePending(pending: StoredPending, catalog: Catalog, build: string): StoredPending {
   const versions = new Map(installedPackages(catalog).map((entry) => [entry.package, entry.version]))
@@ -216,10 +233,10 @@ function keepAdd(entry: AddEntry, versions: ReadonlyMap<string, string>, build: 
   return entry.name !== undefined && !versions.has(entry.name)
 }
 
-function addPending(storage: DurableObjectStorage, spec: PackageSpec): StoredPending {
+function addPending(storage: DurableObjectStorage, spec: PackageSpec, integrity?: string): StoredPending {
   const pending = readPending(storage)
   const id = specId(spec)
-  const entry: AddEntry = { spec, build: buildId() }
+  const entry: AddEntry = { spec, build: buildId(), ...(integrity === undefined ? {} : { integrity }) }
   const add = pending.add.some((candidate) => specId(candidate.spec) === id)
     ? pending.add.map((candidate) => (specId(candidate.spec) === id ? entry : candidate))
     : [...pending.add, entry]
@@ -318,10 +335,10 @@ export function apply(ctx: Context): void {
     local: localPackages(catalog),
     list: view,
     pending: () => view().pending,
-    install: (spec) => {
+    install: (spec, integrity) => {
       const parsed = parseSpec(spec)
       if (parsed === undefined) throw new OpRejected("bad_args", `${spec} is not a supported package spec`)
-      return pendingWire(addPending(storage, parsed))
+      return pendingWire(addPending(storage, parsed, integrity))
     },
     cancel: (pkg) => pendingWire(cancelPending(storage, pkg)),
     bundles: () => bundles.list(),

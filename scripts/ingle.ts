@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
+import { integrityProblem } from "./lockfile.ts"
 import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
 
 const ROOT = join(import.meta.dirname, "..")
@@ -295,7 +296,11 @@ async function bun(args: readonly string[]): Promise<void> {
   if ((await child.exited) !== 0) throw new Error(`bun ${args.join(" ")} failed`)
 }
 
-type SyncPlan = { readonly add: readonly string[]; readonly remove: readonly string[] }
+type SyncPlan = {
+  readonly add: readonly string[]
+  readonly remove: readonly string[]
+  readonly integrity: Readonly<Record<string, string>>
+}
 
 const stringList = (value: unknown): string[] | undefined =>
   Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined
@@ -306,7 +311,14 @@ function syncPlan(value: unknown): SyncPlan {
   const remove = stringList(field(packages, "remove") ?? [])
   if (add === undefined || remove === undefined)
     throw new Error("plugin sync needs { add: string[], remove: string[] }")
-  return { add, remove }
+  const integrity = field(packages, "integrity") ?? {}
+  if (
+    typeof integrity !== "object" ||
+    integrity === null ||
+    !Object.values(integrity).every((v) => typeof v === "string")
+  )
+    throw new Error("plugin sync: integrity must map a spec to its SRI string")
+  return { add, remove, integrity: Object.fromEntries(Object.entries(integrity).map(([k, v]) => [k, String(v)])) }
 }
 
 async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
@@ -320,7 +332,15 @@ async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
   }
   for (const pkg of remove) await bun(["remove", pkg])
   const before = new Set(discover().map((entry) => entry.pkg))
-  for (const spec of add) await bun(["add", spec])
+  for (const spec of add) {
+    await bun(["add", spec])
+    const expected = plan.integrity[spec]
+    const problem =
+      expected === undefined
+        ? undefined
+        : integrityProblem(spec, expected, readFileSync(join(ROOT, "bun.lock"), "utf8"))
+    if (problem !== undefined) throw new Error(problem)
+  }
   for (const pkg of remove) setBundle(pkg, false)
   for (const entry of discover()) if (!before.has(entry.pkg)) setBundle(entry.pkg, true)
   generate()

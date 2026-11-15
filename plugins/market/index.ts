@@ -62,7 +62,13 @@ export async function apply(ctx: Context, config: MarketConfig): Promise<void> {
       list: () => ctx.packages.list(),
       bundles: () => ctx.packages.bundles(),
       put: (bundle) => ctx.packages.put(bundle),
-      install: (spec) => void ctx.packages.install(spec),
+      install: (spec, integrity) => void ctx.packages.install(spec, integrity),
+    },
+    permissions: (plugin) => ctx.kernel.composition.catalog[plugin]?.manifest?.permissions,
+    held: async (pkg) => {
+      const bundle = (await ctx.packages.bundles()).find((candidate) => candidate.package === pkg)
+      const rows = bundle?.rows ?? []
+      return [...new Set(rows.flatMap((row) => ctx.kernel.permissionsOf(row.id) ?? []))]
     },
     builtin: () => builtinIndex(ctx.plugins.catalog()),
     declaration: (pkg): Declaration | undefined => {

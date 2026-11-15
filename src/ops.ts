@@ -15,8 +15,9 @@ export type Outcome =
   | { readonly kind: "ok"; readonly result: JsonValue }
   | {
       readonly kind: "rejected"
-      readonly code: "unknown_op" | "bad_args" | "forbidden" | "failed" | "unavailable" | "busy"
+      readonly code: "unknown_op" | "bad_args" | "forbidden" | "failed" | "unavailable" | "busy" | "consent_required"
       readonly message: string
+      readonly details?: JsonValue
     }
 
 export type Op = {
@@ -37,8 +38,9 @@ const RECEIPT_SWEEP_MS = 60 * 60_000
 
 export class OpRejected extends Error {
   constructor(
-    readonly code: "bad_args" | "forbidden" | "busy",
+    readonly code: "bad_args" | "forbidden" | "busy" | "consent_required",
     message: string,
+    readonly details?: JsonValue,
   ) {
     super(message)
   }
@@ -67,7 +69,13 @@ export function defineOp<A>(definition: {
       try {
         return { kind: "ok", result: await definition.run(api, args) }
       } catch (error) {
-        if (error instanceof OpRejected) return { kind: "rejected", code: error.code, message: error.message }
+        if (error instanceof OpRejected)
+          return {
+            kind: "rejected",
+            code: error.code,
+            message: error.message,
+            ...(error.details === undefined ? {} : { details: error.details }),
+          }
         throw error
       }
     },
@@ -112,7 +120,10 @@ export class Commands {
     const outcome = await this.deps.around(command, actor, () => this.#invoke(command, actor))
     if (
       outcome.kind === "rejected" &&
-      (outcome.code === "failed" || outcome.code === "unavailable" || outcome.code === "busy")
+      (outcome.code === "failed" ||
+        outcome.code === "unavailable" ||
+        outcome.code === "busy" ||
+        outcome.code === "consent_required")
     )
       return outcome
     const now = Date.now()

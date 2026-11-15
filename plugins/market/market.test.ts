@@ -18,6 +18,8 @@ const MIXED = "@lahn/ingle-mixed"
 const FLAKY = "@lahn/ingle-flaky"
 const PROVIDED = "ingle-plugin-time"
 const PATCHY = "@lahn/ingle-patchy"
+const SECRETIVE = "@lahn/ingle-secretive"
+const GUARDED = "@lahn/ingle-guarded"
 const COMMIT = "a".repeat(40)
 const GIT_PATH = "packages/tools"
 const GIT_SPEC = `git+https://github.com/lahn/ingle-tools.git#${COMMIT}&path:/${GIT_PATH}`
@@ -78,6 +80,8 @@ const NOTES_1_1 = notes("Asia/Tokyo", [{ id: "market-clock", timezone: "Europe/B
 const FLAKY_1_0 = { bundle: [{ id: "flaky-time", plugin: "time", config: { timezone: "Asia/Tokyo" } }] }
 const FLAKY_1_1 = { bundle: [{ id: "flaky-bad", plugin: "time", config: { timezone: "Not/AZone" } }] }
 const CODE_INGLE = { plugins: { tools: { module: "./index.ts" } } }
+const GUARDED_INGLE = { plugins: { tools: { module: "./index.ts", permissions: ["network", "secrets"] } } }
+const SECRETIVE_1 = { bundle: [{ id: "secretive-reader", plugin: "k-secret-mount" }] }
 
 const SEEDS: readonly Seed[] = [
   {
@@ -132,6 +136,20 @@ const SEEDS: readonly Seed[] = [
         ingle: NOTES_1_0,
         integrity: "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
       },
+    ],
+  },
+  {
+    name: SECRETIVE,
+    versions: [
+      { version: "1.0.0", ingle: SECRETIVE_1 },
+      { version: "1.1.0", ingle: SECRETIVE_1 },
+    ],
+  },
+  {
+    name: GUARDED,
+    versions: [
+      { version: "1.0.0", ingle: CODE_INGLE },
+      { version: "1.1.0", ingle: GUARDED_INGLE },
     ],
   },
   {
@@ -448,6 +466,11 @@ describe("market", () => {
     expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
 
     expect(await op(stub, "market.install", { name: TOOLS })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { permissions: [{ id: "runtime" }] } },
+    })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
+    expect(await op(stub, "market.install", { name: TOOLS, grant: ["runtime"] })).toMatchObject({
       ok: true,
       result: { application: "pending", package: TOOLS, version: "1.0.0", kind: "code" },
     })
@@ -462,13 +485,78 @@ describe("market", () => {
       ok: true,
       result: { application: "pending", package: CODE, version: "1.0.0", kind: "code" },
     })
-    expect(await pending(stub)).toEqual({ add: [GIT_SPEC, `${CODE}@1.0.0`], remove: [] })
+    expect(await pending(stub)).toMatchObject({
+      add: [GIT_SPEC, `${CODE}@1.0.0`],
+      integrity: { [`${CODE}@1.0.0`]: expect.stringMatching(/^sha512-/) },
+    })
 
     expect(await op(stub, "market.update", { name: CODE, version: "1.1.0" })).toMatchObject({
       ok: true,
       result: { application: "pending", version: "1.1.0" },
     })
-    expect(await pending(stub)).toEqual({ add: [GIT_SPEC, `${CODE}@1.1.0`], remove: [] })
+    expect(await pending(stub)).toMatchObject({ add: [GIT_SPEC, `${CODE}@1.1.0`], remove: [] })
+  })
+
+  it("asks consent for the permissions a bundle's rows mount, stores nothing until granted, and an update holds them", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+
+    const id = `market-consent-${crypto.randomUUID()}`
+    const asked = await cmd(stub, id, "market.install", { name: SECRETIVE, version: "1.0.0" })
+    expect(asked).toMatchObject({
+      ok: false,
+      error: {
+        code: "consent_required",
+        details: {
+          permissions: [
+            { id: "secrets", title: "Read your stored credentials", why: "row secretive-reader mounts k-secret-mount" },
+          ],
+        },
+      },
+    })
+    expect((await op(stub, "bundle.list")).result).not.toContainEqual(expect.objectContaining({ package: SECRETIVE }))
+    expect(await cmd(stub, id, "market.install", { name: SECRETIVE, version: "1.0.0" })).toMatchObject({
+      error: { code: "consent_required" },
+    })
+
+    expect(await op(stub, "market.install", { name: SECRETIVE, version: "1.0.0", grant: ["secrets"] })).toMatchObject({
+      ok: true,
+      result: { application: "applied", package: SECRETIVE, version: "1.0.0" },
+    })
+    expect(await op(stub, "market.update", { name: SECRETIVE, version: "1.1.0" })).toMatchObject({
+      ok: true,
+      result: { application: "applied", version: "1.1.0" },
+    })
+  })
+
+  it("asks again when an update declares permissions the installed version did not", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    expect(await op(stub, "market.install", { name: GUARDED, version: "1.0.0" })).toMatchObject({ ok: true })
+
+    expect(await op(stub, "market.update", { name: GUARDED, version: "1.1.0" })).toMatchObject({
+      ok: false,
+      error: {
+        code: "consent_required",
+        details: {
+          permissions: [
+            { id: "network", why: "tools declares it" },
+            { id: "secrets", why: "tools declares it" },
+          ],
+        },
+      },
+    })
+    expect(await op(stub, "market.update", { name: GUARDED, version: "1.1.0", grant: ["network"] })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { permissions: [{ id: "secrets" }] } },
+    })
+    expect(
+      await op(stub, "market.update", { name: GUARDED, version: "1.1.0", grant: ["network", "secrets"] }),
+    ).toMatchObject({ ok: true, result: { application: "pending", version: "1.1.0" } })
   })
 
   it("refuses provided, already installed and incompatible packages and a wrong integrity", async () => {

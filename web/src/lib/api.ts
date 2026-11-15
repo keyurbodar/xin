@@ -2,17 +2,19 @@ import { token } from "./auth.ts"
 
 export class OpError extends Error {
   readonly code: string
+  readonly details: unknown
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, details?: unknown) {
     super(message)
     this.code = code
+    this.details = details
     this.name = "OpError"
   }
 }
 
 type Ack<T> =
   | { readonly t: "ack"; readonly id: string; readonly ok: true; readonly result: T }
-  | { readonly t: "ack"; readonly id: string; readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+  | { readonly t: "ack"; readonly id: string; readonly ok: false; readonly error: { readonly code: string; readonly message: string; readonly details?: unknown } }
 
 /** A caller that may retry passes its own command id: the host dedupes on it, so a replay lands once. */
 export type CmdOptions = { readonly id?: string }
@@ -28,7 +30,7 @@ export async function cmd<T>(op: string, args: Record<string, unknown> = {}, opt
   })
   if (!response.ok) throw new OpError("http", `${op}: HTTP ${response.status}`)
   const body = (await response.json()) as Ack<T>
-  if (!body.ok) throw new OpError(body.error.code, body.error.message)
+  if (!body.ok) throw new OpError(body.error.code, body.error.message, body.error.details)
   return body.result
 }
 

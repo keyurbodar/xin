@@ -11,6 +11,7 @@ export { BundleRowArg, normalizeRow } from "./bundles.ts"
 export type { BundleApplication, BundlePatch, BundleRow, BundleSource, BundleView, RuntimeBundle } from "./bundles.ts"
 export { sourcePackage, sourceVersion, toJson, parseSpec, specId } from "./packages.ts"
 export { pluginOf } from "./layers.ts"
+export { isPermission, PERMISSIONS, type Permission } from "./manifest.ts"
 export type { Provider, Route } from "../module.ts"
 export type { OpCall } from "./types.ts"
 

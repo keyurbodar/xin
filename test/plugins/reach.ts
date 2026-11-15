@@ -48,6 +48,13 @@ const reach = {
 }
 
 export const catalog: Catalog = {
+  "k-secret-mount": {
+    plugin: { name: "k-secret-mount", inject: ["secrets"], apply() {} },
+    title: "k-secret-mount",
+    description: "test plugin a market bundle mounts, which declares the secrets permission",
+    manifest: { ...DEFAULT_MANIFEST, permissions: ["secrets"], contributes: { tools: [], ops: [] } },
+    source: "test",
+  },
   "k-reach": {
     plugin: reach,
     title: "k-reach",

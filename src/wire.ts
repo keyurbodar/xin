@@ -22,7 +22,12 @@ export type Stream = { readonly kind: "home" } | { readonly kind: "conv"; readon
 
 export type ServerFrame =
   | { readonly t: "ack"; readonly id: string; readonly ok: true; readonly result: unknown }
-  | { readonly t: "ack"; readonly id: string; readonly ok: false; readonly error: { code: string; message: string } }
+  | {
+      readonly t: "ack"
+      readonly id: string
+      readonly ok: false
+      readonly error: { code: string; message: string; details?: unknown }
+    }
   | { readonly t: "hello"; readonly socket: string }
   | { readonly t: "snap"; readonly stream: string; readonly value: unknown }
   | { readonly t: "ev"; readonly stream: string; readonly events: readonly unknown[] }
@@ -51,7 +56,16 @@ export function decodeCommand(body: unknown): { id: CommandId; op: string; args:
 export function ack(id: string, outcome: Outcome): ServerFrame {
   return outcome.kind === "ok"
     ? { t: "ack", id, ok: true, result: outcome.result }
-    : { t: "ack", id, ok: false, error: { code: outcome.code, message: outcome.message } }
+    : {
+        t: "ack",
+        id,
+        ok: false,
+        error: {
+          code: outcome.code,
+          message: outcome.message,
+          ...(outcome.details === undefined ? {} : { details: outcome.details }),
+        },
+      }
 }
 
 const read = (value: unknown, key: string): unknown =>
