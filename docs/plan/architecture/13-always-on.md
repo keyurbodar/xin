@@ -50,31 +50,33 @@ A model that calls the same tool with the same arguments is told to look again.
 - Advisory only: it never blocks the call, never delays it, and a legitimate repeat still runs. Config `{thresholds, include, exclude, argumentsPreviewChars}`; a threshold below 2, a duplicate, or an empty list fails the row at load.
 - This is what covers an unattended coordinator turning in circles, which the watchdog cannot see: a looping run keeps beating, so it is never stalled.
 
-## Scheduled tasks (`schedules`, `tool-schedules`, dsh `schedule` + `tool-schedule`)
+## Automations (`automations`, `tool-automations`)
 
-The existing schedule service keeps its rrule engine and delivery through `intake`; the model-facing surface becomes dsh's.
+An automation is a stored prompt that starts an agent run when one of its triggers fires. It replaces the schedules plugin: one system for timed and event-driven work. The shape follows Capy's automations; the names are Ingle's.
 
-**The task record** gains `title`, `active` and `updatedAt`, and its target becomes a choice rather than an id.
+**Storage.** Four plugin-owned SQLite tables, not pi documents, so history stays bounded and a fire costs a few rows instead of a journal flush: `automations`, `automation_triggers` (config JSON, the webhook secret, `next_at`), `automation_runs` (the last 50 per automation) and `automation_batches` (open coalescing groups).
 
-| Target | Meaning |
-| --- | --- |
-| `this_session` | the conversation that created it |
-| `new_once` | one new conversation, created at the first delivery and reused |
-| `new` | a new conversation for every delivery |
+**Triggers** (up to 20 per automation):
 
-The ops lost `conv` and `projectId`: dsh has no existing-conversation target and both conflicted with the union, so a delivery resolves its conversation from the task's own target.
+| Kind | Fields | Fires |
+| --- | --- | --- |
+| `schedule` | `cron` (five fields, lists, ranges, steps, month and weekday names), `tz` (IANA, default UTC) | at each wall-clock minute the expression names in `tz`; a minute daylight saving removes is skipped |
+| `once` | `at` (ISO) | once, then its `next_at` clears |
+| `webhook` | `contains?` (any of), `regex?`, `rules?` | on `POST /hooks/<secret>` |
 
-**Tools.** `schedule_create(title, prompt, rrule, target)`, `schedule_list(active?, limit?, offset?)`, `schedule_view(id)`, `schedule_edit(id, action, …)`. A `schedule`/`unschedule` pair is gone: these four replace it, so a task can be paused and resumed from chat rather than deleted and rebuilt.
+**Timer.** Every deadline rides the one DO alarm through a `clock.timer`. `due()` answers the earliest `next_at`, the earliest batch `close_at`, or now while a run waits to start; one statement computes it and the answer is cached until a mutation, so other alarms pay nothing. A disabled automation's triggers carry no `next_at`, and webhook triggers never do, so a home with only those arms nothing. After downtime a schedule starts one run for the missed slot and moves on to the next future one.
 
-- `rrule` is one `DTSTART` line and one `RRULE` line, as dsh takes it. The engine parsed `RRULE` only, so the port added `DTSTART` with an optional `TZID` at the boundary.
-- `schedule_edit` takes `expectedUpdatedAt`; a write against a stale read answers `schedule_conflict` and changes nothing. An unknown id answers `schedule_not_found` in the result, not as a thrown error.
-- Pause is `active: false`; resume needs a future occurrence.
-- Deletion removes the task and its saved deliveries. A message the host already delivered stays in its target's inbox.
-- A delegated caller (`xin.thread` present) is refused with `subagent_session`, as all four dsh tools do.
-- One shared prompt section: `Only create or modify scheduled tasks at the user's explicit request; prior explicit authorization for the running scheduled task remains valid.` This is dsh's sentence, and it is the "start out shy" rule from the always-on article written as a constraint instead of a hope.
-- A self-managed heartbeat needs no new mechanism: a task with target `this_session` and `FREQ=HOURLY;INTERVAL=4` is exactly the article's heartbeat, and the model creates it only when the owner asks.
-- Each delivery appends a run to the record: the slot, the delivery time, the target conversation and the entry id the conversation had just before it (`after`), keeping the last six. `schedule.list` with `outcomes: true` walks each target conversation backwards to that marker and answers `done` when an assistant entry landed, `failed` when a `xin.error` entry landed, and `running` otherwise. The default list skips those reads; the Memory pane's Schedules tab asks for them and draws one dot per run, clickable through to the transcript at `#/p/<slug>/run/<conversationId>`.
-- The owner's New schedule form speaks plain words: `schedule.parse(text, tz?)` reads "every friday at 4pm", "weekdays at 9", "every 2 hours", "daily", "monthly", a weekday list, or an ISO date and answers the canonical `rrule` (or `at`) plus the next three runs; text it cannot read is tried as RRULE first and otherwise rejected. The form submits the parsed value, so the engine stays the only rule authority.
+**Webhook ingress.** The Worker forwards `/hooks/*` to the Home without a token check: the 43-character secret in the path is the only credential. One delivery is one Worker request and one DO request, capped at 64 KiB. `idempotency-key` (or `x-github-delivery`) makes a resend a no-op. Answers: 404 unknown secret, 413 too large, 200 `{status:"ignored", reason}` when disabled or the conditions miss, 202 `{status:"started", run}` or `{status:"batched", count}`.
+
+**Coalescing.** Rules are ordered; the first whose `when` (field path → expected string) matches takes the delivery, and `groupBy` field paths pick its group. A group closes on `count`, `maxWaitSeconds` after its first input, or `quietSeconds` after its last, whichever comes first (24 h when none is set), and at 50 inputs. Closing starts one run with every input as a numbered `<webhook>` block. A delivery that matches no rule runs on its own.
+
+**Where a run goes.** `fresh` (default) runs `thread.create` in the automation's project for every run. `same` reuses one conversation: the one named, the calling agent's own, or a thread created at the first run and kept. A thread receives the run through `thread.send` (queued); a coordinator receives it through intake as a `job` item, and that run ends as `delivered`. Every start uses the command id `automation:<run id>`, so a replay after a crash reuses the receipt.
+
+**History.** A run moves `queued` → `running` → `completed | failed | cancelled` on `thread/settled`, or ends as `delivered`. Its cost and tokens are the thread's `pi.usage` at settle minus the value when it started.
+
+**Tools.** `automation_save` (create without `id`; with `id` it updates, and takes `enabled` and `delete`), `automation_list`, `automation_trigger`. Create and update are one tool so the trigger schema is declared once per request, with one prompt section: only create, change or trigger automations at the user's explicit request. Ops and stream events are in `handoffs/api/automations.md` of the crew drive and in the verify skill's `features/automations.md`.
+
+**Retired.** pi tasks of kind `xin.schedule` left by the old plugin end at their next wake through a version-3 tombstone definition. Old `xin.schedules` records are not converted; RRULE has no exact cron equivalent.
 
 ## Goals (`goals`, `tool-goals`, `goal-rounds`, dsh `goal`, `tool-goal`, `goal-round-driver`)
 
