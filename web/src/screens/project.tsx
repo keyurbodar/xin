@@ -1,6 +1,13 @@
-import { For, onMount, Show, createEffect, createMemo, createResource, createSignal, type JSX } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, onMount, Show, type JSX } from "solid-js"
 import { connect } from "../state/connection.ts"
-import { activeProjects, homeLoaded, homeProjects, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
+import {
+  homeLoaded,
+  projectThreads,
+  routeProject,
+  routeThreadId,
+  type ProjectSummary,
+  type ThreadSummary,
+} from "../state/home.ts"
 import {
   agentModelOf,
   agentThinkingOf,
@@ -10,37 +17,31 @@ import {
   type AnsweredView,
   type EntryView,
   type RequestRow,
+  type Snapshot,
   type ThinkingLevel,
 } from "../state/conversation.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
+import { recordOf, numOf } from "../lib/parse.ts"
 import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
 import { modelName, models, searchModels, type ModelInfo, type ModelRef } from "../state/settings.ts"
 import { presets as presetStore, prompts } from "../state/extensions.ts"
+import { openThreadTab, paneOpen, projectTabs, pruneThreadTabs } from "../state/tabs.ts"
 import { expandSlash } from "../lib/slash.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { navigate, param } from "../lib/router.ts"
-import { TopBar } from "../components/shell/topbar.tsx"
-import { Icon } from "../components/ui/icon.tsx"
 import { Skullet } from "../components/ui/skeleton.tsx"
-import { ProjectGlyph, projectState } from "../components/chat/project-glyph.tsx"
 import { Transcript, TranscriptSkeleton, type PendingMessage } from "../components/chat/transcript.tsx"
 import { Composer } from "../components/chat/composer.tsx"
-import { ProjectPanel } from "../components/chat/panel.tsx"
+import { ThreadConversation } from "../components/chat/panel.tsx"
+import { ConversationTabs } from "../components/shell/conversation-tabs.tsx"
+import { ProjectPane } from "../components/pane/pane.tsx"
 import { ProjectSettings } from "../components/project/settings.tsx"
-import { BottomSheet, RightDrawer } from "../components/shell/sheet.tsx"
 import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 
-function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
-  const streams = connect()
-  const snapshot = createConversationView(streams, () => props.project.coordinatorId)
-  const [threadId, setThreadId] = createSignal<number | undefined>()
-  const [sheetOpen, setSheetOpen] = createSignal(false)
-  const [settingsOpen, setSettingsOpen] = createSignal(false)
-  const docked = mediaQuery("(min-width: 1280px)")
-  const overlay = mediaQuery("(min-width: 1024px)")
-  const [panelOpen, setPanelOpen] = createSignal(true)
+function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | undefined; onOpenThread: (id: number) => void }): JSX.Element {
+  const snapshot = (): Snapshot | undefined => props.snapshot
   const [optimistic, setOptimistic] = createSignal<readonly PendingMessage[]>([])
   const [answered, setAnswered] = createSignal<readonly AnsweredView[]>([])
   const [older, setOlder] = createSignal<readonly EntryView[]>([])
@@ -74,7 +75,6 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
 
   createEffect(() => {
     void props.project.id
-    setThreadId(undefined)
     setOptimistic([])
     setAnswered([])
     setOlder([])
@@ -156,75 +156,30 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
     const value = snapshot()
     return value !== undefined && busier(value)
   }
-  const thread = createMemo<ThreadSummary | undefined>(() => {
-    const id = threadId()
-    if (id === undefined) return undefined
-    const groups = props.project.threads
-    const all = [...groups.working, ...groups.waiting, ...groups.completed, ...groups.failed, ...groups.cancelled]
-    return all.find((candidate) => candidate.id === id)
-  })
-
-  const openThread = (id: number): void => {
-    setThreadId(id)
-    if (docked()) setPanelOpen(true)
-    else setSheetOpen(true)
-  }
-  const togglePanel = (): void => {
-    if (docked()) setPanelOpen((open) => !open)
-    else setSheetOpen(true)
-  }
 
   return (
-    <>
-      <TopBar
-        leading={<ProjectGlyph slug={props.project.slug} name={props.project.name} goal={props.project.goal} state={projectState(props.project)} />}
-        title={props.project.name}
-        subtitle={props.project.goal === undefined || props.project.goal === "" ? "" : `· ${props.project.goal}`}
-        actions={
-          <>
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              aria-label="Project settings"
-              class="grid h-7 w-7 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink"
-            >
-              <Icon name="more" size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={togglePanel}
-              aria-label={docked() && panelOpen() ? "Hide the panel" : "Open the project panel"}
-              class="grid h-7 w-7 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink"
-              classList={{ "bg-hover text-ink": docked() && panelOpen() }}
-            >
-              <Icon name="panel" size={15} />
-            </button>
-          </>
-        }
-      />
-      <div class="flex min-h-0 flex-1">
-        <div class="flex min-w-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
-          <Skullet loading={snapshot() === undefined} sample={() => <TranscriptSkeleton />} label="Loading conversation">
-            <Show when={snapshot()}>
-              {(value) => (
-                <Transcript
-                  snapshot={value()}
-                  project={props.project}
-                  optimistic={optimistic()}
-                  older={older()}
-                  hasOlder={hasOlder()}
-                  requests={projectRequests()}
-                  answered={answered()}
-                  onOpenThread={openThread}
-                  onAnswer={answer}
-                  onRetry={async (entryId) => {
-                    await cmd("message.retry", { entryId })
-                  }}
-                  onLoadOlder={loadOlder}
-                />
-              )}
-            </Show>
-          </Skullet>
+    <div class="flex min-h-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
+      <Skullet loading={snapshot() === undefined} sample={() => <TranscriptSkeleton />} label="Loading conversation">
+        <Show when={snapshot()}>
+          {(value) => (
+            <Transcript
+              snapshot={value()}
+              project={props.project}
+              optimistic={optimistic()}
+              older={older()}
+              hasOlder={hasOlder()}
+              requests={projectRequests()}
+              answered={answered()}
+              onOpenThread={props.onOpenThread}
+              onAnswer={answer}
+              onRetry={async (entryId) => {
+                await cmd("message.retry", { entryId })
+              }}
+              onLoadOlder={loadOlder}
+            />
+          )}
+        </Show>
+      </Skullet>
           <Composer
             projectName={props.project.name}
             modelLabel={modelLabel()}
@@ -271,62 +226,7 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
               await cmd("conv.stop", { conv: props.project.coordinatorId })
             }}
           />
-        </div>
-        <Show when={docked() && panelOpen()}>
-          <ProjectPanel
-            project={props.project}
-            streams={streams}
-            open
-            thread={thread()}
-            requests={projectRequests()}
-            answered={answered()}
-            onAnswer={answer}
-            onOpenThread={openThread}
-            onCloseThread={() => setThreadId(undefined)}
-          />
-        </Show>
-      </div>
-      <Show when={overlay() && !docked()}>
-        <RightDrawer open={sheetOpen()} onClose={() => setSheetOpen(false)} label="Project panel">
-          <ProjectPanel
-            variant="drawer"
-            project={props.project}
-            streams={streams}
-            open
-            onClose={() => setSheetOpen(false)}
-            thread={thread()}
-            requests={projectRequests()}
-            answered={answered()}
-            onAnswer={answer}
-            onOpenThread={openThread}
-            onCloseThread={() => setThreadId(undefined)}
-          />
-        </RightDrawer>
-      </Show>
-      <Show when={!overlay()}>
-        <BottomSheet open={sheetOpen()} onClose={() => setSheetOpen(false)} label="Project panel">
-          <ProjectPanel
-            variant="sheet"
-            project={props.project}
-            streams={streams}
-            open
-            onClose={() => setSheetOpen(false)}
-            thread={thread()}
-            requests={projectRequests()}
-            answered={answered()}
-            onAnswer={answer}
-            onOpenThread={openThread}
-            onCloseThread={() => setThreadId(undefined)}
-          />
-        </BottomSheet>
-      </Show>
-      <ProjectSettings
-        project={props.project}
-        open={settingsOpen()}
-        onClose={() => setSettingsOpen(false)}
-        onArchived={() => navigate("/")}
-      />
-    </>
+    </div>
   )
 }
 
@@ -336,14 +236,41 @@ function busier(snapshot: { readonly docs: Readonly<Record<string, unknown>> }):
   return "run" in live && live.run !== undefined
 }
 
-export function ProjectScreen(): JSX.Element {
-  onMount(() => void models.reload())
-  const slug = (): string | undefined => param(1)
-  const project = createMemo<ProjectSummary | undefined>(() => {
-    const wanted = slug()
-    if (param(0) !== "p") return activeProjects()[0]
-    return homeProjects().find((candidate) => candidate.slug === wanted)
+/** The conversation's own spend: every model and tool bucket of its `pi.usage` ledger. */
+function costOf(snapshot: Snapshot | undefined): number | undefined {
+  const usage = recordOf(snapshot?.docs["pi.usage"])
+  if (usage === undefined) return undefined
+  const buckets = [...Object.values(recordOf(usage.models) ?? {}), ...Object.values(recordOf(usage.tools) ?? {})]
+  return buckets.reduce<number>((sum, bucket) => sum + (numOf(recordOf(recordOf(bucket)?.cost)?.total) ?? 0), 0)
+}
+
+function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
+  const streams = connect()
+  const docked = mediaQuery("(min-width: 1280px)")
+  const [settingsOpen, setSettingsOpen] = createSignal(false)
+  const [expanded, setExpanded] = createSignal(false)
+  const threads = createMemo(() => new Map(projectThreads(props.project).map((thread) => [thread.id, thread])))
+  const thread = (): ThreadSummary | undefined => {
+    const id = routeThreadId()
+    return id === undefined ? undefined : threads().get(id)
+  }
+  const tabThreads = (): readonly ThreadSummary[] =>
+    projectTabs(props.project.id).threads.flatMap((id) => {
+      const found = threads().get(id)
+      return found === undefined ? [] : [found]
+    })
+  const snapshot = createConversationView(streams, () => thread()?.id ?? props.project.coordinatorId)
+
+  createEffect(() => {
+    const current = thread()
+    if (current !== undefined) openThreadTab(props.project.id, current.id)
   })
+  createEffect(() => pruneThreadTabs(props.project.id, new Set(threads().keys())))
+
+  const openThread = (id: number): void => {
+    openThreadTab(props.project.id, id)
+    navigate(`/p/${props.project.slug}/t/${id}`)
+  }
   const filePath = (): string | undefined => {
     if (param(2) !== "files" || param(3) === undefined) return undefined
     try {
@@ -357,84 +284,111 @@ export function ProjectScreen(): JSX.Element {
     const parsed = Number(param(3))
     return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined
   }
+  const pane = (): JSX.Element => (
+    <ProjectPane project={props.project} expanded={expanded()} onExpand={setExpanded} onOpenThread={openThread} />
+  )
 
   return (
-    <Show
-      when={project()}
-      fallback={
-        <>
-          <TopBar title="Project" />
-          <div class="min-h-0 flex-1 overflow-y-auto">
-            <Skullet loading={!homeLoaded()} sample={() => <ProjectSkeleton />} label="Loading project">
-              <div class="pt-16">
-                <Show
-                  when={param(0) === "p"}
-                  fallback={
-                    <EmptyState
-                      pictogram="folder"
-                      title="No projects yet"
-                      detail="A project is one coordinator chat and the threads it starts."
-                      action={<Button onClick={() => navigate("/new")}>New project</Button>}
-                    />
-                  }
-                >
-                  <EmptyState
-                    pictogram="folder"
-                    title="Project not found"
-                    detail={`No project at #/p/${slug() ?? "…"}.`}
-                    action={
-                      <Button variant="ghost" onClick={() => navigate("/")}>
-                        Open the first project
-                      </Button>
-                    }
-                  />
-                </Show>
-              </div>
-            </Skullet>
-          </div>
-        </>
-      }
-    >
-      {(resolved) => (
+    <div class="relative flex min-h-0 flex-1 gap-2">
+      <Show when={!(expanded() && paneOpen())}>
+        <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-ring">
+          <ConversationTabs
+            project={props.project}
+            threads={tabThreads()}
+            activeThreadId={thread()?.id}
+            cost={costOf(snapshot())}
+            onSettings={() => setSettingsOpen(true)}
+          />
+          <Show
+            when={filePath()}
+            fallback={
+              <Show
+                when={runId()}
+                fallback={
+                  <Show
+                    when={thread()}
+                    keyed
+                    fallback={<ProjectChat project={props.project} snapshot={snapshot()} onOpenThread={openThread} />}
+                  >
+                    {(current) => (
+                      <ThreadConversation project={props.project} thread={current} snapshot={snapshot()} onOpenThread={openThread} />
+                    )}
+                  </Show>
+                }
+              >
+                {(id) => <RunScreen project={props.project} conversationId={id()} />}
+              </Show>
+            }
+          >
+            {(path) => <FileScreen project={props.project} path={path()} />}
+          </Show>
+        </section>
+      </Show>
+      <Show when={paneOpen()}>
         <Show
-          when={filePath()}
+          when={docked() || expanded()}
           fallback={
-            <Show when={runId()} fallback={<ProjectChat project={resolved()} />}>
-              {(id) => <RunScreen project={resolved()} conversationId={id()} />}
-            </Show>
+            <div class="drawer-in absolute inset-y-0 right-0 z-[var(--z-sheet)] flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay">
+              {pane()}
+            </div>
           }
         >
-          {(path) => <FileScreen project={resolved()} path={path()} />}
+          <div
+            class="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-lg bg-panel shadow-ring"
+            classList={{ "w-[var(--w-pane)]": !expanded(), "flex-1": expanded() }}
+          >
+            {pane()}
+          </div>
         </Show>
-      )}
-    </Show>
+      </Show>
+      <ProjectSettings
+        project={props.project}
+        open={settingsOpen()}
+        onClose={() => setSettingsOpen(false)}
+        onArchived={() => navigate("/")}
+      />
+    </div>
   )
 }
 
-function ProjectSkeleton(): JSX.Element {
+export function ProjectScreen(): JSX.Element {
+  onMount(() => void models.reload())
   return (
-    <div class="flex min-h-full flex-col">
-      <div class="flex h-12 items-center gap-2.5 border-b border-line-1 px-4">
-        <span class="h-6 w-6 rounded-sm border border-line-2 bg-card" />
-        <span class="h-3 w-32 rounded-2xs bg-secondary" />
-        <span class="ml-2 h-2.5 w-56 rounded-2xs bg-secondary" />
-        <span class="ml-auto h-7 w-28 rounded-sm border border-line-2 bg-card" />
-      </div>
-      <div class="flex min-h-0 flex-1">
-        <div class="min-w-0 flex-1">
-          <TranscriptSkeleton />
-        </div>
-        <div class="hidden w-[400px] border-l border-line-1 bg-panel min-[1280px]:block min-[1440px]:w-[440px]">
-          <div class="flex h-12 items-center gap-3 border-b border-line-1 px-3">
-            <For each={["Threads", "Files", "Memory", "Schedules", "Jobs"]}>
-              {(label) => <span class="text-sm text-icon">{label}</span>}
-            </For>
-          </div>
-          <div class="px-3 pt-3">
-            <div class="h-2.5 w-24 rounded-2xs bg-secondary" />
-          </div>
-        </div>
-      </div>
-    </div>
+    <Show
+      when={routeProject()}
+      keyed
+      fallback={
+        <section class="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg bg-panel shadow-ring">
+          <Skullet loading={!homeLoaded()} sample={() => <TranscriptSkeleton />} label="Loading project">
+            <div class="pt-16">
+              <Show
+                when={param(0) === "p"}
+                fallback={
+                  <EmptyState
+                    pictogram="folder"
+                    title="No projects yet"
+                    detail="A project is one coordinator chat and the threads it starts."
+                    action={<Button onClick={() => navigate("/new")}>New project</Button>}
+                  />
+                }
+              >
+                <EmptyState
+                  pictogram="folder"
+                  title="Project not found"
+                  detail={`No project at #/p/${param(1) ?? "…"}.`}
+                  action={
+                    <Button variant="ghost" onClick={() => navigate("/")}>
+                      Open the first project
+                    </Button>
+                  }
+                />
+              </Show>
+            </div>
+          </Skullet>
+        </section>
+      }
+    >
+      {(project) => <ProjectWorkspace project={project} />}
+    </Show>
   )
 }

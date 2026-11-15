@@ -32,12 +32,3 @@ export function createPresence(open: Accessor<boolean>, exit: number): Presence 
 
   return { mounted, leaving }
 }
-
-/** Escape closes an overlay, wherever focus sits inside its subtree. */
-export function escapeCloses(open: Accessor<boolean>, close: () => void): void {
-  const onKey = (event: KeyboardEvent): void => {
-    if (event.key === "Escape" && open()) close()
-  }
-  window.addEventListener("keydown", onKey)
-  onCleanup(() => window.removeEventListener("keydown", onKey))
-}
