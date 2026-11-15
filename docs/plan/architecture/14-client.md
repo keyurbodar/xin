@@ -1,6 +1,6 @@
 # 20 · The web client
 
-This section decides how the first-party web client is built and what it talks to. The client is a SolidJS app in `web/`, a separate package from the Worker: the gate typechecks it (`tsgo -p web/tsconfig.json`) and never bundles it, because the Worker's own bundle step builds `src/worker.ts` alone.
+This section decides how the first-party web client is built and what it talks to. The client is a SolidJS app in `web/`, a separate package from the Worker: the local gate typechecks it (`tsgo -p web/tsconfig.json`), CI's `web` job installs, typechecks and builds it, and neither bundles it into the Worker, because the Worker's own bundle step builds `src/worker.ts` alone.
 
 **Hosting.** A deploy serves `web/dist` from the Worker's own origin as static assets, so the client, `/v1`, `/files` and the socket share one origin and no request crosses it. The assets arrive on the deploy command (`wrangler deploy --assets ./web/dist`), not in `wrangler.jsonc`, because the gate's `bundle` step runs on machines where `web/dist` does not exist.
 

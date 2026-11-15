@@ -120,7 +120,8 @@ describe("Home host loop", () => {
     await runInDurableObject(stub, async (_home, state) => {
       const data = new Uint8Array([0xff, 0xfe, 0x00])
       state.storage.sql.exec(
-        "INSERT INTO pi_journal (seq, part, parts, bytes, data) VALUES (?, 0, 1, ?, ?)",
+        "INSERT INTO pi_journal_ring (slot, part, seq, parts, bytes, data) VALUES (?, 0, ?, 1, ?, ?)",
+        999_999,
         999_999,
         data.length,
         data.buffer,
@@ -147,6 +148,35 @@ describe("Home host loop", () => {
     const opened = await stub.fetch("https://ingle.test/v1/status")
     expect(opened.status).toBe(200)
   }, 30_000)
+
+  it("repairs a home whose pre-ring journal cannot be read", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      await home.chooseModel(FAUX_MODEL)
+    })
+    await runInDurableObject(stub, async (_home, state) => {
+      const sql = state.storage.sql
+      sql.exec(
+        "CREATE TABLE pi_journal (seq INTEGER NOT NULL, part INTEGER NOT NULL, parts INTEGER NOT NULL, bytes INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (seq, part)) WITHOUT ROWID, STRICT",
+      )
+      const data = new Uint8Array([0xff, 0xfe, 0x00])
+      sql.exec(
+        "INSERT INTO pi_journal (seq, part, parts, bytes, data) VALUES (?, 0, 1, ?, ?)",
+        999_999,
+        data.length,
+        data.buffer,
+      )
+    })
+    await evictDurableObject(stub)
+
+    expect((await stub.fetch("https://ingle.test/v1/status")).status).toBe(503)
+    const diagnosis = await (await stub.fetch("https://ingle.test/v1/repair")).json<{ journal: number }>()
+    expect(diagnosis.journal).toBeGreaterThan(0)
+    const repaired = await stub.fetch(
+      new Request("https://ingle.test/v1/repair", { method: "POST", body: JSON.stringify({ drop: "journal" }) }),
+    )
+    expect(await repaired.json()).toMatchObject({ failure: null, journal: 0 })
+  })
 
   it("refuses to drop the journal of a home that is open", async () => {
     const stub = fresh()
