@@ -3,7 +3,7 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { env } from "cloudflare:workers"
 import { describe, expect, it, vi } from "vitest"
-import { api, addThreads, cmd, field, owner } from "../../test/support.ts"
+import { api, addThreads, cmd, field, owner, OWNER_HEADERS } from "../../test/support.ts"
 import { M4_MODEL } from "../../test/plugins/m4.ts"
 import { type Home } from "../../test/worker.ts"
 import { sweep } from "./files.ts"
@@ -58,7 +58,7 @@ describe("files", () => {
     const direct = await owner().fetch(
       new Request("https://ingle.internal/v1/files/commit", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...OWNER_HEADERS },
         body: "x".repeat(8192),
       }),
     )

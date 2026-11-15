@@ -165,6 +165,7 @@ export function uploadFile(
   file: File,
   folder: string,
   onProgress?: (fraction: number) => void,
+  signal?: AbortSignal,
 ): Promise<UploadedFile> {
   const safe = file.name.replace(/[^\w.\-]+/gu, "-").slice(-80)
   return putFile(file, `${folder.replace(/\/+$/gu, "")}/${Date.now().toString(36)}-${safe}`, onProgress)
@@ -187,6 +188,12 @@ export function putFile(file: File, path: string, onProgress?: (fraction: number
       else reject(new OpError("upload", `${file.name}: HTTP ${request.status}`))
     }
     request.onerror = () => reject(new OpError("upload", `${file.name}: the upload did not reach the Worker`))
+    request.onabort = () => reject(new OpError("aborted", `${file.name}: upload cancelled`))
+    if (signal?.aborted === true) {
+      reject(new OpError("aborted", `${file.name}: upload cancelled`))
+      return
+    }
+    signal?.addEventListener("abort", () => request.abort(), { once: true })
     request.send(file)
   })
 }
