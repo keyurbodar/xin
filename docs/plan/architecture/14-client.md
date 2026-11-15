@@ -97,10 +97,10 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 | Route | Frame | What it is |
 | --- | --- | --- |
 | `#/` | D1 | the first active project's chat; with no project, an empty state that opens New project |
-| `#/p/:slug` | D1, D2, D5, D6 | project chat: transcript, composer, right panel (Threads, Files, Memory, Schedules, Jobs). An opened thread widens the panel to 520, so the coordinator stays in view (`V3-a`). The more menu in the top bar opens project settings: the same name and goal as New project, saved with `project.update`, and Archive with `project.archive`. Memory reads `memory.list` and `memory.suggested`, and drives add, pin, edit, forget and dismiss; Schedules lists with `outcomes: true` and draws the last six runs as dots |
+| `#/p/:slug` | D1, D2, D5, D6 | project chat: transcript, composer, right panel (Threads, Files, Memory, Automations, Jobs). An opened thread widens the panel to 520, so the coordinator stays in view (`V3-a`). The more menu in the top bar opens project settings: the same name and goal as New project, saved with `project.update`, and Archive with `project.archive`. Memory reads `memory.list` and `memory.suggested`, and drives add, pin, edit, forget and dismiss; Automations lists the project's automations from `automation.list` with pause and resume through `automation.update`, and draws the last run as a dot |
 | `#/p/:slug/files/<path>` | D5 | the file reader: breadcrumb, size and age, Copy and Download, the document, and the project's file list beside it |
-| `#/p/:slug/run/<conversationId>` | D6 | one schedule's delivered run, read-only: the transcript the timer produced, with a breadcrumb back to the project |
-| `#/schedules` | D6 | every schedule with pause, resume and delete, and a New schedule form whose When field is plain words parsed by `schedule.parse` with the next three runs shown before saving |
+| `#/p/:slug/run/<conversationId>` | D6 | one automation's delivered run, read-only: the transcript the timer produced, with a breadcrumb back to the project |
+| `#/automations` | D6 | every automation with pause, resume (`automation.update`) and delete (`automation.delete`), and a New automation form: title, prompt, a cron read in the browser's time zone, a project and a target, saved with `automation.create`. A minimal port of the old Schedules screen; XIN-21 redesigns it |
 | `#/extensions` | E1–E7 | Discover, package page, install review, installed, sources, customize |
 | `#/settings/:tab` | S1–S4 | General, Usage, Models, Notifications, Profile, System |
 | `#/signin` | O1 | owner token |

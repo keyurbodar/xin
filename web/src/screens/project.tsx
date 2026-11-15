@@ -426,7 +426,7 @@ function ProjectSkeleton(): JSX.Element {
         </div>
         <div class="hidden w-[400px] border-l border-line-1 bg-panel min-[1280px]:block min-[1440px]:w-[440px]">
           <div class="flex h-12 items-center gap-3 border-b border-line-1 px-3">
-            <For each={["Threads", "Files", "Memory", "Schedules", "Jobs"]}>
+            <For each={["Threads", "Files", "Memory", "Automations", "Jobs"]}>
               {(label) => <span class="text-sm text-icon">{label}</span>}
             </For>
           </div>

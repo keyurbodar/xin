@@ -49,7 +49,10 @@ const home = (env: Env) => env.HOME.get(env.HOME.idFromName("owner"))
 
 export default {
   async fetch(request, env): Promise<Response> {
-    if (new URL(request.url).pathname === "/health") return new Response("ok")
+    const path = new URL(request.url).pathname
+    if (path === "/health") return new Response("ok")
+    // A webhook delivery carries its own secret in the path, so it is forwarded without a token check.
+    if (path.startsWith("/hooks/")) return home(env).fetch(request)
     if (!authorizedByDeploy(request, env)) {
       const reply = await rotationCheck(request, env)
       // A home that cannot boot answers 503 for every path: pass that through, so a rotated-token client is told the

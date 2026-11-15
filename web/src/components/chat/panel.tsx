@@ -28,18 +28,18 @@ import { StatusGlyph } from "../ui/status-glyph.tsx"
 import { Skullet } from "../ui/skeleton.tsx"
 import { EmptyState, PanelGhost, ResourceError } from "./ui.tsx"
 import { MemoryTab } from "./memory.tsx"
-import { SchedulesTab } from "./schedules.tsx"
+import { AutomationsTab } from "./automations.tsx"
 import { AnsweredQuestionCard, OpenQuestionCard, ThreadRow } from "./cards.tsx"
 import { EntryList, itemsOf, type ItemContext } from "./entries.tsx"
 import { SteerComposer } from "./composer.tsx"
 
-type Tab = "threads" | "files" | "memory" | "schedules" | "jobs"
+type Tab = "threads" | "files" | "memory" | "automations" | "jobs"
 
 const TABS: readonly { readonly id: Tab; readonly label: string }[] = [
   { id: "threads", label: "Threads" },
   { id: "files", label: "Files" },
   { id: "memory", label: "Memory" },
-  { id: "schedules", label: "Schedules" },
+  { id: "automations", label: "Automations" },
   { id: "jobs", label: "Jobs" },
 ]
 
@@ -471,8 +471,8 @@ export function ProjectPanel(props: {
                       <Match when={current === "memory"}>
                         <MemoryTab conversationId={props.project.coordinatorId} scope={`project:${props.project.id}`} />
                       </Match>
-                      <Match when={current === "schedules"}>
-                        <SchedulesTab slug={props.project.slug} />
+                      <Match when={current === "automations"}>
+                        <AutomationsTab project={props.project} />
                       </Match>
                       <Match when={current === "jobs"}>
                         <JobsTab />
