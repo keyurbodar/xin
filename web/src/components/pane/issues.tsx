@@ -18,7 +18,7 @@ import {
   type Priority,
 } from "../../lib/issues.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
-import { createIssue, issuesRev, projectIssueList } from "../../state/issues.ts"
+import { createIssue, issuesRev, projectIssueList, statesRev } from "../../state/issues.ts"
 import { homeCaptains } from "../../state/captains.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { createPaneAction } from "../chat/ui.tsx"
@@ -46,11 +46,8 @@ function issueProjectId(context: PaneContext): string {
 
 export function IssuesSection(props: PaneContext & { label: string }): JSX.Element {
   const [data] = createResource(
-    () => `${issuesRev()}:${issueProjectId(props)}`,
-    (key) => {
-      const cut = key.indexOf(":")
-      return projectIssueList(key.slice(cut + 1), Number(key.slice(0, cut)))
-    },
+    () => [issueProjectId(props), issuesRev(), statesRev()] as const,
+    ([project, rev, states]) => projectIssueList(project, rev, states),
   )
   const groups = createMemo(() => {
     const loaded = data.latest

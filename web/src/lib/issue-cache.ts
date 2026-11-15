@@ -63,30 +63,31 @@ export function createRevCache<T>(): (rev: number, key: string, load: () => Prom
 }
 
 /**
- * The organization's states, read once per revision beside the list or issue that needs them, so a rename or reorder
- * shows with the next change. A read that names an id the states lack reads them again, at most once per id, so a
- * state that really is gone cannot loop; a failed read is forgotten so the next one retries.
+ * The organization's states, read once per states revision: the home's `statesRev` moving reads them again, so a rename
+ * or reorder shows. A list or issue that names an id the states lack reads them again, at most once per id, so a state
+ * that really is gone cannot loop; without a `statesRev` that is the only re-read. A failed read is forgotten so the
+ * next one retries.
  */
 export function createStatesCache<S extends { readonly id: string }>(
   load: () => Promise<readonly S[]>,
-): (rev: number, seen: Promise<readonly string[]>) => Promise<readonly S[]> {
-  let current: { readonly rev: number; readonly value: Promise<readonly S[]> } | undefined
+): (statesRev: number | undefined, seen: Promise<readonly string[]>) => Promise<readonly S[]> {
+  let current: { readonly statesRev: number | undefined; readonly value: Promise<readonly S[]> } | undefined
   const retried = new Set<string>()
-  const read = (rev: number): Promise<readonly S[]> => {
+  const read = (statesRev: number | undefined): Promise<readonly S[]> => {
     const value = load()
-    current = { rev, value }
+    current = { statesRev, value }
     value.catch(() => {
       if (current?.value === value) current = undefined
     })
     return value
   }
-  return async (rev, seen) => {
-    const pending = current !== undefined && current.rev === rev ? current.value : read(rev)
+  return async (statesRev, seen) => {
+    const pending = current !== undefined && current.statesRev === statesRev ? current.value : read(statesRev)
     const [states, ids] = await Promise.all([pending, seen])
     const known = new Set(states.map((state) => state.id))
     const unknown = ids.filter((id) => !known.has(id) && !retried.has(id))
     if (unknown.length === 0) return states
     for (const id of unknown) retried.add(id)
-    return read(rev)
+    return read(statesRev)
   }
 }

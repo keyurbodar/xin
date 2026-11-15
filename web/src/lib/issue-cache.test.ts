@@ -59,6 +59,22 @@ test("home frames that repeat the last rev never hold a settle back", () => {
   expect(settled).toEqual([1, 2])
 })
 
+test("a burst after a settle gets its own max wait, not the previous burst's", () => {
+  const clock = fakeClock()
+  const settled: number[] = []
+  const note = createTrailing(275, 1_000, (rev: number) => settled.push(rev), clock)
+  note(0)
+  note(1)
+  clock.advance(275)
+  expect(settled).toEqual([0, 1])
+  clock.advance(5_000)
+  note(2)
+  clock.advance(0)
+  expect(settled).toEqual([0, 1])
+  clock.advance(275)
+  expect(settled).toEqual([0, 1, 2])
+})
+
 test("a steady stream of new revs still settles within the max wait", () => {
   const clock = fakeClock()
   const settled: number[] = []
@@ -90,27 +106,30 @@ test("a key read twice at one revision loads once; a new revision loads again; a
   expect(await cache(7, "p1", load("e"))).toBe("e")
 })
 
-test("states are read once per rev, beside the list, and that read is shared within the rev", async () => {
+test("states are read once and shared until the states revision moves; issue revisions never re-read them", async () => {
   let reads = 0
   const states = createStatesCache(async () => {
     reads += 1
     return [{ id: "todo", name: `Todo ${reads}` }]
   })
-  expect((await states(1, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 1")
-  expect((await states(1, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 1")
+  expect((await states(undefined, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 1")
+  expect((await states(undefined, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 1")
   expect(reads).toBe(1)
-  expect((await states(2, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 2")
+  expect((await states(3, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 2")
+  expect((await states(3, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 2")
   expect(reads).toBe(2)
+  expect((await states(4, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 3")
+  expect(reads).toBe(3)
 })
 
 test("an unknown state id reads the states again once, and never twice for the same id", async () => {
   let reads = 0
   const answers = [[{ id: "todo" }], [{ id: "todo" }, { id: "qa" }]]
   const states = createStatesCache(async () => answers[Math.min(reads++, answers.length - 1)] ?? [])
-  expect((await states(1, Promise.resolve(["todo", "qa"]))).map((state) => state.id)).toEqual(["todo", "qa"])
+  expect((await states(undefined, Promise.resolve(["todo", "qa"]))).map((state) => state.id)).toEqual(["todo", "qa"])
   expect(reads).toBe(2)
-  await states(1, Promise.resolve(["gone"]))
-  await states(1, Promise.resolve(["gone"]))
+  await states(undefined, Promise.resolve(["gone"]))
+  await states(undefined, Promise.resolve(["gone"]))
   expect(reads).toBe(3)
 })
 
@@ -121,8 +140,8 @@ test("a failed states read is forgotten, so the next read at the same rev retrie
     if (reads === 1) throw new Error("offline")
     return [{ id: "todo" }]
   })
-  await expect(states(1, Promise.resolve(["todo"]))).rejects.toThrow("offline")
+  await expect(states(undefined, Promise.resolve(["todo"]))).rejects.toThrow("offline")
   await Promise.resolve()
-  expect(await states(1, Promise.resolve(["todo"]))).toHaveLength(1)
+  expect(await states(undefined, Promise.resolve(["todo"]))).toHaveLength(1)
   expect(reads).toBe(2)
 })
