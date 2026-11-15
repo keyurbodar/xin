@@ -22,7 +22,7 @@ Issues are host tables, not pi documents. They do not need to change atomically 
 
 - Sub-issues go one level deep. Every mutation reads and checks its rows inside its own write transaction, so concurrent edits cannot form a cycle or leave `closed_at` or the assignee index out of step with the row.
 - `issue.get` returns the newest 100 timeline events. Its `earlier` cursor pages back through the older ones.
-- Search tokens of 3 or more characters match as prefixes, and shorter tokens match exactly. The project is an FTS column, so a scoped search matches only its own project inside the FTS query. Other filters (state, closed, parent, assignee) join the issue row inside the ranked query, before its LIMIT, so each page holds only rows that already match. Results come in rank order, and a `cursor` pages past the first page.
+- Search tokens of 3 or more characters match as prefixes, and shorter tokens match exactly. The FTS table indexes only title and description. A scoped search matches `issues.project` exactly, and that filter joins the issue row inside the ranked query along with the others (state, closed, parent, assignee), before its LIMIT, so each page holds only rows that already match. Results come in rank order, and a `cursor` pages past the first page.
 - Strings are capped on every write path: title 300 characters, description and comment 20,000, label 40, PR URL 500, person id 120. Each list holds at most 20 entries.
 
 ## Scope

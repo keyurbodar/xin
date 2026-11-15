@@ -318,11 +318,10 @@ const slugOf = (name: string): string =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 40) || "state"
 
-const ftsQuery = (q: string, project: string | undefined): string | undefined => {
+const ftsQuery = (q: string): string | undefined => {
   const tokens = q.slice(0, LIMITS.q).match(/[\p{L}\p{N}_]+/gu) ?? []
   if (tokens.length === 0) return undefined
-  const text = `{title description} : (${tokens.map((token) => (token.length >= 3 ? `"${token}"*` : `"${token}"`)).join(" ")})`
-  return project === undefined ? text : `project : "${project.replaceAll('"', '""')}" AND ${text}`
+  return tokens.map((token) => (token.length >= 3 ? `"${token}"*` : `"${token}"`)).join(" ")
 }
 
 const same = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right)
@@ -636,16 +635,32 @@ export function createIssues(port: IssuesPort): IssuesService {
       if (name !== undefined && name.length === 0) fail("a state needs a name")
       return write(async (tx) => {
         const state = await stateById(tx, input.id)
-        if (name !== undefined) await tx.run("UPDATE issue_states SET name = ? WHERE id = ?", name, state.id)
+        let changed = 0
+        if (name !== undefined)
+          changed += await tx.runCounted(
+            "UPDATE issue_states SET name = ? WHERE id = ? AND name != ?",
+            name,
+            state.id,
+            name,
+          )
         if (input.position !== undefined) {
           const order = (await stateRows(tx)).filter((other) => other.id !== state.id).map((other) => other.id)
           order.splice(Math.max(0, Math.min(input.position, order.length)), 0, state.id)
           for (const [position, id] of order.entries())
-            await tx.run("UPDATE issue_states SET position = ? WHERE id = ? AND position != ?", position, id, position)
+            changed += await tx.runCounted(
+              "UPDATE issue_states SET position = ? WHERE id = ? AND position != ?",
+              position,
+              id,
+              position,
+            )
         }
         if (input.isDefault === true && state.is_default === 0)
-          await tx.run("UPDATE issue_states SET is_default = (id = ?) WHERE closed = ?", state.id, state.closed)
-        await bumpStates(tx)
+          changed += await tx.runCounted(
+            "UPDATE issue_states SET is_default = (id = ?) WHERE closed = ?",
+            state.id,
+            state.closed,
+          )
+        if (changed > 0) await bumpStates(tx)
         return stateOf(await stateById(tx, state.id))
       })
     },
@@ -766,7 +781,11 @@ export function createIssues(port: IssuesPort): IssuesService {
         params.push(filter.parent)
       }
       const limit = Math.max(1, Math.min(filter.limit ?? LIST_LIMIT, LIST_MAX))
-      const match = filter.q === undefined ? undefined : ftsQuery(filter.q, project)
+      if (project !== undefined) {
+        filters.push("project = ?")
+        params.push(project)
+      }
+      const match = filter.q === undefined ? undefined : ftsQuery(filter.q)
       if (match !== undefined) {
         const offset = filter.cursor === undefined ? 0 : decodeOffset(filter.cursor)
         const joined = filters.length > 0
@@ -786,10 +805,6 @@ export function createIssues(port: IssuesPort): IssuesService {
           issues: rows.slice(0, limit).map(summaryOf),
           cursor: rows.length > limit ? `r${offset + limit}` : null,
         }
-      }
-      if (project !== undefined) {
-        filters.push("project = ?")
-        params.push(project)
       }
       if (filter.cursor !== undefined) {
         const [updatedAt, id] = decodeCursor(filter.cursor)
