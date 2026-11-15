@@ -65,8 +65,8 @@ export function ThreadRow(props: {
     <button
       type="button"
       onClick={() => props.onClick?.()}
-      style={{ "animation-delay": `${Math.min(props.index ?? 0, 5) * 40}ms` }}
-      class="row-in flex w-full items-start gap-2.5 bg-card px-2.5 py-2 text-left hover:bg-secondary disabled:cursor-default"
+      style={props.index === undefined ? undefined : { "--i": props.index }}
+      class="flex w-full items-start gap-2.5 bg-card px-2.5 py-2 text-left hover:bg-secondary disabled:cursor-default"
       classList={{
         "border-b border-line-1 last:border-b-0": props.flush === true,
         "border border-primary/40": props.flush !== true && state() === "waiting",
@@ -82,7 +82,7 @@ export function ThreadRow(props: {
         </span>
         <span
           class={`mt-0.5 block truncate text-sm ${threadTone(state())}`}
-          classList={{ shimmer: state() === "working" }}
+          classList={{ "im-shimmer": state() === "working" }}
         >
           {threadLine(props.thread, state())}
         </span>
@@ -149,20 +149,22 @@ export function ThreadFan(props: {
           <span class="label flex-1">{rows().length} threads</span>
           <span class="mono-meta">{tally()}</span>
         </div>
-        <For each={rows()}>
-          {(row, index) => (
-            <ThreadRow
-              flush
-              index={index()}
-              thread={row.thread}
-              title={row.title}
-              role={row.role}
-              onClick={() => {
-                if (row.thread !== undefined) props.onOpenThread(row.thread.id)
-              }}
-            />
-          )}
-        </For>
+        <div class="im-stagger">
+          <For each={rows()}>
+            {(row, index) => (
+              <ThreadRow
+                flush
+                index={index()}
+                thread={row.thread}
+                title={row.title}
+                role={row.role}
+                onClick={() => {
+                  if (row.thread !== undefined) props.onOpenThread(row.thread.id)
+                }}
+              />
+            )}
+          </For>
+        </div>
       </div>
     </Show>
   )
@@ -178,7 +180,7 @@ export function ReportCard(props: { row: BatchRow; onOpenThread: (id: number) =>
   const long = (): boolean => props.row.text.length > 320
 
   return (
-    <div class="card-in max-w-[560px] overflow-hidden rounded-md border border-line-2 bg-card">
+    <div class="im-event max-w-[560px] overflow-hidden rounded-md border border-line-2 bg-card">
       <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5">
         <StatusGlyph state={state()} size={16} />
         <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.row.title}</span>

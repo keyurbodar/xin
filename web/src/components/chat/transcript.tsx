@@ -31,7 +31,7 @@ function threadsOf(project: ProjectSummary): readonly ThreadSummary[] {
 function CoordinatorMeta(props: { busy?: boolean | undefined }): JSX.Element {
   return (
     <div class="font-mono text-2xs leading-none text-icon">
-      <span classList={{ shimmer: props.busy === true }}>{props.busy === true ? "Coordinator · working" : "Coordinator"}</span>
+      <span classList={{ "im-shimmer": props.busy === true }}>{props.busy === true ? "Coordinator · working" : "Coordinator"}</span>
     </div>
   )
 }
@@ -130,7 +130,7 @@ export function Transcript(props: {
               type="button"
               disabled={loadingOlder()}
               onClick={() => void loadOlder()}
-              class="rounded-sm border border-line-2 px-2.5 py-1 text-sm text-ink-2 transition-colors hover:border-line-3 hover:bg-secondary disabled:text-icon"
+              class="rounded-sm border border-line-2 px-2.5 py-1 text-sm text-ink-2 hover:border-line-3 hover:bg-secondary disabled:text-icon"
             >
               {loadingOlder() ? "Loading" : "Load older messages"}
             </button>
@@ -168,7 +168,7 @@ export function Transcript(props: {
                 when={live().partial !== ""}
                 fallback={
                   <div class="text-base text-ink-3">
-                    <span class="shimmer">
+                    <span class="im-shimmer">
                       {live().tools.at(-1)?.name === undefined ? "Thinking" : `Running ${live().tools.at(-1)?.name}`}
                     </span>
                   </div>
@@ -178,7 +178,7 @@ export function Transcript(props: {
                   <div class="min-w-0 flex-1">
                     <Markdown text={live().partial} />
                   </div>
-                  <span class="mt-1.5 inline-block h-4 w-px shrink-0 animate-pulse bg-ink" />
+                  <span class="im-caret mt-1.5 shrink-0" />
                 </div>
               </Show>
             </div>
