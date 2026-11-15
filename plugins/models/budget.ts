@@ -31,7 +31,7 @@ export const FEATURE_MIGRATIONS = [
 
 type Amount = { spend: number; tokens: number }
 type Cap = { readonly day?: number; readonly month?: number }
-type Marks = Record<string, Record<string, readonly [number, number]>>
+type Marks = Record<string, Record<string, [number, number]>>
 
 const CapSchema = obj({ day: opt(num({ minimum: 0 })), month: opt(num({ minimum: 0 })) })
 const capsCheck = compile(map(CapSchema))
@@ -41,6 +41,15 @@ const zero = (): Amount => ({ spend: 0, tokens: 0 })
 
 const dayOf = (now: number): string => new Date(now).toISOString().slice(0, 10)
 const isFeature = (value: string): value is Feature => (FEATURES as readonly string[]).includes(value)
+
+/** A `pi.usage` model key and the feature it was charged to, when `charge` tagged it `<feature>:<provider>/<model>`. */
+export function untag(key: string): { readonly feature: Feature | undefined; readonly model: string } {
+  const tagged = FEATURE_PREFIX.exec(key)
+  const feature = tagged?.[1]
+  return feature !== undefined && isFeature(feature)
+    ? { feature, model: tagged?.[2] ?? key }
+    : { feature: undefined, model: key }
+}
 
 export type FeatureRow = {
   readonly feature: Feature
@@ -130,16 +139,16 @@ export function createBudget(port: BudgetPort) {
       if (ledger === undefined) continue
       const own = await classify(id)
       const previous = stored?.[String(id)] ?? {}
-      const current: Record<string, readonly [number, number]> = {}
+      const current: Record<string, [number, number]> = {}
       for (const [key, usage] of Object.entries(ledger.models)) {
         current[key] = [usage.cost.total, usage.totalTokens]
         if (stored === undefined) continue
         const [spend, tokens] = previous[key] ?? [0, 0]
         const delta = { spend: usage.cost.total - spend, tokens: usage.totalTokens - tokens }
         if (delta.spend <= 0 && delta.tokens <= 0) continue
-        const tagged = FEATURE_PREFIX.exec(key)
-        const feature = tagged !== null && isFeature(tagged[1] ?? "") ? (tagged[1] as Feature) : own
-        const model = tagged !== null && isFeature(tagged[1] ?? "") ? (tagged[2] ?? key) : key
+        const tagged = untag(key)
+        const feature = tagged.feature ?? own
+        const model = tagged.model
         const bucket = `${feature}\u0000${model}`
         const sum = deltas.get(bucket) ?? { feature, model, spend: 0, tokens: 0 }
         sum.spend += delta.spend
@@ -188,14 +197,17 @@ export function createBudget(port: BudgetPort) {
     const { usage } = message
     return harness.commit(async (tx) => {
       const models = (await tx.doc(UsageDoc, conversation)).models
-      const total = (models[key] ??= {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      })
+      if (!Object.hasOwn(models, key))
+        models[key] = {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        }
+      const total = models[key]
+      if (total === undefined) return
       total.input += usage.input
       total.output += usage.output
       total.cacheRead += usage.cacheRead
@@ -211,7 +223,10 @@ export function createBudget(port: BudgetPort) {
     }, context)
   }
 
-  async function setCap(feature: Feature, cap: { day?: number | null; month?: number | null }): Promise<Cap> {
+  async function setCap(
+    feature: Feature,
+    cap: { day?: number | null | undefined; month?: number | null | undefined },
+  ): Promise<Cap> {
     const previous = caps[feature] ?? {}
     const next: { day?: number; month?: number } = {}
     const day = cap.day === undefined ? previous.day : (cap.day ?? undefined)

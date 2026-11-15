@@ -33,6 +33,9 @@ export const FEATURES = ["chat", "thread", "captain", "automation", "dreamer", "
 export type Feature = (typeof FEATURES)[number]
 export const FeatureSchema = oneOf(FEATURES)
 
+export const capReason = (admission: Admission & { readonly kind: "capped" }): string =>
+  `the ${admission.period === "day" ? "daily" : "monthly"} ${admission.feature} cap of ${admission.cap.toFixed(2)} USD is reached; raise it in Usage first`
+
 export type Admission =
   | { readonly kind: "ok" }
   | {
@@ -79,6 +82,8 @@ export interface ModelsService {
   disabled(ref: ModelRef): Promise<boolean>
   /** Whether `feature` is under its daily and monthly caps; call it before a background model call starts. */
   admit(feature: Feature): Promise<Admission>
+  /** `admit` for the feature `conversation`'s spend is booked under; call it before submitting work to it. */
+  admitConversation(conversation: ConversationId): Promise<Admission>
   /** Book a model call made outside a generation into `conversation`'s `pi.usage` under `feature`. */
   charge(feature: Feature, conversation: ConversationId, message: AssistantMessage): Promise<void>
   track(tracker: FeatureTracker): () => void

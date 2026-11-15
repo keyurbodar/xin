@@ -141,7 +141,7 @@ describe("compact", () => {
     const usage = await runInDurableObject(stub, async (home: Home) =>
       home.harness.snapshot(UsageDoc, (await home.root()).id, context),
     )
-    expect(usage?.models[`${DREAM_MODEL.provider}/${DREAM_MODEL.modelId}`]?.totalTokens).toBeGreaterThan(0)
+    expect(usage?.models[`compaction:${DREAM_MODEL.provider}/${DREAM_MODEL.modelId}`]?.totalTokens).toBeGreaterThan(0)
   }, 60_000)
 
   it("leaves the summary to pi on the conversation's model without a utility default", async () => {

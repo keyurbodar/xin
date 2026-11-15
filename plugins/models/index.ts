@@ -20,7 +20,6 @@ export async function apply(ctx: Context): Promise<void> {
   })
   ctx.provide("models", parts.service)
   ctx.pi.models(parts.models)
-  ctx.pi.install(parts.extension)
   ctx.wire.home("spend", async () => parts.home())
   for (const op of parts.ops) ctx.ops.define(op)
   ctx.clock.timer({

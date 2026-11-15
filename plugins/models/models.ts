@@ -25,20 +25,17 @@ import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
 import { estimateMessageTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate"
 import {
   DEFAULT_COMPACTION_POLICY,
-  defineExtension,
-  GenerationTask,
-  hook,
   ROOT_CONVERSATION_ID,
   UsageDoc,
   type AgentChange,
   type ConversationId,
-  type Extension,
   type Harness,
+  type JsonObject,
   type ModelRef,
   type UsageState,
 } from "@earendil-works/pi-durable"
 import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
-import { conversationCost, createBudget } from "./budget.ts"
+import { conversationCost, createBudget, untag } from "./budget.ts"
 import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
   FeatureSchema,
@@ -481,8 +478,7 @@ export type ModelsPort = {
 export type ModelsParts = {
   readonly service: ModelsService
   readonly ops: readonly Op[]
-  readonly extension: Extension
-  home(): JsonValue
+  home(): JsonObject
   models(): Models
   flush(): Promise<UsageState>
   flushDue(): Promise<void>
@@ -1169,14 +1165,19 @@ export function create(deps: ModelsPort): ModelsParts {
     actors: ["owner"],
     run: async () => {
       const ledger = await flush()
-      const byModel = Object.entries(ledger.models)
+      const merged = new Map<string, UsageBucket>()
+      for (const [key, usage] of Object.entries(ledger.models)) {
+        const { model } = untag(key)
+        merged.set(model, addUsage(merged.get(model) ?? EMPTY_USAGE, bucketOf(usage)))
+      }
+      const byModel = [...merged]
         .map(([key, usage]) => {
           const slash = key.indexOf("/")
           return {
             name: key,
             provider: slash === -1 ? key : key.slice(0, slash),
             modelId: slash === -1 ? "" : key.slice(slash + 1),
-            ...bucketOf(usage),
+            ...usage,
           }
         })
         .toSorted(
@@ -1296,22 +1297,6 @@ export function create(deps: ModelsPort): ModelsParts {
     },
   })
 
-  const extension = defineExtension({
-    name: "usage-budget",
-    hooks: [
-      hook(GenerationTask, {
-        beforeRequest: async (_request, api) => {
-          const admission = budget.admit(await budget.classify(api.conversationId))
-          if (admission.kind === "capped")
-            throw new Error(
-              `the ${admission.period === "day" ? "daily" : "monthly"} ${admission.feature} cap of ${admission.cap.toFixed(2)} USD is reached; raise it in Usage`,
-            )
-          return undefined
-        },
-      }),
-    ],
-  })
-
   const service: ModelsService = {
     ownerDefaults: () => ownerDefaults(db),
     vision: async (ref) => {
@@ -1329,6 +1314,7 @@ export function create(deps: ModelsPort): ModelsParts {
       return { catalog, matches: search(catalog, query) }
     },
     admit: async (feature) => budget.admit(feature),
+    admitConversation: async (conversation) => budget.admit(await budget.classify(conversation)),
     charge: (feature, conversation, message) => budget.charge(feature, conversation, message),
     track: (tracker) => budget.track(tracker),
     switchModel: ({ conversation, caller, model, thinking, callId }) =>
@@ -1367,7 +1353,6 @@ export function create(deps: ModelsPort): ModelsParts {
   return {
     service,
     ops,
-    extension,
     home: () => ({ spend: budget.todaySpend() }),
     models: () => registry.models,
     flush,
