@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onMount, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, on, createSignal, onMount, Show, type JSX } from "solid-js"
 import { GitFork, Menu, Settings } from "lucide-solid"
 import { navigate } from "../lib/router.ts"
 import { mediaQuery } from "../lib/media.ts"
@@ -54,10 +54,8 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
     if (current !== undefined) openThreadTab(props.space.id, current.id)
   })
   createEffect(() => pruneThreadTabs(props.space.id, new Set(threads().keys())))
-  createEffect(() => {
-    void props.space.openRequests
-    void refreshRequests()
-  })
+  const openRequestCount = createMemo(() => props.space.openRequests)
+  createEffect(on(openRequestCount, () => void refreshRequests()))
 
   const openThread = (id: number): void => {
     openThreadTab(props.space.id, id)

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal, onMount, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, on, createResource, createSignal, onMount, Show, type JSX } from "solid-js"
 import { connect } from "../state/connection.ts"
 import {
   homeLoaded,
@@ -296,10 +296,8 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     void prompts.reload()
     void presetStore.reload()
   })
-  createEffect(() => {
-    void props.project.openRequests
-    void refreshRequests()
-  })
+  const openRequestCount = createMemo(() => props.project.openRequests)
+  createEffect(on(openRequestCount, () => void refreshRequests()))
 
   const openThread = (id: number): void => {
     openThreadTab(props.project.id, id)
