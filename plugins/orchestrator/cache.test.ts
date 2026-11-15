@@ -56,18 +56,61 @@ async function until(check: () => boolean): Promise<void> {
 }
 
 describe("prompt cache retention", () => {
-  it("drops only the ttl of Anthropic-format cache breakpoints", () => {
+  it("drops the ttl of Anthropic breakpoints and leaves tool arguments alone", () => {
     const payload = {
       system: [{ type: "text", text: "s", cache_control: { type: "ephemeral", ttl: "1h" } }],
-      messages: [{ role: "user", content: [{ type: "text", text: "ttl", cache_control: { type: "ephemeral" } }] }],
+      tools: [
+        {
+          name: "t",
+          input_schema: { properties: { cache_control: { ttl: 1 } } },
+          cache_control: { type: "ephemeral", ttl: "1h" },
+        },
+      ],
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "c", name: "t", input: { cache_control: { ttl: 3600 } } }],
+        },
+        { role: "user", content: [{ type: "text", text: "ttl", cache_control: { type: "ephemeral", ttl: "1h" } }] },
+      ],
       metadata: { ttl: "kept" },
     }
     expect(withShortCache(payload)).toEqual({
       system: [{ type: "text", text: "s", cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: [{ type: "text", text: "ttl", cache_control: { type: "ephemeral" } }] }],
+      tools: [
+        {
+          name: "t",
+          input_schema: { properties: { cache_control: { ttl: 1 } } },
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "c", name: "t", input: { cache_control: { ttl: 3600 } } }],
+        },
+        { role: "user", content: [{ type: "text", text: "ttl", cache_control: { type: "ephemeral" } }] },
+      ],
       metadata: { ttl: "kept" },
     })
     expect(payload.system[0]?.cache_control.ttl).toBe("1h")
+  })
+
+  it("drops the ttl of Bedrock cache points and keeps image bytes", () => {
+    const bytes = new Uint8Array([1, 2, 3])
+    const payload = {
+      system: [{ text: "s" }, { cachePoint: { type: "default", ttl: "1h" } }],
+      messages: [
+        {
+          role: "user",
+          content: [{ image: { format: "png", source: { bytes } } }, { cachePoint: { type: "default", ttl: "1h" } }],
+        },
+      ],
+    }
+    const short = withShortCache(payload) as typeof payload
+    expect(short.system[1]).toEqual({ cachePoint: { type: "default" } })
+    expect(short.messages[0]?.content[1]).toEqual({ cachePoint: { type: "default" } })
+    expect(short.messages[0]?.content[0]?.image?.source.bytes).toBe(bytes)
   })
 
   it("caches a coordinator for an hour and a thread for five minutes", async () => {
