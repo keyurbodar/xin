@@ -1,6 +1,8 @@
 import type { ThreadSettled } from "../../src/contracts/threads.ts"
 import type { Context } from "../../src/kernel/index.ts"
-import { captainsHome } from "./captains.ts"
+import type { ConversationId } from "@earendil-works/pi-durable"
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
+import { CaptainsDoc, captainsHome } from "./captains.ts"
 import { create } from "./orchestrator.ts"
 
 export const name = "orchestrator"
@@ -38,4 +40,15 @@ export function apply(ctx: Context): void {
   ctx.pi.install(built.extension)
   for (const op of built.ops) ctx.ops.define(op)
   ctx.wire.home("captains", () => captainsHome(ctx.harness))
+  ctx.effect(
+    () =>
+      ctx.models.track({
+        feature: "captain",
+        conversations: async () =>
+          Object.values((await ctx.harness.snapshot(CaptainsDoc, BACKGROUND_CONTEXT))?.captains ?? {}).map(
+            (captain) => captain.coordinatorId as ConversationId,
+          ),
+      }),
+    "models.track(captain)",
+  )
 }

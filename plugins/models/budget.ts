@@ -261,7 +261,9 @@ export function createBudget(port: BudgetPort) {
 
   function track(tracker: FeatureTracker): () => void {
     trackers.add(tracker)
-    return () => trackers.delete(tracker)
+    return () => {
+      trackers.delete(tracker)
+    }
   }
 
   return { load, record, admit, charge, classify, setCap, breakdown, track, todaySpend: () => spentToday() }

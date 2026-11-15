@@ -1187,6 +1187,33 @@ export function create(deps: ModelsPort): ModelsParts {
     },
   })
 
+  const crewOp = defineOp({
+    name: "usage.crew",
+    args: obj({ spaceId: str({ minLength: 1 }) }),
+    actors: ["owner"],
+    run: async (api, { spaceId }) => {
+      const workspace = await api.harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
+      const space = workspace !== undefined && parseWorkspace.check(workspace) ? workspace.spaces[spaceId] : undefined
+      if (space === undefined) throw new OpRejected("bad_args", `no space ${spaceId}`)
+      const lead = conversationCost(
+        await api.harness.snapshot(UsageDoc, space.coordinatorId as ConversationId, BACKGROUND_CONTEXT),
+      )
+      const crew = await Promise.all(
+        space.threadIds.map(async (conv) => ({
+          conv,
+          ...conversationCost(await api.harness.snapshot(UsageDoc, conv as ConversationId, BACKGROUND_CONTEXT)),
+        })),
+      )
+      return {
+        spaceId,
+        coordinator: { conv: space.coordinatorId, ...lead },
+        crew,
+        spend: lead.spend + crew.reduce((sum, row) => sum + row.spend, 0),
+        tokens: lead.tokens + crew.reduce((sum, row) => sum + row.tokens, 0),
+      }
+    },
+  })
+
   const todayOp = defineOp({
     name: "usage.today",
     args: obj({}),
@@ -1269,6 +1296,7 @@ export function create(deps: ModelsPort): ModelsParts {
     featuresOp,
     featureCapOp,
     costOp,
+    crewOp,
     todayOp,
   ]
 

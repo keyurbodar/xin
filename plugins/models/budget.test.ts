@@ -34,6 +34,11 @@ async function breakdown(stub: Stub, id: string): Promise<Breakdown> {
   return reply.result
 }
 
+const writes = (home: Home): number => {
+  const meter = home.meter()
+  return meter.sql.writes + meter.kv.writes + meter.alarm.writes
+}
+
 const line = (found: Breakdown, feature: string) => found.features.find((entry) => entry.feature === feature)
 
 function bill(home: Home, conversation: ConversationId, key: string, tokens: number, cost: number): Promise<void> {
@@ -132,10 +137,6 @@ describe("usage by feature", () => {
   it("costs one kv row and one row per changed feature and model to book a flush", async () => {
     const stub = fresh()
     await breakdown(stub, "rows-seed")
-    const writes = (home: Home): number => {
-      const meter = home.meter()
-      return meter.sql.writes + meter.kv.writes + meter.alarm.writes
-    }
     const changed = await runInDurableObject(stub, async (home: Home) => {
       await bill(home, ROOT_CONVERSATION_ID, "faux/faux-1", 10, 0.01)
       await bill(home, ROOT_CONVERSATION_ID, "dreamer:faux/faux-1", 5, 0.01)
@@ -154,7 +155,6 @@ describe("usage by feature", () => {
       )
       return writes(home) - before
     })
-    console.log("budget flush rows written", { changed, idle })
     expect(changed).toBeLessThanOrEqual(5)
     expect(idle).toBeLessThanOrEqual(1)
   })
