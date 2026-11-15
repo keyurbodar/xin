@@ -97,7 +97,8 @@
       "permissions": [
         "conversations",
         "files",
-        "runtime"
+        "runtime",
+        "storage"
       ],
       "slots": [],
       "rows": [
