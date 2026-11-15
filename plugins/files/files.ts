@@ -141,11 +141,11 @@ const subscribe =
 
 export function create(deps: FilesPort): FilesPlugin {
   const dirs = new Set<string>(["/"])
-  const listeners = new Set<(path: string) => void>()
+  const listeners = new Set<(path: string) => void | Promise<void>>()
   const grants = new Set<FileGrant>()
   const scope = projectScoped(grants)
-  const onChange = (path: string): void => {
-    for (const listener of listeners) listener(path)
+  const onChange = async (path: string): Promise<void> => {
+    for (const listener of listeners) await listener(path)
   }
   const index = new FileIndex(deps.db, onChange)
   const envFor = (cwd: string | undefined): R2Env =>
