@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test"
 import { cmd, invalidateReads, MAX_BATCH, noteHomeRev, READ_TTL_MS, Streams } from "./api.ts"
 
-type Frame = { readonly id: string; readonly op: string; readonly args: unknown; readonly read?: boolean }
+type Frame = { readonly id: string; readonly op: string; readonly args: unknown }
 
 /** Each `POST /v1/cmd` the tab sends, with the frames it carried. */
 let posts: Frame[][] = []
@@ -88,7 +88,13 @@ describe("cmd batching and the read cache", () => {
     await Promise.all(reads.map((op) => cmd(op)))
     await cmd("owner.read")
     expect(ops()).toEqual([["owner.read"], reads])
-    expect(posts[1]?.map((frame) => frame.read)).toEqual(reads.map(() => true))
+  })
+
+  it("never caches a Drive read, since an agent writes Drive files without a command", async () => {
+    const drive = ["drive.scopes", "drive.list", "drive.read", "drive.history"]
+    await Promise.all(drive.map((op) => cmd(op)))
+    await Promise.all(drive.map((op) => cmd(op)))
+    expect(ops()).toEqual([drive, drive])
   })
 
   it("splits more commands than a batch holds across requests", async () => {
@@ -180,7 +186,6 @@ describe("what keeps the read cache honest", () => {
     await open()
     await open()
     expect(ops()).toEqual([["owner.read", "notify.prefs", "session.list", "usage.summary"], ["session.list", "usage.summary"]])
-    expect(posts[0]?.map((frame) => frame.read)).toEqual([true, true, true, true])
   })
 
   it("drops the cache when a batch holding a mutation fails as a whole", async () => {
@@ -189,7 +194,6 @@ describe("what keeps the read cache honest", () => {
     await Promise.allSettled([cmd("owner.set", { name: "b" }), cmd("plugin.list")])
     await cmd("owner.read")
     expect(ops()).toEqual([["owner.read"], ["owner.set", "plugin.list"], ["owner.read"]])
-    expect(posts[1]?.[0]?.read).toBeUndefined()
   })
 
   it("drops the cache when the home announces a revision this tab has not seen", async () => {

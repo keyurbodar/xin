@@ -138,6 +138,7 @@ export function respondOp(port: QuestionsPort): Op {
 export function listOp(): Op {
   return defineOp({
     name: "request.list",
+    read: true,
     args: obj({
       limit: opt(int({ minimum: 1, maximum: MAX_LISTED })),
       projectId: opt(str({ minLength: 1 })),

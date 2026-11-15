@@ -72,6 +72,7 @@ export type CaptainDeps = {
   readonly registry: Registry
   readonly watchdog: WatchdogService
   currentModels(): Models
+  disabled(ref: ModelRef): Promise<boolean>
   publishHome(): Promise<void>
 }
 
@@ -263,9 +264,11 @@ async function moveThread(tx: Tx, workspace: WorkspaceState, threadId: number, t
   thread.parentId = target.coordinatorId
 }
 
-function checkModel(models: Models, model: ModelRef): void {
-  if (models.getModel(model.provider, model.modelId) === undefined)
+async function checkModel(deps: CaptainDeps, model: ModelRef): Promise<void> {
+  if (deps.currentModels().getModel(model.provider, model.modelId) === undefined)
     throw new OpRejected("bad_args", `unknown model ${model.provider}/${model.modelId}`)
+  if (await deps.disabled(model))
+    throw new OpRejected("bad_args", `model ${model.provider}/${model.modelId} is disabled`)
 }
 
 const ProfileFields = {
@@ -294,6 +297,7 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
 
   const list = defineOp({
     name: "captain.list",
+    read: true,
     args: obj({ archived: opt(bool()) }),
     actors: ["owner"],
     run: async (_api, args) => {
@@ -312,6 +316,7 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
 
   const get = defineOp({
     name: "captain.get",
+    read: true,
     args: obj({ id: str({ minLength: 1 }) }),
     actors: ["owner"],
     run: async (_api, args) => {
@@ -339,7 +344,7 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
     args: obj({ projectId: str({ minLength: 1 }), ...ProfileFields, name: str({ minLength: 1, maxLength: 80 }) }),
     actors: ["owner"],
     run: async (api, args) => {
-      if (args.model !== undefined) checkModel(deps.currentModels(), args.model)
+      if (args.model !== undefined) await checkModel(deps, args.model)
       const id = captainIdOf(api.commandId)
       const created = await harness.commit(async (tx) => {
         const doc = await tx.doc(CaptainsDoc)
@@ -389,7 +394,7 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
     args: obj({ id: str({ minLength: 1 }), ...ProfileFields }),
     actors: ["owner"],
     run: async (_api, args) => {
-      if (args.model !== undefined) checkModel(deps.currentModels(), args.model)
+      if (args.model !== undefined) await checkModel(deps, args.model)
       const updated = await harness.commit(async (tx) => {
         const doc = await tx.doc(CaptainsDoc)
         const captain = mustFind(doc, args.id)

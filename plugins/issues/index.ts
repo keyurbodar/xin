@@ -115,6 +115,7 @@ export async function apply(ctx: Context): Promise<void> {
   const ops = [
     defineOp({
       name: "issue.states",
+      read: true,
       args: obj({}),
       actors: ["owner"],
       run: async () => ({ states: await issues.states() }),
@@ -161,6 +162,7 @@ export async function apply(ctx: Context): Promise<void> {
     }),
     defineOp({
       name: "issue.get",
+      read: true,
       args: obj({ id: ID, before: opt(ID) }),
       actors: ["owner"],
       run: async (_api, args) => {
@@ -171,6 +173,7 @@ export async function apply(ctx: Context): Promise<void> {
     }),
     defineOp({
       name: "issue.list",
+      read: true,
       args: ListArgs,
       actors: ["owner"],
       run: async (_api, args) => issues.list(OWNER_ACTOR, args),
