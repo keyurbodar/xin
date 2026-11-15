@@ -636,6 +636,33 @@ describe("models", () => {
     expect(outcome).toMatchObject({ kind: "no_model" })
   }, 30_000)
 
+  it("checks a disabled model at send time without reading a row", async () => {
+    const stub = fresh()
+    const counts = await runInDurableObject(stub, async (home: Home) => {
+      await home.root()
+      const calls = (match: (sql: string) => boolean): number =>
+        Object.entries(home.meter().statements)
+          .filter(([sql]) => match(sql))
+          .reduce((sum, [, bucket]) => sum + bucket.calls, 0)
+      const any = () => calls(() => true)
+      const kv = () => calls((sql) => sql.includes("FROM kv"))
+      const before = any()
+      await home.loader.ctx.models.disabled(FAUX_MODEL)
+      const check = any() - before
+      const spendBefore = kv()
+      await home.loader.ctx.models.spend()
+      const spend = kv() - spendBefore
+      const sendBefore = kv()
+      await home.commands.run(
+        { id: crypto.randomUUID() as CommandId, op: "message.send", args: { text: "hi", clientTs: 1 } },
+        { kind: "owner" },
+      )
+      return { check, spend, send: kv() - sendBefore }
+    })
+    expect(counts.check).toBe(0)
+    expect(counts.send).toBe(counts.spend)
+  })
+
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {
     const original = globalThis.fetch
     globalThis.fetch = async () =>
