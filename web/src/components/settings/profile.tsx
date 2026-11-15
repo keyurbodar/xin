@@ -181,14 +181,14 @@ export function Profile(): JSX.Element {
   return (
     <div class="flex max-w-[820px] flex-col gap-6">
       <div class="flex items-center gap-3.5">
-        <span class="grid h-11 w-11 place-items-center rounded-full bg-line-inner text-[16px] text-fg-2">
-          <Show when={initial()} fallback={<Glyph name="user" size={18} class="text-fg-3" />}>
+        <span class="grid h-11 w-11 place-items-center rounded-full bg-line-2 text-lg text-ink-2">
+          <Show when={initial()} fallback={<Glyph name="user" size={18} class="text-ink-3" />}>
             {(letter) => <span>{letter()}</span>}
           </Show>
         </span>
         <div class="min-w-0">
-          <span class="block text-[15px] text-fg">{ownerName()}</span>
-          <span class="block text-[12px] text-fg-3">Owner · local home</span>
+          <span class="block text-[15px] text-ink">{ownerName()}</span>
+          <span class="block text-sm text-ink-3">Owner · local home</span>
         </div>
         <div class="ml-auto">
           <Button size="sm" variant="quiet" onClick={() => navigate("/settings/general")}>
@@ -214,7 +214,7 @@ export function Profile(): JSX.Element {
                 when={written() !== ""}
                 fallback={
                   <Panel>
-                    <p class="px-3.5 py-3 text-[12.5px] text-fg-3">
+                    <p class="px-3.5 py-3 text-sm text-ink-3">
                       Nothing yet. The dreamer writes durable facts about you here once a conversation has given it
                       something to keep.
                     </p>
@@ -233,7 +233,7 @@ export function Profile(): JSX.Element {
                   Edit
                 </Button>
                 <Show when={note()}>
-                  {(message) => <span class="text-[11.5px] text-fg-3">{message()}</span>}
+                  {(message) => <span class="text-xs text-ink-3">{message()}</span>}
                 </Show>
               </div>
               <Note>
@@ -251,7 +251,7 @@ export function Profile(): JSX.Element {
               rows={10}
               spellcheck={false}
               aria-label="Profile markdown"
-              class="w-full resize-y bg-transparent px-3.5 py-3 font-mono text-[12px] leading-relaxed text-fg outline-none"
+              class="w-full resize-y bg-transparent px-3.5 py-3 font-mono text-sm leading-relaxed text-ink outline-none"
             />
           </Panel>
           <div class="flex flex-wrap items-center gap-2">
@@ -262,7 +262,7 @@ export function Profile(): JSX.Element {
             <Button size="sm" variant="quiet" disabled={savingProfile() || written() === ""} onClick={() => void clearProfile()}>
               Clear
             </Button>
-            <span class="ml-auto text-[11.5px] text-fg-3">{draft().length} of 20,000</span>
+            <span class="ml-auto text-xs text-ink-3">{draft().length} of 20,000</span>
           </div>
         </Show>
       </Group>
@@ -270,18 +270,18 @@ export function Profile(): JSX.Element {
       <Group title="Owner token">
         <Row title="Owner token" detail="Signs you in on a new device; anyone with it has full access">
           <div class="flex flex-col gap-2.5">
-            <div class="flex h-9 items-center gap-2.5 rounded-[2px] border border-line bg-page px-3">
-              <Glyph name="key" size={14} class="text-fg-3" />
+            <div class="flex h-9 items-center gap-2.5 rounded-sm border border-line-1 bg-bg px-3">
+              <Glyph name="key" size={14} class="text-ink-3" />
               <Show
                 when={signedIn()}
-                fallback={<span class="font-mono text-[12.5px] text-fg-3">No token in this browser</span>}
+                fallback={<span class="font-mono text-sm text-ink-3">No token in this browser</span>}
               >
-                <span class="min-w-0 truncate font-mono text-[12.5px] tracking-[0.08em] text-fg">
+                <span class="min-w-0 truncate font-mono text-sm tracking-[0.08em] text-ink">
                   {revealed() ? current() : masked(current())}
                 </span>
                 <button
                   type="button"
-                  class="ml-auto text-fg-3 hover:text-fg-2"
+                  class="ml-auto text-ink-3 hover:text-ink-2"
                   aria-label={revealed() ? "Hide token" : "Show token"}
                   onClick={() => setRevealed(!revealed())}
                 >
@@ -289,7 +289,7 @@ export function Profile(): JSX.Element {
                 </button>
                 <button
                   type="button"
-                  class="text-fg-3 hover:text-fg-2"
+                  class="text-ink-3 hover:text-ink-2"
                   aria-label="Copy token"
                   onClick={() => void copy(current())}
                 >
@@ -299,11 +299,11 @@ export function Profile(): JSX.Element {
             </div>
             <Show when={fresh()}>
               {(next) => (
-                <div class="flex flex-col gap-2 rounded-[2px] border border-line bg-page p-2.5">
-                  <span class="text-[11.5px] text-fg-3">
+                <div class="flex flex-col gap-2 rounded-sm border border-line-1 bg-bg p-2.5">
+                  <span class="text-xs text-ink-3">
                     The new token, shown once. Copy it for any device you want to keep.
                   </span>
-                  <span class="truncate font-mono text-[12px] text-fg">{next()}</span>
+                  <span class="truncate font-mono text-sm text-ink">{next()}</span>
                   <div class="flex flex-wrap items-center gap-2">
                     <Button size="sm" onClick={() => void copy(next())}>
                       <Glyph name="copy" size={13} />
@@ -330,9 +330,9 @@ export function Profile(): JSX.Element {
             </Show>
             <Show when={qr()}>
               {(svg) => (
-                <div class="flex items-start gap-3 rounded-[2px] border border-line bg-page p-3">
-                  <div class="shrink-0 rounded-[2px] bg-page p-1" innerHTML={svg()} />
-                  <p class="text-[11.5px] leading-snug text-fg-3">
+                <div class="flex items-start gap-3 rounded-sm border border-line-1 bg-bg p-3">
+                  <div class="shrink-0 rounded-sm bg-bg p-1" innerHTML={svg()} />
+                  <p class="text-xs leading-snug text-ink-3">
                     Scan from a phone. The code carries this token, so that phone is signed in with it and nothing else
                     changes.
                   </p>
@@ -353,14 +353,14 @@ export function Profile(): JSX.Element {
                   </Button>
                 }
               >
-                <span class="text-[12px] text-fg-2">Every other device has to sign in with the new token.</span>
+                <span class="text-sm text-ink-2">Every other device has to sign in with the new token.</span>
                 <Button size="sm" variant="quiet" onClick={() => setRotating(false)}>Keep</Button>
                 <Button size="sm" variant="primary" disabled={busy()} onClick={() => void rotate(false)}>
                   {busy() ? "Rotating" : "Rotate"}
                 </Button>
               </Show>
               <Show when={note()}>
-                {(message) => <span class="text-[11.5px] text-fg-3">{message()}</span>}
+                {(message) => <span class="text-xs text-ink-3">{message()}</span>}
               </Show>
             </div>
             <Note>
@@ -382,15 +382,15 @@ export function Profile(): JSX.Element {
           <Panel>
             <Show
               when={list().length > 0}
-              fallback={<p class="px-3.5 py-3 text-[12.5px] text-fg-3">No other session is connected.</p>}
+              fallback={<p class="px-3.5 py-3 text-sm text-ink-3">No other session is connected.</p>}
             >
               <For each={list()}>
                 {(session) => (
-                  <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5 last:border-0">
-                    <Glyph name="monitor" size={14} class="text-fg-3" />
+                  <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5 last:border-0">
+                    <Glyph name="monitor" size={14} class="text-ink-3" />
                     <div class="min-w-0 flex-1">
-                      <span class="block truncate text-[12.5px] text-fg">{originLabel(session.origin)}</span>
-                      <span class="block text-[11.5px] text-fg-3">
+                      <span class="block truncate text-sm text-ink">{originLabel(session.origin)}</span>
+                      <span class="block text-xs text-ink-3">
                         {session.since === 0 ? "connected before a restart" : `connected ${ago(session.since)}`}
                       </span>
                     </div>
@@ -425,7 +425,7 @@ export function Profile(): JSX.Element {
                 </Button>
               }
             >
-              <span class="text-[12px] text-fg-2">
+              <span class="text-sm text-ink-2">
                 The new token is shown once, so you can keep a device or leave.
               </span>
               <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>

@@ -5,8 +5,6 @@ import { Sidebar } from "./sidebar.tsx"
 import { ConnectionBanner } from "./connection-banner.tsx"
 import { TabBar } from "./tabbar.tsx"
 import { CommandPalette } from "./palette.tsx"
-import { HomeScreen } from "../../screens/home.tsx"
-import { InboxScreen } from "../../screens/inbox.tsx"
 import { ProjectScreen } from "../../screens/project.tsx"
 import { ExtensionsScreen } from "../../screens/extensions.tsx"
 import { SettingsScreen } from "../../screens/settings.tsx"
@@ -33,7 +31,7 @@ export function Shell(): JSX.Element {
   })
 
   return (
-    <div class="flex h-full flex-col overflow-hidden bg-page text-fg lg:flex-row">
+    <div class="flex h-full flex-col overflow-hidden bg-bg text-ink lg:flex-row">
       <div class="hidden h-full lg:flex">
         <Show when={full()} keyed fallback={<Sidebar rail onSearch={() => setPalette(true)} />}>
           {(_wide) => <Sidebar onSearch={() => setPalette(true)} />}
@@ -44,27 +42,21 @@ export function Shell(): JSX.Element {
         <ErrorBoundary
           fallback={(error: unknown, reset) => (
             <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-              <span class="text-[13px] text-fg-2">This screen stopped</span>
-              <span class="max-w-[420px] font-mono text-[11.5px] text-fg-3">
+              <span class="text-base text-ink-2">This screen stopped</span>
+              <span class="max-w-[420px] font-mono text-xs text-ink-3">
                 {error instanceof Error ? error.message : String(error)}
               </span>
               <button
                 type="button"
                 onClick={() => reset()}
-                class="rounded-[2px] border border-line-inner px-2.5 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:bg-hover"
+                class="rounded-sm border border-line-2 px-2.5 py-1 text-sm text-ink-2 hover:border-line-3 hover:bg-secondary"
               >
                 Try again
               </button>
             </div>
           )}
         >
-          <Switch fallback={<HomeScreen />}>
-            <Match when={first() === "p"}>
-              <ProjectScreen />
-            </Match>
-            <Match when={first() === "inbox"}>
-              <InboxScreen />
-            </Match>
+          <Switch fallback={<ProjectScreen />}>
             <Match when={first() === "extensions"}>
               <ExtensionsScreen />
             </Match>
@@ -73,9 +65,6 @@ export function Shell(): JSX.Element {
             </Match>
             <Match when={first() === "schedules"}>
               <SchedulesScreen />
-            </Match>
-            <Match when={first() === "new"}>
-              <HomeScreen />
             </Match>
           </Switch>
         </ErrorBoundary>

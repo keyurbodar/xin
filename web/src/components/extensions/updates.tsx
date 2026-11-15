@@ -64,7 +64,7 @@ export function Updates(): JSX.Element {
     <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-8 pb-12 pt-6">
       <div class="flex items-center gap-2.5">
         <span class="label">Updates</span>
-        <span class="text-[12px] text-fg-3">
+        <span class="text-sm text-ink-3">
           {available().length} {available().length === 1 ? "package offers" : "packages offer"} a newer version
         </span>
         <span class="ml-auto" />
@@ -83,8 +83,8 @@ export function Updates(): JSX.Element {
       </Show>
       <Show when={note()}>
         {(message) => (
-          <div class="flex items-center gap-2 rounded-[4px] border border-ok/30 bg-ok-bg px-3.5 py-2.5 text-[12.5px] text-fg-2">
-            <Glyph name="check" size={13} class="text-ok" />
+          <div class="flex items-center gap-2 rounded-md border border-done/30 bg-done-soft px-3.5 py-2.5 text-sm text-ink-2">
+            <Glyph name="check" size={13} class="text-done" />
             {message()}
           </div>
         )}
@@ -177,14 +177,14 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
   }
 
   return (
-    <div class="border-b border-line last:border-0">
+    <div class="border-b border-line-1 last:border-0">
       <div class="flex items-center gap-3 px-3.5 py-3">
-        <span class="grid h-8 w-8 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg-2">
+        <span class="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary text-ink-2">
           <Glyph name="package" size={16} />
         </span>
         <button type="button" onClick={() => setOpen((value) => !value)} class="min-w-0 flex-1 text-left">
-          <span class="block truncate text-[12.5px] font-medium text-fg">{props.entry.title}</span>
-          <span class="block truncate text-[11.5px] text-fg-3">
+          <span class="block truncate text-sm font-medium text-ink">{props.entry.title}</span>
+          <span class="block truncate text-xs text-ink-3">
             {props.entry.name}
             <Show when={props.entry.author}>
               {(author) => <span> · {author()}</span>}
@@ -194,7 +194,7 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
         <Show when={props.entry.skipped}>
           <Chip tone="warn">Skipped</Chip>
         </Show>
-        <span class="font-mono text-[12px] text-accent-text">{version()}</span>
+        <span class="font-mono text-sm text-primary-ink">{version()}</span>
         <Button
           size="sm"
           variant="primary"
@@ -209,7 +209,7 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
       </div>
 
       <Show when={open()}>
-        <div class="flex flex-col gap-4 border-t border-line bg-page px-3.5 py-4">
+        <div class="flex flex-col gap-4 border-t border-line-1 bg-bg px-3.5 py-4">
           <Show when={failureOf(detail.state())}>
             {(message) => <Failure message={message()} onRetry={() => void detail.reload()} />}
           </Show>
@@ -217,11 +217,11 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
             {(entry) => (
               <>
                 <div class="flex items-center gap-2.5">
-                  <span class="font-mono text-[12px] text-fg-3">current</span>
-                  <Glyph name="arrow-right" size={13} class="text-fg-4" />
-                  <span class="font-mono text-[12px] text-fg">{version()}</span>
+                  <span class="font-mono text-sm text-ink-3">current</span>
+                  <Glyph name="arrow-right" size={13} class="text-icon" />
+                  <span class="font-mono text-sm text-ink">{version()}</span>
                   <Show when={offeredVersion(entry())?.publishTimestamp}>
-                    {(at) => <span class="ml-auto text-[11.5px] text-fg-3">{ago(at())}</span>}
+                    {(at) => <span class="ml-auto text-xs text-ink-3">{ago(at())}</span>}
                   </Show>
                 </div>
 
@@ -230,24 +230,24 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
                   <Panel>
                     <For each={added()}>
                       {(id) => (
-                        <div class="flex items-center gap-2 border-b border-line px-3 py-2 text-[12.5px] last:border-0">
-                          <span class="font-mono text-[12px] text-ok">+</span>
-                          <code class="font-mono text-[11.5px] text-fg">{id}</code>
-                          <span class="text-[11.5px] text-fg-3">new row</span>
+                        <div class="flex items-center gap-2 border-b border-line-1 px-3 py-2 text-sm last:border-0">
+                          <span class="font-mono text-sm text-done">+</span>
+                          <code class="font-mono text-xs text-ink">{id}</code>
+                          <span class="text-xs text-ink-3">new row</span>
                         </div>
                       )}
                     </For>
                     <For each={entry().requires}>
                       {(spec) => (
-                        <div class="flex items-center gap-2 border-b border-line px-3 py-2 text-[12.5px] last:border-0">
-                          <span class="font-mono text-[12px] text-warn">+</span>
-                          <code class="font-mono text-[11.5px] text-fg">{spec}</code>
-                          <span class="text-[11.5px] text-fg-3">requirement</span>
+                        <div class="flex items-center gap-2 border-b border-line-1 px-3 py-2 text-sm last:border-0">
+                          <span class="font-mono text-sm text-working">+</span>
+                          <code class="font-mono text-xs text-ink">{spec}</code>
+                          <span class="text-xs text-ink-3">requirement</span>
                         </div>
                       )}
                     </For>
                     <Show when={added().length === 0 && entry().requires.length === 0}>
-                      <div class="px-3 py-2 text-[12px] text-fg-3">No new rows or requirements. Config stays as it is.</div>
+                      <div class="px-3 py-2 text-sm text-ink-3">No new rows or requirements. Config stays as it is.</div>
                     </Show>
                   </Panel>
                 </div>
@@ -271,7 +271,7 @@ function UpdateRow(props: { entry: MarketSummary; busy: boolean; disabled: boole
                   <span class="ml-auto" />
                   <Show when={offeredVersion(entry())}>
                     {(version) => (
-                      <span class="text-[11.5px] text-fg-3">Targets v{version().version}</span>
+                      <span class="text-xs text-ink-3">Targets v{version().version}</span>
                     )}
                   </Show>
                 </div>

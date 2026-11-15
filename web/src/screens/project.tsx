@@ -1,6 +1,6 @@
 import { For, onMount, Show, createEffect, createMemo, createResource, createSignal, type JSX } from "solid-js"
 import { connect } from "../state/connection.ts"
-import { homeLoaded, homeProjects, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
+import { activeProjects, homeLoaded, homeProjects, type ProjectSummary, type ThreadSummary } from "../state/home.ts"
 import {
   agentModelOf,
   agentThinkingOf,
@@ -186,7 +186,7 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
               type="button"
               onClick={() => setSettingsOpen(true)}
               aria-label="Project settings"
-              class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
+              class="grid h-7 w-7 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink"
             >
               <Icon name="more" size={15} />
             </button>
@@ -194,8 +194,8 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
               type="button"
               onClick={togglePanel}
               aria-label={docked() && panelOpen() ? "Hide the panel" : "Open the project panel"}
-              class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-3 hover:bg-hover hover:text-fg"
-              classList={{ "bg-selected text-fg": docked() && panelOpen() }}
+              class="grid h-7 w-7 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink"
+              classList={{ "bg-hover text-ink": docked() && panelOpen() }}
             >
               <Icon name="panel" size={15} />
             </button>
@@ -341,7 +341,8 @@ export function ProjectScreen(): JSX.Element {
   const slug = (): string | undefined => param(1)
   const project = createMemo<ProjectSummary | undefined>(() => {
     const wanted = slug()
-    return wanted === undefined ? undefined : homeProjects().find((candidate) => candidate.slug === wanted)
+    if (param(0) !== "p") return activeProjects()[0]
+    return homeProjects().find((candidate) => candidate.slug === wanted)
   })
   const filePath = (): string | undefined => {
     if (param(2) !== "files" || param(3) === undefined) return undefined
@@ -366,16 +367,28 @@ export function ProjectScreen(): JSX.Element {
           <div class="min-h-0 flex-1 overflow-y-auto">
             <Skullet loading={!homeLoaded()} sample={() => <ProjectSkeleton />} label="Loading project">
               <div class="pt-16">
-                <EmptyState
-                  pictogram="folder"
-                  title="Project not found"
-                  detail={`No project at #/p/${slug() ?? "…"}.`}
-                  action={
-                    <Button variant="ghost" onClick={() => navigate("/")}>
-                      Back home
-                    </Button>
+                <Show
+                  when={param(0) === "p"}
+                  fallback={
+                    <EmptyState
+                      pictogram="folder"
+                      title="No projects yet"
+                      detail="A project is one coordinator chat and the threads it starts."
+                      action={<Button onClick={() => navigate("/new")}>New project</Button>}
+                    />
                   }
-                />
+                >
+                  <EmptyState
+                    pictogram="folder"
+                    title="Project not found"
+                    detail={`No project at #/p/${slug() ?? "…"}.`}
+                    action={
+                      <Button variant="ghost" onClick={() => navigate("/")}>
+                        Open the first project
+                      </Button>
+                    }
+                  />
+                </Show>
               </div>
             </Skullet>
           </div>
@@ -401,24 +414,24 @@ export function ProjectScreen(): JSX.Element {
 function ProjectSkeleton(): JSX.Element {
   return (
     <div class="flex min-h-full flex-col">
-      <div class="flex h-12 items-center gap-2.5 border-b border-line px-4">
-        <span class="h-6 w-6 rounded-[2px] border border-line-inner bg-raised" />
-        <span class="h-3 w-32 rounded-[1px] bg-hover" />
-        <span class="ml-2 h-2.5 w-56 rounded-[1px] bg-hover" />
-        <span class="ml-auto h-7 w-28 rounded-[2px] border border-line-inner bg-raised" />
+      <div class="flex h-12 items-center gap-2.5 border-b border-line-1 px-4">
+        <span class="h-6 w-6 rounded-sm border border-line-2 bg-card" />
+        <span class="h-3 w-32 rounded-2xs bg-secondary" />
+        <span class="ml-2 h-2.5 w-56 rounded-2xs bg-secondary" />
+        <span class="ml-auto h-7 w-28 rounded-sm border border-line-2 bg-card" />
       </div>
       <div class="flex min-h-0 flex-1">
         <div class="min-w-0 flex-1">
           <TranscriptSkeleton />
         </div>
-        <div class="hidden w-[400px] border-l border-line bg-surface min-[1280px]:block min-[1440px]:w-[440px]">
-          <div class="flex h-12 items-center gap-3 border-b border-line px-3">
+        <div class="hidden w-[400px] border-l border-line-1 bg-panel min-[1280px]:block min-[1440px]:w-[440px]">
+          <div class="flex h-12 items-center gap-3 border-b border-line-1 px-3">
             <For each={["Threads", "Files", "Memory", "Schedules", "Jobs"]}>
-              {(label) => <span class="text-[12.5px] text-fg-4">{label}</span>}
+              {(label) => <span class="text-sm text-icon">{label}</span>}
             </For>
           </div>
           <div class="px-3 pt-3">
-            <div class="h-2.5 w-24 rounded-[1px] bg-hover" />
+            <div class="h-2.5 w-24 rounded-2xs bg-secondary" />
           </div>
         </div>
       </div>

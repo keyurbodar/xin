@@ -40,23 +40,15 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
 
   if (props.rail === true)
     return (
-      <aside class="flex h-full w-14 shrink-0 flex-col items-center gap-0.5 border-r border-line bg-surface py-2">
+      <aside class="flex h-full w-14 shrink-0 flex-col items-center gap-0.5 border-r border-line-1 bg-panel py-2">
         <RailButton icon="search" label="Search" onClick={props.onSearch} />
-        <RailButton icon="home" label="Home" active={route().path === "/"} onClick={() => navigate("/")} />
-        <RailButton
-          icon="inbox"
-          label="Inbox"
-          active={route().parts[0] === "inbox"}
-          count={counts().waiting}
-          onClick={() => navigate("/inbox")}
-        />
         <RailButton
           icon="grid"
           label="Extensions"
           active={route().parts[0] === "extensions"}
           onClick={() => navigate("/extensions")}
         />
-        <div class="my-1.5 h-px w-6 shrink-0 bg-line" />
+        <div class="my-1.5 h-px w-6 shrink-0 bg-line-1" />
         <div class="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto">
           <For each={activeProjects()}>
             {(project) => (
@@ -64,10 +56,10 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
                 type="button"
                 title={project.name}
                 onClick={() => navigate(`/p/${project.slug}`)}
-                class="relative grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border bg-raised"
+                class="relative grid h-9 w-9 shrink-0 place-items-center rounded-sm border bg-card"
                 classList={{
-                  "border-line-strong text-fg": onProject(project.slug),
-                  "border-line-inner text-fg-2 hover:border-line-strong hover:text-fg": !onProject(project.slug),
+                  "border-line-3 text-ink": onProject(project.slug),
+                  "border-line-2 text-ink-2 hover:border-line-3 hover:text-ink": !onProject(project.slug),
                 }}
               >
                 <svg
@@ -87,7 +79,7 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
             title="New project"
             aria-label="New project"
             onClick={() => navigate("/new")}
-            class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-dashed border-line-inner text-fg-3 hover:border-line-strong hover:text-fg"
+            class="grid h-9 w-9 shrink-0 place-items-center rounded-sm border border-dashed border-line-2 text-ink-3 hover:border-line-3 hover:text-ink"
           >
             <Icon name="plus" size={14} />
           </button>
@@ -100,34 +92,26 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
         />
         <span
           title={ownerName()}
-          class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] text-fg-2"
+          class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-2xs text-ink-2"
         >
-          {initial() ?? <Icon name="users" size={13} class="text-fg-3" />}
+          {initial() ?? <Icon name="users" size={13} class="text-ink-3" />}
         </span>
       </aside>
     )
 
   return (
-    <aside class="flex h-full w-[264px] shrink-0 flex-col border-r border-line bg-surface p-2">
+    <aside class="flex h-full w-[264px] shrink-0 flex-col border-r border-line-1 bg-panel p-2">
       <button
         type="button"
         onClick={props.onSearch}
-        class="flex h-9 items-center gap-2.5 rounded-[2px] px-2 text-left hover:bg-hover"
+        class="flex h-9 items-center gap-2.5 rounded-sm px-2 text-left hover:bg-secondary"
       >
         <IconBox name="search" />
-        <span class="text-[12.5px] text-fg">Search</span>
+        <span class="text-sm text-ink">Search</span>
         <span class="kbd ml-auto">⌘K</span>
       </button>
 
       <nav class="flex flex-col">
-        <NavRow icon="home" label="Home" active={route().path === "/"} onClick={() => navigate("/")} />
-        <NavRow
-          icon="inbox"
-          label="Inbox"
-          active={route().parts[0] === "inbox"}
-          onClick={() => navigate("/inbox")}
-          count={counts().waiting}
-        />
         <NavRow
           icon="grid"
           label="Extensions"
@@ -140,7 +124,7 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
         <span class="label">Projects</span>
         <button
           type="button"
-          class="ml-auto text-fg-4 hover:text-fg-2"
+          class="ml-auto text-icon hover:text-ink-2"
           onClick={() => navigate("/new")}
           aria-label="New project"
         >
@@ -154,12 +138,12 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
             <button
               type="button"
               onClick={() => navigate(`/p/${project.slug}`)}
-              class="flex h-10 w-full shrink-0 items-center gap-2.5 rounded-[2px] px-2 text-left hover:bg-hover"
-              classList={{ "bg-selected hover:bg-selected": onProject(project.slug) }}
+              class="flex h-10 w-full shrink-0 items-center gap-2.5 rounded-sm px-2 text-left hover:bg-secondary"
+              classList={{ "bg-hover hover:bg-hover": onProject(project.slug) }}
             >
               <span
-                class="relative grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-raised"
-                classList={{ "text-fg": onProject(project.slug), "text-fg-2": !onProject(project.slug) }}
+                class="relative grid h-6 w-6 shrink-0 place-items-center rounded-sm border border-line-2 bg-card"
+                classList={{ "text-ink": onProject(project.slug), "text-ink-2": !onProject(project.slug) }}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -172,13 +156,13 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
                 <Corner state={projectState(project)} />
               </span>
               <span
-                class="min-w-0 flex-1 truncate text-[12.5px]"
-                classList={{ "text-fg": onProject(project.slug), "text-fg-2": !onProject(project.slug) }}
+                class="min-w-0 flex-1 truncate text-sm"
+                classList={{ "text-ink": onProject(project.slug), "text-ink-2": !onProject(project.slug) }}
               >
                 {project.name}
               </span>
               <Show when={needsYou(project)} fallback={<span class="mono-meta shrink-0">{summary(project)}</span>}>
-                <span class="shrink-0 font-mono text-[10.5px] text-accent-text">{summary(project)}</span>
+                <span class="shrink-0 font-mono text-2xs text-primary-ink">{summary(project)}</span>
               </Show>
             </button>
           )}
@@ -189,16 +173,16 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
         <button
           type="button"
           onClick={() => navigate("/settings/general")}
-          class="flex h-9 w-full items-center gap-2.5 rounded-[2px] px-2 text-left hover:bg-hover"
+          class="flex h-9 w-full items-center gap-2.5 rounded-sm px-2 text-left hover:bg-secondary"
         >
           <IconBox name="settings" />
-          <span class="text-[12.5px] text-fg-2">Settings</span>
+          <span class="text-sm text-ink-2">Settings</span>
         </button>
         <div class="flex h-9 items-center gap-2.5 px-2">
-          <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-line-inner text-[11px] text-fg-2">
-            {initial() ?? <Icon name="users" size={12} class="text-fg-3" />}
+          <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-line-2 text-2xs text-ink-2">
+            {initial() ?? <Icon name="users" size={12} class="text-ink-3" />}
           </span>
-          <span class="min-w-0 flex-1 truncate text-[12.5px] text-fg-2">{ownerName()}</span>
+          <span class="min-w-0 flex-1 truncate text-sm text-ink-2">{ownerName()}</span>
           <span class="mono-meta">{spend() > 0 ? money(spend()) : "Owner"}</span>
         </div>
       </div>
@@ -208,7 +192,7 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
 
 function IconBox(props: { name: IconName }): JSX.Element {
   return (
-    <span class="grid h-6 w-6 shrink-0 place-items-center text-fg-3">
+    <span class="grid h-6 w-6 shrink-0 place-items-center text-ink-3">
       <Icon name={props.name} size={16} />
     </span>
   )
@@ -228,14 +212,14 @@ function RailButton(props: {
       title={props.label}
       aria-label={props.label}
       onClick={props.onClick}
-      class="relative grid h-9 w-9 shrink-0 place-items-center rounded-[2px] hover:bg-hover"
-      classList={{ "bg-selected": props.active === true }}
+      class="relative grid h-9 w-9 shrink-0 place-items-center rounded-sm hover:bg-secondary"
+      classList={{ "bg-hover": props.active === true }}
     >
-      <span classList={{ "text-fg": props.active === true, "text-fg-3": props.active !== true }}>
+      <span classList={{ "text-ink": props.active === true, "text-ink-3": props.active !== true }}>
         <Icon name={props.icon} size={16} />
       </span>
       <Show when={(props.count ?? 0) > 0}>
-        <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent" />
+        <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
       </Show>
     </button>
   )
@@ -252,15 +236,15 @@ function NavRow(props: {
     <button
       type="button"
       onClick={props.onClick}
-      class="flex h-9 items-center gap-2.5 rounded-[2px] px-2 text-left hover:bg-hover"
-      classList={{ "bg-selected hover:bg-selected": props.active }}
+      class="flex h-9 items-center gap-2.5 rounded-sm px-2 text-left hover:bg-secondary"
+      classList={{ "bg-hover hover:bg-hover": props.active }}
     >
       <IconBox name={props.icon} />
-      <span class="text-[12.5px]" classList={{ "text-fg": props.active, "text-fg-2": !props.active }}>
+      <span class="text-sm" classList={{ "text-ink": props.active, "text-ink-2": !props.active }}>
         {props.label}
       </span>
       <Show when={(props.count ?? 0) > 0}>
-        <span class="ml-auto grid h-4 min-w-4 place-items-center rounded-[2px] bg-accent px-1 font-mono text-[10px] font-medium text-ink">
+        <span class="ml-auto grid h-4 min-w-4 place-items-center rounded-sm bg-primary px-1 font-mono text-2xs font-medium text-on-primary">
           {props.count}
         </span>
       </Show>
