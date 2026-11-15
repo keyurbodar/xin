@@ -8,6 +8,9 @@ type HomePart = () => Promise<JsonObject>
 
 const OWNER = ["owner"] as const
 
+/** Commands one `POST /v1/cmd` may carry; they run in order, each with its own receipt. */
+export const MAX_BATCH = 32
+
 export class Wire extends Service {
   static readonly inject = ["host", "ops", "http", "clock", "db"]
 
@@ -17,10 +20,17 @@ export class Wire extends Service {
   constructor(ctx: Context) {
     super(ctx, "wire")
     ctx.http.route("POST /v1/cmd", async (request) => {
-      const command = decodeCommand(await request.json().catch(() => undefined))
-      if (command === undefined) return Response.json({ error: "bad command frame" }, { status: 400 })
+      const body: unknown = await request.json().catch(() => undefined)
+      const batch = Array.isArray(body)
+      const frames: readonly unknown[] = Array.isArray(body) ? body : [body]
+      if (frames.length === 0 || frames.length > MAX_BATCH)
+        return Response.json({ error: `a batch holds 1 to ${MAX_BATCH} commands` }, { status: 400 })
+      const commands = frames.flatMap((frame) => decodeCommand(frame) ?? [])
+      if (commands.length !== frames.length) return Response.json({ error: "bad command frame" }, { status: 400 })
       await ctx.clock.arm()
-      return Response.json(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
+      const acks = []
+      for (const command of commands) acks.push(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
+      return Response.json(batch ? acks : acks[0])
     })
     ctx.http.route("POST /v1/auth", async () => new Response(null, { status: 204 }))
     ctx.http.route("GET /v1/socket", async (request) => {

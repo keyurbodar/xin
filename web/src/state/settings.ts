@@ -1,4 +1,4 @@
-import { cmd } from "../lib/api.ts"
+import { cached, cmd } from "../lib/api.ts"
 import { errorMessage, isKnownOpError, isRecord, remote, type RemoteHandle } from "./extensions.ts"
 
 
@@ -83,7 +83,7 @@ const parseModels = (value: unknown): ModelsList => {
   }
 }
 
-export const models: RemoteHandle<ModelsList> = remote(() => cmd("models.list"), parseModels)
+export const models: RemoteHandle<ModelsList> = remote(() => cached("models.list"), parseModels)
 
 /** The composer's picker: the catalog with unkeyed models included; the server filters and ranks a non-empty query. */
 export async function searchModels(query: string): Promise<ModelsList> {
@@ -279,7 +279,7 @@ const parseSystemVersion = (value: unknown): SystemVersion => {
   }
 }
 
-export const systemVersion: RemoteHandle<SystemVersion> = remote(() => cmd("system.version"), parseSystemVersion)
+export const systemVersion: RemoteHandle<SystemVersion> = remote(() => cached("system.version"), parseSystemVersion)
 
 export type UpdateOutcome = { readonly application: "deploying" | "failed"; readonly detail: string }
 
@@ -400,7 +400,7 @@ const parseNotifyPrefs = (value: unknown): NotifyPrefs => {
   }
 }
 
-export const notifyPrefs: RemoteHandle<NotifyPrefs> = remote(() => cmd("notify.prefs"), parseNotifyPrefs)
+export const notifyPrefs: RemoteHandle<NotifyPrefs> = remote(() => cached("notify.prefs"), parseNotifyPrefs)
 
 const DEFAULT_NOTIFY: NotifyPrefs = { waiting: true, finished: true, failed: true, spend: true, schedule: false }
 
@@ -427,7 +427,7 @@ const parseOwner = (value: unknown): OwnerSettings => {
   }
 }
 
-export const owner: RemoteHandle<OwnerSettings> = remote(() => cmd("owner.read"), parseOwner)
+export const owner: RemoteHandle<OwnerSettings> = remote(() => cached("owner.read"), parseOwner)
 
 export async function setOwner(patch: { name?: string; instructions?: string }): Promise<OwnerSettings> {
   const next = parseOwner(await cmd("owner.set", patch))
@@ -457,7 +457,7 @@ const parseQuiet = (value: unknown): QuietHours => {
   }
 }
 
-export const quietHours: RemoteHandle<QuietHours> = remote(() => cmd("notify.quiet"), parseQuiet)
+export const quietHours: RemoteHandle<QuietHours> = remote(() => cached("notify.quiet"), parseQuiet)
 
 export async function setQuietHours(patch: Partial<QuietHours>): Promise<void> {
   await cmd("notify.quiet.set", patch)
@@ -474,7 +474,7 @@ const parsePushDevices = (value: unknown): readonly PushDevice[] =>
     return typeof endpoint === "string" && typeof origin === "string" ? [{ endpoint, origin }] : []
   })
 
-export const pushDevices: RemoteHandle<readonly PushDevice[]> = remote(() => cmd("push.list"), parsePushDevices)
+export const pushDevices: RemoteHandle<readonly PushDevice[]> = remote(() => cached("push.list"), parsePushDevices)
 
 export async function removePushDevice(endpoint: string): Promise<void> {
   await cmd("push.unsubscribe", { endpoint })

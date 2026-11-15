@@ -17,19 +17,82 @@ type Ack<T> =
 /** A caller that may retry passes its own command id: the host dedupes on it, so a replay lands once. */
 export type CmdOptions = { readonly id?: string }
 
-export async function cmd<T>(op: string, args: Record<string, unknown> = {}, options: CmdOptions = {}): Promise<T> {
-  const response = await fetch("/v1/cmd", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${token()}`,
-    },
-    body: JSON.stringify({ id: options.id ?? crypto.randomUUID(), op, args }),
+/** Commands one `POST /v1/cmd` may carry; the host refuses more. */
+export const MAX_BATCH = 32
+
+type Queued = {
+  readonly frame: { readonly id: string; readonly op: string; readonly args: Record<string, unknown> }
+  resolve(ack: Ack<unknown>): void
+  reject(error: unknown): void
+}
+
+let queue: Queued[] = []
+
+/** Commands issued in the same task go out as one request: one Worker request and one home request for all of them. */
+async function flush(): Promise<void> {
+  const batch = queue.splice(0, MAX_BATCH)
+  if (queue.length > 0) queueMicrotask(() => void flush())
+  if (batch.length === 0) return
+  const single = batch.length === 1
+  try {
+    const response = await fetch("/v1/cmd", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token()}` },
+      body: JSON.stringify(single ? batch[0]?.frame : batch.map((queued) => queued.frame)),
+    })
+    if (!response.ok) throw new OpError("http", `${batch.map((queued) => queued.frame.op).join(", ")}: HTTP ${response.status}`)
+    const body: unknown = await response.json()
+    const acks = (Array.isArray(body) ? body : [body]) as Ack<unknown>[]
+    const byId = new Map(acks.map((ack) => [ack.id, ack]))
+    for (const queued of batch) {
+      const ack = byId.get(queued.frame.id)
+      if (ack === undefined) queued.reject(new OpError("http", `${queued.frame.op}: no ack`))
+      else queued.resolve(ack)
+    }
+  } catch (error: unknown) {
+    for (const queued of batch) queued.reject(error)
+  }
+}
+
+function send<T>(op: string, args: Record<string, unknown>, options: CmdOptions): Promise<T> {
+  return new Promise<Ack<unknown>>((resolve, reject) => {
+    if (queue.length === 0) queueMicrotask(() => void flush())
+    queue.push({ frame: { id: options.id ?? crypto.randomUUID(), op, args }, resolve, reject })
+  }).then((ack) => {
+    if (!ack.ok) throw new OpError(ack.error.code, ack.error.message)
+    return ack.result as T
   })
-  if (!response.ok) throw new OpError("http", `${op}: HTTP ${response.status}`)
-  const body = (await response.json()) as Ack<T>
-  if (!body.ok) throw new OpError(body.error.code, body.error.message)
-  return body.result
+}
+
+/** Read results by op and args, kept until something may have changed them. */
+const reads = new Map<string, Promise<unknown>>()
+
+/** Drops every cached read: called after a command succeeds and whenever the home stream says the home changed. */
+export function invalidateReads(): void {
+  reads.clear()
+}
+
+/** A command that may change state; once it succeeds, cached reads are dropped. */
+export async function cmd<T>(op: string, args: Record<string, unknown> = {}, options: CmdOptions = {}): Promise<T> {
+  const result = await send<T>(op, args, options)
+  invalidateReads()
+  return result
+}
+
+/**
+ * A read that changes nothing, answered from the cache while no command or home change has dropped it. Concurrent
+ * callers share one request, so screens that open together fire each read once.
+ */
+export function cached<T>(op: string, args: Record<string, unknown> = {}): Promise<T> {
+  const key = `${op}\u0000${JSON.stringify(args)}`
+  const hit = reads.get(key)
+  if (hit !== undefined) return hit as Promise<T>
+  const started = send<T>(op, args, {})
+  reads.set(key, started)
+  started.catch(() => {
+    if (reads.get(key) === started) reads.delete(key)
+  })
+  return started
 }
 
 export type ServerFrame =
@@ -174,6 +237,7 @@ export class Streams {
       return
     }
     if (frame.t === "snap") {
+      if (frame.stream === "home") invalidateReads()
       for (const sub of this.#subs.get(frame.stream) ?? []) sub.value(frame.value, frame.rev)
       return
     }
