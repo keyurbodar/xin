@@ -44,7 +44,7 @@ import { firstLoad } from "../../lib/loading.ts"
 import type { CaptainRow } from "../../lib/captains.ts"
 import { homeCaptains } from "../../state/captains.ts"
 import { homeProjects, projectThreads, type ProjectSummary } from "../../state/home.ts"
-import { commentOnIssue, issueDetail, issueScreen, issuesRev, linkIssue, updateIssue } from "../../state/issues.ts"
+import { commentOnIssue, issueDetail, issueScreen, issuesRev, linkIssue, statesRev, updateIssue } from "../../state/issues.ts"
 import { navigate } from "../../lib/router.ts"
 import { openThreadTab, showPaneView } from "../../state/tabs.ts"
 import { createPaneAction, ResourceError } from "../chat/ui.tsx"
@@ -65,9 +65,9 @@ const LABEL = "px-2 pb-1 pt-3 text-xs text-ink-3"
 export function IssueView(props: PaneContext & { id: number }): JSX.Element {
   const [data, { mutate, refetch }] = createResource(
     () => props.id,
-    (id) => issueScreen(id, untrack(issuesRev)),
+    (id) => issueScreen(id, untrack(issuesRev), untrack(statesRev)),
   )
-  createEffect(on(issuesRev, () => void refetch(), { defer: true }))
+  createEffect(on([issuesRev, statesRev], () => void refetch(), { defer: true }))
   const [pages, setPages] = createSignal<TimelinePages>()
   createEffect(() => {
     const head = data.latest?.detail

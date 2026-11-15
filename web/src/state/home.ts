@@ -1,11 +1,11 @@
 import { batch, createSignal } from "solid-js"
 import type { Streams } from "../lib/api.ts"
-import { parseIssuesRev } from "../lib/issues.ts"
+import { parseIssuesRev, parseStatesRev } from "../lib/issues.ts"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
 import { route } from "../lib/router.ts"
 import { threadsOf } from "../lib/threads.ts"
 import { parseRequestList, type RequestRow } from "./conversation.ts"
-import { noteIssuesRev } from "./issues.ts"
+import { noteIssuesRev, noteStatesRev } from "./issues.ts"
 
 export type ThreadSummary = {
   readonly id: number
@@ -111,6 +111,7 @@ export function subscribeHome(streams: Streams): () => void {
         setProjects(parse(value))
         setRequests(parseRequestList(value))
         noteIssuesRev(parseIssuesRev(value))
+        noteStatesRev(parseStatesRev(value))
         setLoaded(true)
       }),
     delta: () => undefined,

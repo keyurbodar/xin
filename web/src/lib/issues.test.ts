@@ -27,6 +27,7 @@ import {
   parseIssueDetail,
   parseIssuePage,
   parseIssuesRev,
+  parseStatesRev,
   parseStates,
   stateTone,
   timelineItems,
@@ -137,6 +138,11 @@ test("the detail parses links, the timeline and whether older events exist", () 
 test("the home revision reads issues.rev and falls back to zero", () => {
   expect(parseIssuesRev({ projects: [], issues: { rev: 42 } })).toBe(42)
   expect(parseIssuesRev({ projects: [] })).toBe(0)
+})
+
+test("the states revision is optional until the backend sends it", () => {
+  expect(parseStatesRev({ issues: { rev: 42, statesRev: 3 } })).toBe(3)
+  expect(parseStatesRev({ issues: { rev: 42 } })).toBeUndefined()
 })
 
 test("state tones cover the seeded states and fall back on closed for the owner's own", () => {

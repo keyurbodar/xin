@@ -21,7 +21,7 @@ import {
   type Priority,
 } from "../../lib/issues.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
-import { createIssue, issuesRev, projectIssueList } from "../../state/issues.ts"
+import { createIssue, issuesRev, projectIssueList, statesRev } from "../../state/issues.ts"
 import { homeCaptains } from "../../state/captains.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { createPaneAction } from "../chat/ui.tsx"
@@ -51,19 +51,13 @@ function issueProjectId(context: PaneContext): string {
 
 export function IssuesSection(props: PaneContext & { label: string }): JSX.Element {
   const [data] = createResource(
-    () => `${issuesRev()}:${issueProjectId(props)}`,
-    (key) => {
-      const cut = key.indexOf(":")
-      return projectIssueList(key.slice(cut + 1), false, Number(key.slice(0, cut)))
-    },
+    () => [issueProjectId(props), issuesRev(), statesRev()] as const,
+    ([project, rev, states]) => projectIssueList(project, false, rev, states),
   )
   const [showClosed, setShowClosed] = createSignal(false)
   const [closed] = createResource(
-    () => (showClosed() ? `${issuesRev()}:${issueProjectId(props)}` : false),
-    (key) => {
-      const cut = key.indexOf(":")
-      return projectIssueList(key.slice(cut + 1), true, Number(key.slice(0, cut)))
-    },
+    () => (showClosed() ? ([issueProjectId(props), issuesRev(), statesRev()] as const) : false),
+    ([project, rev, states]) => projectIssueList(project, true, rev, states),
   )
   const groups = createMemo(() => {
     const loaded = data.latest

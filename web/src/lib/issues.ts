@@ -193,6 +193,11 @@ export function parseIssuesRev(home: unknown): number {
   return numOf(isRecord(home) ? recordOf(home.issues)?.rev : undefined) ?? 0
 }
 
+/** The home snapshot's `issues.statesRev`, which moves on every state change; undefined until the backend sends it. */
+export function parseStatesRev(home: unknown): number | undefined {
+  return numOf(isRecord(home) ? recordOf(home.issues)?.statesRev : undefined)
+}
+
 export type IssueGroup = { readonly state: IssueState; readonly issues: readonly IssueSummary[] }
 
 /** Closed issues under their closed state in the owner's order, for the Overview's closed toggle. */
