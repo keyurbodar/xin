@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",
+    "prebuild": "bun test src",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsgo --noEmit && tsgo --noEmit -p tsconfig.test.json",

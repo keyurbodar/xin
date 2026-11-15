@@ -1,15 +1,12 @@
 import { type Context, Service } from "@deepseek-ai/cordis"
 import type { JsonObject } from "@earendil-works/pi-durable"
-import { compile, obj, opt, str } from "@earendil-works/pi-schema"
+import { obj, opt, str } from "@earendil-works/pi-schema"
 import { defineOp } from "../ops.ts"
 import { ack, decodeCommand, Sockets } from "../wire.ts"
-import { rotatedTokenMatches, rotateToken } from "./token.ts"
 
 type HomePart = () => Promise<JsonObject>
 
 const OWNER = ["owner"] as const
-
-const AuthRequest = compile(obj({ token: str({ minLength: 1, maxLength: 512 }) }))
 
 export class Wire extends Service {
   static readonly inject = ["host", "ops", "http", "clock", "db"]
@@ -25,13 +22,7 @@ export class Wire extends Service {
       await ctx.clock.arm()
       return Response.json(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
     })
-    ctx.http.route("POST /v1/auth", async (request) => {
-      const body: unknown = await request.json().catch(() => undefined)
-      if (!AuthRequest.check(body)) return new Response("bad request", { status: 400 })
-      return (await rotatedTokenMatches(ctx.db, body.token))
-        ? new Response(null, { status: 204 })
-        : new Response("unauthorized", { status: 401 })
-    })
+    ctx.http.route("POST /v1/auth", async () => new Response(null, { status: 204 }))
     ctx.http.route("GET /v1/socket", async (request) => {
       if (request.headers.get("upgrade") !== "websocket" || this.sockets === undefined)
         return new Response("not found", { status: 404 })
@@ -57,7 +48,7 @@ export class Wire extends Service {
         args: obj({}),
         actors: OWNER,
         run: async () => {
-          const token = await rotateToken(ctx.db)
+          const token = await ctx.host.auth.rotate(ctx.db)
           this.sockets?.close(undefined)
           return { token }
         },

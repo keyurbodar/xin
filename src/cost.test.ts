@@ -4,7 +4,7 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { M5_MODEL } from "../test/plugins/m5.ts"
-import { eventually, fresh } from "../test/support.ts"
+import { eventually, fresh, OWNER_HEADERS } from "../test/support.ts"
 import { freshProduct, measureTurn, type Move, productCmd, type ProductStub, type TurnCost } from "../test/turncost.ts"
 import { FAUX_MODEL, type Home, PRODUCT_MODEL, type ProductHomeTest, respondProduct } from "../test/worker.ts"
 
@@ -19,7 +19,13 @@ type Ack = { readonly ok: boolean; readonly result?: unknown }
 
 const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Promise<Ack> =>
   stub
-    .fetch(new Request("https://ingle.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
+    .fetch(
+      new Request("https://ingle.test/v1/cmd", {
+        method: "POST",
+        headers: OWNER_HEADERS,
+        body: JSON.stringify({ id, op, args }),
+      }),
+    )
     .then((reply) => reply.json<Ack>())
 
 async function fireNow(stub: Stub): Promise<void> {
