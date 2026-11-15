@@ -2,7 +2,7 @@ import { Menu } from "@ark-ui/solid/menu"
 import { Check, ChevronDown, Layers } from "lucide-solid"
 import { For, Show, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
-import { THINKING_LEVELS, type ThinkingLevel } from "../../state/conversation.ts"
+import { isThinkingLevel, type ThinkingLevel } from "../../lib/thinking.ts"
 import type { PresetRow } from "../../state/extensions.ts"
 import { GROUP_LABEL, ITEM, ITEM_ICON, SEPARATOR, SURFACE, TOOL } from "./styles.ts"
 
@@ -15,8 +15,6 @@ const LEVEL_LABEL: Readonly<Record<ThinkingLevel, string>> = {
   xhigh: "Extra high",
   max: "Max",
 }
-
-const isLevel = (value: string): value is ThinkingLevel => THINKING_LEVELS.some((level) => level === value)
 
 /** Reasoning effort for a reasoning model, and the conversation's preset as its one real mode. */
 export function ReasoningMenu(props: {
@@ -49,7 +47,7 @@ export function ReasoningMenu(props: {
                 <Menu.RadioItemGroup
                   value={props.level ?? ""}
                   onValueChange={(details) => {
-                    if (isLevel(details.value)) props.onLevel(details.value)
+                    if (isThinkingLevel(details.value)) props.onLevel(details.value)
                   }}
                 >
                   <Menu.ItemGroupLabel class={GROUP_LABEL}>Reasoning</Menu.ItemGroupLabel>

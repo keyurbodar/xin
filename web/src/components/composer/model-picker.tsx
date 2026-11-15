@@ -48,7 +48,7 @@ export function ModelPicker(props: {
   omitted: number
   query: string
   onSearch: (query: string) => void
-  onPick: (model: ModelRef) => void
+  onPick: (model: ModelInfo) => void
 }): JSX.Element {
   const [open, setOpen] = createSignal(false)
   const [extra, setExtra] = createSignal<readonly ModelInfo[]>([])
@@ -112,7 +112,7 @@ export function ModelPicker(props: {
               onSelect={(details) => {
                 const entry = collection().find(details.value)
                 if (entry === null) return
-                props.onPick({ provider: entry.model.provider, modelId: entry.model.modelId })
+                props.onPick(entry.model)
                 props.onSearch("")
                 setOpen(false)
               }}

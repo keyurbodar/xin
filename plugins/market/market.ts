@@ -589,12 +589,14 @@ export function createMarket(ports: MarketPorts): MarketFeature {
   const ops: readonly Op[] = [
     defineOp({
       name: "market.search",
+      read: true,
       args: SearchArgs,
       actors: OWNER,
       run: async (_api, args) => search(args.query, args.category),
     }),
     defineOp({
       name: "market.entry",
+      read: true,
       args: EntryArgs,
       actors: OWNER,
       run: async (_api, args) => entry(args.name),
@@ -624,6 +626,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     }),
     defineOp({
       name: "market.policy",
+      read: true,
       args: obj({}),
       actors: OWNER,
       run: async () => toJson(readPolicy()),
@@ -648,6 +651,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     }),
     defineOp({
       name: "market.skipped",
+      read: true,
       args: obj({}),
       actors: OWNER,
       run: async () =>

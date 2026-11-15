@@ -138,6 +138,7 @@ export function createSkills(drive: DriveService): SkillsModule {
 
   const list: Op = defineOp({
     name: "skill.list",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => (await listSkills()).map(({ name, description }) => ({ name, description })),
@@ -145,6 +146,7 @@ export function createSkills(drive: DriveService): SkillsModule {
 
   const read: Op = defineOp({
     name: "skill.read",
+    read: true,
     args: obj({ name: str({ pattern: SKILL_NAME_PATTERN }) }),
     actors: ["owner"],
     run: async (_api, { name }) => {

@@ -40,7 +40,7 @@ export class Wire extends Service {
           acks.push({ t: "ack", id: command.id, ok: false, error: { code: "not_run", message: broken } })
           continue
         }
-        if (!command.read) wrote = true
+        if (ctx.ops.defined.get(command.op)?.read !== true) wrote = true
         try {
           acks.push(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
         } catch (error) {
@@ -48,7 +48,7 @@ export class Wire extends Service {
           acks.push({ t: "ack", id: command.id, ok: false, error: { code: "failed", message: messageOf(error) } })
         }
       }
-      const headers = wrote ? { "x-ingle-rev": this.#bump() } : undefined
+      const headers = wrote ? { "x-ingle-rev": this.announce() } : undefined
       return Response.json(batch ? acks : acks[0], headers === undefined ? {} : { headers })
     })
     ctx.http.route("POST /v1/auth", async () => new Response(null, { status: 204 }))
@@ -61,7 +61,13 @@ export class Wire extends Service {
       )
     })
     ctx.ops.define(
-      defineOp({ name: "session.list", args: obj({}), actors: OWNER, run: async () => this.sockets?.list() ?? [] }),
+      defineOp({
+        name: "session.list",
+        read: true,
+        args: obj({}),
+        actors: OWNER,
+        run: async () => this.sockets?.list() ?? [],
+      }),
     )
     ctx.ops.define(
       defineOp({
@@ -102,8 +108,12 @@ export class Wire extends Service {
     })
   }
 
-  /** A batch that may have written moved the home on: announce it to every home subscriber and answer the new rev. */
-  #bump(): string {
+  /**
+   * Owner state changed (a batch that ran a non-read op, or an agent's write): tells every home subscriber, so tabs drop
+   * their cached reads, and returns the new revision. A property, not a method: plugins call it through the service
+   * proxy, and a private field cannot be read through it.
+   */
+  readonly announce = (): string => {
     this.#changes += 1
     const rev = `${this.#epoch}.${this.#changes}`
     this.sockets?.publishChanged(rev)

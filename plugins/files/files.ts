@@ -203,6 +203,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const list = defineOp({
     name: "file.list",
+    read: true,
     args: obj({ prefix: opt(str()) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { prefix }) => {
@@ -217,6 +218,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const read = defineOp({
     name: "file.read",
+    read: true,
     args: obj({ path: str({ minLength: 1 }) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { path }) => {
@@ -234,6 +236,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const revision = defineOp({
     name: "file.revision",
+    read: true,
     args: obj({ path: str({ minLength: 1 }), sha256: str({ minLength: 64, maxLength: 64 }) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { path, sha256 }) => {
@@ -251,6 +254,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const revisions = defineOp({
     name: "file.revisions",
+    read: true,
     args: obj({ path: str({ minLength: 1 }) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { path }) => {
