@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { cmd } from "../lib/api.ts"
 import { listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
 
@@ -45,6 +46,29 @@ export function parseContextReport(value: unknown): ContextReport {
   }
 }
 
-export async function readContext(conv: number): Promise<ContextReport> {
-  return parseContextReport(await cmd<unknown>("conv.context", { conv }))
+const [reports, setReports] = createSignal<ReadonlyMap<number, ContextReport>>(new Map())
+const inFlight = new Map<number, Promise<ContextReport>>()
+
+export function cachedContext(conv: number): ContextReport | undefined {
+  return reports().get(conv)
+}
+
+export function refreshContext(conv: number): Promise<ContextReport> {
+  const pending = inFlight.get(conv)
+  if (pending !== undefined) return pending
+  const read = cmd<unknown>("conv.context", { conv })
+    .then(parseContextReport)
+    .then((report) => {
+      setReports((current) => new Map(current).set(conv, report))
+      return report
+    })
+    .finally(() => inFlight.delete(conv))
+  inFlight.set(conv, read)
+  return read
+}
+
+/** The last report for a conversation, read once; later reads come only from a finished turn or an opened popover. */
+export function ensureContext(conv: number): Promise<ContextReport> {
+  const known = reports().get(conv)
+  return known === undefined ? refreshContext(conv) : Promise.resolve(known)
 }

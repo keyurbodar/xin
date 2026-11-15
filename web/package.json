@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",
+    "prebuild": "bun test src",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit && tsgo --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "@ark-ui/solid": "^5.40.0",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",
+    "@types/bun": "^1.4.4",
     "@types/qrcode": "^1.5.6",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "tailwindcss": "4.3.3",

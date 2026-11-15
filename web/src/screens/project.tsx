@@ -265,6 +265,8 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
       return found === undefined ? [] : [found]
     })
   const snapshot = createConversationView(streams, () => thread()?.id ?? props.project.coordinatorId)
+  const onCoordinator = (): boolean => filePath() === undefined && runId() === undefined && thread() === undefined
+  const coordinatorSnapshot = createMemo<Snapshot | undefined>((last) => (thread() === undefined ? snapshot() : last))
 
   createEffect(() => {
     const current = thread()
@@ -315,11 +317,7 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
               <Show
                 when={runId()}
                 fallback={
-                  <Show
-                    when={thread()?.id}
-                    keyed
-                    fallback={<ProjectChat project={props.project} snapshot={snapshot()} onOpenThread={openThread} />}
-                  >
+                  <Show when={thread()?.id} keyed>
                     {(_id) => (
                       <Show when={thread()}>
                         {(current) => (
@@ -341,6 +339,9 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
           >
             {(path) => <FileScreen project={props.project} path={path()} />}
           </Show>
+          <div class="flex min-h-0 flex-1 flex-col" classList={{ hidden: !onCoordinator() }}>
+            <ProjectChat project={props.project} snapshot={coordinatorSnapshot()} onOpenThread={openThread} />
+          </div>
         </section>
       </Show>
       <Show when={paneOpen()}>

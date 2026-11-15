@@ -1,7 +1,7 @@
 import { Popover } from "@ark-ui/solid/popover"
 import { For, Show, createEffect, createSignal, on, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
-import { readContext, type ContextCategoryKey, type ContextReport } from "../../state/context.ts"
+import { cachedContext, ensureContext, refreshContext, type ContextCategoryKey, type ContextReport } from "../../state/context.ts"
 import { SURFACE } from "./styles.ts"
 
 const CATEGORY: Readonly<Record<ContextCategoryKey, { readonly label: string; readonly color: string }>> = {
@@ -42,19 +42,17 @@ function Ring(props: { fraction: number }): JSX.Element {
 
 /** How full the conversation's context is, read from `conv.context` on open and after each turn. */
 export function ContextMeter(props: { conversation: number; busy: boolean }): JSX.Element {
-  const [report, setReport] = createSignal<ContextReport | undefined>()
   const [error, setError] = createSignal<string | undefined>()
+  const report = (): ContextReport | undefined => cachedContext(props.conversation)
 
-  const refresh = (): void => {
-    readContext(props.conversation)
-      .then((next) => {
-        setReport(next)
-        setError(undefined)
-      })
+  const settle = (read: Promise<ContextReport>): void => {
+    read
+      .then(() => setError(undefined))
       .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)))
   }
+  const refresh = (): void => settle(refreshContext(props.conversation))
 
-  createEffect(on(() => props.conversation, refresh))
+  createEffect(on(() => props.conversation, (conversation) => settle(ensureContext(conversation))))
   createEffect(
     on(
       () => props.busy,
