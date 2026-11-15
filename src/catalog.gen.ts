@@ -400,7 +400,11 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
     { id: "tool-orchestrator", name: "cordis:tool-orchestrator" },
   ],
   "ingle-plugin-presets": [
-    { id: "presets", name: "cordis:presets", config: { default: "full" } },
+    {
+      id: "presets",
+      name: "cordis:presets",
+      config: { default: "full", threadOmits: ["tool-schedules", "tool-goals"] },
+    },
     {
       id: "preset-full",
       name: "cordis:preset",

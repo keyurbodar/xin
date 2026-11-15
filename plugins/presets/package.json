@@ -22,7 +22,11 @@
         "id": "presets",
         "plugin": "presets",
         "config": {
-          "default": "full"
+          "default": "full",
+          "threadOmits": [
+            "tool-schedules",
+            "tool-goals"
+          ]
         }
       },
       {
