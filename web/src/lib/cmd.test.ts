@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test"
 import { cached, cmd, invalidateReads, live, MAX_BATCH, noteHomeRev, READ_TTL_MS, Streams } from "./api.ts"
 
 type Frame = { readonly id: string; readonly op: string; readonly args: unknown; readonly read?: boolean }
@@ -13,12 +13,20 @@ const ack = (frame: Frame) =>
     ? { t: "ack", id: frame.id, ok: false, error: { code: "failed", message: "broken" } }
     : { t: "ack", id: frame.id, ok: true, result: { op: frame.op, args: frame.args } }
 
+const saved = Object.fromEntries(
+  ["fetch", "WebSocket", "location", "localStorage"].map((name) => [name, Reflect.get(globalThis, name)]),
+)
+
+function install(name: string, value: unknown): void {
+  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true })
+}
+
 beforeEach(() => {
   posts = []
   reply = {}
   invalidateReads()
-  vi.stubGlobal("localStorage", { getItem: () => "own_token", setItem: () => undefined, removeItem: () => undefined })
-  vi.stubGlobal("fetch", async (_input: string, init: { body: string }) => {
+  install("localStorage", { getItem: () => "own_token", setItem: () => undefined, removeItem: () => undefined })
+  install("fetch", async (_input: string, init: { body: string }) => {
     const body: unknown = JSON.parse(init.body)
     const frames = (Array.isArray(body) ? body : [body]) as Frame[]
     posts.push(frames)
@@ -31,8 +39,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  vi.useRealTimers()
-  vi.unstubAllGlobals()
+  setSystemTime()
+  for (const [name, value] of Object.entries(saved)) install(name, value)
 })
 
 /** What Extensions → Customize opens with. */
@@ -88,8 +96,8 @@ describe("cmd batching and the read cache", () => {
 describe("the home stream and the read cache", () => {
   it("drops cached reads when a home snapshot arrives", async () => {
     let socket: { emit(type: string, data?: string): void } | undefined
-    vi.stubGlobal("location", { href: "https://ingle.test/" })
-    vi.stubGlobal(
+    install("location", { href: "https://ingle.test/" })
+    install(
       "WebSocket",
       class {
         static readonly OPEN = 1
@@ -109,6 +117,7 @@ describe("the home stream and the read cache", () => {
       },
     )
     const streams = new Streams(
+      () => undefined,
       () => undefined,
       () => undefined,
       () => undefined,
@@ -168,11 +177,12 @@ describe("what keeps the read cache honest", () => {
   })
 
   it("ages a cached read out after the TTL", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] })
+    const start = Date.now()
+    setSystemTime(new Date(start))
     await cached("skill.list")
-    vi.setSystemTime(Date.now() + READ_TTL_MS - 1)
+    setSystemTime(new Date(start + READ_TTL_MS - 1))
     await cached("skill.list")
-    vi.setSystemTime(Date.now() + 2)
+    setSystemTime(new Date(start + READ_TTL_MS + 1))
     await cached("skill.list")
     expect(ops()).toEqual([["skill.list"], ["skill.list"]])
   })
