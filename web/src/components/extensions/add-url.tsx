@@ -2,6 +2,7 @@ import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { errorMessage, installSpec, packages } from "../../state/extensions.ts"
 import { Button, Failure, MONO_INPUT, Note } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
+import { keyStarted } from "../../lib/motion.ts"
 
 const SPEC = /^(?:github:[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*(?:#[A-Za-z0-9._+/-]+)?|(?:git\+)?https:\/\/\S+|(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*(?:@[A-Za-z0-9.^~><=*xX|-]+)?)$/u
 
@@ -14,7 +15,7 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
   const close = (): void => {
     if (closing()) return
     setClosing(true)
-    setTimeout(props.onClose, 140)
+    setTimeout(props.onClose, keyStarted() ? 0 : 140)
   }
 
   onMount(() => {
@@ -53,12 +54,12 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
         type="button"
         aria-label="Close add from URL"
         onClick={close}
-        class="absolute inset-0 bg-scrim transition-opacity duration-[140ms]"
-        classList={{ "opacity-0": closing() }}
+        class="im-scrim absolute inset-0 bg-scrim"
+        data-state={closing() ? "closed" : "open"}
       />
       <section
-        class="relative flex w-full max-w-[520px] flex-col rounded-md border border-line-2 bg-card shadow-2xl"
-        classList={{ enter: !closing(), "dialog-out": closing() }}
+        class="im-dialog relative flex w-full max-w-[520px] flex-col rounded-md border border-line-2 bg-card shadow-2xl"
+        data-state={closing() ? "closed" : "open"}
       >
         <header class="flex items-center border-b border-line-1 px-4 py-3.5">
           <span class="text-[15px] font-medium text-ink">Add from URL</span>

@@ -1,4 +1,5 @@
 import { token } from "./auth.ts"
+import { parseRepairReply, type Drop, type RepairAnswer } from "./repair.ts"
 
 export class OpError extends Error {
   readonly code: string
@@ -58,10 +59,10 @@ export type Subscription = {
   readonly resume?: Resumable
 }
 
+/** One socket per tab, a fresh snapshot per reconnect, resubscribed from the current view set. */
 /** Handshakes refused in a row before the tab asks `/v1/status` whether its token is still good. */
 export const REFUSED_HANDSHAKES = 3
 
-/** One socket per tab; a reconnect resubscribes the current view set from what each view already holds. */
 export class Streams {
   #ws: WebSocket | undefined
   #subs = new Map<string, Set<Subscription>>()
@@ -72,19 +73,24 @@ export class Streams {
   #stopped = false
   /** The token being retired while the stream is held; the hold ends only once a different token is stored. */
   #held: string | undefined
-  /** Bumped by every reconnect the tab asks for, so a check or a timer from before it does nothing. */
+  /** Bumped by every reconnect the tab asks for, so a status check from before it does nothing. */
   #run = 0
+  #timer: ReturnType<typeof setTimeout> | undefined
+  #waiting: (() => void) | undefined
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
   readonly #onSession: (socket: string | undefined) => void
+  readonly #onRetry: (at: number) => void
   readonly #onSignedOut: () => void
 
   constructor(
     onStatus: (status: "connecting" | "open" | "closed") => void,
     onSession: (socket: string | undefined) => void,
+    onRetry: (at: number) => void,
     onSignedOut: () => void,
   ) {
     this.#onStatus = onStatus
     this.#onSession = onSession
+    this.#onRetry = onRetry
     this.#onSignedOut = onSignedOut
   }
 
@@ -106,6 +112,7 @@ export class Streams {
 
   open(): void {
     if (this.#ws !== undefined || this.#stopped || this.#holding()) return
+    this.#cancelPending()
     this.#onStatus("connecting")
     const url = new URL("/v1/socket", location.href)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
@@ -135,7 +142,7 @@ export class Streams {
     socket.addEventListener("error", () => socket.close())
   }
 
-  /** Drops the socket so the next handshake carries the current token; subscriptions survive the bounce. */
+  /** Drops the socket so the next handshake carries the current token, or dials at once when none is open. */
   reconnectNow(): void {
     if (this.#holding()) return
     this.#retry = 0
@@ -145,14 +152,21 @@ export class Streams {
     else this.#ws.close()
   }
 
+  /** Dials now in place of the pending backoff; a dial already in flight is left to finish, so there is one chain. */
+  dialNow(): void {
+    this.#retry = 0
+    this.open()
+  }
+
   /**
    * Holds the socket closed while the owner retires this tab's token on purpose, so its refused handshakes cannot end
    * the session before the one-time replacement is copied or adopted. Only a different stored token ends the hold: a
-   * push or any other `reconnectNow()` with the retired token still stored keeps it.
+   * push, a reconnect, or another tab's sign-out emptying the shared token all keep it.
    */
   pause(): void {
     this.#held = token()
     this.#run += 1
+    this.#cancelPending()
     this.#ws?.close()
   }
 
@@ -165,10 +179,17 @@ export class Streams {
   #holding(): boolean {
     if (this.#held === undefined) return false
     const stored = token()
-    // Another tab signing out empties the shared token; that is not the replacement, so the hold stays.
     if (stored === this.#held || stored === "") return true
     this.#held = undefined
     return false
+  }
+
+  #cancelPending(): void {
+    clearTimeout(this.#timer)
+    this.#timer = undefined
+    if (this.#waiting === undefined) return
+    document.removeEventListener("visibilitychange", this.#waiting)
+    this.#waiting = undefined
   }
 
   /**
@@ -186,24 +207,35 @@ export class Streams {
         (response) => response.status,
         () => undefined,
       )
-      if (run !== this.#run) return
+      if (run !== this.#run || this.#ws !== undefined) return
       if (status === 401 && token() === presented) {
         this.#stopped = true
         this.#onSignedOut()
         return
       }
     }
+    this.#cancelPending()
     const delay = Math.min(15_000, 500 * 2 ** this.#retry)
     this.#retry += 1
-    setTimeout(() => {
-      if (run === this.#run) this.#openWhenVisible()
+    this.#onRetry(Date.now() + delay)
+    this.#timer = setTimeout(() => {
+      this.#timer = undefined
+      this.#openWhenVisible()
     }, delay)
   }
 
   /** A hidden tab waits to be seen before it dials again, so a dead socket in a background tab costs no requests. */
   #openWhenVisible(): void {
-    if (document.visibilityState === "visible") this.open()
-    else document.addEventListener("visibilitychange", () => this.#openWhenVisible(), { once: true })
+    if (document.visibilityState === "visible") {
+      this.open()
+      return
+    }
+    const waiting = (): void => {
+      this.#waiting = undefined
+      this.#openWhenVisible()
+    }
+    this.#waiting = waiting
+    document.addEventListener("visibilitychange", waiting, { once: true })
   }
 
   #send(frame: Record<string, unknown>): void {
@@ -259,6 +291,16 @@ function parseFrame(raw: string): ServerFrame | undefined {
   const t = Reflect.get(value, "t")
   if (t === "snap" || t === "resume" || t === "ev" || t === "ack" || t === "error" || t === "hello") return value as ServerFrame
   return undefined
+}
+
+/** The one route a home that cannot boot still answers. Without `drop` it only reports what is stored. */
+export async function repair(drop?: Drop): Promise<RepairAnswer> {
+  const response = await fetch("/v1/repair", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token()}` },
+    ...(drop === undefined ? {} : { body: JSON.stringify({ drop }) }),
+  })
+  return parseRepairReply(response)
 }
 
 export type UploadedFile = {

@@ -27,10 +27,6 @@ export function refreshRequests(): Promise<void> {
   return pending
 }
 
-export function loadRequests(): void {
-  void refreshRequests()
-}
-
 export async function respondToQuestion(question: InboxQuestion, answer: string): Promise<void> {
   await cmd("request.respond", { threadId: question.conversationId, requestId: question.id, answer })
   setQuestions((current) => current.filter((entry) => entry.id !== question.id))
