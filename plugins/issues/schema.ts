@@ -36,6 +36,7 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
         priority TEXT NOT NULL DEFAULT 'normal',
         due TEXT,
         parent INTEGER,
+        project TEXT,
         labels TEXT NOT NULL DEFAULT '[]',
         assignees TEXT NOT NULL DEFAULT '[]',
         threads TEXT NOT NULL DEFAULT '[]',
@@ -45,6 +46,7 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
         closed_at INTEGER
       )`,
       "CREATE INDEX issues_updated ON issues (updated_at DESC, id DESC)",
+      "CREATE INDEX issues_project ON issues (project, updated_at DESC, id DESC) WHERE project IS NOT NULL",
       "CREATE INDEX issues_parent ON issues (parent) WHERE parent IS NOT NULL",
       `CREATE TABLE issue_assignees (
         assignee TEXT NOT NULL,
@@ -68,7 +70,15 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
         reply_to INTEGER
       )`,
       "CREATE INDEX issue_events_issue ON issue_events (issue_id, id)",
-      "CREATE VIRTUAL TABLE issues_fts USING fts5(title, description, content='issues', content_rowid='id')",
+      `CREATE TABLE issue_wakes (
+        command_id TEXT PRIMARY KEY,
+        issue_id INTEGER NOT NULL,
+        target INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        text TEXT NOT NULL
+      ) WITHOUT ROWID`,
+      "CREATE VIRTUAL TABLE issues_fts USING fts5(title, description, content='issues', content_rowid='id', prefix='3')",
       `CREATE TRIGGER issues_fts_insert AFTER INSERT ON issues BEGIN
         INSERT INTO issues_fts (rowid, title, description) VALUES (new.id, new.title, new.description);
       END`,

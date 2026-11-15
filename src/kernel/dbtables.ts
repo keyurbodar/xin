@@ -24,6 +24,7 @@ const TABLE_OWNERS: Readonly<Record<string, string>> = {
   issue_links: "issues",
   issue_events: "issues",
   issues_fts: "issues",
+  issue_wakes: "issues",
 }
 
 export function migrationsTable(owner: string): string {

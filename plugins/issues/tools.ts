@@ -15,6 +15,8 @@ import {
 export const name = "tool-issues"
 export const inject = ["pi", "issues"]
 
+const COMMENTS_SHOWN = 20
+const COMMENT_CLIP = 500
 const ASSIGNEE = str({ pattern: "^(person:.+|thread:\\d+|captain:\\d+)$" })
 
 const Args = obj({
@@ -36,12 +38,13 @@ const Args = obj({
   mentions: opt(arr(int())),
   q: opt(str()),
   closed: opt(bool()),
+  cursor: opt(str()),
 })
 
 type ToolArgs = Static<typeof Args>
 
 const DESCRIPTION =
-  "Issues, the shared work record. create: title plus fields. read: by id, or a list by q/assignees[0]/state/closed/parent. update: id plus fields to change (lists replace; null clears due/parent) and/or link {kind, other, remove}. comment: id, body, replyTo, mentions (conversation ids to wake). Assignees are person:<id>, thread:<conv> or captain:<conv>. threads[0] owns the issue and is woken by its changes."
+  "Issues, the shared work record. create: title plus fields. read: by id, or a list by q/assignees[0]/state/closed/parent; pass the returned cursor for more. update: id plus fields to change (lists replace; null clears due/parent) and/or link {kind, other, remove}. comment: id, body, replyTo, mentions (conversation ids to wake). Assignees are person:<id>, thread:<conv> or captain:<conv>. threads[0] owns the issue and is woken by its changes."
 
 export function apply(ctx: Context): void {
   const issues = ctx.issues
@@ -79,13 +82,17 @@ function full(detail: IssueDetail): string {
     if (linked.length > 0) out.push(`${label}: ${linked.map((other) => `#${other.id} ${other.title}`).join("; ")}`)
   if (detail.children.length > 0) out.push("sub-issues:", ...detail.children.map((child) => `- ${line(child)}`))
   const comments = detail.timeline.filter((event) => event.kind === "comment")
-  if (comments.length > 0)
+  const shown = comments.slice(-COMMENTS_SHOWN)
+  if (shown.length > 0)
     out.push(
-      "comments:",
-      ...comments.map(
-        (event) =>
-          `${event.replyTo === null ? "-" : "  ↳"} [${event.id}] ${event.actor}: ${String(event.data["body"] ?? "")}`,
-      ),
+      comments.length > shown.length || detail.earlier !== null
+        ? "latest comments (earlier ones omitted):"
+        : "comments:",
+      ...shown.map((event) => {
+        const body = String(event.data["body"] ?? "")
+        const text = body.length > COMMENT_CLIP ? `${body.slice(0, COMMENT_CLIP)}…` : body
+        return `${event.replyTo === null ? "-" : "  ↳"} [${event.id}] ${event.actor}: ${text}`
+      }),
     )
   return out.join("\n")
 }
@@ -117,21 +124,25 @@ async function run(issues: IssuesService, args: ToolArgs, conversationId: number
     }
     case "read": {
       if (args.id !== undefined) {
-        const detail = await issues.get(args.id)
+        const detail = await issues.get(actor, args.id)
         return detail === undefined ? `No issue #${args.id}.` : full(detail)
       }
       const first = args.assignees?.[0]
-      const page = await issues.list({
+      const page = await issues.list(actor, {
         ...(args.q === undefined ? {} : { q: args.q }),
         ...(first === undefined ? {} : { assignee: assignee(first) }),
         ...(args.state === undefined ? {} : { states: [args.state] }),
         ...(args.closed === undefined ? {} : { closed: args.closed }),
         ...(args.parent === undefined ? {} : { parent: args.parent }),
+        ...(args.cursor === undefined ? {} : { cursor: args.cursor }),
         limit: 30,
       })
       const states = await issues.states()
       const legend = `states: ${states.map((state) => `${state.id}${state.closed ? " (closed)" : ""}`).join(", ")}`
-      return [...(page.issues.length === 0 ? ["No matching issues."] : page.issues.map(line)), legend].join("\n")
+      const more = page.cursor === null ? [] : [`more: cursor=${page.cursor}`]
+      return [...(page.issues.length === 0 ? ["No matching issues."] : page.issues.map(line)), ...more, legend].join(
+        "\n",
+      )
     }
     case "update": {
       const id = needId()

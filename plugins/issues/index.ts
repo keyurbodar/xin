@@ -2,7 +2,16 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { arr, bool, int, lit, nullable, obj, oneOf, opt, str, union } from "@earendil-works/pi-schema"
 import { type Context, defineOp, OpRejected } from "../../src/kernel/index.ts"
-import { type Change, createIssues, type IssueActor, type IssuesService, LINK_KINDS, PRIORITIES } from "./issues.ts"
+import { projectInScope } from "../../src/contracts/threaddoc.ts"
+import {
+  type Change,
+  createIssues,
+  type IssueActor,
+  type IssuesService,
+  LINK_KINDS,
+  PRIORITIES,
+  type Wake,
+} from "./issues.ts"
 import { MIGRATIONS } from "./schema.ts"
 
 export const name = "issues"
@@ -36,6 +45,7 @@ export const ListArgs = obj({
   states: opt(arr(str({ minLength: 1, maxLength: 60 }), { maxItems: 20 })),
   closed: opt(bool()),
   parent: opt(nullable(ID)),
+  project: opt(str({ minLength: 1 })),
   limit: opt(int({ minimum: 1, maximum: 200 })),
   cursor: opt(str({ maxLength: 40 })),
 })
@@ -55,53 +65,51 @@ export async function apply(ctx: Context): Promise<void> {
     db: ctx.db,
     conversationExists: async (id) =>
       (await ctx.harness.conversation(id as ConversationId, BACKGROUND_CONTEXT)) !== undefined,
+    projectOf: async (id) => (await projectInScope(ctx.harness, id as ConversationId))?.projectId,
     now: () => Date.now(),
   })
 
-  const settle = async (change: Change, actor: IssueActor): Promise<void> => {
-    if (change.events.length === 0) return
+  const deliver = async (wakes: readonly Wake[]): Promise<void> => {
     let woke = false
-    for (const wake of await issues.wakes(change, actor)) {
+    for (const wake of wakes) {
       const accepted = await ctx.intake.enqueue({
         target: wake.target as ConversationId,
         commandId: wake.commandId,
         kind: "job",
-        threadId: `issue-${change.issue.id}`,
+        threadId: `issue-${wake.issue}`,
         title: wake.title,
-        status: change.issue.state,
+        status: wake.status,
         text: wake.text,
       })
       woke ||= accepted
+      await issues.delivered(wake.commandId)
     }
     if (woke) await ctx.clock.arm()
+  }
+
+  const settle = async (change: Change): Promise<Change> => {
+    if (change.events.length === 0) return change
+    await deliver(change.wakes)
     await ctx.wire.publishHome()
+    return change
   }
 
   const service: IssuesService = {
     ...issues,
-    create: async (actor, fields) => {
-      const change = await issues.create(actor, fields)
-      await settle(change, actor)
-      return change
+    deleteState: async (actor, input) => {
+      const result = await issues.deleteState(actor, input)
+      await deliver(result.wakes)
+      await ctx.wire.publishHome()
+      return result
     },
-    update: async (actor, id, fields) => {
-      const change = await issues.update(actor, id, fields)
-      await settle(change, actor)
-      return change
-    },
-    link: async (actor, id, kind, other, on) => {
-      const change = await issues.link(actor, id, kind, other, on)
-      await settle(change, actor)
-      return change
-    },
-    comment: async (actor, id, input) => {
-      const change = await issues.comment(actor, id, input)
-      await settle(change, actor)
-      return change
-    },
+    create: async (actor, fields) => settle(await issues.create(actor, fields)),
+    update: async (actor, id, fields) => settle(await issues.update(actor, id, fields)),
+    link: async (actor, id, kind, other, on) => settle(await issues.link(actor, id, kind, other, on)),
+    comment: async (actor, id, input) => settle(await issues.comment(actor, id, input)),
   }
   ctx.provide("issues", service)
   ctx.wire.home("issues", async () => ({ issues: { rev: await issues.rev() } }))
+  await deliver(await issues.pending())
 
   const ops = [
     defineOp({
@@ -140,23 +148,22 @@ export async function apply(ctx: Context): Promise<void> {
       args: obj({ id: str({ minLength: 1, maxLength: 60 }), moveTo: str({ minLength: 1, maxLength: 60 }) }),
       actors: ["owner"],
       run: async (_api, args) => {
-        const result = await issues.deleteState(args)
-        await ctx.wire.publishHome()
-        return result
+        const { moved } = await service.deleteState(OWNER_ACTOR, args)
+        return { moved }
       },
     }),
     defineOp({
       name: "issue.create",
-      args: obj({ ...FieldArgs, title: str({ minLength: 1, maxLength: 300 }) }),
+      args: obj({ ...FieldArgs, title: str({ minLength: 1, maxLength: 300 }), project: opt(str({ minLength: 1 })) }),
       actors: ["owner"],
       run: async (_api, args) => (await service.create(OWNER_ACTOR, args)).issue,
     }),
     defineOp({
       name: "issue.get",
-      args: obj({ id: ID }),
+      args: obj({ id: ID, before: opt(ID) }),
       actors: ["owner"],
       run: async (_api, args) => {
-        const detail = await issues.get(args.id)
+        const detail = await issues.get(OWNER_ACTOR, args.id, args.before)
         if (detail === undefined) throw new OpRejected("bad_args", `no issue #${args.id}`)
         return detail
       },
@@ -165,7 +172,7 @@ export async function apply(ctx: Context): Promise<void> {
       name: "issue.list",
       args: ListArgs,
       actors: ["owner"],
-      run: async (_api, args) => issues.list(args),
+      run: async (_api, args) => issues.list(OWNER_ACTOR, args),
     }),
     defineOp({
       name: "issue.update",

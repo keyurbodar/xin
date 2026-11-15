@@ -31,6 +31,7 @@ export type IssueSummary = {
   readonly priority: Priority
   readonly due: string | null
   readonly parent: number | null
+  readonly project: string | null
   readonly labels: string[]
   readonly assignees: Assignee[]
   readonly threads: number[]
@@ -63,6 +64,7 @@ export type IssueDetail = {
     readonly related: LinkedIssue[]
   }
   readonly timeline: IssueEvent[]
+  readonly earlier: number | null
 }
 
 export type IssueFields = {
@@ -84,20 +86,23 @@ export type IssueFilter = {
   readonly states?: string[]
   readonly closed?: boolean
   readonly parent?: number | null
+  readonly project?: string
   readonly limit?: number
   readonly cursor?: string
 }
 
 export type IssuePage = { readonly issues: IssueSummary[]; readonly cursor: string | null }
 
-export type Change = { readonly issue: Issue; readonly events: IssueEvent[] }
-
 export type Wake = {
-  readonly target: number
   readonly commandId: string
+  readonly issue: number
+  readonly target: number
   readonly title: string
+  readonly status: string
   readonly text: string
 }
+
+export type Change = { readonly issue: Issue; readonly events: IssueEvent[]; readonly wakes: Wake[] }
 
 export interface IssuesService {
   states(): Promise<IssueState[]>
@@ -108,10 +113,16 @@ export interface IssuesService {
     readonly position?: number
     readonly isDefault?: true
   }): Promise<IssueState>
-  deleteState(input: { readonly id: string; readonly moveTo: string }): Promise<{ readonly moved: number }>
-  create(actor: IssueActor, fields: IssueFields & { readonly title: string }): Promise<Change>
-  get(id: number): Promise<IssueDetail | undefined>
-  list(filter: IssueFilter): Promise<IssuePage>
+  deleteState(
+    actor: IssueActor,
+    input: { readonly id: string; readonly moveTo: string },
+  ): Promise<{ readonly moved: number; readonly wakes: Wake[] }>
+  create(
+    actor: IssueActor,
+    fields: IssueFields & { readonly title: string; readonly project?: string },
+  ): Promise<Change>
+  get(actor: IssueActor, id: number, before?: number): Promise<IssueDetail | undefined>
+  list(actor: IssueActor, filter: IssueFilter): Promise<IssuePage>
   update(actor: IssueActor, id: number, fields: IssueFields): Promise<Change>
   link(actor: IssueActor, id: number, kind: LinkKind, other: number, on: boolean): Promise<Change>
   comment(
@@ -119,7 +130,8 @@ export interface IssuesService {
     id: number,
     input: { readonly body: string; readonly replyTo?: number; readonly mentions?: number[] },
   ): Promise<Change>
-  wakes(change: Change, actor: IssueActor): Promise<Wake[]>
+  pending(): Promise<Wake[]>
+  delivered(commandId: string): Promise<void>
   rev(): Promise<number>
 }
 
@@ -132,16 +144,20 @@ declare module "@deepseek-ai/cordis" {
 export type IssuesPort = {
   readonly db: SqliteDatabase
   conversationExists(id: number): Promise<boolean>
+  projectOf(conversation: number): Promise<string | undefined>
   now(): number
 }
 
 const LIST_LIMIT = 50
 const LIST_MAX = 200
-const TIMELINE_MAX = 500
+const TIMELINE_PAGE = 100
+const SEARCH_MATCHES = 100
+const AGENT_HOPS = 3
 const MANY = 20
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const URL_PATTERN = /^https?:\/\/\S+$/
 const WAKE_TEXT_MAX = 2000
+const LIMITS = { title: 300, description: 20_000, label: 40, pr: 500, person: 120, body: 20_000, q: 200 } as const
 
 type IssueRow = {
   readonly id: number
@@ -151,6 +167,7 @@ type IssueRow = {
   readonly priority: string
   readonly due: string | null
   readonly parent: number | null
+  readonly project: string | null
   readonly labels: string
   readonly assignees: string
   readonly threads: string
@@ -178,6 +195,15 @@ type EventRow = {
   readonly reply_to: number | null
 }
 
+type WakeRow = {
+  readonly command_id: string
+  readonly issue_id: number
+  readonly target: number
+  readonly title: string
+  readonly status: string
+  readonly text: string
+}
+
 type LinkRow = {
   readonly from_id: number
   readonly kind: string
@@ -186,15 +212,15 @@ type LinkRow = {
   readonly state: string
 }
 
+type Scope = { readonly project: string } | undefined
+
 const SUMMARY_COLUMNS =
-  "id, title, state, priority, due, parent, labels, assignees, threads, prs, created_at, updated_at, closed_at"
+  "id, title, state, priority, due, parent, project, labels, assignees, threads, prs, created_at, updated_at, closed_at"
+const EVENT_COLUMNS = "id, issue_id, at, actor, kind, data, reply_to"
+const STATE_COLUMNS = "id, name, closed, position, is_default"
 
 const fail = (message: string): never => {
   throw new OpRejected("bad_args", message)
-}
-
-const missing = (what: string): never => {
-  throw new OpRejected("bad_args", what)
 }
 
 export const assigneeToken = (assignee: Assignee | IssueActor): string => `${assignee.kind}:${assignee.id}`
@@ -211,8 +237,7 @@ const numbers = (json: string): number[] => {
   return Array.isArray(value) ? value.filter((item): item is number => typeof item === "number") : []
 }
 
-function assigneesOf(json: string): Assignee[] {
-  const value: unknown = JSON.parse(json)
+function assigneesOf(value: unknown): Assignee[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((item: unknown): Assignee[] => {
     if (typeof item !== "object" || item === null) return []
@@ -232,8 +257,9 @@ function summaryOf(row: Omit<IssueRow, "description">): IssueSummary {
     priority: isPriority(row.priority) ? row.priority : "normal",
     due: row.due,
     parent: row.parent,
+    project: row.project,
     labels: strings(row.labels),
-    assignees: assigneesOf(row.assignees),
+    assignees: assigneesOf(JSON.parse(row.assignees)),
     threads: numbers(row.threads),
     prs: strings(row.prs),
     createdAt: row.created_at,
@@ -265,7 +291,16 @@ function eventOf(row: EventRow): IssueEvent {
   }
 }
 
-const unique = <T>(items: T[], key: (item: T) => string): T[] => {
+const wakeOf = (row: WakeRow): Wake => ({
+  commandId: row.command_id,
+  issue: row.issue_id,
+  target: row.target,
+  title: row.title,
+  status: row.status,
+  text: row.text,
+})
+
+const unique = <T>(items: readonly T[], key: (item: T) => string): T[] => {
   const seen = new Set<string>()
   return items.filter((item) => {
     const id = key(item)
@@ -283,8 +318,10 @@ const slugOf = (name: string): string =>
     .slice(0, 40) || "state"
 
 const ftsQuery = (q: string): string | undefined => {
-  const tokens = q.match(/[\p{L}\p{N}_]+/gu) ?? []
-  return tokens.length === 0 ? undefined : tokens.map((token) => `"${token}"*`).join(" ")
+  const tokens = q.slice(0, LIMITS.q).match(/[\p{L}\p{N}_]+/gu) ?? []
+  return tokens.length === 0
+    ? undefined
+    : tokens.map((token) => (token.length >= 3 ? `"${token}"*` : `"${token}"`)).join(" ")
 }
 
 const same = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right)
@@ -297,18 +334,29 @@ function decodeCursor(cursor: string): readonly [number, number] {
   return [Number(match[1]), Number(match[2])]
 }
 
+const clip = (text: string): string => (text.length > WAKE_TEXT_MAX ? `${text.slice(0, WAKE_TEXT_MAX)}…` : text)
+
+const within = (text: string, max: number, what: string): void => {
+  if (text.length > max) fail(`${what} is longer than ${max} characters`)
+}
+
 const stateRows = async (q: SqliteExecutor): Promise<StateRow[]> =>
-  q.all<StateRow>("SELECT id, name, closed, position, is_default FROM issue_states ORDER BY position, id")
+  q.all<StateRow>(`SELECT ${STATE_COLUMNS} FROM issue_states ORDER BY position, id`)
 
 const stateById = async (q: SqliteExecutor, id: string): Promise<StateRow> =>
-  (await q.get<StateRow>("SELECT id, name, closed, position, is_default FROM issue_states WHERE id = ?", id)) ??
-  fail(`unknown state ${id}`)
+  (await q.get<StateRow>(`SELECT ${STATE_COLUMNS} FROM issue_states WHERE id = ?`, id)) ?? fail(`unknown state ${id}`)
 
 const row = async (q: SqliteExecutor, id: number): Promise<IssueRow | undefined> =>
   q.get<IssueRow>(`SELECT ${SUMMARY_COLUMNS}, description FROM issues WHERE id = ?`, id)
 
 const requireRow = async (q: SqliteExecutor, id: number): Promise<IssueRow> =>
-  (await row(q, id)) ?? missing(`no issue #${id}`)
+  (await row(q, id)) ?? fail(`no issue #${id}`)
+
+const visible = async (q: SqliteExecutor, id: number, scope: Scope): Promise<IssueRow> => {
+  const found = await row(q, id)
+  if (found === undefined || (scope !== undefined && found.project !== scope.project)) return fail(`no issue #${id}`)
+  return found
+}
 
 const appendEvent = async (
   q: SqliteExecutor,
@@ -321,7 +369,7 @@ const appendEvent = async (
 ): Promise<IssueEvent> => {
   const inserted = await q.get<EventRow>(
     `INSERT INTO issue_events (issue_id, at, actor, kind, data, reply_to) VALUES (?, ?, ?, ?, ?, ?)
-     RETURNING id, issue_id, at, actor, kind, data, reply_to`,
+     RETURNING ${EVENT_COLUMNS}`,
     issue,
     at,
     assigneeToken(actor),
@@ -347,63 +395,168 @@ const syncAssignees = async (q: SqliteExecutor, id: number, before: Assignee[], 
     if (!old.has(token)) await q.run("INSERT INTO issue_assignees (assignee, issue_id) VALUES (?, ?)", token, id)
 }
 
+const stateName = async (q: SqliteExecutor, id: JsonValue | undefined): Promise<string> =>
+  typeof id === "string"
+    ? ((await q.get<{ name: string }>("SELECT name FROM issue_states WHERE id = ?", id))?.name ?? id)
+    : "none"
+
+function changeState(before: Issue, to: StateRow, sets: string[], params: SqliteValue[], at: number): void {
+  sets.push("state = ?")
+  params.push(to.id)
+  if (to.closed === 1 && before.closedAt === null) {
+    sets.push("closed_at = ?")
+    params.push(at)
+  } else if (to.closed === 0 && before.closedAt !== null) sets.push("closed_at = NULL")
+}
+
+/** How many agent comments the issue has had since a person last acted on it, counting at most `AGENT_HOPS + 1`. */
+async function agentStreak(q: SqliteExecutor, issue: number): Promise<number> {
+  const recent = await q.all<{ actor: string; kind: string }>(
+    "SELECT actor, kind FROM issue_events WHERE issue_id = ? ORDER BY id DESC LIMIT ?",
+    issue,
+    AGENT_HOPS + 1,
+  )
+  let streak = 0
+  for (const event of recent) {
+    if (event.actor.startsWith("person:")) break
+    if (event.kind === "comment") streak += 1
+  }
+  return streak
+}
+
+/** Plans the wakes a change causes and stores them in the outbox inside the same transaction as the change. */
+async function queueWakes(q: SqliteExecutor, issue: Issue, events: IssueEvent[], actor: IssueActor): Promise<Wake[]> {
+  const self = actor.kind === "thread" ? actor.id : undefined
+  const owner = issue.threads[0]
+  const planned = new Map<number, { commandId: string; lines: string[] }>()
+  const add = (target: number | undefined, event: IssueEvent, text: string): void => {
+    if (target === undefined || target === self) return
+    const found = planned.get(target)
+    if (found === undefined) planned.set(target, { commandId: `issue:${event.id}:${target}`, lines: [text] })
+    else found.lines.push(text)
+  }
+  const looping = actor.kind === "thread" && events.some((event) => event.kind === "comment")
+  const quiet = looping && (await agentStreak(q, issue.id)) > AGENT_HOPS
+  const newlyAssigned = (event: IssueEvent, before: Assignee[]): void => {
+    const had = new Set(before.map(assigneeToken))
+    for (const assignee of issue.assignees)
+      if (assignee.kind !== "person" && !had.has(assigneeToken(assignee)))
+        add(assignee.id, event, `${event.actor} assigned you.`)
+  }
+  for (const event of events) {
+    if (event.kind === "created") newlyAssigned(event, [])
+    if (event.kind === "comment" && !quiet) {
+      const body = typeof event.data["body"] === "string" ? event.data["body"] : ""
+      add(owner, event, `${event.actor} commented${event.replyTo === null ? "" : " in a reply"}: ${body}`)
+      const mentioned = Array.isArray(event.data["mentions"]) ? event.data["mentions"] : []
+      for (const target of mentioned)
+        if (typeof target === "number") add(target, event, `${event.actor} mentioned you: ${body}`)
+    }
+    if (event.kind === "changed" && event.data["field"] === "state")
+      add(
+        owner,
+        event,
+        `${event.actor} moved it from ${await stateName(q, event.data["from"])} to ${await stateName(q, event.data["to"])}.`,
+      )
+    if (event.kind === "changed" && event.data["field"] === "assignees") {
+      const names = issue.assignees.map(assigneeToken)
+      add(owner, event, `${event.actor} set the assignees to ${names.length === 0 ? "nobody" : names.join(", ")}.`)
+      newlyAssigned(event, assigneesOf(event.data["from"]))
+    }
+  }
+  const wakes: Wake[] = []
+  for (const [target, plan] of planned) {
+    const wake: Wake = {
+      commandId: plan.commandId,
+      issue: issue.id,
+      target,
+      title: `#${issue.id} ${issue.title}`,
+      status: issue.state,
+      text: `${clip(plan.lines.join("\n"))}\nOpen issue #${issue.id} for the full record.`,
+    }
+    await q.run(
+      `INSERT INTO issue_wakes (command_id, issue_id, target, title, status, text) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT DO NOTHING`,
+      wake.commandId,
+      wake.issue,
+      wake.target,
+      wake.title,
+      wake.status,
+      wake.text,
+    )
+    wakes.push(wake)
+  }
+  return wakes
+}
+
+const normalize = async (q: SqliteExecutor, fields: IssueFields, self: number | undefined, scope: Scope) => {
+  const title = fields.title?.trim()
+  if (title !== undefined && title.length === 0) fail("a title cannot be empty")
+  if (title !== undefined) within(title, LIMITS.title, "a title")
+  if (fields.description !== undefined) within(fields.description, LIMITS.description, "a description")
+  if (fields.due !== undefined && fields.due !== null && !DATE.test(fields.due)) fail("due must be YYYY-MM-DD")
+  if (fields.state !== undefined) await stateById(q, fields.state)
+  const labels =
+    fields.labels === undefined
+      ? undefined
+      : unique(
+          fields.labels.map((label) => label.trim()),
+          String,
+        )
+  if (labels?.some((label) => label.length === 0)) fail("a label cannot be empty")
+  for (const label of labels ?? []) within(label, LIMITS.label, "a label")
+  const assignees = fields.assignees === undefined ? undefined : unique(fields.assignees, assigneeToken)
+  for (const assignee of assignees ?? [])
+    if (assignee.kind === "person") within(assignee.id, LIMITS.person, "a person id")
+  const threads = fields.threads === undefined ? undefined : unique(fields.threads, String)
+  const prs = fields.prs === undefined ? undefined : unique(fields.prs, String)
+  if (prs?.some((url) => !URL_PATTERN.test(url) || url.length > LIMITS.pr))
+    fail(`a pull request link must be an http(s) URL of at most ${LIMITS.pr} characters`)
+  for (const list of [labels, assignees, threads, prs])
+    if (list !== undefined && list.length > MANY) fail(`at most ${MANY} entries per list`)
+  if (fields.parent !== undefined && fields.parent !== null) {
+    if (fields.parent === self) fail("an issue cannot be its own parent")
+    const parent = await visible(q, fields.parent, scope)
+    if (parent.parent !== null) fail(`#${parent.id} is already a sub-issue; sub-issues go one level deep`)
+    if (self !== undefined && (await q.get<{ id: number }>("SELECT id FROM issues WHERE parent = ? LIMIT 1", self)))
+      fail(`#${self} has sub-issues, so it cannot become one`)
+  }
+  return {
+    ...fields,
+    ...(title === undefined ? {} : { title }),
+    ...(labels === undefined ? {} : { labels }),
+    ...(assignees === undefined ? {} : { assignees }),
+    ...(threads === undefined ? {} : { threads }),
+    ...(prs === undefined ? {} : { prs }),
+  }
+}
+
 export function createIssues(port: IssuesPort): IssuesService {
   const { db } = port
 
-  const conversations = async (ids: number[], what: string): Promise<void> => {
-    for (const id of ids) if (!(await port.conversationExists(id))) fail(`${what} ${id} is not a conversation`)
+  const scopeOf = async (actor: IssueActor): Promise<Scope> => {
+    if (actor.kind === "person") return undefined
+    const project = await port.projectOf(actor.id)
+    return project === undefined ? undefined : { project }
   }
 
-  const normalize = async (fields: IssueFields, self: number | undefined): Promise<IssueFields> => {
-    const title = fields.title?.trim()
-    if (title !== undefined && title.length === 0) fail("a title cannot be empty")
-    if (fields.due !== undefined && fields.due !== null && !DATE.test(fields.due)) fail("due must be YYYY-MM-DD")
-    if (fields.state !== undefined) await stateById(db, fields.state)
-    const labels =
-      fields.labels === undefined
-        ? undefined
-        : unique(
-            fields.labels.map((label) => label.trim()),
-            (l) => l,
-          )
-    if (labels !== undefined && labels.some((label) => label.length === 0)) fail("a label cannot be empty")
-    const assignees = fields.assignees === undefined ? undefined : unique(fields.assignees, assigneeToken)
-    if (assignees !== undefined)
+  const conversations = async (ids: readonly number[], what: string, scope: Scope): Promise<void> => {
+    for (const id of ids) {
+      if (!(await port.conversationExists(id))) fail(`${what} ${id} is not a conversation`)
+      if (scope !== undefined && (await port.projectOf(id)) !== scope.project)
+        fail(`${what} ${id} is outside this project`)
+    }
+  }
+
+  const checkConversations = async (fields: IssueFields, scope: Scope): Promise<void> => {
+    if (fields.assignees !== undefined)
       await conversations(
-        assignees.flatMap((assignee) => (assignee.kind === "person" ? [] : [assignee.id])),
+        fields.assignees.flatMap((assignee) => (assignee.kind === "person" ? [] : [assignee.id])),
         "assignee",
+        scope,
       )
-    const threads = fields.threads === undefined ? undefined : unique(fields.threads, String)
-    if (threads !== undefined) await conversations(threads, "thread")
-    const prs = fields.prs === undefined ? undefined : unique(fields.prs, (url) => url)
-    if (prs !== undefined && prs.some((url) => !URL_PATTERN.test(url)))
-      fail("a pull request link must be an http(s) URL")
-    for (const list of [labels, assignees, threads, prs])
-      if (list !== undefined && list.length > MANY) fail(`at most ${MANY} entries per list`)
-    if (fields.parent !== undefined && fields.parent !== null) {
-      if (fields.parent === self) fail("an issue cannot be its own parent")
-      const parent = await requireRow(db, fields.parent)
-      if (parent.parent !== null) fail(`#${parent.id} is already a sub-issue; sub-issues go one level deep`)
-      if (
-        self !== undefined &&
-        (await db.get<{ id: number }>("SELECT id FROM issues WHERE parent = ? LIMIT 1", self)) !== undefined
-      )
-        fail(`#${self} has sub-issues, so it cannot become one`)
-    }
-    return {
-      ...fields,
-      ...(title === undefined ? {} : { title }),
-      ...(labels === undefined ? {} : { labels }),
-      ...(assignees === undefined ? {} : { assignees }),
-      ...(threads === undefined ? {} : { threads }),
-      ...(prs === undefined ? {} : { prs }),
-    }
+    if (fields.threads !== undefined) await conversations(fields.threads, "thread", scope)
   }
-
-  const stateName = async (id: unknown): Promise<string> =>
-    typeof id === "string"
-      ? ((await db.get<{ name: string }>("SELECT name FROM issue_states WHERE id = ?", id))?.name ?? id)
-      : "none"
 
   const linked = async (id: number): Promise<IssueDetail["links"]> => {
     const rows = await db.all<LinkRow>(
@@ -428,26 +581,28 @@ export function createIssues(port: IssuesPort): IssuesService {
     createState: async (input) => {
       const name = input.name.trim()
       if (name.length === 0) fail("a state needs a name")
-      const rows = await stateRows(db)
-      const base = slugOf(name)
-      let id = base
-      for (let n = 2; rows.some((state) => state.id === id); n += 1) id = `${base}-${n}`
-      const position = rows.reduce((max, state) => Math.max(max, state.position), -1) + 1
-      await db.run(
-        "INSERT INTO issue_states (id, name, closed, position, is_default) VALUES (?, ?, ?, ?, 0)",
-        id,
-        name,
-        input.closed ? 1 : 0,
-        position,
-      )
-      return stateOf(await stateById(db, id))
+      return db.transaction(async (tx) => {
+        const rows = await stateRows(tx)
+        const base = slugOf(name)
+        let id = base
+        for (let n = 2; rows.some((state) => state.id === id); n += 1) id = `${base}-${n}`
+        const position = rows.reduce((max, state) => Math.max(max, state.position), -1) + 1
+        await tx.run(
+          "INSERT INTO issue_states (id, name, closed, position, is_default) VALUES (?, ?, ?, ?, 0)",
+          id,
+          name,
+          input.closed ? 1 : 0,
+          position,
+        )
+        return stateOf(await stateById(tx, id))
+      })
     },
 
     updateState: async (input) => {
-      const state = await stateById(db, input.id)
       const name = input.name?.trim()
       if (name !== undefined && name.length === 0) fail("a state needs a name")
-      await db.transaction(async (tx) => {
+      return db.transaction(async (tx) => {
+        const state = await stateById(tx, input.id)
         if (name !== undefined) await tx.run("UPDATE issue_states SET name = ? WHERE id = ?", name, state.id)
         if (input.position !== undefined) {
           const order = (await stateRows(tx)).filter((other) => other.id !== state.id).map((other) => other.id)
@@ -457,51 +612,65 @@ export function createIssues(port: IssuesPort): IssuesService {
         }
         if (input.isDefault === true && state.is_default === 0)
           await tx.run("UPDATE issue_states SET is_default = (id = ?) WHERE closed = ?", state.id, state.closed)
+        return stateOf(await stateById(tx, state.id))
       })
-      return stateOf(await stateById(db, state.id))
     },
 
-    deleteState: async (input) => {
-      const state = await stateById(db, input.id)
-      if (state.is_default === 1) fail(`${state.name} is a default state; make another state the default first`)
-      if (input.moveTo === state.id) fail("move its issues to a different state")
-      const target = await stateById(db, input.moveTo)
+    deleteState: async (actor, input) => {
       const at = port.now()
       return db.transaction(async (tx) => {
-        const moved = await tx.runCounted(
-          `UPDATE issues SET state = ?, updated_at = ?,
-             closed_at = CASE WHEN ? = 1 THEN coalesce(closed_at, ?) ELSE NULL END
-           WHERE state = ?`,
-          target.id,
-          at,
-          target.closed,
-          at,
+        const state = await stateById(tx, input.id)
+        if (state.is_default === 1) fail(`${state.name} is a default state; make another state the default first`)
+        if (input.moveTo === state.id) fail("move its issues to a different state")
+        const target = await stateById(tx, input.moveTo)
+        const moved = await tx.all<IssueRow>(
+          `SELECT ${SUMMARY_COLUMNS}, description FROM issues WHERE state = ?`,
           state.id,
         )
+        const wakes: Wake[] = []
+        for (const found of moved) {
+          const before = issueOf(found)
+          const sets: string[] = []
+          const params: SqliteValue[] = []
+          changeState(before, target, sets, params, at)
+          await tx.run(`UPDATE issues SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`, ...params, at, before.id)
+          const event = await appendEvent(tx, before.id, actor, at, "changed", {
+            field: "state",
+            from: state.id,
+            to: target.id,
+          })
+          wakes.push(...(await queueWakes(tx, issueOf(await requireRow(tx, before.id)), [event], actor)))
+        }
         await tx.run("DELETE FROM issue_states WHERE id = ?", state.id)
-        return { moved }
+        return { moved: moved.length, wakes }
       })
     },
 
     create: async (actor, input) => {
-      const fields = await normalize(input, undefined)
-      const state =
-        fields.state === undefined
-          ? ((await db.get<StateRow>(
-              "SELECT id, name, closed, position, is_default FROM issue_states WHERE is_default = 1 AND closed = 0",
-            )) ?? fail("no default state is set"))
-          : await stateById(db, fields.state)
+      const scope = await scopeOf(actor)
+      await checkConversations(input, scope)
+      const owner = input.threads?.[0]
+      const project =
+        scope?.project ?? input.project ?? (owner === undefined ? undefined : await port.projectOf(owner)) ?? null
       const at = port.now()
       return db.transaction(async (tx) => {
+        const fields = await normalize(tx, input, undefined, scope)
+        const state =
+          fields.state === undefined
+            ? ((await tx.get<StateRow>(
+                `SELECT ${STATE_COLUMNS} FROM issue_states WHERE is_default = 1 AND closed = 0`,
+              )) ?? fail("no default state is set"))
+            : await stateById(tx, fields.state)
         const created = await tx.get<{ id: number }>(
-          `INSERT INTO issues (title, description, state, priority, due, parent, labels, assignees, threads, prs, created_at, updated_at, closed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          `INSERT INTO issues (title, description, state, priority, due, parent, project, labels, assignees, threads, prs, created_at, updated_at, closed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
           fields.title ?? "",
           fields.description ?? "",
           state.id,
           fields.priority ?? "normal",
           fields.due ?? null,
           fields.parent ?? null,
+          project,
           JSON.stringify(fields.labels ?? []),
           JSON.stringify(fields.assignees ?? []),
           JSON.stringify(fields.threads ?? []),
@@ -513,35 +682,50 @@ export function createIssues(port: IssuesPort): IssuesService {
         if (created === undefined) throw new Error("issue insert returned nothing")
         await syncAssignees(tx, created.id, [], fields.assignees ?? [])
         const event = await appendEvent(tx, created.id, actor, at, "created", {})
-        return { issue: issueOf(await requireRow(tx, created.id)), events: [event] }
+        const issue = issueOf(await requireRow(tx, created.id))
+        return { issue, events: [event], wakes: await queueWakes(tx, issue, [event], actor) }
       })
     },
 
-    get: async (id) => {
+    get: async (actor, id, before) => {
+      const scope = await scopeOf(actor)
       const found = await row(db, id)
-      if (found === undefined) return undefined
+      if (found === undefined || (scope !== undefined && found.project !== scope.project)) return undefined
       const [children, links, events] = await Promise.all([
         db.all<IssueRow>(`SELECT ${SUMMARY_COLUMNS} FROM issues WHERE parent = ? ORDER BY id`, id),
         linked(id),
         db.all<EventRow>(
-          "SELECT id, issue_id, at, actor, kind, data, reply_to FROM issue_events WHERE issue_id = ? ORDER BY id LIMIT ?",
+          `SELECT ${EVENT_COLUMNS} FROM issue_events WHERE issue_id = ? AND id < ? ORDER BY id DESC LIMIT ?`,
           id,
-          TIMELINE_MAX,
+          before ?? Number.MAX_SAFE_INTEGER,
+          TIMELINE_PAGE + 1,
         ),
       ])
-      return { issue: issueOf(found), children: children.map(summaryOf), links, timeline: events.map(eventOf) }
+      const page = events.slice(0, TIMELINE_PAGE).toReversed().map(eventOf)
+      return {
+        issue: issueOf(found),
+        children: children.map(summaryOf),
+        links,
+        timeline: page,
+        earlier: events.length > TIMELINE_PAGE ? (page[0]?.id ?? null) : null,
+      }
     },
 
-    list: async (filter) => {
+    list: async (actor, filter) => {
+      const scope = await scopeOf(actor)
       const where: string[] = []
       const params: SqliteValue[] = []
-      if (filter.q !== undefined) {
-        const match = ftsQuery(filter.q)
-        if (match !== undefined) {
-          where.push("id IN (SELECT rowid FROM issues_fts WHERE issues_fts MATCH ?)")
-          params.push(match)
-        }
+      const project = scope?.project ?? filter.project
+      if (project !== undefined) {
+        where.push("project = ?")
+        params.push(project)
       }
+      const match = filter.q === undefined ? undefined : ftsQuery(filter.q)
+      const source =
+        match === undefined
+          ? "issues"
+          : "(SELECT rowid AS hit FROM issues_fts WHERE issues_fts MATCH ? ORDER BY rank LIMIT ?) JOIN issues ON id = hit"
+      const sourceParams: SqliteValue[] = match === undefined ? [] : [match, SEARCH_MATCHES]
       if (filter.assignee !== undefined) {
         where.push("id IN (SELECT issue_id FROM issue_assignees WHERE assignee = ?)")
         params.push(assigneeToken(filter.assignee))
@@ -563,8 +747,9 @@ export function createIssues(port: IssuesPort): IssuesService {
       }
       const limit = Math.max(1, Math.min(filter.limit ?? LIST_LIMIT, LIST_MAX))
       const rows = await db.all<IssueRow>(
-        `SELECT ${SUMMARY_COLUMNS} FROM issues ${where.length === 0 ? "" : `WHERE ${where.join(" AND ")}`}
+        `SELECT ${SUMMARY_COLUMNS} FROM ${source} ${where.length === 0 ? "" : `WHERE ${where.join(" AND ")}`}
          ORDER BY updated_at DESC, id DESC LIMIT ?`,
+        ...sourceParams,
         ...params,
         limit + 1,
       )
@@ -574,10 +759,12 @@ export function createIssues(port: IssuesPort): IssuesService {
     },
 
     update: async (actor, id, input) => {
-      const before = issueOf(await requireRow(db, id))
-      const fields = await normalize(input, id)
+      const scope = await scopeOf(actor)
+      await checkConversations(input, scope)
       const at = port.now()
       return db.transaction(async (tx) => {
+        const before = issueOf(await visible(tx, id, scope))
+        const fields = await normalize(tx, input, id, scope)
         const events: IssueEvent[] = []
         const sets: string[] = []
         const params: SqliteValue[] = []
@@ -597,11 +784,10 @@ export function createIssues(port: IssuesPort): IssuesService {
           await change("description", "description", fields.description, {})
         if (fields.state !== undefined && fields.state !== before.state) {
           const to = await stateById(tx, fields.state)
-          await change("state", "state", to.id, { from: before.state, to: to.id })
-          if (to.closed === 1 && before.closedAt === null) {
-            sets.push("closed_at = ?")
-            params.push(at)
-          } else if (to.closed === 0 && before.closedAt !== null) sets.push("closed_at = NULL")
+          changeState(before, to, sets, params, at)
+          events.push(
+            await appendEvent(tx, id, actor, at, "changed", { field: "state", from: before.state, to: to.id }),
+          )
         }
         if (fields.priority !== undefined && fields.priority !== before.priority)
           await change("priority", "priority", fields.priority, { from: before.priority, to: fields.priority })
@@ -625,16 +811,16 @@ export function createIssues(port: IssuesPort): IssuesService {
           })
         if (fields.prs !== undefined && !same(fields.prs, before.prs))
           await change("prs", "prs", JSON.stringify(fields.prs), { from: before.prs, to: fields.prs })
-        if (events.length === 0) return { issue: before, events }
+        if (events.length === 0) return { issue: before, events, wakes: [] }
         await tx.run(`UPDATE issues SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`, ...params, at, id)
-        return { issue: issueOf(await requireRow(tx, id)), events }
+        const issue = issueOf(await requireRow(tx, id))
+        return { issue, events, wakes: await queueWakes(tx, issue, events, actor) }
       })
     },
 
     link: async (actor, id, kind, other, on) => {
       if (id === other) fail("an issue cannot link to itself")
-      await requireRow(db, id)
-      await requireRow(db, other)
+      const scope = await scopeOf(actor)
       const [from, to, stored] =
         kind === "blocks"
           ? [id, other, "blocks"]
@@ -643,6 +829,8 @@ export function createIssues(port: IssuesPort): IssuesService {
             : [Math.min(id, other), Math.max(id, other), "related"]
       const at = port.now()
       return db.transaction(async (tx) => {
+        await visible(tx, id, scope)
+        await visible(tx, other, scope)
         const changed = on
           ? await tx.runCounted(
               "INSERT INTO issue_links (from_id, to_id, kind) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
@@ -656,7 +844,7 @@ export function createIssues(port: IssuesPort): IssuesService {
               to,
               stored,
             )
-        if (changed === 0) return { issue: issueOf(await requireRow(tx, id)), events: [] }
+        if (changed === 0) return { issue: issueOf(await requireRow(tx, id)), events: [], wakes: [] }
         const events = [
           await appendEvent(tx, id, actor, at, on ? "linked" : "unlinked", { kind, issue: other }),
           await appendEvent(tx, other, actor, at, on ? "linked" : "unlinked", {
@@ -665,75 +853,41 @@ export function createIssues(port: IssuesPort): IssuesService {
           }),
         ]
         await touch(tx, other, at)
-        return { issue: await touch(tx, id, at), events }
+        return { issue: await touch(tx, id, at), events, wakes: [] }
       })
     },
 
     comment: async (actor, id, input) => {
       const body = input.body.trim()
       if (body.length === 0) fail("a comment needs text")
-      await requireRow(db, id)
-      if (input.replyTo !== undefined) {
-        const parent = await db.get<{ issue_id: number; kind: string; reply_to: number | null }>(
-          "SELECT issue_id, kind, reply_to FROM issue_events WHERE id = ?",
-          input.replyTo,
-        )
-        if (parent === undefined || parent.issue_id !== id || parent.kind !== "comment")
-          fail(`event ${input.replyTo} is not a comment on #${id}`)
-        if (parent?.reply_to !== null) fail("replies go one level deep; reply to the top comment")
-      }
+      within(body, LIMITS.body, "a comment")
       const mentions = unique(input.mentions ?? [], String)
       if (mentions.length > MANY) fail(`at most ${MANY} mentions`)
-      await conversations(mentions, "mention")
+      const scope = await scopeOf(actor)
+      await conversations(mentions, "mention", scope)
       const at = port.now()
       return db.transaction(async (tx) => {
+        await visible(tx, id, scope)
+        if (input.replyTo !== undefined) {
+          const parent = await tx.get<{ issue_id: number; kind: string; reply_to: number | null }>(
+            "SELECT issue_id, kind, reply_to FROM issue_events WHERE id = ?",
+            input.replyTo,
+          )
+          if (parent === undefined || parent.issue_id !== id || parent.kind !== "comment")
+            fail(`event ${input.replyTo} is not a comment on #${id}`)
+          if (parent?.reply_to !== null) fail("replies go one level deep; reply to the top comment")
+        }
         const event = await appendEvent(tx, id, actor, at, "comment", { body, mentions }, input.replyTo ?? null)
-        return { issue: await touch(tx, id, at), events: [event] }
+        const issue = await touch(tx, id, at)
+        return { issue, events: [event], wakes: await queueWakes(tx, issue, [event], actor) }
       })
     },
 
-    wakes: async (change, actor) => {
-      const self = assigneeToken(actor)
-      const issue = change.issue
-      const owner = issue.threads[0]
-      const wakes = new Map<number, Wake>()
-      const add = (target: number | undefined, event: IssueEvent, text: string): void => {
-        if (target === undefined || `thread:${target}` === self || `captain:${target}` === self || wakes.has(target))
-          return
-        wakes.set(target, {
-          target,
-          commandId: `issue:${event.id}:${target}`,
-          title: `#${issue.id} ${issue.title}`,
-          text: `${text.length > WAKE_TEXT_MAX ? `${text.slice(0, WAKE_TEXT_MAX)}…` : text}\nOpen issue #${issue.id} for the full record.`,
-        })
-      }
-      for (const event of change.events) {
-        if (event.kind === "comment") {
-          const body = typeof event.data["body"] === "string" ? event.data["body"] : ""
-          const text = `${event.actor} commented${event.replyTo === null ? "" : " in a reply"}: ${body}`
-          add(owner, event, text)
-          const mentioned = Array.isArray(event.data["mentions"]) ? event.data["mentions"] : []
-          for (const target of mentioned)
-            if (typeof target === "number") add(target, event, `${event.actor} mentioned you: ${body}`)
-        }
-        if (event.kind === "changed" && event.data["field"] === "state")
-          add(
-            owner,
-            event,
-            `${event.actor} moved it from ${await stateName(event.data["from"])} to ${await stateName(event.data["to"])}.`,
-          )
-        if (event.kind === "changed" && event.data["field"] === "assignees") {
-          const names = issue.assignees.map(assigneeToken)
-          add(owner, event, `${event.actor} set the assignees to ${names.length === 0 ? "nobody" : names.join(", ")}.`)
-          const before = new Set(
-            Array.isArray(event.data["from"]) ? assigneesOf(JSON.stringify(event.data["from"])).map(assigneeToken) : [],
-          )
-          for (const assignee of issue.assignees)
-            if (assignee.kind !== "person" && !before.has(assigneeToken(assignee)))
-              add(assignee.id, event, `${event.actor} assigned you.`)
-        }
-      }
-      return [...wakes.values()]
+    pending: async () =>
+      (await db.all<WakeRow>("SELECT command_id, issue_id, target, title, status, text FROM issue_wakes")).map(wakeOf),
+
+    delivered: async (commandId) => {
+      await db.run("DELETE FROM issue_wakes WHERE command_id = ?", commandId)
     },
 
     rev: async () => (await db.get<{ rev: number | null }>("SELECT max(id) AS rev FROM issue_events"))?.rev ?? 0,

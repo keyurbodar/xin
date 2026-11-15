@@ -7,6 +7,8 @@ const CREATE_WRITE_BOUND = 12
 const COMMENT_WRITE_BOUND = 9
 const LIST_READ_BOUND = 24
 const GET_READ_BOUND = 9
+const SEARCH_READ_BOUND = 320
+const SEARCH_ISSUES = 300
 
 const billed = (stub: Stub) =>
   runInDurableObject(stub, (home: Home) => {
@@ -53,5 +55,19 @@ describe("issues, in what the platform bills", () => {
     expect(comment.written).toBeLessThanOrEqual(COMMENT_WRITE_BOUND)
     expect(list.read).toBeLessThanOrEqual(LIST_READ_BOUND)
     expect(get.read).toBeLessThanOrEqual(GET_READ_BOUND)
+  })
+
+  it("keeps a broad search over many issues within the measured read bound", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => {
+      const issues = home.loader.ctx.get("issues")
+      if (issues === undefined) throw new Error("no issues service")
+      for (let n = 0; n < SEARCH_ISSUES; n += 1)
+        await issues.create({ kind: "person", id: "owner" }, { title: `task ${n} alpha`, description: "a shared task" })
+    })
+    const broad = await measure(stub, () => op(stub, "issue.list", { q: "task", limit: 50 }))
+    const short = await measure(stub, () => op(stub, "issue.list", { q: "a", limit: 50 }))
+    expect(broad.read).toBeLessThanOrEqual(SEARCH_READ_BOUND)
+    expect(short.read).toBeLessThanOrEqual(SEARCH_READ_BOUND)
   })
 })
