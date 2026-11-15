@@ -54,12 +54,12 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
         type="button"
         aria-label="Close add from URL"
         onClick={close}
-        class="absolute inset-0 bg-scrim"
-        classList={{ "fade-in": !closing(), "fade-out": closing() }}
+        class="im-scrim absolute inset-0 bg-scrim"
+        data-state={closing() ? "closed" : "open"}
       />
       <section
-        class="relative flex w-full max-w-[520px] flex-col rounded-md border border-line-2 bg-card shadow-2xl"
-        classList={{ "dialog-in": !closing(), "dialog-out": closing() }}
+        class="im-dialog relative flex w-full max-w-[520px] flex-col rounded-md border border-line-2 bg-card shadow-2xl"
+        data-state={closing() ? "closed" : "open"}
       >
         <header class="flex items-center border-b border-line-1 px-4 py-3.5">
           <span class="text-[15px] font-medium text-ink">Add from URL</span>

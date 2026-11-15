@@ -1,9 +1,9 @@
-import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
 import { Dynamic, Portal } from "solid-js/web"
 import { Popover } from "@ark-ui/solid/popover"
 import { Listbox, createListCollection } from "@ark-ui/solid/listbox"
 import { Check, ChevronRight, Maximize2, Minimize2, PanelRight, Plus, X } from "lucide-solid"
-import { glide } from "../../lib/motion.ts"
+import { keyStarted } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { closePaneView, OVERVIEW, projectTabs, setPaneOpen, showPaneView } from "../../state/tabs.ts"
@@ -37,32 +37,47 @@ export function ProjectPane(props: {
     })
   const view = (): PaneEntry => paneView(tabs().view)
   let strip!: HTMLDivElement
-  const pill = (): HTMLElement | null => strip.querySelector<HTMLElement>("[data-pill]")
-  const select = (id: string): void => {
-    const from = pill()?.getBoundingClientRect()
-    showPaneView(props.project.id, id)
-    const to = pill()
-    if (from !== undefined && to !== null) glide(from, to)
+  const [pill, setPill] = createSignal<{ readonly x: number; readonly width: number; readonly instant: boolean }>()
+  const place = (): void => {
+    const active = strip.querySelector<HTMLElement>("[data-active]")
+    setPill(active === null ? undefined : { x: active.offsetLeft, width: active.offsetWidth, instant: untrack(keyStarted) })
   }
+  createEffect(() => {
+    view()
+    open()
+    place()
+  })
+  onMount(() => {
+    const observer = new ResizeObserver(place)
+    observer.observe(strip)
+    onCleanup(() => observer.disconnect())
+  })
 
   return (
     <aside class="flex min-h-0 flex-col">
       <div class="flex h-[var(--h-topbar)] shrink-0 items-center gap-1 border-b border-line-1 px-2">
-        <div ref={strip} class="flex min-w-0 items-center gap-1 overflow-x-auto">
+        <div ref={strip} class="relative flex min-w-0 items-center gap-1 overflow-x-auto">
+          <Show when={pill()}>
+            {(at) => (
+              <span
+                class="im-pill pointer-events-none absolute inset-y-0 left-0 rounded-sm bg-hover"
+                data-instant={at().instant ? "" : undefined}
+                style={{ translate: `${at().x}px 0`, width: `${at().width}px` }}
+              />
+            )}
+          </Show>
           <For each={open()}>
             {(entry) => (
               <div
-                class="tint group relative isolate flex h-[var(--h-tab)] shrink-0 items-center rounded-sm text-sm"
-                classList={{ "text-ink": view() === entry, "text-ink-3 hover:bg-secondary hover:text-ink-2": view() !== entry }}
+                class="group relative flex h-[var(--h-tab)] shrink-0 items-center rounded-sm text-sm"
+                classList={{ "text-ink": view() === entry, "im-hover text-ink-3": view() !== entry }}
+                data-active={view() === entry ? "" : undefined}
               >
-                <Show when={view() === entry}>
-                  <span data-pill class="absolute inset-0 -z-10 rounded-sm bg-hover" />
-                </Show>
                 <button
                   type="button"
                   class="flex h-full items-center gap-1.5 pl-2"
                   classList={{ "pr-2": entry.id === OVERVIEW }}
-                  onClick={() => select(entry.id)}
+                  onClick={() => showPaneView(props.project.id, entry.id)}
                   onAuxClick={(event) => {
                     if (event.button === 1 && entry.id !== OVERVIEW) closePaneView(props.project.id, entry.id)
                   }}
@@ -102,7 +117,7 @@ export function ProjectPane(props: {
       </div>
       <Show when={view()} keyed>
         {(current) => (
-          <div class="pane-swap min-h-0 flex-1 overflow-y-auto p-2">
+          <div class="im-pane min-h-0 flex-1 overflow-y-auto p-2" data-instant={untrack(keyStarted) ? "" : undefined}>
             {current.render({ project: props.project, onOpenThread: props.onOpenThread })}
           </div>
         )}

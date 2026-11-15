@@ -57,13 +57,15 @@ export function Shell(): JSX.Element {
       </Show>
       <Show when={drawer.mounted()}>
         <div
-          class="fixed inset-0 z-40 bg-scrim"
-          classList={{ "fade-in": !drawer.leaving(), "fade-out": drawer.leaving() }}
+          class="im-scrim fixed inset-0 z-40 bg-scrim"
+          data-state={drawer.leaving() ? "closed" : "open"}
           onClick={() => setSidebarDrawer(false)}
         />
         <div
-          class="fixed inset-y-0 left-0 z-40 flex shadow-overlay"
-          classList={{ "drawer-in": !drawer.leaving(), "drawer-out pointer-events-none": drawer.leaving() }}
+          class="im-sheet fixed inset-y-0 left-0 z-40 flex shadow-overlay"
+          classList={{ "pointer-events-none": drawer.leaving() }}
+          data-side="left"
+          data-state={drawer.leaving() ? "closed" : "open"}
         >
           <Sidebar drawer onSearch={search} onCollapse={toggleSidebar} />
         </div>

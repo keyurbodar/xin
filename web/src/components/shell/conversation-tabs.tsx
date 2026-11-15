@@ -1,8 +1,9 @@
-import { createEffect, createSignal, For, Show, type JSX } from "solid-js"
+import { createEffect, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Menu, useMenu } from "@ark-ui/solid/menu"
 import { Archive, Ellipsis, ExternalLink, Menu as MenuIcon, PanelRight, Plus, Settings, X } from "lucide-solid"
 import { money } from "../../lib/format.ts"
+import { keyStarted } from "../../lib/motion.ts"
 import { navigate } from "../../lib/router.ts"
 import { visualState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
@@ -26,6 +27,7 @@ import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from "./menu.ts"
 const ICON = { size: 16, "stroke-width": 1.5 } as const
 const GAP = 4
 const SLOP = 4
+const CLOSE_MS = 140
 
 type Drag = {
   readonly id: number
@@ -50,16 +52,38 @@ export function ConversationTabs(props: {
   onSettings: () => void
 }): JSX.Element {
   const [drag, setDrag] = createSignal<Drag | undefined>()
+  const [closing, setClosing] = createSignal<readonly number[]>([])
+  const [settled, setSettled] = createSignal(false)
   let moved = false
   const refs = new Map<number, HTMLElement>()
+  onMount(() => requestAnimationFrame(() => setSettled(true)))
+
+  const flip = (change: () => void): void => {
+    const tabs = props.threads.flatMap((thread) => {
+      const element = refs.get(thread.id)
+      return element === undefined ? [] : [{ id: thread.id, element, left: element.getBoundingClientRect().left }]
+    })
+    for (const tab of tabs) tab.element.toggleAttribute("data-flip-start", true)
+    change()
+    for (const tab of tabs) {
+      if (!tab.element.isConnected) continue
+      const dx = tab.left - tab.element.getBoundingClientRect().left
+      tab.element.style.translate = dx === 0 ? "" : `${dx}px 0`
+    }
+    void document.body.offsetWidth
+    for (const tab of tabs) {
+      tab.element.toggleAttribute("data-flip-start", false)
+      tab.element.style.translate = ""
+    }
+  }
 
   const openTab = (id: number | undefined): void => {
     navigate(id === undefined ? `/p/${props.project.slug}` : `/p/${props.project.slug}/t/${id}`)
   }
 
   const close = (ids: readonly number[]): void => {
-    const closing = props.threads.filter((thread) => ids.includes(thread.id))
-    const first = closing[0]
+    const closingTabs = props.threads.filter((thread) => ids.includes(thread.id))
+    const first = closingTabs[0]
     if (first === undefined) return
     const { id: projectId, slug } = props.project
     const before = projectTabs(projectId).threads
@@ -68,17 +92,26 @@ export function ConversationTabs(props: {
     const index = props.threads.findIndex((thread) => thread.id === active)
     const kept = (thread: ThreadSummary): boolean => !ids.includes(thread.id)
     const neighbour = props.threads.slice(0, index).findLast(kept) ?? props.threads.slice(index + 1).find(kept)
-    closeThreadTabs(projectId, ids)
-    if (activeClosed) openTab(neighbour?.id)
-    showUndoToast({
-      icon: X,
-      title: closing.length === 1 ? "Closed tab" : `Closed ${closing.length} tabs`,
-      detail: closing.length === 1 ? `“${first.title}”` : undefined,
-      undo: () => {
-        restoreThreadTabs(projectId, before)
-        if (activeClosed) navigate(`/p/${slug}/t/${active}`)
-      },
-    })
+    const remove = (): void => {
+      setClosing([])
+      closeThreadTabs(projectId, ids)
+      if (activeClosed) openTab(neighbour?.id)
+      showUndoToast({
+        icon: X,
+        title: closingTabs.length === 1 ? "Closed tab" : `Closed ${closingTabs.length} tabs`,
+        detail: closingTabs.length === 1 ? `“${first.title}”` : undefined,
+        undo: () => {
+          restoreThreadTabs(projectId, before)
+          if (activeClosed) navigate(`/p/${slug}/t/${active}`)
+        },
+      })
+    }
+    if (keyStarted()) {
+      remove()
+      return
+    }
+    setClosing(ids)
+    setTimeout(() => flip(remove), CLOSE_MS)
   }
 
   const [menuTarget, setMenuTarget] = createSignal<number | undefined>()
@@ -139,17 +172,21 @@ export function ConversationTabs(props: {
 
   const up = (): void => {
     const current = drag()
-    setDrag(undefined)
-    if (current === undefined || !moved) return
-    if (current.to !== current.from) moveThreadTab(props.project.id, current.id, current.to)
+    if (current === undefined || !moved) {
+      setDrag(undefined)
+      return
+    }
+    flip(() => {
+      setDrag(undefined)
+      if (current.to !== current.from) moveThreadTab(props.project.id, current.id, current.to)
+    })
   }
 
   const shift = (index: number): string | undefined => {
     const current = drag()
-    if (current === undefined || !moved) return undefined
-    if (index === current.from) return `translateX(${current.dx}px)`
-    if (index > current.from && index <= current.to) return `translateX(${-current.width}px)`
-    if (index < current.from && index >= current.to) return `translateX(${current.width}px)`
+    if (current === undefined || !moved || index === current.from) return undefined
+    if (index > current.from && index <= current.to) return `${-current.width}px 0`
+    if (index < current.from && index >= current.to) return `${current.width}px 0`
     return undefined
   }
 
@@ -169,7 +206,7 @@ export function ConversationTabs(props: {
           class={`${TAB} min-w-0 max-w-[200px] shrink-0`}
           classList={{
             "bg-hover text-ink": props.activeThreadId === undefined,
-            "text-ink-3 hover:bg-secondary hover:text-ink-2": props.activeThreadId !== undefined,
+            "im-hover text-ink-3": props.activeThreadId !== undefined,
           }}
         >
           <ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={14} class="shrink-0" />
@@ -191,7 +228,9 @@ export function ConversationTabs(props: {
                 tabIndex={0}
                 aria-selected={active()}
                 title={thread.title}
-                data-tab-lifted={lifted()}
+                data-dragging={lifted() ? "" : undefined}
+                data-closing={closing().includes(thread.id) ? "" : undefined}
+                data-instant={settled() ? undefined : ""}
                 onPointerDown={(event) => down(event, thread.id, index())}
                 onPointerMove={move}
                 onPointerUp={up}
@@ -217,15 +256,15 @@ export function ConversationTabs(props: {
                 onAuxClick={(event) => {
                   if (event.button === 1) close([thread.id])
                 }}
-                class={`${TAB} min-w-[88px] max-w-[240px] flex-1 basis-[240px] cursor-default touch-none select-none pr-1`}
+                class={`${TAB} im-tab im-lift im-flip min-w-[88px] max-w-[240px] flex-1 basis-[240px] cursor-default touch-none select-none pr-1`}
                 classList={{
                   "bg-hover text-ink": active(),
-                  "text-ink-3 hover:bg-secondary hover:text-ink-2": !active(),
-                  "z-10 bg-popover": lifted(),
+                  "im-hover text-ink-3": !active(),
+                  "bg-popover": lifted(),
                 }}
                 style={{
-                  transform: shift(index()),
-                  transition: lifted() ? "none" : drag() === undefined ? undefined : "transform var(--dur-base) var(--ease-enter)",
+                  translate: shift(index()),
+                  "--drag-x": lifted() ? `${drag()?.dx ?? 0}px` : undefined,
                 }}
               >
                 <StatusGlyph state={visualState(thread.status)} size={14} class="shrink-0" />
@@ -251,7 +290,7 @@ export function ConversationTabs(props: {
       <Menu.RootProvider value={menu} lazyMount unmountOnExit>
         <Portal>
           <Menu.Positioner>
-            <Menu.Content class={`${MENU_CONTENT} im-pop`} aria-label="Tab actions">
+            <Menu.Content class={MENU_CONTENT} aria-label="Tab actions">
               <Menu.Item value="window" class={MENU_ITEM}>
                 <span class="text-ink-3">
                   <ExternalLink {...ICON} />
