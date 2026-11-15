@@ -39,7 +39,7 @@ export interface FilesService {
   /** Moves a file with its versions. False when the source is missing or the destination exists. */
   move(from: string, to: string): Promise<boolean>
   /** Called with each changed path, or a prefix ending in `/`, after any write, move or delete through any route. */
-  watch(listener: (path: string) => void): () => void
+  watch(listener: (path: string) => void | Promise<void>): () => void
   grant(rule: FileGrant): () => void
 }
 
