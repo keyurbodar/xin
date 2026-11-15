@@ -3,8 +3,14 @@
     "target": "es2024",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "lib": ["es2024", "dom", "dom.iterable"],
-    "types": ["vite/client"],
+    "lib": [
+      "es2024",
+      "dom",
+      "dom.iterable"
+    ],
+    "types": [
+      "vite/client"
+    ],
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "strict": true,
@@ -23,5 +29,6 @@
       "solid-js/*": ["./node_modules/solid-js/*"]
     }
   },
-  "include": ["src", "vite.config.ts", "../plugins/*/client.tsx"]
+  "include": ["src", "vite.config.ts", "../plugins/*/client.tsx"],
+  "exclude": ["src/**/*.test.ts"]
 }
