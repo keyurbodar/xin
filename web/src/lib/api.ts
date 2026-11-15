@@ -48,7 +48,6 @@ type Subscription = {
   readonly delta: DeltaListener
 }
 
-/** One socket per tab, a fresh snapshot per reconnect, resubscribed from the current view set. */
 /** Handshakes refused in a row before the tab asks `/v1/status` whether its token is still good. */
 export const REFUSED_HANDSHAKES = 3
 
@@ -68,17 +67,20 @@ export class Streams {
   readonly #onSession: (socket: string | undefined) => void
   readonly #onRetry: (at: number) => void
   readonly #onSignedOut: () => void
+  readonly #onHeld: (held: boolean) => void
 
   constructor(
     onStatus: (status: "connecting" | "open" | "closed") => void,
     onSession: (socket: string | undefined) => void,
     onRetry: (at: number) => void,
     onSignedOut: () => void,
+    onHeld: (held: boolean) => void,
   ) {
     this.#onStatus = onStatus
     this.#onSession = onSession
     this.#onRetry = onRetry
     this.#onSignedOut = onSignedOut
+    this.#onHeld = onHeld
   }
 
   subscribe(stream: string, subscription: Subscription): () => void {
@@ -145,6 +147,7 @@ export class Streams {
    */
   pause(): void {
     this.#held = token()
+    this.#onHeld(true)
     this.#run += 1
     this.#cancelPending()
     this.#ws?.close()
@@ -153,6 +156,7 @@ export class Streams {
   /** Ends a hold whose rotation never happened, so the token it held is still the live one. */
   resume(): void {
     this.#held = undefined
+    this.#onHeld(false)
     this.reconnectNow()
   }
 
@@ -161,6 +165,7 @@ export class Streams {
     const stored = token()
     if (stored === this.#held || stored === "") return true
     this.#held = undefined
+    this.#onHeld(false)
     return false
   }
 

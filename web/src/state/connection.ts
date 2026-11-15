@@ -10,6 +10,7 @@ const [retryAt, setRetryAt] = createSignal<number | undefined>(undefined)
 const [lastOpen, setLastOpen] = createSignal<number | undefined>(undefined)
 const [downSince, setDownSince] = createSignal<number | undefined>(undefined)
 const [online, setOnline] = createSignal(navigator.onLine)
+const [held, setHeld] = createSignal(false)
 let streams: Streams | undefined
 
 export const connectionState = connection
@@ -27,6 +28,9 @@ export const lastConnected = lastOpen
 export const disconnectedSince = downSince
 
 export const networkOnline = online
+
+/** The socket is closed on purpose while a retired token is shown, so its silence is no outage. */
+export const connectionHeld = held
 
 /** The server refused this tab's token, so it is dropped and the tab reopens on sign-in. */
 function signOut(): void {
@@ -50,6 +54,10 @@ export function connect(): Streams {
       setThisSession,
       setRetryAt,
       signOut,
+      (holding) => {
+        setHeld(holding)
+        if (!holding && connection() !== "open") setDownSince(Date.now())
+      },
     )
     window.addEventListener("online", () => {
       setOnline(true)

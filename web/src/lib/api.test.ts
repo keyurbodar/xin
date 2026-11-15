@@ -68,7 +68,7 @@ afterEach(() => {
   for (const [name, value] of Object.entries(saved)) install(name, value)
 })
 
-const quiet = (): Streams => new Streams(() => {}, () => {}, () => {}, () => {})
+const quiet = (): Streams => new Streams(() => {}, () => {}, () => {}, () => {}, () => {})
 
 function fire(): void {
   const [id, run] = [...timers.entries()][0] ?? []

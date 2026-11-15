@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { REFUSED_HANDSHAKES, Streams } from "./api.ts"
+import { CUT_OFF_MS, cutOffIn } from "./cutoff.ts"
 
 type Listener = (event: { data?: unknown }) => void
 
@@ -121,8 +122,9 @@ afterEach(() => {
 
 const HOUR = 60 * 60_000
 
-function streams(): { streams: Streams; signedOut: () => number } {
+function streams(): { streams: Streams; signedOut: () => number; held: () => boolean } {
   let count = 0
+  let held = false
   const made = new Streams(
     () => {},
     () => {},
@@ -130,8 +132,11 @@ function streams(): { streams: Streams; signedOut: () => number } {
     () => {
       count += 1
     },
+    (holding) => {
+      held = holding
+    },
   )
-  return { streams: made, signedOut: () => count }
+  return { streams: made, signedOut: () => count, held: () => held }
 }
 
 describe("Streams on a refused token", () => {
@@ -253,6 +258,27 @@ describe("Streams held while a released token is shown", () => {
     tab.streams.reconnectNow()
     await advance(1_000)
     expect(dialled).toEqual(["bearer.own_revoked", "bearer.own_replacement"])
+  })
+
+  test("stays off the offline screen through a hold longer than the cut-off, so nothing probes or signs out", async () => {
+    const tab = streams()
+    accept = true
+    tab.streams.open()
+    await advance(0)
+    const since = now
+    tab.streams.pause()
+    accept = false
+    await advance(CUT_OFF_MS + 5_000)
+    expect(tab.held()).toBe(true)
+    expect(cutOffIn({ online: true, held: tab.held(), since }, now)).toBeUndefined()
+    expect(cutOffIn({ online: true, held: false, since }, now)).toBe(0)
+    expect(requests).toEqual(["socket /v1/socket"])
+    expect(tab.signedOut()).toBe(0)
+    stored = "own_replacement"
+    accept = true
+    tab.streams.reconnectNow()
+    await advance(1_000)
+    expect(tab.held()).toBe(false)
   })
 
   test("resumes on the same token when the rotation that held it failed", async () => {
