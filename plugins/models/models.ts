@@ -832,6 +832,9 @@ export function create(deps: ModelsPort): ModelsParts {
   }
   const registry = createRegistry(deps)
   const store = registry.store
+  let disabledRefs: readonly ModelRef[] = []
+  /** The owner's disabled models, read once at start and updated by `models.enable`, so a check reads no row. */
+  const isOff = (ref: ModelRef): boolean => disabledRefs.some((entry) => same(entry, ref))
 
   const configure = defineOp({
     name: "conv.configure",
@@ -852,7 +855,7 @@ export function create(deps: ModelsPort): ModelsParts {
         const found = registry.models.getModel(args.model.provider, args.model.modelId)
         if (found === undefined)
           throw new OpRejected("bad_args", `unknown model ${args.model.provider}/${args.model.modelId}`)
-        if (isDisabled(await readSettings(db), refOf(found)))
+        if (isOff(refOf(found)))
           throw new OpRejected("bad_args", `model ${args.model.provider}/${args.model.modelId} is disabled`)
         change.model = { provider: args.model.provider, modelId: args.model.modelId }
         if (!found.reasoning) change.thinkingLevel = null
@@ -866,7 +869,16 @@ export function create(deps: ModelsPort): ModelsParts {
           change.thinkingLevel = args.thinking
         }
       }
+      const previous = (await conversation.agent(BACKGROUND_CONTEXT)).model
       await conversation.configure(change satisfies AgentChange, BACKGROUND_CONTEXT)
+      const chosen = change.model
+      if (chosen !== undefined && chosen !== null && isOff(chosen)) {
+        await conversation.configure(
+          { model: previous === undefined || isOff(previous) ? null : previous },
+          BACKGROUND_CONTEXT,
+        )
+        throw new OpRejected("bad_args", `model ${chosen.provider}/${chosen.modelId} was disabled meanwhile`)
+      }
       if (change.model !== undefined && change.model !== null) await remember(db, change.model)
       const agent = await conversation.agent(BACKGROUND_CONTEXT)
       return {
@@ -1052,7 +1064,9 @@ export function create(deps: ModelsPort): ModelsParts {
               )
           }
         }
-        await writeKv(db, "owner.disabled", toggled(settings.disabled, ref, !enabled))
+        const next = toggled(settings.disabled, ref, !enabled)
+        await writeKv(db, "owner.disabled", next)
+        disabledRefs = next
         return settings.defaults
       })
       const moved = enabled ? [] : await moveOff(api.harness, await deps.conversations(), registry.models, ref, owner)
@@ -1202,7 +1216,7 @@ export function create(deps: ModelsPort): ModelsParts {
       return found === undefined ? false : found.input.includes("image")
     },
     credentialSecrets: () => credentialSecrets(db, store),
-    disabled: async (ref) => isDisabled(await readSettings(db), ref),
+    disabled: async (ref) => isOff(ref),
     spend: async () => ({ month: (await datedUsage(db)).month.spend, cap: await readCap(db) }),
     search: async (query) => {
       const { disabled } = await readSettings(db)
@@ -1246,6 +1260,7 @@ export function create(deps: ModelsPort): ModelsParts {
     flush,
     flushDue,
     start: async () => {
+      disabledRefs = (await readKv(db, "owner.disabled", refsCheck.check)) ?? []
       await registry.sync()
       await seedUsage(db, harness)
       // A fresh process records nothing until the ledger has had time to move; the first alarm after boot is usually
