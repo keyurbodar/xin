@@ -80,7 +80,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "routes", "storage"],
+      permissions: ["conversations", "owner", "routes", "storage"],
       contributes: {
         tools: [],
         ops: [
