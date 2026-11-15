@@ -121,19 +121,30 @@ Small loads use the arc from `I1`: a faint ring with a quarter arc turning once 
 
 ## Motion
 
-Tokens are `--dur-instant|fast|base|slow|deliberate` (80/140/200/320/480) and `--ease-standard|enter|exit|spring` (F4). Exits are always faster than entrances, and spring is only for a surface arriving from an edge on touch.
+Motion follows design system §7. Every rule lives in `web/src/styles/motion.css`; tokens are in `tokens.css` (`--dur-color|press|release|tooltip|fast|base|slow|drawer`, `--dur-exit-fast|base|slow|sheet`, `--ease-color|in-out|drawer|enter|exit|spring`, `--loop-skeleton|shimmer|working|needs|waiting`). Enter and exit both run on out-quint, exits are about 70% of the entrance, only transform and opacity move (grow-in-place height is the one exception), and nothing starts below scale .96.
 
-| Surface | Enter | Exit | Utility |
+`web/src/lib/motion.ts` marks the root: `data-input="key"` after a keydown and `"pointer"` after a pointer moves or presses, and `data-hidden` while the tab is hidden. A keyboard-started action takes no time: the CSS zeroes the animation and transition durations under `data-input="key"`, `createPresence` and the extension sheets unmount at once, and the pane tab pill jumps. The command palette never animates. Hover is gated to `(hover: hover) and (pointer: fine)` by overriding Tailwind's `hover` variant, so taps never stick.
+
+| Element | Motion | Reduce motion | Where |
 | --- | --- | --- | --- |
-| Dialog | 200, opacity and scale .98 to 1, enter curve | 140, exit curve | `enter`, `dialog-out` |
-| Right sheet and panel drawer | 320, 24px from the right plus fade, standard | 200, exit curve | `slide-right`, `slide-right-out` |
-| Sidebar drawer | 240, from the left on the drawer curve | unmount | `drawer-in` |
-| Menu and popover (Ark) | 150, opacity and scale .97 from `--transform-origin`, enter curve | 100, exit curve | `shell/overlay.css` on `[data-scope][data-part="content"][data-state]` |
-| Fan-out row | 200, 4px drop, 40ms stagger capped at six | unmount | `row-in` |
-| Report card | 320, 6px rise | unmount | `card-in` |
-| Scrim | 200 linear fade | 200 | `fade-in` |
+| Button, `[role=button]` | press scale .97, 120 down / 160 up, out-quint; not on keyboard press | no scale | base layer |
+| Button, link, tab, menu item, option, `.tint` | colour 100 in / 140 out, ease | same | base layer |
+| Switch | knob `translate-x-3` and track colour, 150 in-out | instant | `knob` |
+| Menu, popover, select, combobox (Ark) | opacity and scale .97 from `--transform-origin`, 150 / 100 | 120 fade | `[data-scope][data-part=content][data-state]` |
+| Dialog | opacity and scale .96, centred, 200 / 140; scrim fades with it | 120 fade | `dialog-in`, `dialog-out`, `fade-in`, `fade-out` |
+| Right sheet (install review, undocked pane) | translateX 100% to 0 on the drawer curve, 240 / 180 | 120 fade | `sheet-in`, `sheet-out` |
+| Sidebar drawer (narrow screens) | translateX -100% to 0 on the drawer curve, 240 / 180 | 120 fade | `drawer-in`, `drawer-out` |
+| Pane tab pill | FLIP translateX and scaleX, 200 in-out, pointer select only | instant | `glide` in `lib/motion.ts` |
+| Pane swap | opacity and translateY 4, 150 | instant | `pane-swap` |
+| Grow in place (overview sections) | Ark `--height` 0 to full, 200 / 140; content opacity and translateY 4 after 60 | instant | `[data-scope=collapsible]` |
+| List arrival (sidebar projects and threads, overview sections) | first load only: opacity and translateY 8, 200, 40 stagger over the first six | 120 fade, no stagger | `arrive` via `arrival()` |
+| Fan-out row, report card, page surface, composer menu | 200 rise / 240 rise / 200 scale .98 / 150 drop | 120 fade | `row-in`, `card-in`, `enter`, `menu-in` |
+| Skeleton | Skullet `pulse`, 1 to .45 over 2.4s, held back 150 | still (Skullet) | `--skullet-animation` |
+| Streaming text | background-position sweep, `--loop-shimmer`, linear | still, ink-3 | `shimmer` |
+| Signal dots | working chase `--loop-working`, needs breathe `--loop-needs`; project corners breathe | still frame | `status.css`, `breath`, `pulse` |
+| Drag to reorder tabs | lift scale 1.02 and overlay shadow | no lift | `[data-tab-lifted]` |
 
-Pane views swap with opacity and a 4px rise over 150 (`pane-swap`). Controls answer within 80ms: a press scales .98, a hover tints in 80 and fades out over 140, a toggle knob travels in 140, and a rejected input shakes 4px once over 240. `prefers-reduced-motion` collapses every animation and transition to 1ms.
+Loops (signal dots, shimmer, corners, spinners, pictograms) pause while the tab is hidden. There are no toasts yet, so the toast row of §7 has no consumer; the Send to Stop swap and attachment chips belong to the composer.
 
 ## Decisions taken from the review frame's open questions
 

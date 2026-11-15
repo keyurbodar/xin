@@ -29,14 +29,9 @@
 }
 
 .d-q { animation: dQ 4.5s linear infinite; }
-.d-w { animation: dW 0.96s linear infinite; }
-.d-p { animation: dP 1.6s ease-in-out infinite; }
+.d-w { animation: dW var(--loop-working) linear infinite; }
+.d-p { animation: dP var(--loop-needs) ease-in-out infinite; }
 .d-f { animation: dF 3.2s infinite; }
 .d-x { animation: dX 2.4s infinite; }
 .d-pz { animation: dBreathe 2.4s ease-in-out infinite; }
 .d-c { animation: dC 3s linear infinite; }
-
-@keyframes shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
-}

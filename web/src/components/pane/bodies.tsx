@@ -31,7 +31,7 @@ export function openFile(slug: string, path: string): void {
 }
 
 export const PANE_ROW =
-  "flex w-full items-start gap-2.5 rounded-sm px-2 py-1.5 text-left transition-colors duration-[var(--dur-color)] hover:bg-secondary"
+  "flex w-full items-start gap-2.5 rounded-sm px-2 py-1.5 text-left hover:bg-secondary"
 
 export function FilesView(props: { slug: string }): JSX.Element {
   const [files, { refetch }] = createResource(() => props.slug, projectFiles)

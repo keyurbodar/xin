@@ -6,6 +6,7 @@ import { activeProjects, projectThreads, routeProject, routeThreadId, type Proje
 import { owner, ownerName } from "../../state/settings.ts"
 import { navigate, route } from "../../lib/router.ts"
 import { ago } from "../../lib/format.ts"
+import { arrival } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { setTheme, theme, themeOf } from "../../lib/theme.ts"
 import { openThreadTab } from "../../state/tabs.ts"
@@ -23,11 +24,12 @@ const THEMES = [
 ] as const
 
 const ROW =
-  "flex h-[var(--h-row)] w-full shrink-0 items-center gap-2.5 rounded-sm px-2 text-left text-sm transition-colors duration-[var(--dur-color)] hover:bg-secondary"
+  "flex h-[var(--h-row)] w-full shrink-0 items-center gap-2.5 rounded-sm px-2 text-left text-sm hover:bg-secondary"
 
 export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; drawer: boolean }): JSX.Element {
   onMount(() => void owner.reload())
   const first = (): string | undefined => route().parts[0]
+  const arriving = arrival(() => activeProjects().length > 0)
 
   return (
     <aside class="flex h-full w-[var(--w-sidebar)] shrink-0 flex-col bg-bg">
@@ -70,7 +72,7 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
             <Plus {...ICON} />
           </button>
         </SectionHead>
-        <div class="flex flex-col gap-px px-2">
+        <div class="flex flex-col gap-px px-2" classList={{ arrive: arriving() }}>
           <For each={activeProjects()} fallback={<span class="px-2 py-1 text-sm text-ink-3">No projects yet</span>}>
             {(project) => <ProjectRow project={project} />}
           </For>
@@ -146,6 +148,7 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
     openThreadTab(props.project.id, id)
     navigate(`/p/${props.project.slug}/t/${id}`)
   }
+  const arriving = arrival(() => threads().length > 0)
 
   return (
     <>
@@ -180,7 +183,7 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
           />
         </div>
       </Show>
-      <div class="flex flex-col gap-px px-2">
+      <div class="flex flex-col gap-px px-2" classList={{ arrive: arriving() }}>
         <For
           each={threads()}
           fallback={

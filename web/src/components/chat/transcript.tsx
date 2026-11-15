@@ -130,7 +130,7 @@ export function Transcript(props: {
               type="button"
               disabled={loadingOlder()}
               onClick={() => void loadOlder()}
-              class="rounded-sm border border-line-2 px-2.5 py-1 text-sm text-ink-2 transition-colors hover:border-line-3 hover:bg-secondary disabled:text-icon"
+              class="rounded-sm border border-line-2 px-2.5 py-1 text-sm text-ink-2 hover:border-line-3 hover:bg-secondary disabled:text-icon"
             >
               {loadingOlder() ? "Loading" : "Load older messages"}
             </button>

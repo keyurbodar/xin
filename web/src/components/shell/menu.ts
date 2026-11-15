@@ -9,4 +9,4 @@ export const MENU_LABEL = "px-2 pb-1 pt-2 text-xs text-ink-3"
 export const MENU_SEPARATOR = "-mx-1 my-1 h-px border-0 bg-line-1"
 
 export const ICON_BUTTON =
-  "grid h-7 w-7 shrink-0 place-items-center rounded-sm text-ink-3 transition-colors duration-[var(--dur-color)] hover:bg-secondary hover:text-ink data-[state=open]:bg-hover data-[state=open]:text-ink"
+  "grid h-7 w-7 shrink-0 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink data-[state=open]:bg-hover data-[state=open]:text-ink"

@@ -2,6 +2,7 @@ import { createMemo, createResource, For, Show, type JSX } from "solid-js"
 import { Collapsible } from "@ark-ui/solid/collapsible"
 import { ArrowUpRight, ChevronDown, File, MessageCircleQuestion } from "lucide-solid"
 import { ago } from "../../lib/format.ts"
+import { arrival } from "../../lib/motion.ts"
 import { homeRequests, projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { ICON_BUTTON } from "../shell/menu.ts"
@@ -10,6 +11,7 @@ import { fileName, openFile, PANE_ROW, projectFiles, ThreadLine } from "./bodies
 const DRIVE_ROWS = 4
 
 export function Section(props: { label: string; count: number; action?: JSX.Element; children: JSX.Element }): JSX.Element {
+  const arriving = arrival(() => props.count > 0)
   return (
     <Collapsible.Root defaultOpen class="flex flex-col">
       <div class="flex h-[var(--h-section)] items-center rounded-md bg-secondary pr-1">
@@ -19,12 +21,16 @@ export function Section(props: { label: string; count: number; action?: JSX.Elem
           <ChevronDown
             size={14}
             stroke-width={1.5}
-            class="text-ink-3 transition-transform duration-[var(--dur-fast)] group-data-[state=closed]:-rotate-90"
+            class="text-ink-3 transition-transform duration-[var(--dur-base)] ease-[var(--ease-enter)] group-data-[state=closed]:-rotate-90 motion-reduce:transition-none"
           />
         </Collapsible.Trigger>
         {props.action}
       </div>
-      <Collapsible.Content class="flex flex-col py-1">{props.children}</Collapsible.Content>
+      <Collapsible.Content>
+        <div class="flex flex-col py-1" classList={{ arrive: arriving() }}>
+          {props.children}
+        </div>
+      </Collapsible.Content>
     </Collapsible.Root>
   )
 }

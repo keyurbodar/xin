@@ -74,8 +74,8 @@ export function Toggle(props: {
       classList={{ "bg-ink": props.on, "bg-line-2": !props.on }}
     >
       <span
-        class="knob absolute top-0.5 h-3 w-3 rounded-2xs bg-bg"
-        classList={{ "left-3.5": props.on, "left-0.5 bg-ink-3": !props.on }}
+        class="knob absolute left-0.5 top-0.5 h-3 w-3 rounded-2xs bg-bg"
+        classList={{ "translate-x-3": props.on, "bg-ink-3": !props.on }}
       />
     </button>
   )

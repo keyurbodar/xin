@@ -27,7 +27,7 @@ type Drag = {
 }
 
 const TAB =
-  "group relative flex h-[var(--h-tab)] items-center gap-2 rounded-sm px-2 text-sm transition-colors duration-[var(--dur-color)]"
+  "group relative flex h-[var(--h-tab)] items-center gap-2 rounded-sm px-2 text-sm"
 
 export function ConversationTabs(props: {
   project: ProjectSummary

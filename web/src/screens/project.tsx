@@ -36,6 +36,7 @@ import {
   wideShell,
 } from "../state/tabs.ts"
 import { ICON_BUTTON } from "../components/shell/menu.ts"
+import { createPresence } from "../components/shell/presence.ts"
 import { expandSlash } from "../lib/slash.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { navigate, param } from "../lib/router.ts"
@@ -259,6 +260,7 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
   const docked = mediaQuery("(min-width: 1280px)")
   const [settingsOpen, setSettingsOpen] = createSignal(false)
   const [expanded, setExpanded] = createSignal(false)
+  const sheet = createPresence(() => paneOpen() && !docked() && !expanded(), 180)
   const threads = createMemo(() => new Map(projectThreads(props.project).map((thread) => [thread.id, thread])))
   const thread = (): ThreadSummary | undefined => {
     const id = routeThreadId()
@@ -343,22 +345,21 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
           </Show>
         </section>
       </Show>
-      <Show when={paneOpen()}>
-        <Show
-          when={docked() || expanded()}
-          fallback={
-            <div class="drawer-in absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay">
-              {pane()}
-            </div>
-          }
+      <Show when={paneOpen() && (docked() || expanded())}>
+        <div
+          class="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-lg bg-panel shadow-ring"
+          classList={{ "w-[var(--w-pane)]": !expanded(), "flex-1": expanded() }}
         >
-          <div
-            class="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-lg bg-panel shadow-ring"
-            classList={{ "w-[var(--w-pane)]": !expanded(), "flex-1": expanded() }}
-          >
-            {pane()}
-          </div>
-        </Show>
+          {pane()}
+        </div>
+      </Show>
+      <Show when={sheet.mounted()}>
+        <div
+          class="absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay"
+          classList={{ "sheet-in": !sheet.leaving(), "sheet-out pointer-events-none": sheet.leaving() }}
+        >
+          {pane()}
+        </div>
       </Show>
       <ProjectSettings
         project={props.project}

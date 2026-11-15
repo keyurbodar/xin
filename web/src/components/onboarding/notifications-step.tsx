@@ -143,8 +143,8 @@ export function NotificationsStep(): JSX.Element {
                     classList={{ "bg-ink": notifyNow()[kind.key], "bg-line-2": !notifyNow()[kind.key] }}
                   >
                     <span
-                      class="knob absolute top-0.5 h-3 w-3 rounded-2xs bg-bg"
-                      classList={{ "left-3.5": notifyNow()[kind.key], "left-0.5": !notifyNow()[kind.key] }}
+                      class="knob absolute left-0.5 top-0.5 h-3 w-3 rounded-2xs bg-bg"
+                      classList={{ "translate-x-3": notifyNow()[kind.key] }}
                     />
                   </button>
                 </div>

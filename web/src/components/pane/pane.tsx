@@ -3,6 +3,7 @@ import { Dynamic, Portal } from "solid-js/web"
 import { Popover } from "@ark-ui/solid/popover"
 import { Listbox, createListCollection } from "@ark-ui/solid/listbox"
 import { Check, ChevronRight, Maximize2, Minimize2, PanelRight, Plus, X } from "lucide-solid"
+import { glide } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { closePaneView, OVERVIEW, projectTabs, setPaneOpen, showPaneView } from "../../state/tabs.ts"
@@ -35,22 +36,33 @@ export function ProjectPane(props: {
       return entry === undefined ? [] : [entry]
     })
   const view = (): PaneEntry => paneView(tabs().view)
+  let strip!: HTMLDivElement
+  const pill = (): HTMLElement | null => strip.querySelector<HTMLElement>("[data-pill]")
+  const select = (id: string): void => {
+    const from = pill()?.getBoundingClientRect()
+    showPaneView(props.project.id, id)
+    const to = pill()
+    if (from !== undefined && to !== null) glide(from, to)
+  }
 
   return (
     <aside class="flex min-h-0 flex-col">
       <div class="flex h-[var(--h-topbar)] shrink-0 items-center gap-1 border-b border-line-1 px-2">
-        <div class="flex min-w-0 items-center gap-1 overflow-x-auto">
+        <div ref={strip} class="flex min-w-0 items-center gap-1 overflow-x-auto">
           <For each={open()}>
             {(entry) => (
               <div
-                class="group flex h-[var(--h-tab)] shrink-0 items-center rounded-sm text-sm transition-colors duration-[var(--dur-color)]"
-                classList={{ "bg-hover text-ink": view() === entry, "text-ink-3 hover:bg-secondary hover:text-ink-2": view() !== entry }}
+                class="tint group relative isolate flex h-[var(--h-tab)] shrink-0 items-center rounded-sm text-sm"
+                classList={{ "text-ink": view() === entry, "text-ink-3 hover:bg-secondary hover:text-ink-2": view() !== entry }}
               >
+                <Show when={view() === entry}>
+                  <span data-pill class="absolute inset-0 -z-10 rounded-sm bg-hover" />
+                </Show>
                 <button
                   type="button"
                   class="flex h-full items-center gap-1.5 pl-2"
                   classList={{ "pr-2": entry.id === OVERVIEW }}
-                  onClick={() => showPaneView(props.project.id, entry.id)}
+                  onClick={() => select(entry.id)}
                   onAuxClick={(event) => {
                     if (event.button === 1 && entry.id !== OVERVIEW) closePaneView(props.project.id, entry.id)
                   }}
