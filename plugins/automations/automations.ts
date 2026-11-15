@@ -10,7 +10,7 @@ import {
   UsageDoc,
 } from "@earendil-works/pi-durable"
 import type { IntakeService } from "../../src/contracts/intake.ts"
-import { capReason, type Admission } from "../../src/contracts/models.ts"
+import { capReason, FeatureDoc, type Admission } from "../../src/contracts/models.ts"
 import type { PushService } from "../../src/contracts/push.ts"
 import { projectByRef, scopeOf } from "../../src/contracts/scope.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
@@ -203,24 +203,9 @@ export class Engine {
   #deadline: Deadline | undefined
   #revision = 0
   #threads: Promise<Map<number, Set<string>>> | undefined
-  #billed: Set<ConversationId> | undefined
 
   constructor(private readonly port: EnginePort) {
     this.store = new Store(port.db)
-  }
-
-  /**
-   * The threads automations started, which book their spend as `automation`: one bounded read per process, then
-   * memory. A standing conversation that is a chat keeps its own feature.
-   */
-  async threads(): Promise<readonly ConversationId[]> {
-    if (this.#billed === undefined) {
-      const found = new Set<ConversationId>()
-      for (const id of await this.store.billedThreads())
-        if ((await this.port.harness.snapshot(ThreadDoc, id, context)) !== undefined) found.add(id)
-      this.#billed = found
-    }
-    return [...this.#billed]
   }
 
   get revision(): number {
@@ -584,8 +569,10 @@ export class Engine {
       const threadId = numberField(outcome.result, "threadId")
       if (threadId === undefined) return await this.store.failed(id, "thread.create returned no thread", now)
       if (automation.target === "same") await this.store.setThread(automation.id, threadId)
+      await this.port.harness.commit(async (tx) => {
+        ;(await tx.doc(FeatureDoc, threadId as ConversationId)).feature = "automation"
+      }, context)
       await this.store.started(id, "running", threadId, now, { cost: 0, tokens: 0 })
-      this.#billed?.add(threadId as ConversationId)
       await this.#ranOn(threadId, automation.id)
       await this.#notify(automation, run)
     } catch (error) {
@@ -614,7 +601,6 @@ export class Engine {
       if (outcome.kind === "rejected") await this.store.failed(run.id, outcome.message, now)
       else {
         await this.store.started(run.id, "running", threadId, now, base)
-        this.#billed?.add(conversationId)
         await this.#ranOn(threadId, automation.id)
       }
       return true

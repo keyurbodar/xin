@@ -22,10 +22,6 @@ export async function apply(ctx: KernelContext): Promise<void> {
   })
   ctx.provide("automations", engine)
   ctx.pi.install(retiredSchedules())
-  ctx.effect(
-    () => ctx.models.track({ feature: "automation", conversations: () => engine.threads() }),
-    "models.track(automation)",
-  )
   for (const op of automationOps(engine)) ctx.ops.define(op)
   ctx.clock.timer({ due: () => engine.due(), fire: (now) => engine.fire(now) })
   ctx.http.route("POST /hooks/*", (request) => engine.webhook(request, Date.now()))

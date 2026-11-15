@@ -1,5 +1,4 @@
 import type { SqliteDatabase, SqliteExecutor, SqliteMigration } from "@earendil-works/chord/sqlite"
-import type { ConversationId } from "@earendil-works/pi-durable"
 
 export const OWNER = "automations"
 
@@ -95,9 +94,6 @@ export type NewTrigger = Omit<TriggerRow, "automation_id" | "position">
 
 export type NewRun = Pick<RunRow, "id" | "automation_id" | "trigger_id" | "source" | "input" | "inputs" | "created_at">
 
-/** Runs the automation tracker reads at boot; one flush books a run's spend within a minute of it. */
-const RECENT_RUNS = 100
-
 export class Store {
   constructor(private readonly db: SqliteDatabase) {}
 
@@ -162,18 +158,6 @@ export class Store {
 
   setNext(triggerId: string, next: number | null): Promise<void> {
     return this.db.run("UPDATE automation_triggers SET next_at = ? WHERE id = ?", next, triggerId)
-  }
-
-  /**
-   * The conversations automations hold or ran in lately: each same-target automation's standing conversation and the
-   * last `RECENT_RUNS` runs' conversations. An older run finished long before, so its spend was booked already.
-   */
-  async billedThreads(): Promise<ConversationId[]> {
-    const rows = await this.db.all<{ thread_id: number | null }>(
-      "SELECT thread_id FROM automations WHERE thread_id IS NOT NULL UNION ALL SELECT thread_id FROM (SELECT thread_id FROM automation_runs ORDER BY rowid DESC LIMIT ?)",
-      RECENT_RUNS,
-    )
-    return rows.flatMap((row) => (row.thread_id === null ? [] : [row.thread_id as ConversationId]))
   }
 
   /** Every conversation a run of an automation went to, for the Drive scope those conversations see. */
