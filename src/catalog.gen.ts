@@ -132,7 +132,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "files", "runtime"],
+      permissions: ["conversations", "files", "runtime", "storage"],
       contributes: {
         tools: [],
         ops: [
@@ -143,6 +143,8 @@ export const CATALOG: Catalog = {
           "drive.move",
           "drive.read",
           "drive.scopes",
+          "drive.share",
+          "drive.unshare",
           "drive.write",
         ],
       },
