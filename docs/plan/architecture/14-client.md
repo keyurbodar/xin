@@ -1,27 +1,27 @@
 # 20 · The web client
 
-This section decides how the first-party web client is built and what it talks to. The client is a SolidJS app in `web/`, a separate package from the Worker: the gate typechecks it (`tsgo -p web/tsconfig.json`) and never bundles it, because the Worker's own bundle step builds `src/worker.ts` alone.
+This section decides how the first-party web client is built and what it talks to. The client is a SolidJS app in `web/`, a separate package from the Worker: the local gate typechecks it (`tsgo -p web/tsconfig.json`), CI's `web` job installs, typechecks and builds it, and neither bundles it into the Worker, because the Worker's own bundle step builds `src/worker.ts` alone.
 
 **Hosting.** A deploy serves `web/dist` from the Worker's own origin as static assets, so the client, `/v1`, `/files` and the socket share one origin and no request crosses it. The assets arrive on the deploy command (`wrangler deploy --assets ./web/dist`), not in `wrangler.jsonc`, because the gate's `bundle` step runs on machines where `web/dist` does not exist.
 
-**Design source.** The design system is the Doop canvas `fTzMMHDuiN`, guideline `ingle-system`: dark only, Factory core-v2 tokens, Geist and Geist Mono, one orange, square geometry. The frames are the specification for every screen; the guideline is the specification for every token. A rule the frames follow and this client must keep:
+**Design source.** The design system is the Ingle v4 handoff (Doop canvas `elsVZejERK`, tokens in `web/src/styles/tokens.css`), with the owner's reference screenshots as the final word where they disagree. Dark is the default, `[data-theme="light"]` is its matched counterpart and `[data-theme="rose"]` is a dark variant with a rose accent; the action colour is `--color-accent`, which `primary` follows; the choice is per device (`localStorage` key `ingle.theme`, applied before first paint by `index.html`). Type is Inter for the interface and Geist Mono for ids, costs and code, both self-hosted from `@fontsource-variable`; there is no serif anywhere. Every colour, radius, size, shadow and motion curve is a token, and components reference tokens, never hex.
 
-- **Orange means "needs you" or "primary action". Nothing else.**
-- **Blue means "working". Nothing else.** (status palette below)
-- No product name in the UI chrome; the wordmark slot stays a placeholder.
-- No star or sparkle icons. No coloured pictograms. No duotone project tiles.
+- **The accent (`--color-accent`, which `primary` follows) is the one action colour.** It is blue in dark and light and rose in the rose theme. Needs-you stays blue and is told apart by the Signal's shape.
+- Status colours never follow the accent: working amber, done green, failed red, merged violet; waiting is ink-3.
 
 ## Status palette
 
-| State | Hex | Word |
+The values live in `tokens.css`; `web/src/lib/status.ts` maps each state to its token.
+
+| State | Token | Word |
 | --- | --- | --- |
-| queued | `#80756f` | Queued |
-| working | `#6aa8ff` | Working |
-| waiting | `#ff5a00` | Waiting on you |
-| done | `#6fae5d` | Done |
-| failed | `#f0442e` | Failed |
-| paused | `#f7a828` | Paused |
-| cancelled | `#6b615c` | Cancelled |
+| queued | `ink-3` | Queued |
+| working | `working` | Working |
+| waiting | `needs` | Waiting on you |
+| done | `done` | Done |
+| failed | `failed` | Failed |
+| paused | `working` | Paused |
+| cancelled | `icon` | Cancelled |
 
 Rows, chips and the sidebar use the **D Grid** family from `I2`: a 3×3 grid of square cells where every state is its own pattern, at 12, 16, 20 or 24px. Chat chips use the **Capsule** family, which pairs the glyph with the state's word.
 
@@ -32,11 +32,12 @@ Rows, chips and the sidebar use the **D Grid** family from `I2`: a 3×3 grid of 
 | framework | SolidJS + Vite | the same stack kiko ships, and fine-grained reactivity suits a streaming transcript |
 | styles | Tailwind 4 with `@theme` tokens | one token block generates every utility, so a hex exists once |
 | router | a 40-line hash router in `web/src/lib/router.ts` | six routes, no dependency, works on any static host |
-| icons | inline Lucide paths in `web/src/components/ui/icon.tsx` | the design names Lucide; inlining keeps the tree to the icons we use |
+| icons | `lucide-solid` | the design names Lucide; imports are per icon, so the bundle carries only the icons used |
 | deltas | `@earendil-works/chord/delta` `applyImmutable` | the server sends the watch's decoded ops, so the client applies them with the library that defines them instead of a copy |
 | loading | `skullet` (measured skeletons), `torph` (text morph) | the owner's picks; a skeleton the size of the real content stops the layout shifting |
 | syntax | `sugar-high`, the highlighter kiko ships | C12 tints fenced code; it is a few KB, has no dependencies, and escapes the code it marks up |
-| primitives | Kobalte only if a surface needs real focus management | dialogs, the command palette and menus |
+| primitives | `@ark-ui/solid` | headless menus, popovers, selects and dialogs with real focus management, and `--transform-origin` so a popover scales from its trigger |
+| fonts | `@fontsource-variable/inter`, `@fontsource-variable/geist-mono` | self-hosted variable fonts, so no third-party font request |
 
 **What came from kiko, and what did not.** kiko's `apps/web-solid` is the reference for this stack, and Ingle takes its versions as they are: Solid 1.9, Vite 8, Tailwind 4.3, skullet for measured skeletons, torph for text morphs, and now sugar-high for code. The rest of kiko's list is declined until a frame asks for it: Kobalte and cmdk-solid (the palette is a plain list with its own keyboard handling, and no surface needs a focus-trapping primitive yet), TipTap and CodeMirror (every editor here is a plain textarea over markdown, not rich text), `@corvu/calendar` and `@corvu/resizable` (no date picker or split panes in the frames), virtua, mermaid, jszip, pdfjs-dist and `@pierre/trees` (no virtualised lists, diagrams, archives, PDFs or file trees), and Phosphor icons (the design names Lucide). The comparison is `docs/log/decisions.tsv` under P14.
 
@@ -47,7 +48,7 @@ The client talks to the Worker over the same contract the agent uses.
 - **Commands** go to `POST /v1/cmd` as `{ id, op, args }`; every mutation in the UI is one op.
 - **Streams** come from `GET /v1/socket` with subprotocol `ingle, bearer.<token>`: the socket first answers `{t:"hello",socket}` with its own id, then `{t:"sub", stream:"home"}` for the workspace projection and `{t:"sub", stream:"conv:<id>"}` for a conversation. A subscription answers one `{t:"snap"}` and then `{t:"ev"}` deltas, applied with chord's own `applyImmutable`. The hello id is how Settings marks this tab's own socket row, and a push row claims "This browser" only when its endpoint is the subscription this browser holds.
 - **C12 is the renderer's contract.** `components/chat/markdown.tsx` gives a fenced block a header (language, Wrap, Copy), a numbered gutter and sugar-high tints, and a diff replaces the number with `+` or `−`; links are white with a grey underline that turns white on hover, italics render upright, a GFM table becomes a real table with the design's hairlines, and a reply's H1 renders one step down.
-- **Home answers instead of redirecting.** The `home` snapshot carries up to five pending questions (`{ requests: [...] }`, contributed by the questions plugin through `wire.home`), so a Needs You row shows the question and its option chips and answers with the same `request.respond` the Inbox uses; a failed row keeps Retry. The projection's own `openRequests` count still drives the numbers and the mobile Inbox dot.
+- **There is no Home or Inbox screen.** `#/` opens the first active project's chat, and questions are answered on their thread card in that chat with `request.respond`.
 - **One entry renders once.** `components/chat/entries.tsx` maps a transcript's entries to items and renders them; the project chat and a thread's body both call it, so a new entry kind reaches both.
 - **A send is keyed once per draft.** The composer mints one command id and `clientTs` per draft text and reuses them on retry, so a lost ack cannot add a second message: the host dedupes on the command id.
 - **The composer's row is attach, preset, model, effort, send** (`V3-a`). The preset comes from `preset.list`'s `conversations` map and changes with `preset.select`; the effort comes from the snapshot's `pi.agent.thinkingLevel` and changes with `conv.configure { thinking }`, and the chip is drawn only when the catalog calls the current model reasoning. The model menu puts **This project** first, then **Catalog**, marks each price with `$` to `$$$`, and greys a model whose provider has no credential with `no key` instead of hiding it, from `models.list { includeUnkeyed: true }`. Once the catalog passes twelve models the menu searches the server (`models.list { query }`), because the op caps a reply at forty and a client-side filter could never reach the rest.
@@ -95,18 +96,17 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 
 | Route | Frame | What it is |
 | --- | --- | --- |
-| `#/` | D3 | Home: greeting, the four counts, Needs You, the project grid |
+| `#/` | D1 | the first active project's chat; with no project, an empty state that opens New project |
 | `#/p/:slug` | D1, D2, D5, D6 | project chat: transcript, composer, right panel (Threads, Files, Memory, Schedules, Jobs). An opened thread widens the panel to 520, so the coordinator stays in view (`V3-a`). The more menu in the top bar opens project settings: the same name and goal as New project, saved with `project.update`, and Archive with `project.archive`. Memory reads `memory.list` and `memory.suggested`, and drives add, pin, edit, forget and dismiss; Schedules lists with `outcomes: true` and draws the last six runs as dots |
 | `#/p/:slug/files/<path>` | D5 | the file reader: breadcrumb, size and age, Copy and Download, the document, and the project's file list beside it |
 | `#/p/:slug/run/<conversationId>` | D6 | one schedule's delivered run, read-only: the transcript the timer produced, with a breadcrumb back to the project |
 | `#/schedules` | D6 | every schedule with pause, resume and delete, and a New schedule form whose When field is plain words parsed by `schedule.parse` with the next three runs shown before saving |
-| `#/inbox` | D7 | everything that waits on the owner |
 | `#/extensions` | E1–E7 | Discover, package page, install review, installed, sources, customize |
 | `#/settings/:tab` | S1–S4 | General, Usage, Models, Notifications, Profile, System |
 | `#/signin` | O1 | owner token |
 | `#/welcome` | O2–O5 | first provider key, first project, first message, notifications |
 
-Layout follows the breakpoint table in `DDL0wyMU8c`. At 1280 and up the sidebar is 264 wide with labels and the panel is docked: 400 wide, 440 from 1440. From 1024 to 1279 the sidebar collapses to the 56px rail and the panel is a non-modal drawer, 400 wide with an elevation shadow and no scrim, so the chat stays readable at the left edge. Below 1024 the sidebar becomes the bottom tab bar and the panel becomes a bottom sheet at 76% height, on a 64% scrim, with a grab handle that drags it down to dismiss. An opened thread takes the docked panel to 520 (`V3-a`). The chat column never exceeds 720, and the composer and top bar align to it.
+Layout metrics are tokens in `tokens.css`: sidebar `--w-sidebar` (240), right pane `--w-pane` (432), chat column `--w-column` (720), tab bar `--h-topbar` (44) with 28px tabs. The shell that reads them lands with the shell layer; until then the old layout below 1280px collapses the sidebar to a rail and below 1024px uses a bottom tab bar, and the right panel docks at 1280 and up.
 
 ## Identity
 
@@ -141,5 +141,5 @@ Panel tabs slide their pill over 200 and crossfade the body over 140. Controls a
 3. **Auto-update defaults to patch only**; anything that adds a row or a permission always asks.
 4. **The monthly cap pauses threads and asks**, rather than failing them.
 5. **The community index is off by default** and labelled Unverified.
-6. **The landing page keeps a placeholder name** until the owner picks one.
+6. **There is no landing page.** The client is the signed-in app only.
 7. **Tablet is a responsive layout**, not a separate frame set.

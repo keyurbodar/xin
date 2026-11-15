@@ -12,14 +12,14 @@ export function RunScreen(props: { project: ProjectSummary; conversationId: numb
   const snapshot = createConversationView(streams, () => props.conversationId)
   return (
     <div class="flex min-h-0 flex-1 flex-col">
-      <header class="flex h-12 shrink-0 items-center gap-2 border-b border-line px-4">
-        <button type="button" class="link truncate text-[13px]" onClick={() => navigate(`/p/${props.project.slug}`)}>
+      <header class="flex h-12 shrink-0 items-center gap-2 border-b border-line-1 px-4">
+        <button type="button" class="link truncate text-base" onClick={() => navigate(`/p/${props.project.slug}`)}>
           {props.project.name}
         </button>
-        <span class="text-fg-4">/</span>
-        <span class="text-[13px] text-fg-3">Scheduled run</span>
+        <span class="text-icon">/</span>
+        <span class="text-base text-ink-3">Scheduled run</span>
         <Show when={props.label}>
-          {(label) => <span class="ml-auto shrink-0 font-mono text-[11px] text-fg-4">{label()}</span>}
+          {(label) => <span class="ml-auto shrink-0 font-mono text-2xs text-icon">{label()}</span>}
         </Show>
       </header>
       <div class="min-h-0 flex-1 overflow-y-auto">

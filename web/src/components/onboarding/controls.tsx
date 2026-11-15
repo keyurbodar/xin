@@ -3,7 +3,7 @@ import { Button } from "../ui/button.tsx"
 
 export function Spinner(props: { tone?: "dark" | "light" }): JSX.Element {
   return (
-    <svg width={14} height={14} viewBox="0 0 16 16" aria-hidden="true" class={props.tone === "light" ? "text-fg-2" : "text-ink"}>
+    <svg width={14} height={14} viewBox="0 0 16 16" aria-hidden="true" class={props.tone === "light" ? "text-ink-2" : "text-on-primary"}>
       <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-opacity="0.22" stroke-width="1.6" />
       <g class="spinner-arc">
         <path d="M8 2a6 6 0 0 1 6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
@@ -47,8 +47,8 @@ export function StepHeading(props: { step: string; title: string; intro: string 
   return (
     <div class="flex flex-col gap-2.5">
       <span class="label">{props.step}</span>
-      <h1 class="text-[28px] font-light leading-[1.15] tracking-[-0.03em] md:text-[32px]">{props.title}</h1>
-      <p class="max-w-[520px] text-[13.5px] leading-[1.6] text-fg-3">{props.intro}</p>
+      <h1 class="text-2xl font-light leading-[1.15] tracking-[-0.03em] md:text-[32px]">{props.title}</h1>
+      <p class="max-w-[520px] text-base leading-[1.6] text-ink-3">{props.intro}</p>
     </div>
   )
 }
@@ -56,10 +56,10 @@ export function StepHeading(props: { step: string; title: string; intro: string 
 export function Field(props: { label: string; hint?: string; children: JSX.Element }): JSX.Element {
   return (
     <div class="flex flex-col gap-1.5">
-      <span class="text-[12px] font-medium text-fg-2">{props.label}</span>
+      <span class="text-sm font-medium text-ink-2">{props.label}</span>
       {props.children}
       <Show when={props.hint !== undefined}>
-        <span class="text-[12px] leading-[1.5] text-fg-3">{props.hint}</span>
+        <span class="text-sm leading-[1.5] text-ink-3">{props.hint}</span>
       </Show>
     </div>
   )
@@ -79,7 +79,7 @@ export function TextInput(props: {
   trailing?: JSX.Element
 }): JSX.Element {
   return (
-    <div class="flex h-10 items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-3 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]">
+    <div class="flex h-10 items-center gap-2 rounded-sm border border-line-2 bg-panel px-3 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]">
       {props.leading}
       <input
         type={props.type ?? "text"}
@@ -96,8 +96,8 @@ export function TextInput(props: {
         spellcheck={false}
         disabled={props.disabled === true}
         aria-label={props.ariaLabel}
-        class="h-full min-w-0 flex-1 bg-transparent text-[13.5px] text-fg placeholder:text-fg-4 focus:outline-none disabled:opacity-60"
-        classList={{ "font-mono text-[12.5px]": props.mono === true }}
+        class="h-full min-w-0 flex-1 bg-transparent text-base text-ink placeholder:text-icon focus:outline-none disabled:opacity-60"
+        classList={{ "font-mono text-sm": props.mono === true }}
       />
       {props.trailing}
     </div>
@@ -119,7 +119,7 @@ export function TextArea(props: {
       rows={props.rows ?? 3}
       spellcheck={false}
       aria-label={props.ariaLabel}
-      class="min-h-[84px] w-full resize-none rounded-[2px] border border-line-inner bg-surface px-3 py-2.5 text-[13.5px] leading-[1.55] text-fg placeholder:text-fg-4 focus:border-accent focus:shadow-[0_0_0_3px_rgba(255,90,0,0.18)] focus:outline-none"
+      class="min-h-[84px] w-full resize-none rounded-sm border border-line-2 bg-panel px-3 py-2.5 text-base leading-[1.55] text-ink placeholder:text-icon focus:border-primary focus:shadow-[0_0_0_3px_rgba(255,90,0,0.18)] focus:outline-none"
     />
   )
 }
@@ -127,11 +127,11 @@ export function TextArea(props: {
 export function StatusLine(props: { tone: "error" | "ok" | "muted"; text?: string | undefined }): JSX.Element {
   return (
     <p
-      class="min-h-4 text-[12px] leading-4"
+      class="min-h-4 text-sm leading-4"
       classList={{
-        "text-bad": props.tone === "error",
-        "text-ok": props.tone === "ok",
-        "text-fg-3": props.tone === "muted",
+        "text-failed": props.tone === "error",
+        "text-done": props.tone === "ok",
+        "text-ink-3": props.tone === "muted",
       }}
       role={props.tone === "error" ? "alert" : undefined}
     >

@@ -62,28 +62,28 @@ export function PackagePage(props: {
     <>
       <div class="min-h-0 flex-1 overflow-y-auto">
         <div class="flex flex-col gap-0 px-10 pb-12">
-          <div class="flex items-center gap-2 pt-4 text-[12px] text-fg-3">
-            <button type="button" onClick={props.onBack} class="flex items-center gap-1 hover:text-fg-2">
+          <div class="flex items-center gap-2 pt-4 text-sm text-ink-3">
+            <button type="button" onClick={props.onBack} class="flex items-center gap-1 hover:text-ink-2">
               <Glyph name="chevron-left" size={13} />
               Extensions
             </button>
-            <Glyph name="chevron-right" size={11} class="text-fg-4" />
+            <Glyph name="chevron-right" size={11} class="text-icon" />
             <span>{summary()?.category ?? "Package"}</span>
-            <Glyph name="chevron-right" size={11} class="text-fg-4" />
-            <span class="text-fg">{summary()?.title ?? props.name}</span>
+            <Glyph name="chevron-right" size={11} class="text-icon" />
+            <span class="text-ink">{summary()?.title ?? props.name}</span>
           </div>
 
           <div class="flex items-start gap-4 pt-6">
-            <span class="grid h-16 w-16 shrink-0 place-items-center rounded-[4px] border border-line-inner bg-hover text-fg">
+            <span class="grid h-16 w-16 shrink-0 place-items-center rounded-md border border-line-2 bg-secondary text-ink">
               <Glyph name="package" size={30} />
             </span>
             <div class="min-w-0 flex-1">
-              <h1 class="text-[28px] font-normal leading-[1.1] tracking-[-0.03em]">{summary()?.title ?? props.name}</h1>
-              <div class="mt-2 flex flex-wrap items-center gap-2.5 text-[13px] text-fg-3">
+              <h1 class="text-2xl font-normal leading-[1.1] tracking-[-0.03em]">{summary()?.title ?? props.name}</h1>
+              <div class="mt-2 flex flex-wrap items-center gap-2.5 text-base text-ink-3">
                 <Show when={summary()?.author}>
                   {(author) => (
                     <span>
-                      by <span class="font-medium text-fg-2">{author()}</span>
+                      by <span class="font-medium text-ink-2">{author()}</span>
                     </span>
                   )}
                 </Show>
@@ -91,7 +91,7 @@ export function PackagePage(props: {
                   {(kind) => <Chip>{kind() === "bundle" ? "Bundle" : "Code plugin"}</Chip>}
                 </Show>
                 <Show when={latest()}>
-                  {(version) => <span class="font-mono text-[12px]">v{version()}</span>}
+                  {(version) => <span class="font-mono text-sm">v{version()}</span>}
                 </Show>
                 <Show when={installed()}>
                   <Chip tone="ok">Installed</Chip>
@@ -99,7 +99,7 @@ export function PackagePage(props: {
               </div>
               <Show when={summary()?.description}>
                 {(description) => (
-                  <p class="mt-2.5 max-w-[640px] text-[13.5px] leading-relaxed text-fg-2">{description()}</p>
+                  <p class="mt-2.5 max-w-[640px] text-base leading-relaxed text-ink-2">{description()}</p>
                 )}
               </Show>
             </div>
@@ -122,12 +122,12 @@ export function PackagePage(props: {
                   <Glyph name="download" size={14} />
                   Install
                 </Button>
-                <span class="text-[11.5px] text-fg-3">You review what mounts first</span>
+                <span class="text-xs text-ink-3">You review what mounts first</span>
               </Show>
             </div>
           </div>
 
-          <div class="mt-6 flex flex-wrap gap-7 border-b border-line pb-4">
+          <div class="mt-6 flex flex-wrap gap-7 border-b border-line-1 pb-4">
             <Stat label="Latest" value={latest() ?? "—"} mono />
             <Stat label="Versions" value={String(value()?.versions.length ?? 0)} />
             <Stat label="Mounts" value={`${value()?.rows.length ?? 0} rows`} />
@@ -135,21 +135,21 @@ export function PackagePage(props: {
             <Stat label="Updated" value={ago(latestVersionAt(value()))} />
           </div>
 
-          <div class="flex h-11 items-center gap-0.5 border-b border-line">
+          <div class="flex h-11 items-center gap-0.5 border-b border-line-1">
             <For each={TABS}>
               {(entry) => (
                 <button
                   type="button"
                   onClick={() => setTab(entry.id)}
-                  class="flex h-7 items-center gap-1.5 rounded-[2px] px-2.5 text-[13px]"
-                  classList={{ "bg-selected text-fg": tab() === entry.id, "text-fg-3 hover:text-fg-2": tab() !== entry.id }}
+                  class="flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-base"
+                  classList={{ "bg-hover text-ink": tab() === entry.id, "text-ink-3 hover:text-ink-2": tab() !== entry.id }}
                 >
                   {entry.label}
                   <Show when={entry.id === "permissions"}>
-                    <span class="font-mono text-[10.5px] text-fg-4">{value()?.rows.length ?? 0}</span>
+                    <span class="font-mono text-2xs text-icon">{value()?.rows.length ?? 0}</span>
                   </Show>
                   <Show when={entry.id === "versions"}>
-                    <span class="font-mono text-[10.5px] text-fg-4">{value()?.versions.length ?? 0}</span>
+                    <span class="font-mono text-2xs text-icon">{value()?.versions.length ?? 0}</span>
                   </Show>
                 </button>
               )}
@@ -177,7 +177,7 @@ export function PackagePage(props: {
                         when={entry().readme !== undefined && entry().readme !== ""}
                         fallback={<Note>The index carries no readme for this version.</Note>}
                       >
-                        <pre class="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-fg-2">{entry().readme}</pre>
+                        <pre class="whitespace-pre-wrap font-sans text-base leading-relaxed text-ink-2">{entry().readme}</pre>
                       </Show>
                       <Show when={entry().rows.length > 0}>
                         <div>
@@ -185,10 +185,10 @@ export function PackagePage(props: {
                           <Panel>
                             <For each={entry().rows}>
                               {(row) => (
-                                <div class="flex items-center gap-2.5 border-b border-line px-3 py-2.5 last:border-0">
-                                  <Glyph name="layers" size={14} class="shrink-0 text-fg-3" />
-                                  <code class="font-mono text-[12px] text-fg">{row.id}</code>
-                                  <span class="min-w-0 flex-1 truncate text-[12px] text-fg-3">{row.plugin}</span>
+                                <div class="flex items-center gap-2.5 border-b border-line-1 px-3 py-2.5 last:border-0">
+                                  <Glyph name="layers" size={14} class="shrink-0 text-ink-3" />
+                                  <code class="font-mono text-sm text-ink">{row.id}</code>
+                                  <span class="min-w-0 flex-1 truncate text-sm text-ink-3">{row.plugin}</span>
                                   <Show when={row.disabled}>
                                     <Chip>Off</Chip>
                                   </Show>
@@ -210,10 +210,10 @@ export function PackagePage(props: {
                         <Panel>
                           <For each={entry().rows}>
                             {(row) => (
-                              <div class="flex items-start gap-2.5 border-b border-line px-3.5 py-2.5 last:border-0">
-                                <Glyph name="layers" size={14} class="mt-0.5 shrink-0 text-fg-2" />
+                              <div class="flex items-start gap-2.5 border-b border-line-1 px-3.5 py-2.5 last:border-0">
+                                <Glyph name="layers" size={14} class="mt-0.5 shrink-0 text-ink-2" />
                                 <div class="min-w-0 flex-1">
-                                  <span class="block text-[12.5px] text-fg">Mounts the {row.plugin} row</span>
+                                  <span class="block text-sm text-ink">Mounts the {row.plugin} row</span>
                                   <span class="mono-meta block">{row.id}</span>
                                 </div>
                                 <Chip>{row.disabled ? "Off" : "On"}</Chip>
@@ -228,9 +228,9 @@ export function PackagePage(props: {
                           <Panel>
                             <For each={entry().requires}>
                               {(spec) => (
-                                <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5 last:border-0">
-                                  <Glyph name="package" size={14} class="text-fg-3" />
-                                  <code class="font-mono text-[12px] text-fg">{spec}</code>
+                                <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5 last:border-0">
+                                  <Glyph name="package" size={14} class="text-ink-3" />
+                                  <code class="font-mono text-sm text-ink">{spec}</code>
                                 </div>
                               )}
                             </For>
@@ -248,9 +248,9 @@ export function PackagePage(props: {
                     <Panel>
                       <For each={entry().versions}>
                         {(version) => (
-                          <div class="flex items-center gap-3 border-b border-line px-3.5 py-2.5 last:border-0">
-                            <span class="w-16 shrink-0 font-mono text-[12px] text-fg-2">{version.version}</span>
-                            <span class="min-w-0 flex-1 text-[12px] text-fg-3">
+                          <div class="flex items-center gap-3 border-b border-line-1 px-3.5 py-2.5 last:border-0">
+                            <span class="w-16 shrink-0 font-mono text-sm text-ink-2">{version.version}</span>
+                            <span class="min-w-0 flex-1 text-sm text-ink-3">
                               {version.publishTimestamp === undefined ? "—" : ago(version.publishTimestamp)}
                             </span>
                             <Chip tone={version.compatible ? "ok" : "bad"}>
@@ -281,12 +281,12 @@ export function PackagePage(props: {
                 </div>
 
                 <aside class="flex flex-col gap-4">
-                  <div class="rounded-[4px] border border-line bg-surface">
-                    <div class="flex items-center border-b border-line px-3.5 py-2.5">
+                  <div class="rounded-md border border-line-1 bg-panel">
+                    <div class="flex items-center border-b border-line-1 px-3.5 py-2.5">
                       <span class="label">Status</span>
                     </div>
                     <div class="px-3.5 py-3">
-                      <span class="text-[12.5px] text-fg-2">{statusSentence(entry())}</span>
+                      <span class="text-sm text-ink-2">{statusSentence(entry())}</span>
                       <Show when={entry().status === "update-available"}>
                         <div class="mt-2">
                           <span class="mono-meta">Use Updates to review the new version.</span>
@@ -353,7 +353,7 @@ function Stat(props: { label: string; value: string; mono?: boolean | undefined 
   return (
     <div class="flex flex-col gap-1.5">
       <span class="label">{props.label}</span>
-      <span class="text-[14px]" classList={{ "font-mono text-[13px]": props.mono === true }}>
+      <span class="text-base" classList={{ "font-mono text-base": props.mono === true }}>
         {props.value}
       </span>
     </div>
@@ -362,9 +362,9 @@ function Stat(props: { label: string; value: string; mono?: boolean | undefined 
 
 function KeyRow(props: { label: string; value: string; mono?: boolean | undefined }): JSX.Element {
   return (
-    <div class="flex border-b border-line px-3.5 py-2 text-[12.5px] last:border-0">
-      <span class="w-[110px] shrink-0 text-fg-3">{props.label}</span>
-      <span class="min-w-0 break-words text-fg" classList={{ "font-mono text-[12px]": props.mono === true }}>
+    <div class="flex border-b border-line-1 px-3.5 py-2 text-sm last:border-0">
+      <span class="w-[110px] shrink-0 text-ink-3">{props.label}</span>
+      <span class="min-w-0 break-words text-ink" classList={{ "font-mono text-sm": props.mono === true }}>
         {props.value}
       </span>
     </div>
@@ -373,8 +373,8 @@ function KeyRow(props: { label: string; value: string; mono?: boolean | undefine
 
 function LinkRow(props: { label: string; href: string }): JSX.Element {
   return (
-    <div class="flex border-b border-line px-3.5 py-2 text-[12.5px] last:border-0">
-      <span class="w-[110px] shrink-0 text-fg-3">{props.label}</span>
+    <div class="flex border-b border-line-1 px-3.5 py-2 text-sm last:border-0">
+      <span class="w-[110px] shrink-0 text-ink-3">{props.label}</span>
       <a href={props.href} target="_blank" rel="noreferrer" class="link min-w-0 break-all">
         {props.href}
       </a>

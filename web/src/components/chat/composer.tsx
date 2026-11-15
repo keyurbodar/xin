@@ -104,9 +104,9 @@ function AttachmentChips(props: {
 }
 
 const TOOL_BUTTON =
-  "flex h-8 items-center gap-1.5 rounded-[2px] px-2 text-[12px] text-fg-2 hover:bg-hover hover:text-fg disabled:opacity-50"
+  "flex h-8 items-center gap-1.5 rounded-sm px-2 text-sm text-ink-2 hover:bg-secondary hover:text-ink disabled:opacity-50"
 const TOOL_MENU =
-  "menu-in absolute bottom-10 left-0 z-30 max-h-[320px] overflow-y-auto rounded-[4px] border border-line-inner bg-surface p-1 shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
+  "menu-in absolute bottom-10 left-0 z-30 max-h-[320px] overflow-y-auto rounded-md border border-line-2 bg-panel p-1 shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
 
 const EFFORT_WORD: Readonly<Record<ThinkingLevel, string>> = {
   off: "Off",
@@ -126,10 +126,10 @@ function EffortBars(props: { level: ThinkingLevel | undefined }): JSX.Element {
       <For each={[4, 6, 8]}>
         {(height, index) => (
           <span
-            class="w-[2px] rounded-[0.5px]"
+            class="w-[2px] rounded-2xs"
             style={{
               height: `${height}px`,
-              background: index() < lit() ? "var(--color-fg-2)" : "var(--color-line-strong)",
+              background: index() < lit() ? "var(--color-ink-2)" : "var(--color-line-3)",
             }}
           />
         )}
@@ -182,15 +182,17 @@ function ChoiceRow(props: {
       aria-checked={props.checked}
       disabled={props.disabled === true}
       onClick={props.onPick}
-      class="flex w-full items-start gap-2 rounded-[2px] px-2.5 py-1.5 text-left text-[12.5px] hover:bg-hover disabled:cursor-default disabled:hover:bg-transparent"
-      classList={{ "bg-selected": props.checked }}
+      class="flex w-full items-start gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm hover:bg-secondary disabled:cursor-default disabled:hover:bg-transparent"
+      classList={{ "bg-hover": props.checked }}
     >
       <span class="min-w-0 flex-1">
         <span class="block truncate">{props.label}</span>
-        <Show when={props.detail}>{(text) => <span class="block truncate text-[11px] text-fg-3">{text()}</span>}</Show>
+        <Show when={props.detail}>
+          {(text) => <span class="block truncate text-2xs text-ink-3">{text()}</span>}
+        </Show>
       </span>
       <Show when={props.checked}>
-        <Icon name="check" size={12} class="mt-0.5 shrink-0 text-fg-3" />
+        <Icon name="check" size={12} class="mt-0.5 shrink-0 text-ink-3" />
       </Show>
     </button>
   )
@@ -207,18 +209,18 @@ function ModelChoice(props: { model: ModelInfo; onPick: (model: ModelInfo) => vo
       onClick={() => {
         if (keyed()) props.onPick(props.model)
       }}
-      class="flex w-full items-center gap-2 rounded-[2px] px-2.5 py-1.5 text-left text-[12.5px] hover:bg-hover"
+      class="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm hover:bg-secondary"
       classList={{ "cursor-default opacity-45 hover:bg-transparent": !keyed() }}
     >
       <span class="min-w-0 flex-1 truncate">{props.model.name}</span>
       <Show when={priceMarks(props.model.cost)}>
-        {(marks) => <span class="shrink-0 font-mono text-[10.5px] text-fg-3">{marks()}</span>}
+        {(marks) => <span class="shrink-0 font-mono text-2xs text-ink-3">{marks()}</span>}
       </Show>
       <Show
         when={!keyed()}
         fallback={<span class="mono-meta max-w-[90px] shrink-0 truncate">{props.model.provider}</span>}
       >
-        <span class="shrink-0 font-mono text-[10.5px] text-fg-3">no key</span>
+        <span class="shrink-0 font-mono text-2xs text-ink-3">no key</span>
       </Show>
     </button>
   )
@@ -376,7 +378,7 @@ export function Composer(props: {
   return (
     <div class="shrink-0 px-6 pb-4 pt-3">
       <div class="mx-auto w-full max-w-[720px]">
-        <div class="overflow-hidden rounded-[4px] border border-line-inner bg-raised focus-within:border-line-strong focus-within:shadow-[0_0_0_1px_#060505,0_0_0_3px_rgba(255,90,0,0.35)]">
+        <div class="overflow-hidden rounded-md border border-line-2 bg-card focus-within:border-line-3 focus-within:shadow-composer">
           <textarea
             ref={grow.ref}
             value={draft()}
@@ -393,7 +395,7 @@ export function Composer(props: {
               }
             }}
             placeholder={`Message ${props.projectName}…`}
-            class="block max-h-[240px] min-h-[24px] w-full resize-none bg-transparent px-3.5 pb-1.5 pt-3 text-[14px] leading-[1.6] text-fg outline-none placeholder:text-fg-4 disabled:opacity-60"
+            class="block max-h-[240px] min-h-[24px] w-full resize-none bg-transparent px-3.5 pb-1.5 pt-3 text-base leading-[1.6] text-ink outline-none placeholder:text-icon disabled:opacity-60"
           />
           <AttachmentChips
             files={files()}
@@ -401,7 +403,9 @@ export function Composer(props: {
             onRemoveFile={(path) => setFiles((current) => current.filter((file) => file.path !== path))}
             onRemovePending={(id) => setPending((current) => current.filter((item) => item.id !== id))}
           />
-          <Show when={toolError()}>{(message) => <div class="px-3 pb-1 text-[12px] text-bad">{message()}</div>}</Show>
+          <Show when={toolError()}>
+            {(message) => <div class="px-3 pb-1 text-sm text-failed">{message()}</div>}
+          </Show>
           <div ref={bar} class="flex items-center gap-0.5 px-2 pb-2 pt-1.5">
             <button
               type="button"
@@ -409,10 +413,10 @@ export function Composer(props: {
               disabled={uploading()}
               title="Attach a file"
               aria-label="Attach a file"
-              class="grid h-8 w-8 place-items-center rounded-[2px] text-fg-2 hover:bg-hover hover:text-fg disabled:opacity-50"
+              class="grid h-8 w-8 place-items-center rounded-sm text-ink-2 hover:bg-secondary hover:text-ink disabled:opacity-50"
             >
               <Show when={uploading()} fallback={<Icon name="paperclip" size={14} />}>
-                <Spinner class="text-fg-3" />
+                <Spinner class="text-ink-3" />
               </Show>
             </button>
             <input
@@ -422,7 +426,7 @@ export function Composer(props: {
               class="hidden"
               onChange={(event) => void attach(event.currentTarget.files)}
             />
-            <span class="mx-1 h-2.5 w-px bg-line-inner" aria-hidden="true" />
+            <span class="mx-1 h-2.5 w-px bg-line-2" aria-hidden="true" />
             <Show when={props.presets.length > 0}>
               <ToolButton
                 name="Preset"
@@ -432,13 +436,13 @@ export function Composer(props: {
                 onToggle={() => toggleMenu("preset")}
                 trigger={
                   <>
-                    <Icon name="layers" size={13} class="shrink-0 text-fg-3" />
+                    <Icon name="layers" size={13} class="shrink-0 text-ink-3" />
                     <span class="max-w-[120px] truncate">{presetLabel()}</span>
                   </>
                 }
               >
                 <Show when={props.presetLocked}>
-                  <div class="px-2.5 pb-1 pt-1.5 text-[11px] leading-snug text-fg-4">
+                  <div class="px-2.5 pb-1 pt-1.5 text-2xs leading-snug text-icon">
                     This conversation has started, so its preset is fixed.
                   </div>
                 </Show>
@@ -454,7 +458,7 @@ export function Composer(props: {
                   )}
                 </For>
               </ToolButton>
-              <span class="mx-1 h-2.5 w-px bg-line-inner" aria-hidden="true" />
+              <span class="mx-1 h-2.5 w-px bg-line-2" aria-hidden="true" />
             </Show>
             <ToolButton
               name="Choose a model"
@@ -465,7 +469,7 @@ export function Composer(props: {
               trigger={
                 <>
                   <span class="max-w-[220px] truncate">{props.modelLabel}</span>
-                  <Icon name="chevron-down" size={12} class="text-fg-4" />
+                  <Icon name="chevron-down" size={12} class="text-icon" />
                 </>
               }
             >
@@ -475,15 +479,13 @@ export function Composer(props: {
                   value={props.query}
                   aria-label="Search models"
                   placeholder="Search models"
-                  class="mb-1 h-7 w-full rounded-[2px] border border-line-inner bg-raised px-2 text-[12px] text-fg outline-none placeholder:text-fg-4 focus:border-line-strong"
+                  class="mb-1 h-7 w-full rounded-sm border border-line-2 bg-card px-2 text-sm text-ink outline-none placeholder:text-icon focus:border-line-3"
                   onInput={(event) => props.onSearch(event.currentTarget.value)}
                 />
               </Show>
               <Show
                 when={props.models.length > 0}
-                fallback={
-                  <div class="px-2.5 py-2 text-[12px] text-fg-3">No models yet. Add a provider key in Settings.</div>
-                }
+                fallback={<div class="px-2.5 py-2 text-sm text-ink-3">No models yet. Add a provider key in Settings.</div>}
               >
                 <div role="listbox" aria-label="Models">
                   <Show when={props.model !== undefined && props.query === ""}>
@@ -495,10 +497,10 @@ export function Composer(props: {
                         type="button"
                         role="option"
                         aria-selected="true"
-                        class="flex w-full items-center gap-2 rounded-[2px] bg-selected px-2.5 py-1.5 text-left text-[12.5px]"
+                        class="flex w-full items-center gap-2 rounded-sm bg-hover px-2.5 py-1.5 text-left text-sm"
                       >
                         <span class="min-w-0 flex-1 truncate">{props.modelLabel}</span>
-                        <Icon name="check" size={12} class="shrink-0 text-fg-3" />
+                        <Icon name="check" size={12} class="shrink-0 text-ink-3" />
                       </button>
                     </div>
                   </Show>
@@ -511,7 +513,9 @@ export function Composer(props: {
                         <ModelChoice
                           model={model}
                           onPick={(picked) =>
-                            void choose(() => props.onPickModel({ provider: picked.provider, modelId: picked.modelId }))
+                            void choose(() =>
+                              props.onPickModel({ provider: picked.provider, modelId: picked.modelId }),
+                            )
                           }
                         />
                       )}
@@ -519,17 +523,19 @@ export function Composer(props: {
                   </div>
                 </div>
                 <Show when={otherModels().length === 0}>
-                  <div class="px-2.5 py-2 text-[12px] text-fg-3">
+                  <div class="px-2.5 py-2 text-sm text-ink-3">
                     {props.query.trim() === "" ? "No other models to pick." : "No model matches that."}
                   </div>
                 </Show>
                 <Show when={props.omitted > 0 && props.query.trim() === ""}>
-                  <div class="px-2.5 py-2 text-[11px] text-fg-4">{props.omitted} more · search to narrow the list</div>
+                  <div class="px-2.5 py-2 text-2xs text-icon">
+                    {props.omitted} more · search to narrow the list
+                  </div>
                 </Show>
               </Show>
             </ToolButton>
             <Show when={props.reasoning}>
-              <span class="mx-1 h-2.5 w-px bg-line-inner" aria-hidden="true" />
+              <span class="mx-1 h-2.5 w-px bg-line-2" aria-hidden="true" />
               <ToolButton
                 name="Effort"
                 role="menu"
@@ -553,7 +559,7 @@ export function Composer(props: {
                   )}
                 </For>
                 <Show when={props.effort === undefined}>
-                  <div class="px-2.5 pb-1 pt-1 text-[11px] text-fg-4">Using the model's own default</div>
+                  <div class="px-2.5 pb-1 pt-1 text-2xs text-icon">Using the model's own default</div>
                 </Show>
               </ToolButton>
             </Show>
@@ -563,7 +569,7 @@ export function Composer(props: {
                 onClick={() => void stop()}
                 disabled={stopping()}
                 aria-label="Stop the run"
-                class="ml-auto grid h-8 w-8 place-items-center rounded-[2px] bg-fg text-page hover:opacity-90 disabled:opacity-60"
+                class="ml-auto grid h-8 w-8 place-items-center rounded-sm bg-ink text-bg hover:opacity-90 disabled:opacity-60"
               >
                 <Icon name="stop" size={12} />
               </button>
@@ -573,38 +579,42 @@ export function Composer(props: {
               onClick={() => void submit()}
               disabled={sending() || empty()}
               aria-label="Send message"
-              class="grid h-8 w-8 place-items-center rounded-[2px]"
+              class="grid h-8 w-8 place-items-center rounded-sm"
               classList={{
                 "ml-auto": !props.busy,
-                "bg-accent text-ink hover:opacity-90": !empty() && !sending(),
-                "bg-hover text-fg-4": empty() || sending(),
+                "bg-primary text-on-primary hover:opacity-90": !empty() && !sending(),
+                "bg-secondary text-icon": empty() || sending(),
               }}
             >
               <Show when={sending()} fallback={<Icon name="arrow-up" size={16} />}>
-                <Spinner class="text-ink" />
+                <Spinner class="text-on-primary" />
               </Show>
             </button>
           </div>
         </div>
         <Show when={error()}>
           {(message) => (
-            <div class="shake mt-2 flex items-center gap-2 rounded-[2px] border border-failed/40 bg-bad-bg px-3 py-2 text-[12px] text-bad">
+            <div class="shake mt-2 flex items-center gap-2 rounded-sm border border-failed/40 bg-failed-soft px-3 py-2 text-sm text-failed">
               <Icon name="x" size={12} />
               <span class="min-w-0 flex-1 truncate">{message()}</span>
-              <button type="button" class="link" onClick={() => void (failedStop() ? stop() : submit())}>
+              <button
+                type="button"
+                class="link"
+                onClick={() => void (failedStop() ? stop() : submit())}
+              >
                 Retry
               </button>
             </div>
           )}
         </Show>
-        <div class="mt-2 flex items-center gap-2 text-[11.5px] text-fg-4">
+        <div class="mt-2 flex items-center gap-2 text-xs text-icon">
           <span class="kbd">↵</span>
           <span>send</span>
           <span class="kbd">⇧</span>
           <span class="kbd">↵</span>
           <span>new line</span>
           <Show when={props.busy}>
-            <span class="ml-auto font-mono text-[10.5px] text-fg-3">The run is live · Stop ends it</span>
+            <span class="ml-auto font-mono text-2xs text-ink-3">The run is live · Stop ends it</span>
           </Show>
         </div>
       </div>
@@ -651,20 +661,20 @@ export function SteerComposer(props: {
   }
 
   return (
-    <div class="shrink-0 border-t border-line p-3">
-      <div class="overflow-hidden rounded-[4px] border border-line-inner bg-raised focus-within:border-line-strong">
-        <div class="flex items-center gap-2 border-b border-line px-3 py-2 text-[11.5px] text-fg-3">
+    <div class="shrink-0 border-t border-line-1 p-3">
+      <div class="overflow-hidden rounded-md border border-line-2 bg-card focus-within:border-line-3">
+        <div class="flex items-center gap-2 border-b border-line-1 px-3 py-2 text-xs text-ink-3">
           <Show
             when={props.busy}
             fallback={
-              <span classList={{ "text-accent-text": props.waiting }}>
+              <span classList={{ "text-primary-ink": props.waiting }}>
                 {props.waiting ? "Waiting on you" : "Finished"}
               </span>
             }
           >
             <span class="shimmer">Working</span>
           </Show>
-          <span class="truncate font-mono text-[10.5px] text-fg-4">{props.threadTitle}</span>
+          <span class="truncate font-mono text-2xs text-icon">{props.threadTitle}</span>
         </div>
         <textarea
           ref={grow.ref}
@@ -688,7 +698,7 @@ export function SteerComposer(props: {
                 ? "Steer this thread…"
                 : "Ask a follow-up, or re-run with changes…"
           }
-          class="block max-h-[180px] min-h-[22px] w-full resize-none bg-transparent px-3 pb-1.5 pt-2.5 text-[13px] leading-[1.6] text-fg outline-none placeholder:text-fg-4 disabled:opacity-60"
+          class="block max-h-[180px] min-h-[22px] w-full resize-none bg-transparent px-3 pb-1.5 pt-2.5 text-base leading-[1.6] text-ink outline-none placeholder:text-icon disabled:opacity-60"
         />
         <div class="flex items-center gap-1 px-1.5 pb-1.5">
           <Show when={props.busy}>
@@ -697,7 +707,7 @@ export function SteerComposer(props: {
               onClick={() => void stop()}
               disabled={stopping()}
               aria-label="Stop this thread"
-              class="ml-auto grid h-7 w-7 place-items-center rounded-[2px] bg-fg text-page disabled:opacity-60"
+              class="ml-auto grid h-7 w-7 place-items-center rounded-sm bg-ink text-bg disabled:opacity-60"
             >
               <Icon name="stop" size={11} />
             </button>
@@ -707,20 +717,22 @@ export function SteerComposer(props: {
             onClick={() => void submit()}
             disabled={sending() || props.waiting || draft().trim() === ""}
             aria-label="Send to thread"
-            class="grid h-7 w-7 place-items-center rounded-[2px]"
+            class="grid h-7 w-7 place-items-center rounded-sm"
             classList={{
               "ml-auto": !props.busy,
-              "bg-accent text-ink": draft().trim() !== "" && !props.waiting,
-              "bg-hover text-fg-4": draft().trim() === "" || props.waiting,
+              "bg-primary text-on-primary": draft().trim() !== "" && !props.waiting,
+              "bg-secondary text-icon": draft().trim() === "" || props.waiting,
             }}
           >
             <Show when={sending()} fallback={<Icon name="arrow-up" size={14} />}>
-              <Spinner class="text-ink" />
+              <Spinner class="text-on-primary" />
             </Show>
           </button>
         </div>
       </div>
-      <Show when={error()}>{(message) => <div class="mt-2 text-[12px] text-bad">{message()}</div>}</Show>
+      <Show when={error()}>
+        {(message) => <div class="mt-2 text-sm text-failed">{message()}</div>}
+      </Show>
     </div>
   )
 }
