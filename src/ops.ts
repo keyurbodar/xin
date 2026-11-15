@@ -27,6 +27,8 @@ export type Op = {
    * only repeat it. The command still runs through `ops/before`.
    */
   readonly receipts?: boolean
+  /** The op changes no owner state, so running it never announces a home change. */
+  readonly read?: true
   invoke(api: OpApi, args: unknown): Promise<Outcome>
 }
 
@@ -49,6 +51,7 @@ export function defineOp<A>(definition: {
   readonly args: Schema<A>
   readonly actors: readonly Actor["kind"][]
   readonly receipts?: boolean
+  readonly read?: true
   run(api: OpApi, args: A): Promise<JsonValue>
 }): Op {
   const validator = compile(definition.args)
@@ -56,6 +59,7 @@ export function defineOp<A>(definition: {
     name: definition.name,
     actors: definition.actors,
     ...(definition.receipts === undefined ? {} : { receipts: definition.receipts }),
+    ...(definition.read === undefined ? {} : { read: definition.read }),
     invoke: async (api, args) => {
       if (!validator.check(args)) {
         const message = validator

@@ -141,11 +141,11 @@ const subscribe =
 
 export function create(deps: FilesPort): FilesPlugin {
   const dirs = new Set<string>(["/"])
-  const listeners = new Set<(path: string) => void>()
+  const listeners = new Set<(path: string) => void | Promise<void>>()
   const grants = new Set<FileGrant>()
   const scope = projectScoped(grants)
-  const onChange = (path: string): void => {
-    for (const listener of listeners) listener(path)
+  const onChange = async (path: string): Promise<void> => {
+    for (const listener of listeners) await listener(path)
   }
   const index = new FileIndex(deps.db, onChange)
   const envFor = (cwd: string | undefined): R2Env =>
@@ -170,8 +170,8 @@ export function create(deps: FilesPort): FilesPlugin {
       const row = await index.row(rootedPath(path))
       return row === undefined ? undefined : entryOf(row)
     },
-    write: async (path, text) =>
-      entryOf(await putFile(deps.env.FILES, index, { path: rootedPath(path), content: text })),
+    write: async (path, text, base) =>
+      entryOf(await putFile(deps.env.FILES, index, { path: rootedPath(path), content: text, base })),
     remove: async (path) => {
       const target = rootedPath(path)
       const row = await index.row(target)
@@ -203,6 +203,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const list = defineOp({
     name: "file.list",
+    read: true,
     args: obj({ prefix: opt(str()) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { prefix }) => {
@@ -217,6 +218,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const read = defineOp({
     name: "file.read",
+    read: true,
     args: obj({ path: str({ minLength: 1 }) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { path }) => {
@@ -234,6 +236,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const revision = defineOp({
     name: "file.revision",
+    read: true,
     args: obj({ path: str({ minLength: 1 }), sha256: str({ minLength: 64, maxLength: 64 }) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { path, sha256 }) => {
@@ -251,6 +254,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const revisions = defineOp({
     name: "file.revisions",
+    read: true,
     args: obj({ path: str({ minLength: 1 }) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { path }) => {

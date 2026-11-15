@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
+import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import { type ConversationId, defineExtension, type Extension, type Harness, section } from "@earendil-works/pi-durable"
 import { compile, int, lit, obj, opt, type Static, str, union } from "@earendil-works/pi-schema"
 import {
@@ -12,13 +13,16 @@ import type { FileEntry, FilesService } from "../../src/contracts/files.ts"
 import { projectByRef, scopeOf } from "../../src/contracts/scope.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
-import { blobKey } from "../../src/r2env.ts"
+import { blobKey, StaleWrite } from "../../src/r2env.ts"
+import { createShares } from "./shares.ts"
 
 const context = BACKGROUND_CONTEXT
 
 const INSTRUCTIONS = "AGENTS.md"
 const SKILL_FILE = /^skills\/([a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md$/
 const MAX_INSTRUCTIONS_CHARS = 20_000
+/** Starts the bad_args message of a write whose `base` is no longer current; clients match on it to offer reload or overwrite. */
+export const STALE_BASE = "stale base"
 const PREVIEWABLE = /^(text\/|application\/(json|xml|.*\+json|.*\+xml)|image\/svg\+xml)/
 
 export const ScopeSchema = union([
@@ -33,6 +37,7 @@ const Path = str({ minLength: 1, maxLength: 1_000 })
 const Sha = str({ minLength: 64, maxLength: 64 })
 
 export type DrivePort = {
+  readonly db: SqliteDatabase
   readonly files: FilesService
   readonly harness: Harness
   readonly bucket: R2Bucket
@@ -51,7 +56,7 @@ export type DrivePlugin = {
   readonly extension: Extension
   /** A thread may use the roots of its Captain and automation scopes; its project folder is already open to it. */
   grant(conversationId: ConversationId, path: string): Promise<boolean>
-  changed(path: string): void
+  changed(path: string): Promise<void>
 }
 
 const labelOf = (scope: DriveScope, root: string): string =>
@@ -150,8 +155,11 @@ export function create(deps: DrivePort): DrivePlugin {
     return loading
   }
 
-  const changed = (path: string): void => {
+  const shares = createShares(deps)
+
+  const changed = async (path: string): Promise<void> => {
     for (const root of reserved.keys()) if (touchesReserved(root, path)) reserved.delete(root)
+    await shares.changed(path)
   }
 
   const service: DriveService = {
@@ -208,17 +216,25 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const list = defineOp({
     name: "drive.list",
+    read: true,
     args: obj({ scope: ScopeSchema, prefix: opt(str({ maxLength: 1_000 })) }),
     actors: ["owner", "plugin"],
     run: async (_api, { scope, prefix }) => {
       const root = await requireRoot(scope)
       const base = prefix === undefined || prefix.replaceAll("/", "") === "" ? root : `${inside(root, prefix)}/`
-      return { root, files: (await deps.files.list(base)).map((entry) => relative(root, entry)) }
+      const files = await deps.files.list(base)
+      const shared: Record<string, string> = {}
+      for (const entry of files) {
+        const id = await shares.idOf(entry.path)
+        if (id !== undefined) shared[entry.path.slice(root.length)] = id
+      }
+      return { root, files: files.map((entry) => relative(root, entry)), shares: shared }
     },
   })
 
   const read = defineOp({
     name: "drive.read",
+    read: true,
     args: obj({ scope: ScopeSchema, path: Path, sha256: opt(Sha) }),
     actors: ["owner", "plugin"],
     run: async (_api, { scope, path, sha256 }) => {
@@ -241,11 +257,19 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const write = defineOp({
     name: "drive.write",
-    args: obj({ scope: ScopeSchema, path: Path, text: str({ maxLength: 4 * 1024 * 1024 }) }),
+    args: obj({ scope: ScopeSchema, path: Path, text: str({ maxLength: 4 * 1024 * 1024 }), base: opt(Sha) }),
     actors: ["owner", "plugin"],
-    run: async (_api, { scope, path, text }) => {
+    run: async (_api, { scope, path, text, base }) => {
       const root = await requireRoot(scope)
-      return relative(root, await deps.files.write(inside(root, path), text))
+      try {
+        return relative(root, await deps.files.write(inside(root, path), text, base))
+      } catch (problem) {
+        if (!(problem instanceof StaleWrite)) throw problem
+        throw new OpRejected(
+          "bad_args",
+          `${STALE_BASE}: ${path} changed since ${base} (now ${problem.current ?? "deleted"})`,
+        )
+      }
     },
   })
 
@@ -256,8 +280,10 @@ export function create(deps: DrivePort): DrivePlugin {
     run: async (_api, { scope, from, to, toScope }) => {
       const [source, destination] = [await requireRoot(scope), await requireRoot(toScope ?? scope)]
       const [fromPath, toPath] = [inside(source, from), inside(destination, to)]
+      const link = await shares.idOf(fromPath)
       if (!(await deps.files.move(fromPath, toPath)))
         throw new OpRejected("bad_args", `cannot move ${from}: it is missing or ${to} exists`)
+      if (link !== undefined) await shares.carry(link, toPath)
       const entry = await deps.files.stat(toPath)
       if (entry === undefined) throw new Error(`${to} vanished after the move`)
       return relative(destination, entry)
@@ -275,6 +301,7 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const history = defineOp({
     name: "drive.history",
+    read: true,
     args: obj({ scope: ScopeSchema, path: Path }),
     actors: ["owner", "plugin"],
     run: async (_api, { scope, path }) => {
@@ -303,8 +330,28 @@ export function create(deps: DrivePort): DrivePlugin {
     },
   })
 
+  const share = defineOp({
+    name: "drive.share",
+    args: obj({ scope: ScopeSchema, path: Path }),
+    actors: ["owner", "plugin"],
+    run: async (_api, { scope, path }) => {
+      const target = inside(await requireRoot(scope), path)
+      const id = await shares.share(target)
+      if (id === undefined) throw new OpRejected("bad_args", `no file ${path}`)
+      return { id, url: `/s/${id}/${encodeURIComponent(target.slice(target.lastIndexOf("/") + 1))}` }
+    },
+  })
+
+  const unshare = defineOp({
+    name: "drive.unshare",
+    args: obj({ scope: ScopeSchema, path: Path }),
+    actors: ["owner", "plugin"],
+    run: async (_api, { scope, path }) => ({ revoked: await shares.unshare(inside(await requireRoot(scope), path)) }),
+  })
+
   const scopes = defineOp({
     name: "drive.scopes",
+    read: true,
     args: obj({ conversationId: opt(int({ minimum: 0 })) }),
     actors: ["owner", "plugin"],
     run: async (api, { conversationId }) => {
@@ -329,7 +376,7 @@ export function create(deps: DrivePort): DrivePlugin {
 
   return {
     service,
-    ops: [list, read, write, move, remove, history, checkout, scopes],
+    ops: [list, read, write, move, remove, history, checkout, share, unshare, scopes],
     extension: defineExtension({ name: "drive", sections: [instructionsSection] }),
     grant: async (conversationId, path) => {
       for (const mounted of await scopesOf(conversationId))

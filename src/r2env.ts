@@ -43,7 +43,7 @@ export type FileRow = {
 }
 
 /** Told the path of every file the index changed, or a prefix ending in `/` when everything under it went. */
-export type FileChange = (path: string) => void
+export type FileChange = (path: string) => void | Promise<void>
 
 export type R2EnvOptions = {
   readonly cwd?: string
@@ -119,6 +119,18 @@ export type FileWrite = {
   readonly size: number
   readonly type: string
   readonly sha256: string
+  /** The sha the writer last saw; the write is refused when the file has moved on, or is gone. */
+  readonly base?: string
+}
+
+/** A write whose `base` no longer names the file's current version. */
+export class StaleWrite extends Error {
+  constructor(
+    readonly path: string,
+    readonly current: string | undefined,
+  ) {
+    super(`${path} changed since it was opened`)
+  }
 }
 
 /** The least string greater than every string that starts with `prefix`, so a prefix scan is a primary-key range. */
@@ -166,6 +178,7 @@ export class FileIndex {
 
   async upsert(entry: FileWrite): Promise<FileRow> {
     const previous = await this.row(entry.path)
+    if (entry.base !== undefined && previous?.sha256 !== entry.base) throw new StaleWrite(entry.path, previous?.sha256)
     const row = await this.db.get<FileRow>(
       `INSERT INTO files (path, r2_key, size, type, sha256, project, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET r2_key = excluded.r2_key, size = excluded.size, type = excluded.type, sha256 = excluded.sha256, project = excluded.project, updated_at = excluded.updated_at RETURNING ${ROW_COLUMNS}`,
       entry.path,
@@ -178,7 +191,7 @@ export class FileIndex {
     )
     if (row === undefined) throw new Error("files upsert returned no row")
     if (previous !== undefined && previous.sha256 !== entry.sha256) await this.addRevision(previous)
-    this.changed(entry.path)
+    await this.changed(entry.path)
     return row
   }
 
@@ -211,14 +224,14 @@ export class FileIndex {
     await this.db.run("DELETE FROM file_revisions WHERE path = ?", path)
     const rows = await this.db.all<{ path: string }>("DELETE FROM files WHERE path = ? RETURNING path", path)
     if (rows.length === 0) return false
-    this.changed(path)
+    await this.changed(path)
     return true
   }
 
   async dropUnder(prefix: string): Promise<void> {
     await this.db.run("DELETE FROM file_revisions WHERE substr(path, 1, ?) = ?", prefix.length, prefix)
     await this.db.run("DELETE FROM files WHERE substr(path, 1, ?) = ?", prefix.length, prefix)
-    this.changed(prefix)
+    await this.changed(prefix)
   }
 
   /** Moves the file and its revisions, so its history follows it and replaces any left at the destination. */
@@ -232,15 +245,15 @@ export class FileIndex {
       from,
     )
     await this.db.run("UPDATE file_revisions SET path = ? WHERE path = ?", to, from)
-    this.changed(from)
-    this.changed(to)
+    await this.changed(from)
+    await this.changed(to)
   }
 }
 
 export async function putFile(
   bucket: R2Bucket,
   index: FileIndex,
-  write: { readonly path: string; readonly content: string | Uint8Array },
+  write: { readonly path: string; readonly content: string | Uint8Array; readonly base?: string | undefined },
 ): Promise<FileRow> {
   const bytes = typeof write.content === "string" ? encoder.encode(write.content) : write.content
   const digest = await sha256(bytes)
@@ -251,6 +264,7 @@ export async function putFile(
     size: bytes.byteLength,
     type: typeOf(write.path),
     sha256: digest,
+    ...(write.base === undefined ? {} : { base: write.base }),
   })
 }
 

@@ -124,6 +124,7 @@ export function automationOps(engine: Engine): readonly Op[] {
     }),
     defineOp({
       name: "automation.list",
+      read: true,
       args: obj({}),
       actors: ACTORS,
       run: (api) =>
@@ -131,6 +132,7 @@ export function automationOps(engine: Engine): readonly Op[] {
     }),
     defineOp({
       name: "automation.get",
+      read: true,
       args: GetArgs,
       actors: ACTORS,
       run: (api, args) => guarded(async () => shown(api, await engine.get(args.id, args.runs ?? 20, callerOf(api)))),

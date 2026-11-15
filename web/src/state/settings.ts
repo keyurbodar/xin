@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js"
 import { cmd } from "../lib/api.ts"
+import { THINKING_LEVELS, type ThinkingLevel } from "../lib/thinking.ts"
 import { errorMessage, isKnownOpError, isRecord, remote, type RemoteHandle } from "./extensions.ts"
 
 
@@ -14,6 +15,8 @@ export type ModelInfo = {
   readonly contextWindow: number
   readonly vision: boolean
   readonly reasoning: boolean
+  /** The thinking levels this model accepts; a model without reasoning has only "off". */
+  readonly thinking: readonly ThinkingLevel[]
   readonly keyed: boolean
   readonly cost: ModelPrice | undefined
 }
@@ -45,6 +48,9 @@ const priceOf = (value: unknown): ModelPrice | undefined => {
   return { input, output }
 }
 
+const thinkingOf = (value: unknown): readonly ThinkingLevel[] =>
+  Array.isArray(value) ? THINKING_LEVELS.filter((level) => value.includes(level)) : []
+
 const parseModels = (value: unknown): ModelsList => {
   const root: Readonly<Record<string, unknown>> = isRecord(value) ? value : {}
   const listed: readonly unknown[] = Array.isArray(root["models"]) ? root["models"] : []
@@ -66,6 +72,7 @@ const parseModels = (value: unknown): ModelsList => {
           contextWindow: typeof contextWindow === "number" ? contextWindow : 0,
           vision: entry["vision"] === true,
           reasoning: entry["reasoning"] === true,
+          thinking: thinkingOf(entry["thinking"]),
           keyed: entry["keyed"] !== false,
           cost: priceOf(entry["cost"]),
         },
