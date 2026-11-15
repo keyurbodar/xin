@@ -12,6 +12,29 @@ describe("Worker auth", () => {
     expect(await (await call("/health")).text()).toBe("ok")
   })
 
+  it("lets an anonymous webhook through on its secret and refuses every other anonymous path", async () => {
+    const owner = { authorization: "Bearer test-owner-token", "content-type": "application/json" }
+    const command = async (id: string, op: string, args: unknown) => {
+      const reply = await call("/v1/cmd", { method: "POST", headers: owner, body: JSON.stringify({ id, op, args }) })
+      const ack = await reply.json<{ ok: boolean; result: unknown }>()
+      expect(ack.ok, JSON.stringify(ack)).toBe(true)
+      return ack.result
+    }
+    await command("hook-project", "project.create", { slug: "hooked", name: "Hooked" })
+    const created = (await command("hook-create", "automation.create", {
+      title: "Hook",
+      prompt: "Handle it",
+      project: "hooked",
+      triggers: [{ kind: "webhook", rules: [{ quietSeconds: 600 }] }],
+    })) as { triggers: { kind: string; path?: string }[] }
+    const path = created.triggers[0]?.path ?? ""
+    expect(path).toMatch(/^\/hooks\/[A-Za-z0-9_-]{43}$/)
+    expect((await call(path, { method: "POST", body: "{}" })).status).toBe(202)
+    expect((await call(`/hooks/${"A".repeat(43)}`, { method: "POST", body: "{}" })).status).toBe(404)
+    for (const other of ["/v1/status", "/v1/cmd", "/v1/auth", "/v1/socket", "/hooks-not", "/files/x"])
+      expect((await call(other, { method: "POST", body: "{}" })).status, other).toBe(401)
+  })
+
   it("rejects a missing or wrong bearer token", async () => {
     expect((await call("/v1/status")).status).toBe(401)
     expect((await call("/v1/status", { headers: { authorization: "Bearer nope" } })).status).toBe(401)
