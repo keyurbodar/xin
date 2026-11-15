@@ -110,14 +110,17 @@ const TOOL_MENU =
 
 const EFFORT_WORD: Readonly<Record<ThinkingLevel, string>> = {
   off: "Off",
+  minimal: "Minimal",
   low: "Low",
   medium: "Medium",
   high: "High",
+  xhigh: "Extra high",
+  max: "Max",
 }
 
 /** V3: the three bars fill up with the level, the way the frame draws effort. */
 function EffortBars(props: { level: ThinkingLevel | undefined }): JSX.Element {
-  const lit = (): number => (props.level === undefined ? 0 : THINKING_LEVELS.indexOf(props.level))
+  const lit = (): number => (props.level === undefined ? 0 : Math.ceil(THINKING_LEVELS.indexOf(props.level) / 2))
   return (
     <span class="flex items-end gap-[1.5px]" aria-hidden="true">
       <For each={[4, 6, 8]}>
@@ -184,9 +187,7 @@ function ChoiceRow(props: {
     >
       <span class="min-w-0 flex-1">
         <span class="block truncate">{props.label}</span>
-        <Show when={props.detail}>
-          {(text) => <span class="block truncate text-[11px] text-fg-3">{text()}</span>}
-        </Show>
+        <Show when={props.detail}>{(text) => <span class="block truncate text-[11px] text-fg-3">{text()}</span>}</Show>
       </span>
       <Show when={props.checked}>
         <Icon name="check" size={12} class="mt-0.5 shrink-0 text-fg-3" />
@@ -400,9 +401,7 @@ export function Composer(props: {
             onRemoveFile={(path) => setFiles((current) => current.filter((file) => file.path !== path))}
             onRemovePending={(id) => setPending((current) => current.filter((item) => item.id !== id))}
           />
-          <Show when={toolError()}>
-            {(message) => <div class="px-3 pb-1 text-[12px] text-bad">{message()}</div>}
-          </Show>
+          <Show when={toolError()}>{(message) => <div class="px-3 pb-1 text-[12px] text-bad">{message()}</div>}</Show>
           <div ref={bar} class="flex items-center gap-0.5 px-2 pb-2 pt-1.5">
             <button
               type="button"
@@ -482,7 +481,9 @@ export function Composer(props: {
               </Show>
               <Show
                 when={props.models.length > 0}
-                fallback={<div class="px-2.5 py-2 text-[12px] text-fg-3">No models yet. Add a provider key in Settings.</div>}
+                fallback={
+                  <div class="px-2.5 py-2 text-[12px] text-fg-3">No models yet. Add a provider key in Settings.</div>
+                }
               >
                 <div role="listbox" aria-label="Models">
                   <Show when={props.model !== undefined && props.query === ""}>
@@ -510,9 +511,7 @@ export function Composer(props: {
                         <ModelChoice
                           model={model}
                           onPick={(picked) =>
-                            void choose(() =>
-                              props.onPickModel({ provider: picked.provider, modelId: picked.modelId }),
-                            )
+                            void choose(() => props.onPickModel({ provider: picked.provider, modelId: picked.modelId }))
                           }
                         />
                       )}
@@ -525,9 +524,7 @@ export function Composer(props: {
                   </div>
                 </Show>
                 <Show when={props.omitted > 0 && props.query.trim() === ""}>
-                  <div class="px-2.5 py-2 text-[11px] text-fg-4">
-                    {props.omitted} more · search to narrow the list
-                  </div>
+                  <div class="px-2.5 py-2 text-[11px] text-fg-4">{props.omitted} more · search to narrow the list</div>
                 </Show>
               </Show>
             </ToolButton>
@@ -594,11 +591,7 @@ export function Composer(props: {
             <div class="shake mt-2 flex items-center gap-2 rounded-[2px] border border-failed/40 bg-bad-bg px-3 py-2 text-[12px] text-bad">
               <Icon name="x" size={12} />
               <span class="min-w-0 flex-1 truncate">{message()}</span>
-              <button
-                type="button"
-                class="link"
-                onClick={() => void (failedStop() ? stop() : submit())}
-              >
+              <button type="button" class="link" onClick={() => void (failedStop() ? stop() : submit())}>
                 Retry
               </button>
             </div>
@@ -727,9 +720,7 @@ export function SteerComposer(props: {
           </button>
         </div>
       </div>
-      <Show when={error()}>
-        {(message) => <div class="mt-2 text-[12px] text-bad">{message()}</div>}
-      </Show>
+      <Show when={error()}>{(message) => <div class="mt-2 text-[12px] text-bad">{message()}</div>}</Show>
     </div>
   )
 }

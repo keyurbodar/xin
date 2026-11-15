@@ -619,10 +619,21 @@ async function credentialSecrets(db: SqliteDatabase, store: SealedCredentialStor
   return found
 }
 
-async function remember(db: SqliteDatabase, model: ModelRef): Promise<void> {
-  const settings = await readSettings(db)
-  const recent = [model, ...settings.recent.filter((entry) => !same(entry, model))].slice(0, MAX_RECENT)
-  await writeKv(db, "owner.recent", recent)
+const settingsChains = new WeakMap<SqliteDatabase, Promise<unknown>>()
+
+/** One owner-settings read-modify-write at a time per home, so two toggles in flight never overwrite each other. */
+function updateSettings<T>(db: SqliteDatabase, change: (settings: Settings) => Promise<T>): Promise<T> {
+  const previous = settingsChains.get(db) ?? Promise.resolve()
+  const run = previous.catch(() => undefined).then(async () => change(await readSettings(db)))
+  settingsChains.set(db, run)
+  return run
+}
+
+function remember(db: SqliteDatabase, model: ModelRef): Promise<void> {
+  return updateSettings(db, async (settings) => {
+    const recent = [model, ...settings.recent.filter((entry) => !same(entry, model))].slice(0, MAX_RECENT)
+    await writeKv(db, "owner.recent", recent)
+  })
 }
 
 async function available(registry: Registry): Promise<readonly Model<Api>[]> {
@@ -889,10 +900,12 @@ export function create(deps: ModelsPort): ModelsParts {
     run: async (_api, { model, favorite }) => {
       if (favorite && registry.models.getModel(model.provider, model.modelId) === undefined)
         throw new OpRejected("bad_args", `unknown model ${model.provider}/${model.modelId}`)
-      const settings = await readSettings(db)
       const ref = { provider: model.provider, modelId: model.modelId }
-      const favorites = toggled(settings.favorites, ref, favorite)
-      await writeKv(db, "owner.favorites", favorites)
+      const favorites = await updateSettings(db, async (settings) => {
+        const next = toggled(settings.favorites, ref, favorite)
+        await writeKv(db, "owner.favorites", next)
+        return next
+      })
       return { favorites }
     },
   })
@@ -902,10 +915,8 @@ export function create(deps: ModelsPort): ModelsParts {
     args: obj({ model: ModelRefSchema, enabled: bool() }),
     actors: ["owner"],
     run: async (_api, { model, enabled }) => {
-      const settings = await readSettings(db)
       const ref = { provider: model.provider, modelId: model.modelId }
-      const disabled = toggled(settings.disabled, ref, !enabled)
-      await writeKv(db, "owner.disabled", disabled)
+      await updateSettings(db, (settings) => writeKv(db, "owner.disabled", toggled(settings.disabled, ref, !enabled)))
       return { model: ref, enabled }
     },
   })
@@ -956,10 +967,11 @@ export function create(deps: ModelsPort): ModelsParts {
     run: async (_api, { role, model }) => {
       if (registry.models.getModel(model.provider, model.modelId) === undefined)
         throw new OpRejected("bad_args", `unknown model ${model.provider}/${model.modelId}`)
-      const settings = await readSettings(db)
-      const defaults: MutableDefaults = { ...settings.defaults }
-      defaults[role] = model
-      await writeKv(db, "owner.defaults", defaults)
+      await updateSettings(db, (settings) => {
+        const defaults: MutableDefaults = { ...settings.defaults }
+        defaults[role] = model
+        return writeKv(db, "owner.defaults", defaults)
+      })
       return { role, model }
     },
   })

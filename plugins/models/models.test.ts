@@ -1,6 +1,7 @@
 import { runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Conversation, ConversationId, EntryRecord } from "@earendil-works/pi-durable"
+import { arr, bool, compile, num, obj, str, unknown, type Static } from "@earendil-works/pi-schema"
 import { describe, expect, it } from "vitest"
 import source from "./models.ts?raw"
 import { resolveModel } from "../../src/contracts/models.ts"
@@ -364,25 +365,35 @@ describe("models", () => {
 
   it("serves the picker catalog with providers, prices, reasoning levels, favourites and enabled models", async () => {
     const stub = fresh()
-    type Entry = {
-      provider: string
-      modelId: string
-      contextWindow: number
-      thinking: string[]
-      cost: { input: number; output: number; cacheRead: number; cacheWrite: number }
-      keyed: boolean
-      enabled: boolean
-      favorite: boolean
-    }
-    type Catalog = {
-      providers: { id: string; keyed: boolean; models: number; enabled: number }[]
-      models: Entry[]
-      favorites: unknown[]
-    }
+    const EntrySchema = obj(
+      {
+        provider: str(),
+        modelId: str(),
+        contextWindow: num(),
+        thinking: arr(str()),
+        cost: obj({ input: num(), output: num(), cacheRead: num(), cacheWrite: num() }),
+        keyed: bool(),
+        enabled: bool(),
+        favorite: bool(),
+      },
+      { open: true },
+    )
+    const CatalogSchema = obj(
+      {
+        providers: arr(obj({ id: str(), keyed: bool(), models: num(), enabled: num() }, { open: true })),
+        models: arr(EntrySchema),
+        favorites: arr(unknown()),
+      },
+      { open: true },
+    )
+    const catalogCheck = compile(CatalogSchema)
+    type Catalog = Static<typeof CatalogSchema>
+    type Entry = Catalog["models"][number]
     const catalog = async (id: string, args: object = {}): Promise<Catalog> => {
       const reply = await call(stub, id, "models.catalog", args)
       expect(reply.ok, JSON.stringify(reply)).toBe(true)
-      return reply.result as Catalog
+      if (!catalogCheck.check(reply.result)) throw new Error(`malformed catalog ${JSON.stringify(reply.result)}`)
+      return reply.result
     }
     const entry = (found: Catalog, ref: { provider: string; modelId: string }): Entry | undefined =>
       found.models.find((model) => model.provider === ref.provider && model.modelId === ref.modelId)

@@ -9,7 +9,6 @@ function parseOps(events: readonly unknown[]): readonly Op[] {
   return events as readonly Op[]
 }
 
-
 type Record_ = Record<string, unknown>
 
 export type ChatMessage = {
@@ -202,7 +201,8 @@ export function delegatedThreads(entries: readonly EntryView[]): ReadonlyMap<str
   const links = new Map<string, number>()
   for (const entry of entries) {
     for (const message of entry.model) {
-      if (message.toolCallId !== undefined && message.threadId !== undefined) links.set(message.toolCallId, message.threadId)
+      if (message.toolCallId !== undefined && message.threadId !== undefined)
+        links.set(message.toolCallId, message.threadId)
     }
   }
   return links
@@ -280,12 +280,11 @@ export function agentModelOf(snapshot: Snapshot | undefined): ModelRefView | und
   return provider === undefined || modelId === undefined ? undefined : { provider, modelId }
 }
 
-export type ThinkingLevel = "off" | "low" | "medium" | "high"
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
 
-export const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "low", "medium", "high"]
+export const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
 
-const isThinkingLevel = (value: string): value is ThinkingLevel =>
-  THINKING_LEVELS.some((level) => level === value)
+const isThinkingLevel = (value: string): value is ThinkingLevel => THINKING_LEVELS.some((level) => level === value)
 
 /** The thinking level the conversation's agent runs at, or undefined when it uses the model's own default. */
 export function agentThinkingOf(snapshot: Snapshot | undefined): ThinkingLevel | undefined {
