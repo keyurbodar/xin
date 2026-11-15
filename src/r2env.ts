@@ -42,9 +42,13 @@ export type FileRow = {
   readonly updated_at: number
 }
 
+/** Told the path of every file the index changed, or a prefix ending in `/` when everything under it went. */
+export type FileChange = (path: string) => void | Promise<void>
+
 export type R2EnvOptions = {
   readonly cwd?: string
   readonly dirs?: Set<string>
+  readonly onChange?: FileChange
 }
 
 const ROW_COLUMNS = "path, r2_key, size, type, sha256, project, updated_at"
@@ -117,8 +121,17 @@ export type FileWrite = {
   readonly sha256: string
 }
 
+/** The least string greater than every string that starts with `prefix`, so a prefix scan is a primary-key range. */
+function pastPrefix(prefix: string): string {
+  const last = prefix.codePointAt(prefix.length - 1)
+  return last === undefined ? "\u{10FFFF}" : `${prefix.slice(0, -1)}${String.fromCodePoint(last + 1)}`
+}
+
 export class FileIndex {
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(
+    private readonly db: SqliteDatabase,
+    private readonly changed: FileChange = () => {},
+  ) {}
 
   row(path: string): Promise<FileRow | undefined> {
     return this.db.get<FileRow>(`SELECT ${ROW_COLUMNS} FROM files WHERE path = ?`, path)
@@ -126,18 +139,18 @@ export class FileIndex {
 
   under(prefix: string, limit = MAX_LISTED_FILES): Promise<FileRow[]> {
     return this.db.all<FileRow>(
-      `SELECT ${ROW_COLUMNS} FROM files WHERE substr(path, 1, ?) = ? ORDER BY path LIMIT ?`,
-      prefix.length,
+      `SELECT ${ROW_COLUMNS} FROM files WHERE path >= ? AND path < ? ORDER BY path LIMIT ?`,
       prefix,
+      pastPrefix(prefix),
       limit,
     )
   }
 
   async hasUnder(prefix: string): Promise<boolean> {
     const row = await this.db.get<{ n: number }>(
-      "SELECT 1 AS n FROM files WHERE substr(path, 1, ?) = ? LIMIT 1",
-      prefix.length,
+      "SELECT 1 AS n FROM files WHERE path >= ? AND path < ? LIMIT 1",
       prefix,
+      pastPrefix(prefix),
     )
     return row !== undefined
   }
@@ -165,6 +178,7 @@ export class FileIndex {
     )
     if (row === undefined) throw new Error("files upsert returned no row")
     if (previous !== undefined && previous.sha256 !== entry.sha256) await this.addRevision(previous)
+    await this.changed(entry.path)
     return row
   }
 
@@ -196,15 +210,20 @@ export class FileIndex {
   async drop(path: string): Promise<boolean> {
     await this.db.run("DELETE FROM file_revisions WHERE path = ?", path)
     const rows = await this.db.all<{ path: string }>("DELETE FROM files WHERE path = ? RETURNING path", path)
-    return rows.length > 0
+    if (rows.length === 0) return false
+    await this.changed(path)
+    return true
   }
 
   async dropUnder(prefix: string): Promise<void> {
     await this.db.run("DELETE FROM file_revisions WHERE substr(path, 1, ?) = ?", prefix.length, prefix)
     await this.db.run("DELETE FROM files WHERE substr(path, 1, ?) = ?", prefix.length, prefix)
+    await this.changed(prefix)
   }
 
+  /** Moves the file and its revisions, so its history follows it and replaces any left at the destination. */
   async move(from: string, to: string): Promise<void> {
+    await this.db.run("DELETE FROM file_revisions WHERE path = ?", to)
     await this.db.run(
       "UPDATE files SET path = ?, project = ?, updated_at = ? WHERE path = ?",
       to,
@@ -212,6 +231,9 @@ export class FileIndex {
       Date.now(),
       from,
     )
+    await this.db.run("UPDATE file_revisions SET path = ? WHERE path = ?", to, from)
+    await this.changed(from)
+    await this.changed(to)
   }
 }
 
@@ -273,7 +295,7 @@ export class R2Env implements ExecutionEnv {
   ) {
     this.cwd = normalizePath("/", options.cwd ?? "/") ?? "/"
     this.#dirs = options.dirs ?? new Set(["/"])
-    this.#index = new FileIndex(db)
+    this.#index = new FileIndex(db, options.onChange)
   }
 
   async absolutePath(path: string, context: Context): Promise<Result<string, FileError>> {

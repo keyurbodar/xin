@@ -2,9 +2,9 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import type { CommandId } from "../../src/ids.ts"
 import type { Actor } from "../../src/ops.ts"
-import { runInDurableObject } from "cloudflare:test"
+import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
-import { M5_MODEL } from "../../test/plugins/m5.ts"
+import { M5_MODEL, systems } from "../../test/plugins/m5.ts"
 import { addThreads, cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import type { AutomationDetail, AutomationView, RunView } from "./automations.ts"
@@ -309,6 +309,31 @@ describe("automations", () => {
         async (home: Home) => (await home.intake()).filter((item) => item.kind === "job").length,
       ),
     ).toBe(0)
+  }, 30_000)
+
+  it("shows a run's thread its automation's Drive instructions, also after the object restarts", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "drive")
+    const created = await op<AutomationView>(stub, "d1", "automation.create", {
+      title: "Digest",
+      prompt: "Write the digest",
+      project: project.id,
+      triggers: [],
+    })
+    const scope = { kind: "automation", id: created.id }
+    await op(stub, "d2", "drive.write", { scope, path: "AGENTS.md", text: "Append to last-run.md." })
+    systems.length = 0
+    const run = await op<RunView>(stub, "d3", "automation.trigger", { id: created.id })
+    await eventually(
+      stub,
+      async (home: Home) => (await home.loader.ctx.automations.store.run(run.id))?.status === "completed",
+    )
+    const block = `<instructions scope="automation ${created.id}" path="/automations/${created.id}/AGENTS.md">\nAppend to last-run.md.\n</instructions>`
+    expect(systems.find((text) => text.includes("You are a thread"))).toContain(block)
+
+    await evictDurableObject(stub)
+    const scopes = await op<{ scope: unknown }[]>(stub, "d4", "drive.scopes", { conversationId: run.threadId })
+    expect(scopes.map((entry) => entry.scope)).toContainEqual(scope)
   }, 30_000)
 
   it("needs a project for fresh threads", async () => {

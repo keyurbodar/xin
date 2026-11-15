@@ -103,13 +103,16 @@ function parse(value: unknown): readonly ProjectSummary[] {
 }
 
 export function subscribeHome(streams: Streams): () => void {
+  let rev: string | undefined
   return streams.subscribe("home", {
-    value: (value) => {
+    value: (value, next) => {
+      rev = next
       setProjects(parse(value))
       setRequests(parseRequestList(value))
       setLoaded(true)
     },
     delta: () => undefined,
+    resume: { cursor: () => (rev === undefined ? undefined : { rev }), apply: () => undefined },
   })
 }
 

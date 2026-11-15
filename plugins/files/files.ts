@@ -14,7 +14,7 @@ import {
 import { compile, int, obj, opt, str } from "@earendil-works/pi-schema"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
-import type { FileEntry, FilesService } from "../../src/contracts/files.ts"
+import type { FileEntry, FileGrant, FilesService } from "../../src/contracts/files.ts"
 import type { Env } from "../../src/env.ts"
 import type { Route } from "../../src/module.ts"
 import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
@@ -72,21 +72,25 @@ const coordinatorOnly: FileScope = ({ actor, path }) => {
 }
 
 /**
- * A thread reaches only its own project's folder. A project coordinator, the root chat and the owner keep the older
- * rule: everything except `/me` is open to them.
+ * A thread reaches its own project's folder and whatever a grant opens to it. A project coordinator, the root chat and
+ * the owner keep the older rule: everything except `/me` is open to them.
  */
-const projectScoped: FileScope = async ({ actor, path, read }) => {
-  const blocked = coordinatorOnly({ actor, path, read })
-  if (blocked !== undefined) return blocked
-  if (actor.kind !== "agent" || actor.conversationId === ROOT_CONVERSATION_ID) return undefined
-  const thread = await read.snapshot(ThreadDoc, actor.conversationId, context)
-  if (thread === undefined) return undefined
-  const workspace = await read.snapshot(WorkspaceDoc, context)
-  const project = workspace?.projects[thread.projectId]
-  if (project === undefined) return `thread ${actor.conversationId} has no project`
-  const prefix = `/projects/${project.slug}/`
-  return path.startsWith(prefix) ? undefined : `a thread may only use ${prefix}`
-}
+const projectScoped =
+  (grants: ReadonlySet<FileGrant>): FileScope =>
+  async ({ actor, path, read }) => {
+    const blocked = coordinatorOnly({ actor, path, read })
+    if (blocked !== undefined) return blocked
+    if (actor.kind !== "agent" || actor.conversationId === ROOT_CONVERSATION_ID) return undefined
+    const thread = await read.snapshot(ThreadDoc, actor.conversationId, context)
+    if (thread === undefined) return undefined
+    const workspace = await read.snapshot(WorkspaceDoc, context)
+    const project = workspace?.projects[thread.projectId]
+    if (project === undefined) return `thread ${actor.conversationId} has no project`
+    const prefix = `/projects/${project.slug}/`
+    if (path.startsWith(prefix)) return undefined
+    for (const grant of grants) if (await grant({ conversationId: actor.conversationId, path, read })) return undefined
+    return `a thread may only use ${prefix}`
+  }
 
 const agentActor = (conversationId: ConversationId): Actor => ({ kind: "agent", conversationId })
 
@@ -128,10 +132,24 @@ function rootedPath(path: string): string {
   return normalized
 }
 
-export function create(deps: FilesPort, scope: FileScope = projectScoped): FilesPlugin {
+const subscribe =
+  <T>(set: Set<T>) =>
+  (item: T): (() => void) => {
+    set.add(item)
+    return () => set.delete(item)
+  }
+
+export function create(deps: FilesPort): FilesPlugin {
   const dirs = new Set<string>(["/"])
-  const index = new FileIndex(deps.db)
-  const envFor = (cwd: string | undefined): R2Env => new R2Env(deps.env.FILES, deps.db, { cwd: cwd ?? "/", dirs })
+  const listeners = new Set<(path: string) => void | Promise<void>>()
+  const grants = new Set<FileGrant>()
+  const scope = projectScoped(grants)
+  const onChange = async (path: string): Promise<void> => {
+    for (const listener of listeners) await listener(path)
+  }
+  const index = new FileIndex(deps.db, onChange)
+  const envFor = (cwd: string | undefined): R2Env =>
+    new R2Env(deps.env.FILES, deps.db, { cwd: cwd ?? "/", dirs, onChange })
 
   const files: FilesService = {
     env: (target) => envFor(target.cwd),
@@ -164,6 +182,23 @@ export function create(deps: FilesPort, scope: FileScope = projectScoped): Files
       for (const key of keys) if (!(await index.referenced(key))) await deps.env.FILES.delete(key)
       return true
     },
+    revisions: (path) => index.revisions(rootedPath(path)),
+    restore: async (path, sha256) => {
+      const target = rootedPath(path)
+      const found = (await index.revisions(target)).find((candidate) => candidate.sha256 === sha256)
+      if (found === undefined) return undefined
+      return entryOf(
+        await index.upsert({ path: target, r2Key: blobKey(sha256), size: found.size, type: found.type, sha256 }),
+      )
+    },
+    move: async (from, to) => {
+      const [source, destination] = [rootedPath(from), rootedPath(to)]
+      if ((await index.row(source)) === undefined || (await index.row(destination)) !== undefined) return false
+      await index.move(source, destination)
+      return true
+    },
+    watch: subscribe(listeners),
+    grant: subscribe(grants),
   }
 
   const list = defineOp({

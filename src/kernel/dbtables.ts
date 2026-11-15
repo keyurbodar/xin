@@ -9,6 +9,7 @@ const TABLE_OWNERS: Readonly<Record<string, string>> = {
   usage_feature: "models",
   files: "files",
   file_revisions: "files",
+  drive_shares: "drive",
   notes: "memory",
   notes_fts: "memory",
   push_subs: "push",

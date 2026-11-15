@@ -2,7 +2,7 @@ import type { ThreadSettled } from "../../src/contracts/threads.ts"
 import type { Context } from "../../src/kernel/index.ts"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import { CaptainsDoc, captainsHome } from "./captains.ts"
+import { CaptainsDoc, captainScopeOf, captainsHome } from "./captains.ts"
 import { create } from "./orchestrator.ts"
 
 export const name = "orchestrator"
@@ -54,4 +54,12 @@ export function apply(ctx: Context): void {
       }),
     "models.track(captain)",
   )
+  ctx.inject(["drive"], (inner) => {
+    inner.effect(() =>
+      inner.drive.attach(async (conversationId) => {
+        const id = await captainScopeOf(ctx.harness, conversationId)
+        return id === undefined ? [] : [{ kind: "captain", id }]
+      }),
+    )
+  })
 }

@@ -31,6 +31,13 @@ export async function apply(ctx: KernelContext): Promise<void> {
   ctx.http.route("POST /hooks/*", (request) => engine.webhook(request, Date.now()))
   ctx.wire.home(name, async () => ({ automations: { revision: engine.revision } }))
   ctx.on("thread/settled", (event) => engine.settled(event, Date.now()))
+  ctx.inject(["drive"], (inner) => {
+    inner.effect(() =>
+      inner.drive.attach(async (conversationId) =>
+        (await engine.automationsOf(conversationId)).map((id) => ({ kind: "automation", id })),
+      ),
+    )
+  })
   await importSchedules(engine, ctx.harness, Date.now()).catch((error: unknown) => {
     console.warn("automations: importing old schedules failed; it retries on the next boot", error)
   })

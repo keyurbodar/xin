@@ -117,6 +117,14 @@ async function crewCaptainOf(read: DocumentReader, conversationId: ConversationI
   return undefined
 }
 
+/** The Captain whose Drive scope a conversation sees: its own, or its crew's. */
+export async function captainScopeOf(
+  read: DocumentReader,
+  conversationId: ConversationId,
+): Promise<string | undefined> {
+  return ((await captainOf(read, conversationId)) ?? (await crewCaptainOf(read, conversationId)))?.id
+}
+
 const tagged = (tag: string, text: string): string[] =>
   text.trim() === "" ? [] : [`<${tag}>\n${text.trim()}\n</${tag}>`]
 

@@ -88,6 +88,7 @@ const policy = {
     ctx.on("ops/before", async (call, next) => {
       const args: unknown = call.command.args
       const by = typeof args === "object" && args !== null ? Reflect.get(args, "by") : undefined
+      if (call.command.op === "test.bump" && by === 666) throw new Error("boom")
       return call.command.op === "test.bump" && by === 13
         ? { kind: "rejected", code: "forbidden", message: "13 is unlucky" }
         : next()

@@ -165,11 +165,18 @@ export class Store {
    * The conversations automations hold or run in: each same-target automation's standing conversation and each open
    * run's thread. Bounded by the automations and their open runs (the partial index), never by run history.
    */
-  async runThreads(): Promise<ConversationId[]> {
+  async billedThreads(): Promise<ConversationId[]> {
     const rows = await this.db.all<{ thread_id: number }>(
       "SELECT thread_id FROM automations WHERE thread_id IS NOT NULL UNION ALL SELECT thread_id FROM automation_runs WHERE status IN ('queued', 'running') AND thread_id IS NOT NULL",
     )
     return rows.map((row) => row.thread_id as ConversationId)
+  }
+
+  /** Every conversation a run of an automation went to, for the Drive scope those conversations see. */
+  runThreads(): Promise<{ readonly automation_id: string; readonly thread_id: number }[]> {
+    return this.db.all(
+      "SELECT automation_id, thread_id FROM automation_runs WHERE thread_id IS NOT NULL UNION SELECT id, thread_id FROM automations WHERE thread_id IS NOT NULL",
+    )
   }
 
   setThread(automationId: string, threadId: number): Promise<void> {
