@@ -245,7 +245,7 @@ describe("drive", () => {
     expect((await get("/s/not-an-id")).status).toBe(401)
   })
 
-  it("answers a share link's conditional and ranged reads with 304, 206 and 416", async () => {
+  it("answers a share link's conditional and ranged reads with 304, 412, 206 and 416, and honours If-Range", async () => {
     const stub = fresh()
     const user = { kind: "user" }
     await ok(stub, "w1", "drive.write", { scope: user, path: "digits.txt", text: "0123456789" })
@@ -277,6 +277,27 @@ describe("drive", () => {
     const open = await get(url, { range: "bytes=8-" })
     expect(open.headers.get("content-range")).toBe("bytes 8-9/10")
     expect(await open.text()).toBe("89")
+
+    const current = await get(url, { range: "bytes=2-4", "if-range": etag })
+    expect(current.status).toBe(206)
+    expect(await current.text()).toBe("234")
+    const staleTag = await get(url, { range: "bytes=2-4", "if-range": '"old"' })
+    expect(staleTag.status).toBe(200)
+    expect(staleTag.headers.get("content-range")).toBeNull()
+    expect(await staleTag.text()).toBe("0123456789")
+    const staleDate = await get(url, { range: "bytes=2-4", "if-range": "Thu, 01 Jan 1970 00:00:00 GMT" })
+    expect(staleDate.status).toBe(200)
+    expect(await staleDate.text()).toBe("0123456789")
+
+    const mismatch = await get(url, { "if-match": '"old"' })
+    expect(mismatch.status).toBe(412)
+    await mismatch.arrayBuffer()
+    const changed = await get(url, { "if-unmodified-since": "Thu, 01 Jan 1970 00:00:00 GMT" })
+    expect(changed.status).toBe(412)
+    await changed.arrayBuffer()
+    const held = await get(url, { "if-match": etag })
+    expect(held.status).toBe(200)
+    expect(await held.text()).toBe("0123456789")
 
     const beyond = await get(url, { range: "bytes=20-30" })
     expect(beyond.status).toBe(416)

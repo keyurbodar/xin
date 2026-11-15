@@ -22,6 +22,7 @@ const served = (manifest: Manifest, object: R2Object): Headers =>
     "x-content-type-options": "nosniff",
     "cache-control": "private, max-age=60",
     "accept-ranges": "bytes",
+    "last-modified": object.uploaded.toUTCString(),
     etag: object.httpEtag,
   })
 
@@ -38,10 +39,35 @@ const notModified = (headers: Headers): Response => {
   return new Response(null, { status: 304, headers })
 }
 
+const tags = (value: string): string[] => value.split(",").map((tag) => tag.trim())
+
+const seconds = (date: Date): number => Math.floor(date.getTime() / 1000)
+
+/** Whether an HTTP date header holds at or after the object's last write, to the second. */
+const notChangedSince = (value: string, object: R2Object): boolean => {
+  const at = Date.parse(value)
+  return !Number.isNaN(at) && seconds(object.uploaded) <= Math.floor(at / 1000)
+}
+
 const matches = (request: Request, object: R2Object): boolean =>
-  (request.headers.get("if-none-match") ?? "")
-    .split(",")
-    .some((tag) => tag.trim() === "*" || tag.trim().replace(/^W\//, "") === object.httpEtag)
+  tags(request.headers.get("if-none-match") ?? "").some(
+    (tag) => tag === "*" || tag.replace(/^W\//, "") === object.httpEtag,
+  )
+
+/** A failed `If-Match`, or `If-Unmodified-Since` without one, means the client's copy is stale: 412, not 304. */
+function preconditionFailed(request: Request, object: R2Object): boolean {
+  const ifMatch = request.headers.get("if-match")
+  if (ifMatch !== null) return !tags(ifMatch).some((tag) => tag === "*" || tag === object.httpEtag)
+  const ifUnmodified = request.headers.get("if-unmodified-since")
+  return ifUnmodified !== null && !notChangedSince(ifUnmodified, object)
+}
+
+/** `If-Range` keeps a range only while the client's copy is current: a strong ETag match or an unchanged date. */
+function rangeHolds(value: string, object: R2Object): boolean {
+  const tag = value.trim()
+  if (tag.startsWith('"') || tag.startsWith("W/")) return tag === object.httpEtag
+  return notChangedSince(tag, object)
+}
 
 export const shareKey = (id: string): string => `s/${id}`
 
@@ -60,9 +86,19 @@ export async function serveShare(request: Request, env: Env): Promise<Response |
     const object = await env.FILES.head(manifest.key)
     if (object === null) return new Response(null, { status: 404 })
     const headers = served(manifest, object)
+    if (preconditionFailed(request, object)) {
+      headers.delete("content-length")
+      return new Response(null, { status: 412, headers })
+    }
     return matches(request, object) ? notModified(headers) : new Response(null, { headers })
   }
-  const ranged = request.headers.has("range")
+  const ifRange = request.headers.get("if-range")
+  let ranged = request.headers.has("range")
+  if (ranged && ifRange !== null) {
+    const current = await env.FILES.head(manifest.key)
+    if (current === null) return new Response("not found", { status: 404 })
+    ranged = rangeHolds(ifRange, current)
+  }
   let object: R2Object | R2ObjectBody | null
   try {
     object = await env.FILES.get(manifest.key, {
@@ -76,7 +112,11 @@ export async function serveShare(request: Request, env: Env): Promise<Response |
   }
   if (object === null) return new Response("not found", { status: 404 })
   const headers = served(manifest, object)
-  if (!("body" in object)) return notModified(headers)
+  if (!("body" in object)) {
+    if (!preconditionFailed(request, object)) return notModified(headers)
+    headers.delete("content-length")
+    return new Response(null, { status: 412, headers })
+  }
   if (!ranged || object.range === undefined) return new Response(object.body, { headers })
   const asked = /^bytes=(\d+)-/.exec(request.headers.get("range") ?? "")?.[1]
   const { start, end } = spanOf(object.range, object.size)
