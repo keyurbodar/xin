@@ -4,6 +4,7 @@ import { probe, token } from "../lib/auth.ts"
 import { errorMessage } from "../state/extensions.ts"
 import { Button } from "../components/ui/button.tsx"
 import { Failure } from "../components/ui/state.tsx"
+import { StatusGlyph } from "../components/ui/status-glyph.tsx"
 import { Glyph } from "../components/extensions/glyph.tsx"
 
 type Drop = "journal" | "all"
@@ -110,9 +111,7 @@ export function BootFailedScreen(props: {
       <div class="flex min-h-0 flex-1 justify-center overflow-y-auto px-6 pb-16 pt-[12vh]">
         <div class="im-stagger flex w-full max-w-[560px] flex-col">
           <div class="flex items-center gap-2 text-sm text-failed">
-            <span class="sig" data-size="16" data-state="failed" aria-hidden="true">
-              <i /><i /><i /><i /><i /><i /><i /><i /><i />
-            </span>
+            <StatusGlyph state="failed" size={16} />
             Home didn’t open
           </div>
           <h1 id="boot-title" class="mt-3 text-2xl font-semibold tracking-[-0.02em]" style={{ "--i": 1 }}>

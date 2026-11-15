@@ -98,12 +98,6 @@
   --dur-exit-fast: 100ms;
   --dur-exit-base: 140ms;
   --dur-exit-slow: 200ms;
-  --dur-exit-sheet: 180ms;
-  --loop-skeleton: 2.4s;
-  --loop-shimmer: 2.4s;
-  --loop-working: 0.96s;
-  --loop-needs: 1.4s;
-  --loop-waiting: 1.6s;
   --tracking-sm: 0em;
   --tracking-base: 0em;
   --tracking-lg: -0.01em;
@@ -241,7 +235,6 @@
     --dur-base: 120ms;
     --dur-slow: 120ms;
     --dur-drawer: 120ms;
-    --dur-exit-sheet: 120ms;
     --ease-spring: var(--ease-enter);
   }
 }

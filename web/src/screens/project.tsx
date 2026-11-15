@@ -356,8 +356,9 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
       </Show>
       <Show when={sheet.mounted()}>
         <div
-          class="absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay"
-          classList={{ "sheet-in": !sheet.leaving(), "sheet-out pointer-events-none": sheet.leaving() }}
+          class="im-sheet absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay"
+          classList={{ "pointer-events-none": sheet.leaving() }}
+          data-state={sheet.leaving() ? "closed" : "open"}
         >
           {pane()}
         </div>

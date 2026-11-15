@@ -50,12 +50,12 @@ export function InstallSheet(props: {
         type="button"
         aria-label="Close install review"
         onClick={close}
-        class="absolute inset-0 bg-scrim"
-        classList={{ "fade-in": !closing(), "fade-out": closing() }}
+        class="im-scrim absolute inset-0 bg-scrim"
+        data-state={closing() ? "closed" : "open"}
       />
       <section
-        class="absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col border-l border-line-2 bg-card shadow-2xl"
-        classList={{ "sheet-in": !closing(), "sheet-out": closing() }}
+        class="im-sheet absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col border-l border-line-2 bg-card shadow-2xl"
+        data-state={closing() ? "closed" : "open"}
       >
         <header class="flex items-center gap-3 border-b border-line-1 px-5 py-4">
           <span class="grid h-9 w-9 shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary text-ink">

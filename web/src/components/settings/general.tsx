@@ -15,7 +15,7 @@ import {
 } from "../../state/settings.ts"
 import { Failure, INPUT, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Group, Row, Saved, SelectField, type Choice } from "./parts.tsx"
-import { setTheme, theme, themeOf } from "../../lib/theme.ts"
+import { motionChoice, motionOf, setMotionChoice, setTheme, theme, themeOf } from "../../lib/theme.ts"
 
 const BLANK: OwnerSettings = { name: "", instructions: "" }
 
@@ -232,6 +232,15 @@ export function General(): JSX.Element {
               { value: "light", label: "Light" },
               { value: "rose", label: "Rose" },
             ]}
+          />
+        </Row>
+        <Row title="Reduce motion" detail="On this device. System follows the operating system’s setting">
+          <SelectField
+            ariaLabel="Reduce motion"
+            value={motionChoice() === "system" ? "" : motionChoice()}
+            placeholder="System"
+            onChange={(next) => setMotionChoice(motionOf(next))}
+            choices={[{ value: "reduce", label: "On" }]}
           />
         </Row>
       </Group>

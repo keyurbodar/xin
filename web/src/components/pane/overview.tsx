@@ -1,8 +1,7 @@
-import { createMemo, createResource, For, Show, type JSX } from "solid-js"
-import { Collapsible } from "@ark-ui/solid/collapsible"
-import { ArrowUpRight, ChevronDown, File, MessageCircleQuestion } from "lucide-solid"
+import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { ArrowUpRight, ChevronRight, File, MessageCircleQuestion } from "lucide-solid"
 import { ago } from "../../lib/format.ts"
-import { arrival } from "../../lib/motion.ts"
+import { keyStarted, stagger } from "../../lib/motion.ts"
 import { homeRequests, projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { ICON_BUTTON } from "../shell/menu.ts"
@@ -11,27 +10,42 @@ import { fileName, openFile, PANE_ROW, recentProjectFiles, ThreadLine } from "./
 const DRIVE_ROWS = 4
 
 export function Section(props: { label: string; count: number; action?: JSX.Element; children: JSX.Element }): JSX.Element {
-  const arriving = arrival(() => props.count > 0)
+  const [open, setOpen] = createSignal(true)
+  const [instant, setInstant] = createSignal(false)
+  let list: HTMLDivElement | undefined
+  stagger(() => list, () => props.count > 0)
   return (
-    <Collapsible.Root defaultOpen class="flex flex-col">
+    <div class="flex flex-col">
       <div class="flex h-[var(--h-section)] items-center rounded-md bg-secondary pr-1">
-        <Collapsible.Trigger class="group flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left text-sm text-ink outline-none">
+        <button
+          type="button"
+          aria-expanded={open()}
+          onClick={() => {
+            setInstant(keyStarted())
+            setOpen((value) => !value)
+          }}
+          class="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left text-sm text-ink outline-none"
+        >
           {props.label}
           <span class="text-sm text-ink-3">{props.count}</span>
-          <ChevronDown
+          <ChevronRight
             size={14}
             stroke-width={1.5}
-            class="text-ink-3 transition-transform duration-[var(--dur-base)] ease-[var(--ease-enter)] group-data-[state=closed]:-rotate-90 motion-reduce:transition-none"
+            class="im-chevron text-ink-3"
+            data-open={open() ? "" : undefined}
+            data-instant={instant() ? "" : undefined}
           />
-        </Collapsible.Trigger>
+        </button>
         {props.action}
       </div>
-      <Collapsible.Content>
-        <div class="flex flex-col py-1" classList={{ arrive: arriving() }}>
-          {props.children}
+      <div class="im-grow" data-open={open() ? "" : undefined} data-instant={instant() ? "" : undefined}>
+        <div inert={!open()}>
+          <div ref={list} class="flex flex-col py-1">
+            {props.children}
+          </div>
         </div>
-      </Collapsible.Content>
-    </Collapsible.Root>
+      </div>
+    </div>
   )
 }
 
