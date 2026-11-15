@@ -1,6 +1,6 @@
 # Ingle plugins
 
-Everything in Ingle past the kernel is a plugin: the orchestrator, memory, schedules, the market itself. A plugin is a package under `plugins/<name>/` (or an npm dependency) with an `ingle` field in its `package.json`. It can have two halves:
+Everything in Ingle past the kernel is a plugin: the orchestrator, memory, automations, the market itself. A plugin is a package under `plugins/<name>/` (or an npm dependency) with an `ingle` field in its `package.json`. It can have two halves:
 
 - **A server module** (`index.ts`): a Cordis plugin that runs in your Home's Durable Object and adds tools, prompts, ops, timers, routes or services.
 - **A web module** (`client.tsx`, optional): it fills named slots in the shell, such as a pane tab, a palette command, a composer button, a tool's transcript card or a theme.
