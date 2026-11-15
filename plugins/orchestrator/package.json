@@ -9,12 +9,36 @@
       "orchestrator": {
         "module": "./index.ts",
         "title": "Orchestrator",
-        "description": "Coordinator tools and threads."
+        "description": "Coordinator tools and threads.",
+        "permissions": [
+          "conversations",
+          "models"
+        ],
+        "contributes": {
+          "ops": [
+            "thread.archive",
+            "thread.create",
+            "thread.send",
+            "thread.stop"
+          ]
+        }
       },
       "tool-orchestrator": {
         "module": "./tools.ts",
         "title": "Orchestrator tools",
-        "description": "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running."
+        "description": "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running.",
+        "contributes": {
+          "tools": [
+            "capabilities",
+            "delegate_task",
+            "task_cancel",
+            "task_status",
+            "thread_create",
+            "thread_list",
+            "thread_read",
+            "thread_send"
+          ]
+        }
       }
     }
   }

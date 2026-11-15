@@ -9,7 +9,11 @@
       "watchdog": {
         "module": "./index.ts",
         "title": "Watchdog",
-        "description": "Fails stalled threads and overdue jobs."
+        "description": "Fails stalled threads and overdue jobs.",
+        "permissions": [
+          "conversations"
+        ],
+        "contributes": {}
       }
     }
   }

@@ -5,6 +5,7 @@ type Issue = { readonly kind: string; readonly [key: string]: unknown }
 
 type Diagnosis = {
   readonly id: string
+  readonly registered: { readonly tools: readonly string[]; readonly ops: readonly string[] }
   readonly plugin: string
   readonly package: string
   readonly version: string
@@ -69,5 +70,27 @@ describe("plugin doctor", () => {
     expect(satisfied.state).toEqual({ kind: "active" })
     expect(satisfied.issues).toEqual([])
     expect(satisfied.manifest.requires).toEqual(["time@^0.1.0"])
+  })
+
+  it("fails a row that injects a guarded service without declaring its permission", async () => {
+    const unpermitted = row(await doctor(fresh()), "k-unpermitted")
+    expect(unpermitted.state.error).toContain("secrets permission")
+    expect(issue(unpermitted, "permission")).toMatchObject({ permission: "secrets", service: "secrets" })
+  })
+
+  it("fails a row that registers an op its manifest does not declare", async () => {
+    const undeclared = row(await doctor(fresh()), "k-undeclared")
+    expect(undeclared.state).toMatchObject({ kind: "failed" })
+    expect(undeclared.state.error).toContain("k.undeclared")
+  })
+
+  it("lists what each shipped row registered, inside what its manifest declares", async () => {
+    const report = await doctor(fresh())
+    expect(row(report, "tool-files").registered).toEqual({ tools: ["edit", "read", "write"], ops: [] })
+    expect(row(report, "artifacts").registered.ops.length).toBeGreaterThan(0)
+    const shipped = report.rows.filter((diagnosis) => diagnosis.package.startsWith("ingle-plugin-"))
+    expect(shipped.filter((diagnosis) => diagnosis.issues.length > 0 && diagnosis.state.kind !== "disabled")).toEqual(
+      [],
+    )
   })
 })

@@ -10,7 +10,12 @@
         "module": "./index.ts",
         "title": "Hello",
         "description": "One tool and one prompt: the smallest plugin that adds something you can see.",
-        "api": 1
+        "api": 1,
+        "contributes": {
+          "tools": [
+            "hello"
+          ]
+        }
       }
     },
     "bundle": [

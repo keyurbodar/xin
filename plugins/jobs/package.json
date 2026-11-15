@@ -9,7 +9,15 @@
       "jobs": {
         "module": "./index.ts",
         "title": "Jobs",
-        "description": "Slow tools as jobs that report back."
+        "description": "Slow tools as jobs that report back.",
+        "permissions": [
+          "conversations"
+        ],
+        "contributes": {
+          "ops": [
+            "job.list"
+          ]
+        }
       }
     }
   }

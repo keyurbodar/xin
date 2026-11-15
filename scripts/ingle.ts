@@ -12,6 +12,7 @@ const NAME = /^[a-z][a-z0-9-]*$/
 
 type Declared = {
   readonly module: string
+  readonly client?: string
   readonly title: string
   readonly description: string
   readonly manifest: Manifest
@@ -23,6 +24,7 @@ type Found = {
   readonly dir: string
   readonly local: boolean
   readonly specifier: (module: string) => string
+  readonly clientSpecifier: (module: string) => string
   readonly plugins: Readonly<Record<string, Declared>>
   readonly bundle: readonly RowSpec[]
 }
@@ -39,7 +41,12 @@ function rootVersion(): string {
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
 
-function parse(path: string, specifier: (module: string) => string, local: boolean): Found | undefined {
+function parse(
+  path: string,
+  specifier: (module: string) => string,
+  clientSpecifier: (module: string) => string,
+  local: boolean,
+): Found | undefined {
   const manifest = readJson(path)
   const ingle = field(manifest, "ingle")
   if (ingle === undefined) return undefined
@@ -54,17 +61,27 @@ function parse(path: string, specifier: (module: string) => string, local: boole
       )
     const module = field(entry, "module")
     if (typeof module !== "string") throw new Error(`${pkg}: ingle.plugins.${name}.module must be a path`)
+    const client = field(entry, "client")
+    if (client !== undefined && typeof client !== "string")
+      throw new Error(`${pkg}: ingle.plugins.${name}.client must be a path`)
+    const parsedManifest = readManifest(
+      {
+        api: field(entry, "api"),
+        requires: field(entry, "requires"),
+        permissions: field(entry, "permissions"),
+        contributes: field(entry, "contributes"),
+        slots: field(entry, "slots"),
+      },
+      `${pkg}: ingle.plugins.${name}`,
+    )
+    if ((client === undefined) !== (parsedManifest.slots.length === 0))
+      throw new Error(`${pkg}: ingle.plugins.${name} needs both a client module and the slots it fills, or neither`)
     plugins[name] = {
       module,
+      ...(client === undefined ? {} : { client }),
       title: String(field(entry, "title") ?? name),
       description: String(field(entry, "description") ?? field(manifest, "description") ?? ""),
-      manifest: readManifest(
-        {
-          api: field(entry, "api"),
-          requires: field(entry, "requires"),
-        },
-        `${pkg}: ingle.plugins.${name}`,
-      ),
+      manifest: parsedManifest,
     }
   }
   const rows = field(ingle, "bundle")
@@ -90,6 +107,7 @@ function parse(path: string, specifier: (module: string) => string, local: boole
     dir: dirname(path),
     local,
     specifier,
+    clientSpecifier,
     plugins,
     bundle,
   }
@@ -102,7 +120,8 @@ function discover(): Found[] {
     for (const name of readdirSync(local).toSorted()) {
       const manifest = join(local, name, "package.json")
       if (!existsSync(manifest)) continue
-      const parsed = parse(manifest, (module) => `../plugins/${name}/${module.replace(/^\.\//, "")}`, true)
+      const path = (prefix: string) => (module: string) => `${prefix}/plugins/${name}/${module.replace(/^\.\//, "")}`
+      const parsed = parse(manifest, path(".."), path("../.."), true)
       if (parsed !== undefined) found.push(parsed)
     }
   }
@@ -110,7 +129,8 @@ function discover(): Found[] {
   for (const pkg of Object.keys(typeof deps === "object" && deps !== null ? deps : {}).toSorted()) {
     const manifest = join(ROOT, "node_modules", pkg, "package.json")
     if (!existsSync(manifest)) continue
-    const parsed = parse(manifest, (module) => `${pkg}/${module.replace(/^\.\//, "")}`, false)
+    const path = (module: string) => `${pkg}/${module.replace(/^\.\//, "")}`
+    const parsed = parse(manifest, path, path, false)
     if (parsed !== undefined) found.push(parsed)
   }
   const seen = new Map<string, string>()

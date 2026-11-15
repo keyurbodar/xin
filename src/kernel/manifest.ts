@@ -5,26 +5,75 @@ import { satisfies } from "../semver.ts"
 export const PLUGIN_API = 1
 
 /**
+ * What a plugin may ask the owner for. A permission guards kernel services: a plugin that injects one
+ * of them without declaring the permission fails at mount. `network` guards no service, because the
+ * Home has no sandbox, so it is shown to the owner but cannot be enforced.
+ */
+export const PERMISSIONS = {
+  secrets: { title: "Read your stored credentials", services: ["secrets"] },
+  files: { title: "Read and change your files", services: ["files"] },
+  storage: { title: "Keep its own tables in your Home", services: ["db"] },
+  routes: { title: "Answer HTTP requests to your Home", services: ["http"] },
+  models: { title: "Call models, which spends tokens", services: ["models"] },
+  conversations: { title: "Read and write your conversations", services: ["harness"] },
+  plugins: { title: "Install, enable and configure plugins", services: ["kernel", "packages", "plugins"] },
+  network: { title: "Connect to the internet", services: [] },
+} as const satisfies Readonly<Record<string, { readonly title: string; readonly services: readonly string[] }>>
+
+export type Permission = keyof typeof PERMISSIONS
+
+export const isPermission = (value: string): value is Permission => Object.hasOwn(PERMISSIONS, value)
+
+/** The client slots a plugin's web module may fill (`web/src/plugins/sdk.ts`). */
+export const SLOTS = [
+  "sidebar.section",
+  "pane.tab",
+  "composer.action",
+  "message.renderer",
+  "palette.command",
+  "settings.page",
+  "theme",
+] as const
+
+export type Slot = (typeof SLOTS)[number]
+
+const isSlot = (value: string): value is Slot => (SLOTS as readonly string[]).includes(value)
+
+/** What a row registers. A name ending in `*` covers every name with that prefix. */
+export type Contributes = { readonly tools: readonly string[]; readonly ops: readonly string[] }
+
+/**
  * What a plugin declares about itself in `package.json` under `ingle.plugins.<name>`.
- * Everything is optional: a plugin that declares nothing runs.
+ * Everything is optional. A plugin that leaves out `contributes` is not checked for what it registers.
  */
 export type Manifest = {
   readonly api: number
   readonly requires: readonly string[]
+  readonly permissions: readonly Permission[]
+  readonly contributes?: Contributes
+  readonly slots: readonly Slot[]
 }
 
 export const DEFAULT_MANIFEST: Manifest = {
   api: PLUGIN_API,
   requires: [],
+  permissions: [],
+  slots: [],
 }
 
 export type ManifestProblem =
   | { readonly kind: "api"; readonly declared: number; readonly supported: number }
   | { readonly kind: "require"; readonly spec: string; readonly reason: "missing" | "version" }
+  | { readonly kind: "permission"; readonly permission: Permission; readonly service: string }
+
+const Name = str({ minLength: 1, maxLength: 128 })
 
 const ManifestSchema = obj({
   api: opt(int({ minimum: 1 })),
-  requires: opt(arr(str({ minLength: 1, maxLength: 128 }))),
+  requires: opt(arr(Name)),
+  permissions: opt(arr(Name)),
+  contributes: opt(obj({ tools: opt(arr(Name)), ops: opt(arr(Name)) })),
+  slots: opt(arr(Name)),
 })
 
 const manifestCheck = compile(ManifestSchema)
@@ -46,10 +95,49 @@ export function readManifest(value: unknown, where: string): Manifest {
     if (match === null || !PLUGIN_NAME.test(match[1] ?? ""))
       throw new Error(`${where}: requires ${spec} is not plugin@range`)
   }
+  const permissions = (value.permissions ?? []).map((permission) => {
+    if (!isPermission(permission))
+      throw new Error(`${where}: permission ${permission} is not one of ${Object.keys(PERMISSIONS).join(", ")}`)
+    return permission
+  })
+  const slots = (value.slots ?? []).map((slot) => {
+    if (!isSlot(slot)) throw new Error(`${where}: slot ${slot} is not one of ${SLOTS.join(", ")}`)
+    return slot
+  })
+  const contributes = value.contributes
   return {
     api: value.api ?? DEFAULT_MANIFEST.api,
     requires: [...(value.requires ?? [])],
+    permissions: [...new Set(permissions)].toSorted(),
+    ...(contributes === undefined
+      ? {}
+      : { contributes: { tools: [...(contributes.tools ?? [])], ops: [...(contributes.ops ?? [])] } }),
+    slots,
   }
+}
+
+/** Whether a declared name list covers `name`, exactly or through a trailing `*`. */
+export const covers = (declared: readonly string[], name: string): boolean =>
+  declared.some((entry) => (entry.endsWith("*") ? name.startsWith(entry.slice(0, -1)) : entry === name))
+
+/** The permission a service needs, if it is guarded. */
+export function permissionFor(service: string): Permission | undefined {
+  for (const [permission, spec] of Object.entries(PERMISSIONS))
+    if ((spec.services as readonly string[]).includes(service) && isPermission(permission)) return permission
+  return undefined
+}
+
+/** The permissions a plugin's `inject` needs, sorted. */
+export const permissionsFor = (services: readonly string[]): readonly Permission[] =>
+  [...new Set(services.flatMap((service) => permissionFor(service) ?? []))].toSorted()
+
+/** The service names a Cordis plugin's `inject` lists, in array or object form. */
+export function injectOf(plugin: unknown): readonly string[] {
+  const inject: unknown =
+    typeof plugin === "object" || typeof plugin === "function" ? Reflect.get(plugin ?? {}, "inject") : undefined
+  if (Array.isArray(inject)) return inject.filter((name): name is string => typeof name === "string")
+  if (typeof inject === "object" && inject !== null) return Object.keys(inject)
+  return []
 }
 
 function parseRequire(spec: string): { readonly name: string; readonly range?: string } | undefined {
@@ -60,10 +148,14 @@ function parseRequire(spec: string): { readonly name: string; readonly range?: s
   return { name, ...(range === undefined ? {} : { range }) }
 }
 
-/** The first reason this build cannot mount the plugin, if any. `versionOf` resolves a plugin name to its build version. */
+/**
+ * The first reason this build cannot mount the plugin, if any. `versionOf` resolves a plugin name to
+ * its build version; `inject` is the services the module asks for.
+ */
 export function checkManifest(
   manifest: Manifest,
   versionOf: (plugin: string) => string | undefined,
+  inject: readonly string[] = [],
 ): ManifestProblem | undefined {
   if (manifest.api !== PLUGIN_API) return { kind: "api", declared: manifest.api, supported: PLUGIN_API }
   for (const spec of manifest.requires) {
@@ -74,13 +166,27 @@ export function checkManifest(
     if (required.range !== undefined && !satisfies(version, required.range))
       return { kind: "require", spec, reason: "version" }
   }
+  for (const service of inject) {
+    const permission = permissionFor(service)
+    if (permission !== undefined && !manifest.permissions.includes(permission))
+      return { kind: "permission", permission, service }
+  }
   return undefined
 }
 
 export function describeProblem(problem: ManifestProblem): string {
-  if (problem.kind === "api")
-    return `plugin API ${problem.declared} is not supported; this build supports ${problem.supported}`
-  return problem.reason === "missing"
-    ? `requires plugin ${problem.spec}, which this build does not have`
-    : `requires plugin ${problem.spec}, which this build does not satisfy`
+  switch (problem.kind) {
+    case "api":
+      return `plugin API ${problem.declared} is not supported; this build supports ${problem.supported}`
+    case "require":
+      return problem.reason === "missing"
+        ? `requires plugin ${problem.spec}, which this build does not have`
+        : `requires plugin ${problem.spec}, which this build does not satisfy`
+    case "permission":
+      return `uses the ${problem.service} service without declaring the ${problem.permission} permission`
+    default: {
+      const _exhaustive: never = problem
+      return _exhaustive
+    }
+  }
 }

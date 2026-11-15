@@ -9,7 +9,12 @@
       "compact": {
         "module": "./index.ts",
         "title": "Compaction",
-        "description": "Manual conversation compaction for the owner."
+        "description": "Manual conversation compaction for the owner.",
+        "contributes": {
+          "ops": [
+            "conv.compact"
+          ]
+        }
       }
     },
     "bundle": [

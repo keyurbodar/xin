@@ -9,12 +9,33 @@
       "schedules": {
         "module": "./index.ts",
         "title": "Schedules",
-        "description": "Scheduled tasks: recurring rules that deliver a prompt to a conversation."
+        "description": "Scheduled tasks: recurring rules that deliver a prompt to a conversation.",
+        "permissions": [
+          "conversations"
+        ],
+        "contributes": {
+          "ops": [
+            "schedule.cancel",
+            "schedule.create",
+            "schedule.edit",
+            "schedule.list",
+            "schedule.parse",
+            "schedule.view"
+          ]
+        }
       },
       "tool-schedules": {
         "module": "./tools.ts",
         "title": "Schedules tools",
-        "description": "The model-facing create, list, view and edit tools for scheduled tasks. Disable to hide them; the schedules service keeps running."
+        "description": "The model-facing create, list, view and edit tools for scheduled tasks. Disable to hide them; the schedules service keeps running.",
+        "contributes": {
+          "tools": [
+            "schedule_create",
+            "schedule_edit",
+            "schedule_list",
+            "schedule_view"
+          ]
+        }
       }
     }
   }

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest"
-import { checkManifest, DEFAULT_MANIFEST, describeProblem, PLUGIN_API, readManifest } from "./manifest.ts"
+import {
+  checkManifest,
+  covers,
+  DEFAULT_MANIFEST,
+  describeProblem,
+  PLUGIN_API,
+  permissionsFor,
+  readManifest,
+} from "./manifest.ts"
 
 const versions = (known: Readonly<Record<string, string>>) => (name: string) => known[name]
 
@@ -10,7 +18,7 @@ describe("plugin manifest", () => {
 
   it("keeps a declared requirement", () => {
     expect(readManifest({ requires: ["time@^0.1"] }, "x")).toEqual({
-      api: PLUGIN_API,
+      ...DEFAULT_MANIFEST,
       requires: ["time@^0.1"],
     })
   })
@@ -19,6 +27,8 @@ describe("plugin manifest", () => {
     expect(() => readManifest({ api: 0 }, "x")).toThrow(/api/)
     expect(() => readManifest({ requires: ["time ^1"] }, "x")).toThrow(/requires/)
     expect(() => readManifest({ module: "./index.ts" }, "x")).toThrow()
+    expect(() => readManifest({ permissions: ["root"] }, "x")).toThrow(/permission root/)
+    expect(() => readManifest({ slots: ["header"] }, "x")).toThrow(/slot header/)
   })
 
   it("refuses a build whose plugin API differs from the one the module was written against", () => {
@@ -46,5 +56,37 @@ describe("plugin manifest", () => {
     const manifest = { ...DEFAULT_MANIFEST, requires: ["time"] }
     expect(checkManifest(manifest, versions({ time: "9.9.9" }))).toBeUndefined()
     expect(checkManifest(manifest, versions({}))?.kind).toBe("require")
+  })
+
+  it("reads permissions, contributions and slots, sorting and deduplicating permissions", () => {
+    expect(
+      readManifest(
+        {
+          permissions: ["storage", "network", "storage"],
+          contributes: { tools: ["weather_*"], ops: ["weather.get"] },
+          slots: ["pane.tab"],
+        },
+        "x",
+      ),
+    ).toEqual({
+      ...DEFAULT_MANIFEST,
+      permissions: ["network", "storage"],
+      contributes: { tools: ["weather_*"], ops: ["weather.get"] },
+      slots: ["pane.tab"],
+    })
+  })
+
+  it("refuses a module that injects a guarded service without the permission", () => {
+    const problem = checkManifest(DEFAULT_MANIFEST, versions({}), ["pi", "secrets"])
+    expect(problem).toEqual({ kind: "permission", permission: "secrets", service: "secrets" })
+    expect(describeProblem(problem!)).toContain("secrets permission")
+    const granted = { ...DEFAULT_MANIFEST, permissions: permissionsFor(["pi", "secrets"]) }
+    expect(checkManifest(granted, versions({}), ["pi", "secrets"])).toBeUndefined()
+  })
+
+  it("matches a declared name exactly or by a trailing star", () => {
+    expect(covers(["weather_*", "forecast"], "weather_now")).toBe(true)
+    expect(covers(["weather_*", "forecast"], "forecast")).toBe(true)
+    expect(covers(["weather_*", "forecast"], "forecasts")).toBe(false)
   })
 })

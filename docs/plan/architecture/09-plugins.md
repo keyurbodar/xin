@@ -4,7 +4,7 @@ Ingle's plugin layer is the one deepseek-harness (dsh) uses: Cordis contexts, se
 
 This section adds the one thing dsh leaves implicit and Ingle makes a first-class word: **a plugin is mounted at a scope**. A plugin can apply to the whole Home, to one project, or to one thread, and the composition of a scope is resolved by inheritance. That is what makes a personal agent feel configurable without a settings maze: the same plugin can be on everywhere and off in one project, with no second mechanism.
 
-A plugin is **trusted code that just runs**. Installing the build is the only trust decision. There are no permission grants, no approval prompts and no sandbox; those were designed, then cut (see [Dropped for simplicity](#dropped-for-simplicity)).
+A plugin is **trusted code that runs in the Home's isolate**, so a manifest cannot confine it. What the manifest does is make it honest: a plugin declares the **permissions** it needs and the **tools and ops it contributes**, and the kernel refuses to mount a row whose code reaches past either declaration (see [Permissions and contributions](#permissions-and-contributions)). There are still no per-call approvals and no sandbox.
 
 Read with: [01 Host](./01-host.md) for the alarm loop the `clock` service owns, [03 Commands and wire](./03-commands-and-wire.md) for the `ops` and `wire` services, [05 Models](./05-models.md) for the `models` seam, [12 Market](./12-market.md) for installs.
 
@@ -133,6 +133,28 @@ A package declares its plugins in `package.json`. Everything is optional; a plug
 | --- | --- | --- |
 | `api` | `1` | the plugin API version the module is written against |
 | `requires` | `[]` | other plugins it needs, `name` or `name@range` |
+| `permissions` | `[]` | what it may ask the owner for, from the closed set below |
+| `contributes` | unchecked | `{ tools, ops }` it registers; a trailing `*` covers a prefix |
+| `client` | none | a web module (`client.tsx`) compiled into the web build |
+| `slots` | `[]` | the client slots that module fills; required with `client` |
+
+### Permissions and contributions
+
+| Permission | Guards the services | Shown to the owner as |
+| --- | --- | --- |
+| `secrets` | `secrets` | Read your stored credentials |
+| `files` | `files` | Read and change your files |
+| `storage` | `db` | Keep its own tables in your Home |
+| `routes` | `http` | Answer HTTP requests to your Home |
+| `models` | `models` | Call models, which spends tokens |
+| `conversations` | `harness` | Read and write your conversations |
+| `plugins` | `kernel`, `packages`, `plugins` | Install, enable and configure plugins |
+| `network` | none (no sandbox to enforce it) | Connect to the internet |
+
+- **Mount check.** A plugin whose `inject` lists a guarded service without its permission is not mounted; the row reports `failed` and `plugin.doctor` carries `{ kind: "permission", permission, service }`. Kernel rows (`source: "ingle"`) are exempt.
+- **Registration check.** When a manifest declares `contributes`, `ops.define` and `pi.install` refuse a name it leaves out, so the row fails at mount with the name in the error. Every shipped plugin declares it.
+- **Inventory.** `plugin.doctor` rows carry `registered: { tools, ops }`, read from the live services.
+- **Cost.** All three run at mount, in memory: 0 rows and 0 requests per user action.
 
 `bun scripts/ingle.ts plugin generate` parses and validates every manifest and writes it into `src/catalog.gen.ts`. A bad manifest fails the build, not boot. The running Worker never reads `package.json`; the catalog is the single source at run time.
 
@@ -278,12 +300,11 @@ Designed, then cut because each added a concept or a click without buying a real
 
 | Dropped | Why |
 | --- | --- |
-| **Permission grants and consent cards** (`net`, `secrets`, `files`, `schedule`, `agent`; `plugin.grant` / `plugin.revoke`) | in-process code cannot be confined by a declaration, so the grant was an audit form, not a boundary; the build is the real trust decision |
 | **Per-call approvals** (dsh `user-approval`, `tools/pre-execute`) | every prompt interrupts a run; a plugin that needs a decision can ask a question, and the owner's own agent does not need a permission slip |
 | **Version exemptions** (dsh `compatibility.json`) | an `api` mismatch is a code problem; granting an exception would only produce a crash later |
 | **Platform declarations** | one client, one host; nothing to declare |
 | **A sandbox / Worker Loader** | no concrete use case today; MCP covers code that runs elsewhere, and the build covers code that runs here |
-| **A `provides` registry and capability inventory in the manifest** | `inject` already resolves services and fails a row that cannot get one; an inventory is diagnostics, not a gate, and arrives with `plugin.doctor`'s next slice |
+| **A `provides` registry** | `inject` already resolves services and fails a row that cannot get one |
 | **A config wizard at install** | `Config` defaults make a plugin work with no setup; settings remain optional |
 
 The `net` permission check named in M8 belonged to the pre-P5 host adapter, which no longer exists; there is no permission check in the plugin layer today.
@@ -332,8 +353,8 @@ Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `
 | Op | Effect |
 | --- | --- |
 | `plugin.list` | rows with id, plugin, title, state, layer, config and manifest |
-| `plugin.catalog` | compiled plugins with title, description, manifest, config schema and source |
-| `plugin.doctor` | `{ ok, rows }` with package, version, state, manifest and issues |
+| `plugin.catalog` | compiled plugins with title, description, source, version, manifest, permission titles, config schema and `form` (settings fields derived from `Config`) |
+| `plugin.doctor` | `{ ok, rows }` with package, version, state, manifest, `registered` and issues |
 | `plugin.tree` | `{ bundles, runtime, layers, lower, owner, rows, warnings }` |
 | `plugin.enable` | `{ id, enabled }`; rejected for a required row |
 | `plugin.configure` | `{ id, config }`, validated against `Config`; rejected for a plugin without one |

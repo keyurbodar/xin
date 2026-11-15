@@ -120,6 +120,7 @@ describe("compact", () => {
       module: "./index.ts",
       title: "Compaction",
       description: "Manual conversation compaction for the owner.",
+      contributes: { ops: ["conv.compact"] },
     })
     expect(manifest.ingle.bundle).toEqual([{ id: "compact", plugin: "compact" }])
   })

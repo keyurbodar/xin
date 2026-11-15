@@ -9,12 +9,31 @@
       "artifacts": {
         "module": "./index.ts",
         "title": "Artifacts",
-        "description": "Thread documents with a revision."
+        "description": "Thread documents with a revision.",
+        "permissions": [
+          "conversations"
+        ],
+        "contributes": {
+          "ops": [
+            "artifact.delete",
+            "artifact.list",
+            "artifact.read",
+            "artifact.write"
+          ]
+        }
       },
       "tool-artifacts": {
         "module": "./tools.ts",
         "title": "Artifact tools",
-        "description": "The model-facing artifact tool. Disable to hide it; the artifacts service keeps running."
+        "description": "The model-facing artifact tool. Disable to hide it; the artifacts service keeps running.",
+        "permissions": [
+          "conversations"
+        ],
+        "contributes": {
+          "tools": [
+            "artifact"
+          ]
+        }
       }
     }
   }

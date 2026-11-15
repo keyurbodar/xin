@@ -9,7 +9,27 @@
       "market": {
         "module": "./index.ts",
         "title": "Market",
-        "description": "Discovery, install and update checks for plugin packages."
+        "description": "Discovery, install and update checks for plugin packages.",
+        "permissions": [
+          "network",
+          "plugins",
+          "storage"
+        ],
+        "contributes": {
+          "ops": [
+            "market.entry",
+            "market.install",
+            "market.policy",
+            "market.policy.set",
+            "market.refresh",
+            "market.rollback",
+            "market.search",
+            "market.skip",
+            "market.skipped",
+            "market.unskip",
+            "market.update"
+          ]
+        }
       }
     }
   }

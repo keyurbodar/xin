@@ -13,7 +13,15 @@ import {
   type Row,
   type RowTrace,
 } from "./layers.ts"
-import { checkManifest, DEFAULT_MANIFEST, describeProblem, type Manifest, type ManifestProblem } from "./manifest.ts"
+import {
+  checkManifest,
+  covers,
+  DEFAULT_MANIFEST,
+  describeProblem,
+  injectOf,
+  type Manifest,
+  type ManifestProblem,
+} from "./manifest.ts"
 import { sourcePackage, sourceVersion } from "./packages.ts"
 import { readOwnerPatch, writeOwnerPatch } from "./patch.ts"
 import type { Runtime } from "./types.ts"
@@ -147,10 +155,24 @@ export class IngleLoader extends Loader {
   /** Why this build cannot mount the row, from the plugin's declaration. */
   problemOf(row: Row): ManifestProblem | undefined {
     if (!this.has(row)) return undefined
-    return checkManifest(this.manifestOf(row), (name) => {
-      const entry = this.composition.catalog[name]
-      return entry === undefined ? undefined : sourceVersion(entry.source)
-    })
+    const entry = this.composition.catalog[pluginOf(row)]
+    return checkManifest(
+      this.manifestOf(row),
+      (name) => {
+        const required = this.composition.catalog[name]
+        return required === undefined ? undefined : sourceVersion(required.source)
+      },
+      entry?.manifest === undefined ? [] : injectOf(entry.plugin),
+    )
+  }
+
+  /** Why a row may not register this tool or op: its plugin declares `contributes` and leaves the name out. */
+  undeclared(id: string | undefined, kind: "tools" | "ops", name: string): string | undefined {
+    if (id === undefined) return undefined
+    const plugin = this.pluginOfRow(id)
+    const contributes = plugin === undefined ? undefined : this.composition.catalog[plugin]?.manifest?.contributes
+    if (contributes === undefined || covers(contributes[kind], name)) return undefined
+    return `${plugin} registers ${kind === "tools" ? "tool" : "op"} ${name}, which its manifest's contributes.${kind} does not declare`
   }
 
   ownerPatch(): Patch[] {

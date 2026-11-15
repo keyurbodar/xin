@@ -89,6 +89,13 @@ const TEST_CATALOG: Catalog = {
   orphan: testPlugin("orphan", {}, ["nothing-provides-this"]),
   "k-requires": testPlugin("k-requires", {}, ["ops"], { requires: ["time@^0.1.0"] }),
   "k-future": testPlugin("k-future", {}, ["ops"], { api: 2 }),
+  "k-unpermitted": testPlugin("k-unpermitted", {}, ["ops", "secrets"], { permissions: [] }),
+  "k-undeclared": testPlugin(
+    "k-undeclared",
+    { ops: [defineOp({ name: "k.undeclared", args: obj({}), actors: ["owner"], run: async () => null })] },
+    ["ops"],
+    { contributes: { tools: [], ops: ["k.declared"] } },
+  ),
   "k-needs-missing": testPlugin("k-needs-missing", {}, ["ops"], { requires: ["absent@^1"] }),
   ...m2.catalog,
   ...fakefiles.catalog,
@@ -111,7 +118,18 @@ const TEST_CATALOG: Catalog = {
 }
 
 const TEST_ROWS = [
-  ...["test", "broken", "orphan", "m2", "m6", "k-requires", "k-future", "k-needs-missing"].map((id) => ({
+  ...[
+    "test",
+    "broken",
+    "orphan",
+    "m2",
+    "m6",
+    "k-requires",
+    "k-future",
+    "k-needs-missing",
+    "k-unpermitted",
+    "k-undeclared",
+  ].map((id) => ({
     id,
     name: `cordis:${id}`,
   })),

@@ -9,12 +9,40 @@
       "models": {
         "module": "./index.ts",
         "title": "Models",
-        "description": "Run-time model catalog, credentials and set_model."
+        "description": "Run-time model catalog, credentials and set_model.",
+        "permissions": [
+          "conversations",
+          "network",
+          "storage"
+        ],
+        "contributes": {
+          "ops": [
+            "conv.configure",
+            "credential.delete",
+            "credential.set",
+            "models.list",
+            "owner.defaults",
+            "usage.alert",
+            "usage.alert.set",
+            "usage.cap",
+            "usage.cap.set",
+            "usage.summary"
+          ]
+        }
       },
       "tool-models": {
         "module": "./tools.ts",
         "title": "Models tools",
-        "description": "The model-facing models tools. Disable to hide them; the models service keeps running."
+        "description": "The model-facing models tools. Disable to hide them; the models service keeps running.",
+        "permissions": [
+          "models",
+          "network"
+        ],
+        "contributes": {
+          "tools": [
+            "set_model"
+          ]
+        }
       }
     }
   }
