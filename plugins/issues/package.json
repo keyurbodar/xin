@@ -1,0 +1,32 @@
+{
+  "name": "ingle-plugin-issues",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Issues: a durable work record shared by people and agents, with states, links, a timeline and FTS search.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "issues": {
+        "module": "./index.ts",
+        "title": "Issues",
+        "description": "Issues with editable states, sub-issues, links, a timeline and search. Comments, state and assignee changes wake the owning thread."
+      },
+      "tool-issues": {
+        "module": "./tools.ts",
+        "title": "Issue tools",
+        "description": "The model-facing issue tool (create, read, update, comment). Off by default: its declaration adds about a kilobyte to every request."
+      }
+    },
+    "bundle": [
+      {
+        "id": "issues",
+        "plugin": "issues"
+      },
+      {
+        "id": "tool-issues",
+        "plugin": "tool-issues",
+        "disabled": true
+      }
+    ]
+  }
+}

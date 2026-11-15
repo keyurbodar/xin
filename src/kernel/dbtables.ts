@@ -18,6 +18,12 @@ const TABLE_OWNERS: Readonly<Record<string, string>> = {
   git_native_ref: "git-native",
   git_native_shallow: "git-native",
   market_history: "market",
+  issue_states: "issues",
+  issues: "issues",
+  issue_assignees: "issues",
+  issue_links: "issues",
+  issue_events: "issues",
+  issues_fts: "issues",
 }
 
 export function migrationsTable(owner: string): string {

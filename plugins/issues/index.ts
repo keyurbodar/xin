@@ -1,0 +1,199 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
+import type { ConversationId } from "@earendil-works/pi-durable"
+import { arr, bool, int, lit, nullable, obj, oneOf, opt, str, union } from "@earendil-works/pi-schema"
+import { type Context, defineOp, OpRejected } from "../../src/kernel/index.ts"
+import { type Change, createIssues, type IssueActor, type IssuesService, LINK_KINDS, PRIORITIES } from "./issues.ts"
+import { MIGRATIONS } from "./schema.ts"
+
+export const name = "issues"
+export const inject = ["db", "harness", "ops", "wire", "intake", "clock"]
+
+const OWNER_ACTOR: IssueActor = { kind: "person", id: "owner" }
+const ID = int({ minimum: 1 })
+const CONVERSATION = int({ minimum: 0 })
+
+export const AssigneeArg = union([
+  obj({ kind: lit("person"), id: str({ minLength: 1, maxLength: 120 }) }),
+  obj({ kind: oneOf(["thread", "captain"] as const), id: CONVERSATION }),
+])
+
+export const FieldArgs = {
+  title: opt(str({ minLength: 1, maxLength: 300 })),
+  description: opt(str({ maxLength: 20_000 })),
+  state: opt(str({ minLength: 1, maxLength: 60 })),
+  priority: opt(oneOf(PRIORITIES)),
+  due: opt(nullable(str({ maxLength: 10 }))),
+  parent: opt(nullable(ID)),
+  labels: opt(arr(str({ maxLength: 40 }), { maxItems: 20 })),
+  assignees: opt(arr(AssigneeArg, { maxItems: 20 })),
+  threads: opt(arr(CONVERSATION, { maxItems: 20 })),
+  prs: opt(arr(str({ maxLength: 500 }), { maxItems: 20 })),
+}
+
+export const ListArgs = obj({
+  q: opt(str({ maxLength: 200 })),
+  assignee: opt(AssigneeArg),
+  states: opt(arr(str({ minLength: 1, maxLength: 60 }), { maxItems: 20 })),
+  closed: opt(bool()),
+  parent: opt(nullable(ID)),
+  limit: opt(int({ minimum: 1, maximum: 200 })),
+  cursor: opt(str({ maxLength: 40 })),
+})
+
+export const CommentArgs = obj({
+  id: ID,
+  body: str({ minLength: 1, maxLength: 20_000 }),
+  replyTo: opt(ID),
+  mentions: opt(arr(CONVERSATION, { maxItems: 20 })),
+})
+
+export const LinkArgs = obj({ id: ID, kind: oneOf(LINK_KINDS), other: ID })
+
+export async function apply(ctx: Context): Promise<void> {
+  await ctx.db.applySqliteMigrations("issues", MIGRATIONS)
+  const issues = createIssues({
+    db: ctx.db,
+    conversationExists: async (id) =>
+      (await ctx.harness.conversation(id as ConversationId, BACKGROUND_CONTEXT)) !== undefined,
+    now: () => Date.now(),
+  })
+
+  const settle = async (change: Change, actor: IssueActor): Promise<void> => {
+    if (change.events.length === 0) return
+    let woke = false
+    for (const wake of await issues.wakes(change, actor)) {
+      const accepted = await ctx.intake.enqueue({
+        target: wake.target as ConversationId,
+        commandId: wake.commandId,
+        kind: "job",
+        threadId: `issue-${change.issue.id}`,
+        title: wake.title,
+        status: change.issue.state,
+        text: wake.text,
+      })
+      woke ||= accepted
+    }
+    if (woke) await ctx.clock.arm()
+    await ctx.wire.publishHome()
+  }
+
+  const service: IssuesService = {
+    ...issues,
+    create: async (actor, fields) => {
+      const change = await issues.create(actor, fields)
+      await settle(change, actor)
+      return change
+    },
+    update: async (actor, id, fields) => {
+      const change = await issues.update(actor, id, fields)
+      await settle(change, actor)
+      return change
+    },
+    link: async (actor, id, kind, other, on) => {
+      const change = await issues.link(actor, id, kind, other, on)
+      await settle(change, actor)
+      return change
+    },
+    comment: async (actor, id, input) => {
+      const change = await issues.comment(actor, id, input)
+      await settle(change, actor)
+      return change
+    },
+  }
+  ctx.provide("issues", service)
+  ctx.wire.home("issues", async () => ({ issues: { rev: await issues.rev() } }))
+
+  const ops = [
+    defineOp({
+      name: "issue.states",
+      args: obj({}),
+      actors: ["owner"],
+      run: async () => ({ states: await issues.states() }),
+    }),
+    defineOp({
+      name: "issue.state.create",
+      args: obj({ name: str({ minLength: 1, maxLength: 60 }), closed: opt(bool()) }),
+      actors: ["owner"],
+      run: async (_api, args) => {
+        const state = await issues.createState({ name: args.name, closed: args.closed ?? false })
+        await ctx.wire.publishHome()
+        return state
+      },
+    }),
+    defineOp({
+      name: "issue.state.update",
+      args: obj({
+        id: str({ minLength: 1, maxLength: 60 }),
+        name: opt(str({ minLength: 1, maxLength: 60 })),
+        position: opt(int({ minimum: 0 })),
+        isDefault: opt(lit(true)),
+      }),
+      actors: ["owner"],
+      run: async (_api, args) => {
+        const state = await issues.updateState(args)
+        await ctx.wire.publishHome()
+        return state
+      },
+    }),
+    defineOp({
+      name: "issue.state.delete",
+      args: obj({ id: str({ minLength: 1, maxLength: 60 }), moveTo: str({ minLength: 1, maxLength: 60 }) }),
+      actors: ["owner"],
+      run: async (_api, args) => {
+        const result = await issues.deleteState(args)
+        await ctx.wire.publishHome()
+        return result
+      },
+    }),
+    defineOp({
+      name: "issue.create",
+      args: obj({ ...FieldArgs, title: str({ minLength: 1, maxLength: 300 }) }),
+      actors: ["owner"],
+      run: async (_api, args) => (await service.create(OWNER_ACTOR, args)).issue,
+    }),
+    defineOp({
+      name: "issue.get",
+      args: obj({ id: ID }),
+      actors: ["owner"],
+      run: async (_api, args) => {
+        const detail = await issues.get(args.id)
+        if (detail === undefined) throw new OpRejected("bad_args", `no issue #${args.id}`)
+        return detail
+      },
+    }),
+    defineOp({
+      name: "issue.list",
+      args: ListArgs,
+      actors: ["owner"],
+      run: async (_api, args) => issues.list(args),
+    }),
+    defineOp({
+      name: "issue.update",
+      args: obj({ id: ID, ...FieldArgs }),
+      actors: ["owner"],
+      run: async (_api, { id, ...fields }) => (await service.update(OWNER_ACTOR, id, fields)).issue,
+    }),
+    defineOp({
+      name: "issue.link",
+      args: LinkArgs,
+      actors: ["owner"],
+      run: async (_api, args) => (await service.link(OWNER_ACTOR, args.id, args.kind, args.other, true)).issue,
+    }),
+    defineOp({
+      name: "issue.unlink",
+      args: LinkArgs,
+      actors: ["owner"],
+      run: async (_api, args) => (await service.link(OWNER_ACTOR, args.id, args.kind, args.other, false)).issue,
+    }),
+    defineOp({
+      name: "issue.comment",
+      args: CommentArgs,
+      actors: ["owner"],
+      run: async (_api, { id, ...input }) => {
+        const change = await service.comment(OWNER_ACTOR, id, input)
+        return { issue: change.issue, event: change.events[0] ?? null }
+      },
+    }),
+  ]
+  for (const op of ops) ctx.ops.define(op)
+}
