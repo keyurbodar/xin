@@ -10,6 +10,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <script>
       document.documentElement.dataset.theme = ["light", "rose"].includes(localStorage.getItem("ingle.theme")) ? localStorage.getItem("ingle.theme") : "dark"
+      if (localStorage.getItem("ingle.motion") === "reduce") document.documentElement.dataset.motion = "reduce"
     </script>
   </head>
   <body>
