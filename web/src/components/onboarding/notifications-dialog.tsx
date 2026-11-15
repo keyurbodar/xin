@@ -2,7 +2,7 @@ import { createEffect, For, on, onCleanup, onMount, Show, type JSX } from "solid
 import { CircleAlert, CircleCheck, MessageSquare } from "lucide-solid"
 import { Spinner, StatusLine } from "./controls.tsx"
 import { createPresence } from "../shell/presence.ts"
-import { wrapFocus } from "../../lib/focus.ts"
+import { trapTab } from "../../lib/focus.ts"
 import { enablePush, notificationsOpen, onboardingPush, openNotifications } from "../../state/onboarding.ts"
 
 const KINDS = [
@@ -37,12 +37,7 @@ function Panel(props: { closing: boolean }): JSX.Element {
       close()
       return
     }
-    if (event.key !== "Tab") return
-    const items = [...panel.querySelectorAll<HTMLElement>("button:not([disabled])")]
-    const target = wrapFocus(items, document.activeElement instanceof HTMLElement ? document.activeElement : null, event.shiftKey)
-    if (target === undefined) return
-    event.preventDefault()
-    target.focus()
+    trapTab(panel, event)
   }
   onMount(() => {
     primary.focus()

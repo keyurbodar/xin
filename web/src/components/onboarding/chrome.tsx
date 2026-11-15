@@ -1,43 +1,7 @@
-import { createUniqueId, For, Show, type JSX } from "solid-js"
+import { For, Show, type JSX } from "solid-js"
+import { BrandMark } from "../ui/brand-mark.tsx"
 import { Icon } from "../ui/icon.tsx"
 import { ONBOARDING_STEPS } from "../../state/onboarding.ts"
-
-export function IngleMark(props: { size: number; class?: string }): JSX.Element {
-  const mask = createUniqueId()
-  return (
-    <svg width={props.size} height={props.size} viewBox="20 16 80 80" fill="none" aria-hidden="true" class={props.class}>
-      <defs>
-        <mask id={mask} maskUnits="userSpaceOnUse" x="20" y="16" width="80" height="80">
-          <rect x="20" y="16" width="80" height="80" fill="black" />
-          <g transform="translate(48.5 57.5) rotate(-38)">
-            <path d="M0 0C13-6 13-24 0-33C-13-24-13-6 0 0Z" fill="white" />
-          </g>
-          <path
-            d="M31 95C26 95 24 92 24.4 87C26.2 66 40.5 53 60 53C79.5 53 93.8 66 95.6 87C96 92 94 95 89 95Z"
-            fill="white"
-            stroke="black"
-            stroke-width="8.4"
-            stroke-linejoin="round"
-            paint-order="stroke"
-          />
-          <g transform="translate(68 55.5) rotate(22)">
-            <path
-              d="M0 0C14-7 14-27 0-37C-14-27-14-7 0 0Z"
-              fill="white"
-              stroke="black"
-              stroke-width="8.4"
-              stroke-linejoin="round"
-              paint-order="stroke"
-            />
-          </g>
-          <circle cx="46.4" cy="74" r="4.6" fill="black" />
-          <circle cx="70.6" cy="72.6" r="4.6" fill="black" />
-        </mask>
-      </defs>
-      <rect x="20" y="16" width="80" height="80" fill="currentColor" mask={`url(#${mask})`} />
-    </svg>
-  )
-}
 
 function StepRail(props: { current: number; done: (index: number) => boolean; onSelect?: ((index: number) => void) | undefined }): JSX.Element {
   return (
@@ -94,7 +58,7 @@ export function OnboardingFrame(props: {
   return (
     <div class="flex h-full flex-col bg-bg text-ink">
       <header class="flex h-14 shrink-0 items-center gap-2 px-6">
-        <IngleMark size={20} class="text-ink" />
+        <BrandMark class="h-5 w-5 text-ink" />
         <span class="text-[15px] font-semibold tracking-[-0.02em]">ingle</span>
         <span class="ml-auto truncate text-sm text-ink-3">Self-hosted · Worker {location.host}</span>
       </header>

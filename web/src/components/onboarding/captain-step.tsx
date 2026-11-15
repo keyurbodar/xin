@@ -1,10 +1,17 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { ChevronDown, GitBranch } from "lucide-solid"
-import { IngleMark } from "./chrome.tsx"
+import { BrandMark } from "../ui/brand-mark.tsx"
 import { Field, PrimaryButton, QuietButton, StatusLine, StepCard, TextInput } from "./controls.tsx"
-import { createFirstCaptain, messageOf, nextStep, onboardingCaptain, previousStep } from "../../state/onboarding.ts"
+import {
+  canSkip,
+  createFirstCaptain,
+  messageOf,
+  nextStep,
+  onboardingCaptain,
+  previousStep,
+  skipStep,
+} from "../../state/onboarding.ts"
 import { captainModel, OWN_SUGGESTIONS, TEMPLATES, type ModelRef, type Template } from "../../lib/onboarding.ts"
-import { navigate } from "../../lib/router.ts"
 import { models, type ModelInfo } from "../../state/settings.ts"
 
 const refKey = (model: ModelRef): string => `${model.provider}/${model.modelId}`
@@ -181,7 +188,7 @@ export function CaptainStep(): JSX.Element {
 
       <div class="flex items-center gap-3 rounded-md border border-line-1 bg-panel px-3 py-2.5">
         <span class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-secondary text-ink">
-          <IngleMark size={16} />
+          <BrandMark class="h-4 w-4" />
         </span>
         <span class="min-w-0 flex-1">
           <span class="block truncate text-base text-ink">{name().trim() === "" ? "Untitled Captain" : name().trim()}</span>
@@ -205,8 +212,8 @@ export function CaptainStep(): JSX.Element {
       <div class="flex items-center gap-2 pt-1">
         <QuietButton label="Back" back onClick={previousStep} />
         <span class="mr-auto" />
-        <Show when={created() === undefined}>
-          <QuietButton label="Skip for now" onClick={() => navigate("/")} />
+        <Show when={canSkip(2)}>
+          <QuietButton label="Skip for now" onClick={() => skipStep(2)} />
         </Show>
         <PrimaryButton
           label={created() === undefined ? "Create Captain" : "Continue"}

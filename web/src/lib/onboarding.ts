@@ -139,18 +139,43 @@ export function firstOpenStep(progress: Progress): 1 | 2 | 3 {
   return progress.provider === undefined ? 1 : 2
 }
 
+export type ProjectRow = { readonly id: string; readonly slug: string; readonly archived: boolean }
+
+export type ProjectPlan =
+  | { readonly kind: "reuse"; readonly id: string }
+  | { readonly kind: "create"; readonly slug: string; readonly commandId: string }
+
+export function projectPlan(projects: readonly ProjectRow[], name: string): ProjectPlan {
+  const live = projects.find((project) => !project.archived)
+  if (live !== undefined) return { kind: "reuse", id: live.id }
+  const base = slugify(name)
+  const taken = new Set(projects.map((project) => project.slug))
+  let slug = base
+  for (let suffix = 2; taken.has(slug); suffix += 1) slug = `${base.slice(0, 60)}-${suffix}`
+  return { kind: "create", slug, commandId: `onboarding-${slug}` }
+}
+
+function projectRowOf(value: unknown): ProjectRow | undefined {
+  const record = recordOf(value)
+  const id = strOf(record?.["id"])
+  const slug = strOf(record?.["slug"])
+  return id === undefined || slug === undefined ? undefined : { id, slug, archived: record?.["archived"] === true }
+}
+
 async function captainProject(name: string): Promise<string> {
   const workspace = recordOf(await cmd<unknown>("workspace.read"))
-  const live = listOf(workspace?.["projects"])
-    .map(recordOf)
-    .find((project) => project !== undefined && project["archived"] !== true)
-  const existing = strOf(live?.["id"])
-  if (existing !== undefined) return existing
-  const slug = slugify(name)
-  const created = recordOf(await cmd<unknown>("project.create", { slug, name }, { id: `onboarding-${slug}` }))
-  const id = strOf(created?.["id"])
-  if (id === undefined) throw new Error("The project for this Captain was created, but the reply could not be read.")
-  return id
+  const projects = listOf(workspace?.["projects"]).flatMap((entry) => {
+    const row = projectRowOf(entry)
+    return row === undefined ? [] : [row]
+  })
+  for (;;) {
+    const plan = projectPlan(projects, name)
+    if (plan.kind === "reuse") return plan.id
+    const created = projectRowOf(await cmd<unknown>("project.create", { slug: plan.slug, name }, { id: plan.commandId }))
+    if (created === undefined) throw new Error("The project for this Captain was created, but the reply could not be read.")
+    if (!created.archived) return created.id
+    projects.push(created)
+  }
 }
 
 export async function ensureCaptain(input: CaptainInput, commandId: string): Promise<CaptainResult> {
@@ -188,4 +213,16 @@ export function sendKeyFor(current: SendKey | undefined, text: string, mint: () 
 
 export function captainModel<T extends ModelRef>(keyed: readonly T[], picked: string): T | undefined {
   return keyed.find((model) => `${model.provider}/${model.modelId}` === picked) ?? keyed[0]
+}
+
+export type SkipTarget = { readonly kind: "next" } | { readonly kind: "shell" }
+
+export function skipTarget(step: 1 | 2 | 3, hasCaptain: boolean): SkipTarget | undefined {
+  switch (step) {
+    case 1:
+      return { kind: "next" }
+    case 2:
+    case 3:
+      return hasCaptain ? undefined : { kind: "shell" }
+  }
 }

@@ -1,6 +1,6 @@
 import { createSignal, onMount, Show, type JSX } from "solid-js"
 import { Eye, EyeOff, KeyRound } from "lucide-solid"
-import { setToken, verifyToken } from "../lib/auth.ts"
+import { probe, setToken } from "../lib/auth.ts"
 import { OnboardingFrame } from "../components/onboarding/chrome.tsx"
 import { INPUT_BOX, PrimaryButton } from "../components/onboarding/controls.tsx"
 
@@ -26,10 +26,14 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
     if (busy() || candidate === "") return
     setBusy(true)
     setError(undefined)
-    const accepted = await verifyToken(candidate)
+    const answer = await probe(candidate)
     setBusy(false)
-    if (!accepted) {
+    if (answer.kind === "unauthorized") {
       setError(WRONG_TOKEN)
+      return
+    }
+    if (answer.kind === "unreachable") {
+      setError("This instance didn’t answer. Check the network and try again.")
       return
     }
     setToken(candidate)

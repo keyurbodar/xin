@@ -7,6 +7,7 @@ import {
   messageOf,
   nextStep,
   onboardingProvider,
+  skipStep,
   type ProviderInput,
 } from "../../state/onboarding.ts"
 import type { ModelInfo, ModelPrice } from "../../state/settings.ts"
@@ -270,7 +271,7 @@ export function ProviderStep(): JSX.Element {
 
       <div class="flex items-center gap-2 pt-1">
         <span class="mr-auto" />
-        <QuietButton label="Skip for now" onClick={nextStep} />
+        <QuietButton label="Skip for now" onClick={() => skipStep(1)} />
         <PrimaryButton
           label={saved() === undefined ? "Save key" : "Continue"}
           busy={busy()}
