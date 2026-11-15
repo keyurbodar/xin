@@ -25,10 +25,16 @@ flowchart TD
 
 A delegated thread resolves its model in this order: `delegate_task target.model`, the project's `thread` default, the owner's `thread` default, then the coordinator's current model as an explicit last fallback, then `none` (the tool returns `no_model`). The coordinator fallback keeps the common case — one model picked in the picker — working without configuring a thread default.
 
+## The picker catalog
+
+`models.catalog` (owner) is the picker's one read: every provider pi-ai knows with whether a stored key unlocks it and how many of its models are enabled, then up to 200 models ranked favourites, recent, current, with keyed models first. Each model carries its context window, max output, per-million prices (input, output, cache read, cache write), the thinking levels pi-ai's `getSupportedThinkingLevels()` allows, and the owner's `favorite` and `enabled` flags. `models.favorite` and `models.enable` toggle the two flags (`owner.favorites`, `owner.disabled` in `kv`). A disabled model stays in `models.catalog` with `enabled: false` and leaves every other path: `models.list` and `set_model` do not show it, and `conv.configure`, `owner.defaults`, `project.update`, `captain.create`/`captain.update`, `delegate_task` (target, defaults and the parent fallback), `thread.create` and `thread.side` refuse it through `ModelsService.disabled`, and `message.send` and `thread.send` refuse a turn on a conversation that still runs one. A model that is an owner or project role default cannot be disabled. Disabling moves every conversation on the home that runs the model (listed by `ctx.pi.conversations()`, a scan of the harness's in-memory storage: Puck chats, threads pruned from their space and automation threads included) to the default its role resolves to, from its next request; with none left its model is cleared and its next turn asks for one. `conv.configure` refuses a thinking level the model does not support instead of clamping it. pi-ai 1.5 exposes no speed or service-tier mode, so the catalog has none.
+
+A selection is a conversation's `pi.agent`, so the model and thinking level of a thread or a Captain's conversation persist through `conv.configure` like any chat's.
+
 ## The `set_model` tool
 
 ```text
-set_model({ target: "this_chat" | "thread:<id>" | "new_threads" | "project_default", query: string, thinking?: "off"|"low"|"medium"|"high" })
+set_model({ target: "this_chat" | "thread:<id>" | "new_threads" | "project_default", query: string, thinking?: "off"|"minimal"|"low"|"medium"|"high"|"xhigh"|"max" })
  1. candidates = catalog.search(query)        // fuzzy over provider, id, name; only providers with working auth
  2. 0 hits      → error listing close matches + "add a provider key in Settings"
     >1 strong   → return the top 4 to the model; it asks you ("opus 5.5 or opus 5?")

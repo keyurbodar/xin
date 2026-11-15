@@ -47,6 +47,8 @@ export type MemoryPorts = {
   readonly models: ModelsService
   readonly kek: string
   arm(): Promise<void>
+  /** Notes or the profile changed outside an owner command, so tabs must drop their cached memory reads. */
+  changed(): void
 }
 
 export type NoteRow = {
@@ -214,6 +216,7 @@ async function runPass(
     return
   }
   await apply(ports.db, taskId, output, included, end, transcripts.end, requested)
+  ports.changed()
 }
 
 function withinBudget(notes: readonly NoteRow[]): readonly NoteRow[] {

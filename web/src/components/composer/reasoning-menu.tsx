@@ -2,22 +2,24 @@ import { Menu } from "@ark-ui/solid/menu"
 import { Check, ChevronDown, Layers } from "lucide-solid"
 import { For, Show, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
-import { THINKING_LEVELS, type ThinkingLevel } from "../../state/conversation.ts"
+import { isThinkingLevel, type ThinkingLevel } from "../../lib/thinking.ts"
 import type { PresetRow } from "../../state/extensions.ts"
 import { GROUP_LABEL, ITEM, ITEM_ICON, SEPARATOR, SURFACE, TOOL } from "./styles.ts"
 
 const LEVEL_LABEL: Readonly<Record<ThinkingLevel, string>> = {
   off: "Off",
+  minimal: "Minimal",
   low: "Low",
   medium: "Medium",
   high: "High",
+  xhigh: "Extra high",
+  max: "Max",
 }
-
-const isLevel = (value: string): value is ThinkingLevel => THINKING_LEVELS.some((level) => level === value)
 
 /** Reasoning effort for a reasoning model, and the conversation's preset as its one real mode. */
 export function ReasoningMenu(props: {
-  reasoning: boolean
+  /** The levels the current model accepts; one or none means it has no reasoning to choose. */
+  levels: readonly ThinkingLevel[]
   level: ThinkingLevel | undefined
   presets: readonly PresetRow[]
   presetId: string | undefined
@@ -25,13 +27,14 @@ export function ReasoningMenu(props: {
   onLevel: (level: ThinkingLevel) => void
   onPreset: (id: string) => void
 }): JSX.Element {
+  const reasoning = (): boolean => props.levels.length > 1
   const presetName = (): string =>
     props.presets.find((preset) => preset.id === props.presetId)?.name ?? props.presetId ?? "Preset"
-  const label = (): string => (props.reasoning ? (props.level === undefined ? "Default" : LEVEL_LABEL[props.level]) : presetName())
+  const label = (): string => (reasoning() ? (props.level === undefined ? "Default" : LEVEL_LABEL[props.level]) : presetName())
   const showModes = (): boolean => props.presets.length > 1
 
   return (
-    <Show when={props.reasoning || showModes()}>
+    <Show when={reasoning() || showModes()}>
       <Menu.Root positioning={{ placement: "top-start", gutter: 8 }} lazyMount unmountOnExit>
         <Menu.Trigger class={TOOL}>
           <span>{label()}</span>
@@ -40,15 +43,15 @@ export function ReasoningMenu(props: {
         <Portal>
           <Menu.Positioner>
             <Menu.Content class={`${SURFACE} w-[240px] p-1`}>
-              <Show when={props.reasoning}>
+              <Show when={reasoning()}>
                 <Menu.RadioItemGroup
                   value={props.level ?? ""}
                   onValueChange={(details) => {
-                    if (isLevel(details.value)) props.onLevel(details.value)
+                    if (isThinkingLevel(details.value)) props.onLevel(details.value)
                   }}
                 >
                   <Menu.ItemGroupLabel class={GROUP_LABEL}>Reasoning</Menu.ItemGroupLabel>
-                  <For each={THINKING_LEVELS}>
+                  <For each={props.levels}>
                     {(level) => (
                       <Menu.RadioItem value={level} class={ITEM}>
                         <Menu.ItemText class="flex-1">{LEVEL_LABEL[level]}</Menu.ItemText>
@@ -64,7 +67,7 @@ export function ReasoningMenu(props: {
                 </Show>
               </Show>
               <Show when={showModes()}>
-                <Show when={props.reasoning}>
+                <Show when={reasoning()}>
                   <Menu.Separator class={SEPARATOR} />
                 </Show>
                 <Menu.RadioItemGroup
