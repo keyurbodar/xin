@@ -43,6 +43,13 @@ test("closing a tab that is already closed leaves its first close in charge", ()
   expect(openTabs(reopenTabs(forgetTabs(twice, 2), 1))).toEqual([1, 2, 3])
 })
 
+test("one close's expiry leaves other closes' placeholders closed", () => {
+  const both = closeTabs(closeTabs(tabs(1, 2, 3), [2], 1), [3], 2)
+  const expired = forgetTabs(both, 1)
+  expect(openTabs(expired)).toEqual([1])
+  expect(openTabs(reopenTabs(expired, 2))).toEqual([1, 3])
+})
+
 test("tabs closed together come back together in their slots", () => {
   const closed = closeTabs(tabs(1, 2, 3, 4), [1, 3], 1)
   expect(openTabs(closed)).toEqual([2, 4])
