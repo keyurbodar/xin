@@ -21,8 +21,27 @@ const served = (manifest: Manifest, object: R2Object): Headers =>
     "content-security-policy": "sandbox",
     "x-content-type-options": "nosniff",
     "cache-control": "private, max-age=60",
+    "accept-ranges": "bytes",
     etag: object.httpEtag,
   })
+
+/** The bytes R2 served for a ranged read, as an inclusive span of the whole object. */
+function spanOf(range: R2Range, size: number): { readonly start: number; readonly end: number } {
+  if ("suffix" in range && range.suffix !== undefined) return { start: Math.max(0, size - range.suffix), end: size - 1 }
+  const start = "offset" in range ? (range.offset ?? 0) : 0
+  const asked = "length" in range ? range.length : undefined
+  return { start, end: start + Math.min(asked ?? size - start, size - start) - 1 }
+}
+
+const notModified = (headers: Headers): Response => {
+  headers.delete("content-length")
+  return new Response(null, { status: 304, headers })
+}
+
+const matches = (request: Request, object: R2Object): boolean =>
+  (request.headers.get("if-none-match") ?? "")
+    .split(",")
+    .some((tag) => tag.trim() === "*" || tag.trim().replace(/^W\//, "") === object.httpEtag)
 
 export const shareKey = (id: string): string => `s/${id}`
 
@@ -39,11 +58,29 @@ export async function serveShare(request: Request, env: Env): Promise<Response |
   if (!parseManifest.check(manifest)) return new Response("not found", { status: 404 })
   if (request.method === "HEAD") {
     const object = await env.FILES.head(manifest.key)
-    return object === null
-      ? new Response(null, { status: 404 })
-      : new Response(null, { headers: served(manifest, object) })
+    if (object === null) return new Response(null, { status: 404 })
+    const headers = served(manifest, object)
+    return matches(request, object) ? notModified(headers) : new Response(null, { headers })
   }
-  const object = await env.FILES.get(manifest.key)
+  const ranged = request.headers.has("range")
+  let object: R2Object | R2ObjectBody | null
+  try {
+    object = await env.FILES.get(manifest.key, {
+      onlyIf: request.headers,
+      ...(ranged ? { range: request.headers } : {}),
+    })
+  } catch {
+    const head = await env.FILES.head(manifest.key)
+    if (head === null) return new Response("not found", { status: 404 })
+    return new Response(null, { status: 416, headers: { "content-range": `bytes */${head.size}` } })
+  }
   if (object === null) return new Response("not found", { status: 404 })
-  return new Response(object.body, { headers: served(manifest, object) })
+  const headers = served(manifest, object)
+  if (!("body" in object)) return notModified(headers)
+  if (!ranged || object.range === undefined) return new Response(object.body, { headers })
+  const { start, end } = spanOf(object.range, object.size)
+  if (start > end) return new Response(null, { status: 416, headers: { "content-range": `bytes */${object.size}` } })
+  headers.set("content-range", `bytes ${start}-${end}/${object.size}`)
+  headers.set("content-length", String(end - start + 1))
+  return new Response(object.body, { status: 206, headers })
 }

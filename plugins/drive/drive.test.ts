@@ -35,7 +35,8 @@ const reads = (stub: Stub): Promise<number> =>
     return meter.sql.reads + meter.kv.reads
   })
 
-const get = (path: string) => exports.default.fetch(new Request(`https://ingle.test${path}`))
+const get = (path: string, headers?: Record<string, string>) =>
+  exports.default.fetch(new Request(`https://ingle.test${path}`, headers === undefined ? {} : { headers }))
 
 const skillMarkdown = (name: string, body: string) =>
   `---\nname: ${name}\ndescription: The ${name} skill.\n---\n${body}`
@@ -242,5 +243,44 @@ describe("drive", () => {
     await ok(stub, "d1", "drive.delete", { scope: user, path: "report.html" })
     expect((await get(again)).status).toBe(404)
     expect((await get("/s/not-an-id")).status).toBe(401)
+  })
+
+  it("answers a share link's conditional and ranged reads with 304, 206 and 416", async () => {
+    const stub = fresh()
+    const user = { kind: "user" }
+    await ok(stub, "w1", "drive.write", { scope: user, path: "digits.txt", text: "0123456789" })
+    const url = field(await ok(stub, "sh1", "drive.share", { scope: user, path: "digits.txt" }), "url")
+    if (typeof url !== "string") throw new Error("no url")
+
+    const whole = await get(url)
+    expect(whole.headers.get("accept-ranges")).toBe("bytes")
+    const etag = whole.headers.get("etag")
+    if (etag === null) throw new Error("no etag")
+    await whole.arrayBuffer()
+
+    const cached = await get(url, { "if-none-match": etag })
+    expect(cached.status).toBe(304)
+    expect(await cached.text()).toBe("")
+    expect((await get(url, { "if-none-match": '"other"' })).status).toBe(200)
+
+    const middle = await get(url, { range: "bytes=2-4" })
+    expect(middle.status).toBe(206)
+    expect(middle.headers.get("content-range")).toBe("bytes 2-4/10")
+    expect(middle.headers.get("content-length")).toBe("3")
+    expect(await middle.text()).toBe("234")
+
+    const tail = await get(url, { range: "bytes=-3" })
+    expect(tail.status).toBe(206)
+    expect(tail.headers.get("content-range")).toBe("bytes 7-9/10")
+    expect(await tail.text()).toBe("789")
+
+    const open = await get(url, { range: "bytes=8-" })
+    expect(open.headers.get("content-range")).toBe("bytes 8-9/10")
+    expect(await open.text()).toBe("89")
+
+    const beyond = await get(url, { range: "bytes=20-30" })
+    expect(beyond.status).toBe(416)
+    expect(beyond.headers.get("content-range")).toBe("bytes */10")
+    await beyond.arrayBuffer()
   })
 })
