@@ -1,4 +1,5 @@
-import { defineExtension, defineTool } from "@earendil-works/pi-durable"
+import type { JsonValue } from "@earendil-works/chord"
+import { defineExtension, defineTool, type ToolExecutionApi } from "@earendil-works/pi-durable"
 import {
   arr,
   bool,
@@ -12,20 +13,22 @@ import {
   str,
   unknown,
 } from "@earendil-works/pi-schema"
-import { type Context, OpRejected, textResult } from "../../src/kernel/index.ts"
+import type { CommandId } from "../../src/ids.ts"
+import { type Actor, type Command, type Context, OpRejected, type Outcome, textResult } from "../../src/kernel/index.ts"
 import {
   type Assignee,
   assigneeToken,
   type IssueDetail,
   type IssueFields,
   type IssueSummary,
+  type Issue,
   type IssuesService,
   LINK_KINDS,
   PRIORITIES,
 } from "./issues.ts"
 
 export const name = "tool-issues"
-export const inject = ["pi", "issues"]
+export const inject = ["pi", "issues", "ops"]
 
 const COMMENTS_SHOWN = 20
 const COMMENT_CLIP = 500
@@ -72,10 +75,33 @@ export async function refusing(work: () => Promise<string>) {
   }
 }
 
-export function apply(ctx: Context): void {
-  const issues = ctx.issues
-  ctx.pi.install(defineExtension({ name: "tool-issues", tools: [issueTool(issues)] }))
+export type IssueToolPort = {
+  readonly issues: IssuesService
+  run(command: Command, actor: Actor): Promise<Outcome>
 }
+
+export function apply(ctx: Context): void {
+  const port: IssueToolPort = { issues: ctx.issues, run: (command, actor) => ctx.ops.run(command, actor) }
+  ctx.pi.install(defineExtension({ name: "tool-issues", tools: [issueTool(port)] }))
+}
+
+/** Runs an issue write op keyed by the tool call's task, so a replayed call returns the first call's receipt. */
+export async function write(
+  port: IssueToolPort,
+  api: ToolExecutionApi,
+  op: string,
+  args: JsonValue,
+  step = "",
+): Promise<JsonValue> {
+  const outcome = await port.run(
+    { id: `${op}:${api.taskId}${step}` as CommandId, op, args },
+    { kind: "agent", conversationId: api.conversationId },
+  )
+  if (outcome.kind !== "ok") return fail(outcome.message)
+  return outcome.result
+}
+
+const issueOf = (result: JsonValue): Issue => result as unknown as Issue
 
 function assignee(token: string): Assignee {
   const at = token.indexOf(":")
@@ -141,13 +167,14 @@ function fieldsOf(args: ToolArgs): IssueFields {
   }
 }
 
-async function run(issues: IssuesService, args: ToolArgs, conversationId: number): Promise<string> {
-  const actor = { kind: "thread", id: conversationId } as const
+async function run(port: IssueToolPort, args: ToolArgs, api: ToolExecutionApi): Promise<string> {
+  const { issues } = port
+  const actor = { kind: "thread", id: api.conversationId } as const
   const needId = (): number => args.id ?? fail(`${args.action} needs an id`)
   switch (args.action) {
     case "create": {
       if (args.title === undefined) return fail("create needs a title")
-      const { issue } = await issues.create(actor, { ...fieldsOf(args), title: args.title })
+      const issue = issueOf(await write(port, api, "issue.create", { ...fieldsOf(args), title: args.title }))
       return `Created ${line(issue)}`
     }
     case "read": {
@@ -174,9 +201,17 @@ async function run(issues: IssuesService, args: ToolArgs, conversationId: number
     }
     case "update": {
       const id = needId()
-      let { issue } = await issues.update(actor, id, fieldsOf(args))
+      let issue = issueOf(await write(port, api, "issue.update", { id, ...fieldsOf(args) }))
       if (args.link !== undefined)
-        ({ issue } = await issues.link(actor, id, args.link.kind, args.link.other, args.link.remove !== true))
+        issue = issueOf(
+          await write(
+            port,
+            api,
+            args.link.remove === true ? "issue.unlink" : "issue.link",
+            { id, kind: args.link.kind, other: args.link.other },
+            ":link",
+          ),
+        )
       return `Updated ${line(issue)}`
     }
     default: {
@@ -186,16 +221,18 @@ async function run(issues: IssuesService, args: ToolArgs, conversationId: number
   }
 }
 
-function issueTool(issues: IssuesService) {
+export function issueTool(port: IssueToolPort) {
   return defineTool({
     name: "issue",
     description: DESCRIPTION,
     parameters: Args,
-    replay: "unsafe",
+    replay: "safe",
     execute: async ({ action, id, with: extra }, api) =>
       refusing(async () => {
+        if (extra !== undefined && (typeof extra !== "object" || extra === null || Array.isArray(extra)))
+          return fail("with must be an object")
         const inner: unknown = {
-          ...(typeof extra === "object" && extra !== null && !Array.isArray(extra) ? extra : {}),
+          ...extra,
           action,
           ...(id === undefined ? {} : { id }),
         }
@@ -206,7 +243,7 @@ function issueTool(issues: IssuesService) {
               .map((error) => `${error.path} ${error.message}`)
               .join("; "),
           )
-        return run(issues, inner, api.conversationId)
+        return run(port, inner, api)
       }),
   })
 }
