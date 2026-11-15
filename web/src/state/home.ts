@@ -3,6 +3,7 @@ import type { Streams } from "../lib/api.ts"
 import { parseIssuesRev } from "../lib/issues.ts"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
 import { route } from "../lib/router.ts"
+import { threadsOf } from "../lib/threads.ts"
 import { parseRequestList, type RequestRow } from "./conversation.ts"
 import { noteIssuesRev } from "./issues.ts"
 
@@ -11,6 +12,7 @@ export type ThreadSummary = {
   readonly title: string
   readonly role?: string
   readonly status: string
+  readonly run: number
   readonly statusLine?: string
   readonly result?: string
   readonly beatAt?: number
@@ -25,6 +27,13 @@ export type ThreadGroups = {
   readonly cancelled: readonly ThreadSummary[]
 }
 
+export type SpaceSummary = {
+  readonly id: string
+  readonly coordinatorId: number
+  readonly threads: ThreadGroups
+  readonly openRequests: number
+}
+
 export type ProjectSummary = {
   readonly id: string
   readonly slug: string
@@ -34,6 +43,7 @@ export type ProjectSummary = {
   readonly coordinatorId: number
   readonly threads: ThreadGroups
   readonly openRequests: number
+  readonly spaces: readonly SpaceSummary[]
 }
 
 const [projects, setProjects] = createSignal<readonly ProjectSummary[]>([])
@@ -44,33 +54,6 @@ export const homeProjects = projects
 export const homeLoaded = loaded
 export const homeRequests = requests
 
-function threadsOf(value: unknown): readonly ThreadSummary[] {
-  return listOf(value).flatMap((entry) => {
-    const record = recordOf(entry)
-    const id = numOf(record?.id)
-    const title = strOf(record?.title)
-    const status = strOf(record?.status)
-    if (record === undefined || id === undefined || title === undefined || status === undefined) return []
-    const role = strOf(record.role)
-    const statusLine = strOf(record.statusLine)
-    const result = strOf(record.result)
-    const beatAt = numOf(record.beatAt)
-    const deadlineAt = numOf(record.deadlineAt)
-    return [
-      {
-        id,
-        title,
-        status,
-        ...(role === undefined ? {} : { role }),
-        ...(statusLine === undefined ? {} : { statusLine }),
-        ...(result === undefined ? {} : { result }),
-        ...(beatAt === undefined ? {} : { beatAt }),
-        ...(deadlineAt === undefined ? {} : { deadlineAt }),
-      },
-    ]
-  })
-}
-
 function groupsOf(value: unknown): ThreadGroups {
   const record = recordOf(value) ?? {}
   return {
@@ -80,6 +63,16 @@ function groupsOf(value: unknown): ThreadGroups {
     failed: threadsOf(record.failed),
     cancelled: threadsOf(record.cancelled),
   }
+}
+
+function spacesOf(value: unknown): readonly SpaceSummary[] {
+  return listOf(value).flatMap((entry) => {
+    const record = recordOf(entry)
+    const id = strOf(record?.id)
+    const coordinatorId = numOf(record?.coordinatorId)
+    if (record === undefined || id === undefined || coordinatorId === undefined || record.archived === true) return []
+    return [{ id, coordinatorId, threads: groupsOf(record.threads), openRequests: numOf(record.openRequests) ?? 0 }]
+  })
 }
 
 function projectOf(value: unknown): ProjectSummary | undefined {
@@ -99,6 +92,7 @@ function projectOf(value: unknown): ProjectSummary | undefined {
     archived: record.archived === true,
     threads: groupsOf(record.threads),
     openRequests: numOf(record.openRequests) ?? 0,
+    spaces: spacesOf(record.spaces),
     ...(goal === undefined ? {} : { goal }),
   }
 }
@@ -127,7 +121,7 @@ export function activeProjects(): readonly ProjectSummary[] {
   return projects().filter((project) => !project.archived)
 }
 
-export function projectThreads(project: ProjectSummary): readonly ThreadSummary[] {
+export function projectThreads(project: { readonly threads: ThreadGroups }): readonly ThreadSummary[] {
   const groups = project.threads
   return [...groups.working, ...groups.waiting, ...groups.failed, ...groups.completed, ...groups.cancelled]
 }

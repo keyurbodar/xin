@@ -16,6 +16,7 @@ import {
   dueLabel,
   eventLine,
   initials,
+  issueScope,
   localDay,
   newIssueArgs,
   openGroups,
@@ -290,4 +291,9 @@ test("older pages prepend and take the older cursor; a head re-read merges witho
   expect(moved.events.map((entry) => entry.id)).toEqual([1, 2, 100, 101, 102, 103, 104, 105])
   expect(moved.cursor).toBeNull()
   expect(withHead(head, page([102, 103, 104], 102)).cursor).toBe(102)
+})
+
+test("a project pane lists its own issues, and a Captain pane lists its project's", () => {
+  expect(issueScope({ id: "prj_1" }, undefined)).toBe("prj_1")
+  expect(issueScope({ id: "spc_9" }, { projectId: "prj_1" })).toBe("prj_1")
 })

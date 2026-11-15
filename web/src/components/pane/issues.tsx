@@ -5,6 +5,7 @@ import { Archive, MessagesSquare, Plus } from "lucide-solid"
 import {
   assigneeName,
   closedGroups,
+  issueScope,
   dueLabel,
   localDay,
   newIssueArgs,
@@ -20,6 +21,7 @@ import {
 } from "../../lib/issues.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { createIssue, issuesRev, projectIssueList } from "../../state/issues.ts"
+import { homeCaptains } from "../../state/captains.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { createPaneAction } from "../chat/ui.tsx"
 import { Button } from "../ui/button.tsx"
@@ -36,13 +38,17 @@ export function issueNames(project: ProjectSummary): Names {
   const titles = new Map(projectThreads(project).map((thread) => [thread.id, thread.title]))
   return {
     thread: (id) => titles.get(id),
-    captain: (id) => (id === project.coordinatorId ? project.name : undefined),
+    captain: (id) => homeCaptains().find((captain) => captain.coordinatorId === id)?.name ?? (id === project.coordinatorId ? project.name : undefined),
   }
+}
+
+function issueProjectId(context: PaneContext): string {
+  return issueScope(context.project, context.captain)
 }
 
 export function IssuesSection(props: PaneContext & { label: string }): JSX.Element {
   const [data] = createResource(
-    () => `${issuesRev()}:${props.project.id}`,
+    () => `${issuesRev()}:${issueProjectId(props)}`,
     (key) => {
       const cut = key.indexOf(":")
       return projectIssueList(key.slice(cut + 1), false, Number(key.slice(0, cut)))
@@ -50,7 +56,7 @@ export function IssuesSection(props: PaneContext & { label: string }): JSX.Eleme
   )
   const [showClosed, setShowClosed] = createSignal(false)
   const [closed] = createResource(
-    () => (showClosed() ? `${issuesRev()}:${props.project.id}` : false),
+    () => (showClosed() ? `${issuesRev()}:${issueProjectId(props)}` : false),
     (key) => {
       const cut = key.indexOf(":")
       return projectIssueList(key.slice(cut + 1), true, Number(key.slice(0, cut)))
@@ -89,7 +95,7 @@ export function IssuesSection(props: PaneContext & { label: string }): JSX.Eleme
           >
             <Archive size={14} stroke-width={1.5} />
           </button>
-          <NewIssue project={props.project} states={data.latest?.states ?? []} />
+          <NewIssue project={props.project} projectId={issueProjectId(props)} states={data.latest?.states ?? []} />
         </>
       }
     >
@@ -181,7 +187,7 @@ function chipClass(on: boolean): string {
 }
 
 /** Title first; priority and state are optional and fall back to the contract's defaults (Normal, the default open state). */
-function NewIssue(props: { project: ProjectSummary; states: readonly IssueState[] }): JSX.Element {
+function NewIssue(props: { project: ProjectSummary; projectId: string; states: readonly IssueState[] }): JSX.Element {
   const [open, setOpen] = createSignal(false)
   const [title, setTitle] = createSignal("")
   const [priority, setPriority] = createSignal<Priority>()
@@ -190,7 +196,7 @@ function NewIssue(props: { project: ProjectSummary; states: readonly IssueState[
   const args = () =>
     newIssueArgs({
       title: title(),
-      project: props.project.id,
+      project: props.projectId,
       priority: priority(),
       state: state(),
     })

@@ -499,3 +499,8 @@ export function withHead(pages: TimelinePages | undefined, head: IssueDetail): T
 export function withOlder(pages: TimelinePages, older: IssueDetail): TimelinePages {
   return { events: mergeEvents(older.timeline, pages.events), cursor: older.earlier, paged: true }
 }
+
+/** Issues are scoped by project; a Captain's pane carries its space as the project, so it reads its project's issues. */
+export function issueScope(pane: { readonly id: string }, captain: { readonly projectId: string } | undefined): string {
+  return captain?.projectId ?? pane.id
+}

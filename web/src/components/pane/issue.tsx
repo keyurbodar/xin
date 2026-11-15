@@ -8,6 +8,7 @@ import {
   assigneesEdit,
   descriptionEdit,
   dueEdit,
+  issueScope,
   LINK_LABEL,
   linkArgs,
   titleEdit,
@@ -220,7 +221,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
                 onRemove={(kind, other) => void link(kind, other, false)}
               />
               <AddLink
-                project={props.project.id}
+                project={issueScope(props.project, props.captain)}
                 detail={detail()}
                 busy={action.busy() === "links"}
                 onLink={(kind, other) => link(kind, other, true)}
