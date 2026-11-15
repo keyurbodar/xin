@@ -262,7 +262,10 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
                   onBack={() => setOpen(undefined)}
                   onChanged={reload}
                   onMoved={(to, root) => {
-                    if (root !== mounted().root) return choose(root)
+                    if (root !== mounted().root) {
+                      forgetProjectFiles(props.projectSlug)
+                      return choose(root)
+                    }
                     batch(() => {
                       setFolder(folderOf(to))
                       setOpen(to)
