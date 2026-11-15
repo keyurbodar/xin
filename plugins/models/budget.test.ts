@@ -253,9 +253,31 @@ describe("usage by feature", () => {
     expect(
       await call(stub, "side-side", "thread.side", { conv: project.coordinatorId, title: "t", task: "do it" }),
     ).toMatchObject({ ok: false, error: { code: "forbidden" } })
+    const [thread] = await addThreads(stub, project.id, ["sender"])
+    if (thread === undefined) throw new Error("no thread")
+    expect(
+      await call(stub, "side-send", "thread.send", { threadId: thread.id, text: "again", mode: "queue" }),
+    ).toMatchObject({ ok: false, error: { code: "forbidden" } })
     await call(stub, "side-uncap", "usage.feature.cap.set", { feature: "thread", day: null })
     expect(
       await call(stub, "side-create-2", "thread.create", { title: "t", task: "do it", project: project.id }),
     ).toMatchObject({ ok: true })
+  }, 30_000)
+
+  it("books growth once when two flushes overlap", async () => {
+    const stub = fresh()
+    await breakdown(stub, "overlap-seed")
+    await runInDurableObject(stub, async (home: Home) => {
+      await bill(home, (await home.root()).id, "faux/faux-1", 10, 1)
+      const run = () =>
+        home.commands.run({ id: crypto.randomUUID() as CommandId, op: "usage.features", args: {} }, { kind: "owner" })
+      await Promise.all([run(), run(), run()])
+    })
+    const found = await breakdown(stub, "overlap-read")
+    expect(line(found, "chat")?.today).toEqual({ spend: 1, tokens: 10 })
+    const stored = await runInDurableObject(stub, (home: Home) =>
+      home.db.all<{ spend: number }>("SELECT spend FROM usage_feature WHERE feature = 'chat'"),
+    )
+    expect(stored.reduce((sum, row) => sum + row.spend, 0)).toBe(1)
   }, 30_000)
 })

@@ -186,7 +186,15 @@ export function createBudget(port: BudgetPort) {
   }
 
   /** Books the growth since the last pass: 1 kv row plus 1 row per changed (feature, model), and nothing when idle. */
-  async function record(): Promise<boolean> {
+  let recording: Promise<boolean> = Promise.resolve(false)
+  /** Passes run one at a time, so two flushes never book the same growth against the same marks. */
+  function record(): Promise<boolean> {
+    const pass = recording.then(book, book)
+    recording = pass.catch(() => false)
+    return pass
+  }
+
+  async function book(): Promise<boolean> {
     roll()
     const { next, deltas } = await measure()
     await db.transaction(async (tx) => {

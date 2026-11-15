@@ -267,6 +267,29 @@ describe("automations", () => {
     ).toBeUndefined()
   }, 30_000)
 
+  it("books an automation's thread as automation and fails a run at an automation cap of 0", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "capped")
+    const created = await op<AutomationView>(stub, "c1", "automation.create", {
+      title: "Digest",
+      prompt: "Write the digest",
+      project: project.id,
+      target: { kind: "fresh" },
+      triggers: [],
+    })
+    const first = await op<RunView>(stub, "c2", "automation.trigger", { id: created.id })
+    expect(first).toMatchObject({ status: "running" })
+    await op(stub, "c3", "usage.feature.cap.set", { feature: "automation", day: 0 })
+    expect(
+      await runInDurableObject(stub, (home: Home) =>
+        home.loader.ctx.models.admitConversation(first.threadId as ConversationId),
+      ),
+    ).toMatchObject({ kind: "capped", feature: "automation" })
+    const second = await op<RunView>(stub, "c4", "automation.trigger", { id: created.id })
+    expect(second).toMatchObject({ status: "failed", threadId: null })
+    expect(second.error).toContain("automation cap")
+  }, 30_000)
+
   it("needs a project for fresh threads", async () => {
     const stub = fresh()
     const rejected = await cmd(stub, "p1", "automation.create", {

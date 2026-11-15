@@ -10,6 +10,7 @@ import {
   UsageDoc,
 } from "@earendil-works/pi-durable"
 import type { IntakeService } from "../../src/contracts/intake.ts"
+import { capReason, type Admission } from "../../src/contracts/models.ts"
 import type { PushService } from "../../src/contracts/push.ts"
 import { projectByRef, scopeOf } from "../../src/contracts/scope.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
@@ -183,6 +184,7 @@ export type EnginePort = {
   readonly notify: Pick<PushService, "notify" | "prefs">
   readonly arm: () => Promise<void>
   readonly changed: () => Promise<void>
+  readonly admit: () => Promise<Admission>
 }
 
 /** Who asked: the owner, or the conversation an agent runs in, which supplies the default project and thread. */
@@ -199,9 +201,16 @@ export class Engine {
   readonly #queue = serial()
   #deadline: Deadline | undefined
   #revision = 0
+  #threads: Set<ConversationId> | undefined
 
   constructor(private readonly port: EnginePort) {
     this.store = new Store(port.db)
+  }
+
+  /** The threads automation runs started, which book their spend as `automation`; one read per process, then memory. */
+  async threads(): Promise<readonly ConversationId[]> {
+    this.#threads ??= new Set(await this.store.runThreads())
+    return [...this.#threads]
   }
 
   get revision(): number {
@@ -522,6 +531,8 @@ export class Engine {
     try {
       const automation = await this.store.automation(run.automation_id)
       if (automation === undefined) return await this.store.failed(id, "the automation was deleted", now)
+      const admission = await this.port.admit()
+      if (admission.kind === "capped") return await this.store.failed(id, capReason(admission), now)
       const text = taskText(automation.prompt, run.input)
       const command = commandId(run.id.startsWith(LEGACY_RUN) ? run.id : `automation:${run.id}`)
       if (automation.target === "same" && automation.thread_id !== null) {
@@ -542,6 +553,7 @@ export class Engine {
       if (threadId === undefined) return await this.store.failed(id, "thread.create returned no thread", now)
       if (automation.target === "same") await this.store.setThread(automation.id, threadId)
       await this.store.started(id, "running", threadId, now, { cost: 0, tokens: 0 })
+      this.#threads?.add(threadId as ConversationId)
       await this.#notify(automation, run)
     } catch (error) {
       console.warn("automations: a run failed to start", error)
@@ -567,7 +579,10 @@ export class Engine {
         OWNER,
       )
       if (outcome.kind === "rejected") await this.store.failed(run.id, outcome.message, now)
-      else await this.store.started(run.id, "running", threadId, now, base)
+      else {
+        await this.store.started(run.id, "running", threadId, now, base)
+        this.#threads?.add(conversationId)
+      }
       return true
     }
     await this.port.intake.enqueue({

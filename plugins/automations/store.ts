@@ -1,4 +1,5 @@
 import type { SqliteDatabase, SqliteExecutor, SqliteMigration } from "@earendil-works/chord/sqlite"
+import type { ConversationId } from "@earendil-works/pi-durable"
 
 export const OWNER = "automations"
 
@@ -158,6 +159,14 @@ export class Store {
 
   setNext(triggerId: string, next: number | null): Promise<void> {
     return this.db.run("UPDATE automation_triggers SET next_at = ? WHERE id = ?", next, triggerId)
+  }
+
+  /** Threads automation runs started; a run delivered into a chat is left out, since the chat keeps its feature. */
+  async runThreads(): Promise<ConversationId[]> {
+    const rows = await this.db.all<{ thread_id: number }>(
+      "SELECT DISTINCT thread_id FROM automation_runs WHERE thread_id IS NOT NULL AND status <> 'delivered'",
+    )
+    return rows.map((row) => row.thread_id as ConversationId)
   }
 
   setThread(automationId: string, threadId: number): Promise<void> {

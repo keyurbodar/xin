@@ -5,7 +5,7 @@ import { automationOps } from "./ops.ts"
 import { MIGRATIONS, OWNER } from "./store.ts"
 
 export const name = "automations"
-export const inject = ["db", "harness", "intake", "clock", "pi", "ops", "push", "http", "wire"]
+export const inject = ["db", "harness", "intake", "clock", "pi", "ops", "push", "http", "wire", "models"]
 
 export async function apply(ctx: KernelContext): Promise<void> {
   await ctx.db.applySqliteMigrations(OWNER, MIGRATIONS)
@@ -17,9 +17,14 @@ export async function apply(ctx: KernelContext): Promise<void> {
     notify: ctx.push,
     arm: () => ctx.clock.arm(),
     changed: () => ctx.wire.publishHome(),
+    admit: () => ctx.models.admit("automation"),
   })
   ctx.provide("automations", engine)
   ctx.pi.install(retiredSchedules())
+  ctx.effect(
+    () => ctx.models.track({ feature: "automation", conversations: () => engine.threads() }),
+    "models.track(automation)",
+  )
   for (const op of automationOps(engine)) ctx.ops.define(op)
   ctx.clock.timer({ due: () => engine.due(), fire: (now) => engine.fire(now) })
   ctx.http.route("POST /hooks/*", (request) => engine.webhook(request, Date.now()))
