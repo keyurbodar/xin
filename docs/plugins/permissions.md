@@ -15,19 +15,19 @@ A plugin declares the guarded services it uses in its manifest's `permissions`. 
 | `owner` | none: `ops.run` with you as the actor | Act as you: run any op you can, such as starting threads |
 | `runtime` | `host` | Full access to your Home: raw storage, keys and the file bucket |
 
-`runtime` reaches the raw SQLite, the encryption key and the R2 bucket, so it implies all the others. Avoid it if a narrower service does the job. Services outside this table, such as `pi`, `ops`, `prompts`, `clock` and `wire`, need no permission.
+`runtime` reaches the raw SQLite, the encryption key and the R2 bucket, so it implies all the others, and the checks below treat it that way. Avoid it if a narrower service does the job. Services outside this table, such as `pi`, `ops`, `prompts`, `clock` and `wire`, need no permission.
 
 ## Where it is checked
 
 1. **At mount.** If `inject` lists a guarded service the manifest doesn't permit, the row fails. `plugin.doctor` then reports `{ kind: "permission", permission, service }`.
-2. **At access.** Every Cordis route to a guarded service from inside the row is checked against the row: `ctx.<name>`, a nested `ctx.inject([...])`, a child `ctx.plugin(...)`, `ctx.get` and `ctx.reflect.get` (aliased or not), and `ctx.root`, which in a plugin row stands for the root seen from that row. `secrets.get` and `secrets.set` check their caller. `ops.run` lets a row act only for an agent, never as the owner. Kernel services keep their internals out of reach.
-3. **At build.** `scripts/reach.ts` refuses the routes the runtime can't see: an undeclared `ctx.get("name")` or inject list, `ctx.get` with a computed name or taken as a value, `ctx.root`, `ctx.reflect`, `ctx.fiber`, `ctx.registry` and `ctx.loader`, an `import()` of a computed name, and a `cloudflare:workers` import without `runtime`. Lint runs it over `plugins/`, and `plugin generate` runs it over every npm code package, so a package that reaches past its declaration fails the build.
+2. **At access.** A guarded service resolves only for a row that declares its permission, so every Cordis route to it is checked: `ctx.<name>`, a nested `ctx.inject([...])`, a child `ctx.plugin(...)`, `ctx.get` and `ctx.reflect.get` (aliased or not), `ctx.root`, and any context that belongs to no row, such as the one `ctx.fiber.parent` leads to, which gets none. Every service your row reads comes back as a facade: you can call its methods, but it has no `ctx` and no `cordis.original`, so it leads nowhere else. `ops.run` lets a row act for an agent, and as the owner only with `owner`. An op your row defines gets a usable `api.harness` only with `conversations`. `ops/before` listeners see credential args (a secret's value, an API key, MCP headers) redacted.
+3. **At build.** `scripts/reach.ts` refuses the routes the runtime can't see: an undeclared `ctx.get("name")` or inject list, `ctx.get` with a computed name or taken as a value, `ctx` aliased, destructured or read with a computed key, `cordis.original`, `ctx.root`, `ctx.reflect`, `ctx.fiber`, `ctx.registry` and `ctx.loader`, an `import()` of a computed name, and a `cloudflare:workers` import without `runtime`. Lint runs it over `plugins/`, and `plugin generate` runs it over every npm code package, so a package that reaches past its declaration fails the build.
 
 `contributes` is checked the same way: a tool or op the row registers but the manifest leaves out fails the row.
 
 ## What it is not
 
-Plugins run in your Home's own isolate, and there is no sandbox. For the plugins this build ships, the checks hold against accidental reach: every service lookup path is checked, and the rest is refused at build. They can't contain code written to escape them, such as code that imports kernel modules directly. So a code plugin you install from a market runs with your authority: its permission list describes what its code declares, not a boundary it can't cross. Installing one is a decision to trust its author. Code you don't trust belongs in an MCP server, which runs somewhere else.
+Plugins run in your Home's own isolate, and there is no sandbox. For the plugins this build ships, the checks hold against accidental reach: every service lookup path is checked, and the rest is refused at build. They can't contain code written to escape them, such as code that walks Cordis's own registry or imports kernel modules directly. So a code plugin you install from a market runs with your authority: its permission list describes what its code declares, not a boundary it can't cross. Installing one is a decision to trust its author. Code you don't trust belongs in an MCP server, which runs somewhere else.
 
 ## Consent at install
 
