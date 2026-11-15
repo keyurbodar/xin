@@ -1,15 +1,13 @@
 import { createEffect, createSignal, For, Show, type JSX } from "solid-js"
-import { Portal } from "solid-js/web"
+import { Dynamic, Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
-import { Archive, Ellipsis, Menu as MenuIcon, PanelRight, Plus, Settings, X } from "lucide-solid"
+import { Ellipsis, Menu as MenuIcon, PanelRight, Plus, X, type LucideProps } from "lucide-solid"
 import { money } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import { visualState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { closeThreadTab, moveThreadTab, paneOpen, setPaneOpen, sidebarHidden, toggleSidebar, wideShell } from "../../state/tabs.ts"
-import { ProjectMark } from "../chat/project-glyph.tsx"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
-import { openNewThread } from "./new-thread.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from "./menu.ts"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
@@ -26,22 +24,34 @@ type Drag = {
   readonly centres: readonly number[]
 }
 
+/** One row of the conversation's menu; `separated` draws a rule above it. */
+export type ConversationAction = {
+  readonly value: string
+  readonly label: string
+  readonly icon: (props: LucideProps) => JSX.Element
+  readonly separated?: boolean
+}
+
 const TAB =
   "group relative flex h-[var(--h-tab)] items-center gap-2 rounded-sm px-2 text-sm transition-colors duration-[var(--dur-color)]"
 
 export function ConversationTabs(props: {
   project: ProjectSummary
+  base: string
+  mark: JSX.Element
   threads: readonly ThreadSummary[]
   activeThreadId: number | undefined
   cost: number | undefined
-  onSettings: () => void
+  actions: readonly ConversationAction[]
+  onAction: (value: string) => void
+  onNewThread?: (() => void) | undefined
 }): JSX.Element {
   const [drag, setDrag] = createSignal<Drag | undefined>()
   let moved = false
   const refs = new Map<number, HTMLElement>()
 
   const openTab = (id: number | undefined): void => {
-    navigate(id === undefined ? `/p/${props.project.slug}` : `/p/${props.project.slug}/t/${id}`)
+    navigate(id === undefined ? props.base : `${props.base}/t/${id}`)
   }
 
   const close = (id: number): void => {
@@ -113,7 +123,7 @@ export function ConversationTabs(props: {
             "text-ink-3 hover:bg-secondary hover:text-ink-2": props.activeThreadId !== undefined,
           }}
         >
-          <ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={14} class="shrink-0" />
+          {props.mark}
           <span class="truncate">{props.project.name}</span>
         </button>
         <For each={props.threads}>
@@ -177,9 +187,13 @@ export function ConversationTabs(props: {
           }}
         </For>
       </div>
-      <button type="button" class={ICON_BUTTON} aria-label="New thread" onClick={openNewThread}>
-        <Plus {...ICON} />
-      </button>
+      <Show when={props.onNewThread}>
+        {(open) => (
+          <button type="button" class={ICON_BUTTON} aria-label="New thread" onClick={() => open()()}>
+            <Plus {...ICON} />
+          </button>
+        )}
+      </Show>
       <span class="flex-1" />
       <Show when={props.cost !== undefined && props.cost > 0}>
         <span class="px-1.5 font-mono text-sm tabular-nums text-ink-2" title="Spend on this conversation">
@@ -190,27 +204,29 @@ export function ConversationTabs(props: {
         lazyMount
         unmountOnExit
         positioning={{ placement: "bottom-end", gutter: 6 }}
-        onSelect={() => props.onSettings()}
+        onSelect={(details) => props.onAction(details.value)}
       >
-        <Menu.Trigger class={ICON_BUTTON} aria-label="Project actions">
+        <Menu.Trigger class={ICON_BUTTON} aria-label={`${props.project.name} actions`}>
           <Ellipsis {...ICON} />
         </Menu.Trigger>
         <Portal>
           <Menu.Positioner>
             <Menu.Content class={MENU_CONTENT}>
-              <Menu.Item value="settings" class={MENU_ITEM}>
-                <span class="text-ink-3">
-                  <Settings {...ICON} />
-                </span>
-                Project settings
-              </Menu.Item>
-              <Menu.Separator class={MENU_SEPARATOR} />
-              <Menu.Item value="archive" class={MENU_ITEM}>
-                <span class="text-ink-3">
-                  <Archive {...ICON} />
-                </span>
-                Archive project…
-              </Menu.Item>
+              <For each={props.actions}>
+                {(action) => (
+                  <>
+                    <Show when={action.separated === true}>
+                      <Menu.Separator class={MENU_SEPARATOR} />
+                    </Show>
+                    <Menu.Item value={action.value} class={MENU_ITEM}>
+                      <span class="text-ink-3">
+                        <Dynamic component={action.icon} {...ICON} />
+                      </span>
+                      {action.label}
+                    </Menu.Item>
+                  </>
+                )}
+              </For>
             </Menu.Content>
           </Menu.Positioner>
         </Portal>

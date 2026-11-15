@@ -4,11 +4,12 @@ import { Popover } from "@ark-ui/solid/popover"
 import { Listbox, createListCollection } from "@ark-ui/solid/listbox"
 import { Check, ChevronRight, Maximize2, Minimize2, PanelRight, Plus, X } from "lucide-solid"
 import { visualState } from "../../lib/status.ts"
+import type { CaptainProfile } from "../../state/captains.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { closePaneView, OVERVIEW, projectTabs, setPaneOpen, showPaneView } from "../../state/tabs.ts"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL, MENU_SEPARATOR } from "../shell/menu.ts"
-import { PANE_VIEWS, paneEntry, paneView, type PaneEntry } from "./views.tsx"
+import { paneEntry, paneView, paneViews, type PaneContext, type PaneEntry } from "./views.tsx"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
 
@@ -24,17 +25,19 @@ type Choice = ViewChoice | ThreadChoice
 
 export function ProjectPane(props: {
   project: ProjectSummary
+  captain?: CaptainProfile | undefined
   expanded: boolean
   onExpand: (expanded: boolean) => void
   onOpenThread: (id: number) => void
 }): JSX.Element {
   const tabs = () => projectTabs(props.project.id)
+  const context = (): PaneContext => ({ project: props.project, captain: props.captain, onOpenThread: props.onOpenThread })
   const open = (): readonly PaneEntry[] =>
     [OVERVIEW, ...tabs().pane].flatMap((id) => {
-      const entry = paneEntry(id)
+      const entry = paneEntry(id, context())
       return entry === undefined ? [] : [entry]
     })
-  const view = (): PaneEntry => paneView(tabs().view)
+  const view = (): PaneEntry => paneView(tabs().view, context())
 
   return (
     <aside class="flex min-h-0 flex-col">
@@ -73,7 +76,7 @@ export function ProjectPane(props: {
             )}
           </For>
         </div>
-        <ViewMenu project={props.project} current={view().id} onOpenThread={props.onOpenThread} />
+        <ViewMenu views={paneViews(context())} project={props.project} current={view().id} onOpenThread={props.onOpenThread} />
         <button
           type="button"
           class={`${ICON_BUTTON} ml-auto`}
@@ -91,7 +94,7 @@ export function ProjectPane(props: {
       <Show when={view()} keyed>
         {(current) => (
           <div class="pane-swap min-h-0 flex-1 overflow-y-auto p-2">
-            {current.render({ project: props.project, onOpenThread: props.onOpenThread })}
+            {current.render(context())}
           </div>
         )}
       </Show>
@@ -99,14 +102,19 @@ export function ProjectPane(props: {
   )
 }
 
-function ViewMenu(props: { project: ProjectSummary; current: string; onOpenThread: (id: number) => void }): JSX.Element {
+function ViewMenu(props: {
+  views: readonly PaneEntry[]
+  project: ProjectSummary
+  current: string
+  onOpenThread: (id: number) => void
+}): JSX.Element {
   const [open, setOpen] = createSignal(false)
   const [query, setQuery] = createSignal("")
   const threads = () => projectThreads(props.project)
   const choices = createMemo<readonly Choice[]>(() => {
     const text = query().trim().toLowerCase()
     const all: Choice[] = [
-      ...PANE_VIEWS.map((entry): Choice => ({ kind: "view", value: `view:${entry.id}`, label: entry.label, view: entry })),
+      ...props.views.map((entry): Choice => ({ kind: "view", value: `view:${entry.id}`, label: entry.label, view: entry })),
       ...threads().map(
         (thread): Choice => ({ kind: "thread", value: `thread:${thread.id}`, label: thread.title, threadId: thread.id, status: thread.status }),
       ),

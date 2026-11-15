@@ -2,6 +2,7 @@ import { createSignal, onMount, Show, type JSX } from "solid-js"
 import { token, verifyToken } from "./lib/auth.ts"
 import { connect, connectionState, reauthorize } from "./state/connection.ts"
 import { subscribeHome } from "./state/home.ts"
+import { subscribeCaptains } from "./state/captains.ts"
 import { navigate, route } from "./lib/router.ts"
 import { Shell } from "./components/shell/shell.tsx"
 import { SignIn } from "./screens/signin.tsx"
@@ -18,6 +19,7 @@ export function App(): JSX.Element {
   const enter = (): void => {
     const streams = connect()
     subscribeHome(streams)
+    subscribeCaptains(streams)
     setAuthed(true)
     if (route().parts[0] === "signin") navigate("/")
     // A push only goes out when no socket is open, so hearing one means this tab should try again now.

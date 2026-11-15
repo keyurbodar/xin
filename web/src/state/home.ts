@@ -23,6 +23,13 @@ export type ThreadGroups = {
   readonly cancelled: readonly ThreadSummary[]
 }
 
+export type SpaceSummary = {
+  readonly id: string
+  readonly coordinatorId: number
+  readonly threads: ThreadGroups
+  readonly openRequests: number
+}
+
 export type ProjectSummary = {
   readonly id: string
   readonly slug: string
@@ -32,6 +39,7 @@ export type ProjectSummary = {
   readonly coordinatorId: number
   readonly threads: ThreadGroups
   readonly openRequests: number
+  readonly spaces: readonly SpaceSummary[]
 }
 
 const [projects, setProjects] = createSignal<readonly ProjectSummary[]>([])
@@ -80,6 +88,16 @@ function groupsOf(value: unknown): ThreadGroups {
   }
 }
 
+function spacesOf(value: unknown): readonly SpaceSummary[] {
+  return listOf(value).flatMap((entry) => {
+    const record = recordOf(entry)
+    const id = strOf(record?.id)
+    const coordinatorId = numOf(record?.coordinatorId)
+    if (record === undefined || id === undefined || coordinatorId === undefined || record.archived === true) return []
+    return [{ id, coordinatorId, threads: groupsOf(record.threads), openRequests: numOf(record.openRequests) ?? 0 }]
+  })
+}
+
 function projectOf(value: unknown): ProjectSummary | undefined {
   const record = recordOf(value)
   if (record === undefined) return undefined
@@ -97,6 +115,7 @@ function projectOf(value: unknown): ProjectSummary | undefined {
     archived: record.archived === true,
     threads: groupsOf(record.threads),
     openRequests: numOf(record.openRequests) ?? 0,
+    spaces: spacesOf(record.spaces),
     ...(goal === undefined ? {} : { goal }),
   }
 }
@@ -123,7 +142,13 @@ export function activeProjects(): readonly ProjectSummary[] {
   return projects().filter((project) => !project.archived)
 }
 
-export function projectThreads(project: ProjectSummary): readonly ThreadSummary[] {
+/** The open questions asked in this space: its coordinator's and its threads'. */
+export function spaceRequests(project: ProjectSummary, rows: readonly RequestRow[]): readonly RequestRow[] {
+  const members = new Set([project.coordinatorId, ...projectThreads(project).map((thread) => thread.id)])
+  return rows.filter((request) => members.has(request.conversationId))
+}
+
+export function projectThreads(project: { readonly threads: ThreadGroups }): readonly ThreadSummary[] {
   const groups = project.threads
   return [...groups.working, ...groups.waiting, ...groups.failed, ...groups.completed, ...groups.cancelled]
 }

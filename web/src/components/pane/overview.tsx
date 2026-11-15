@@ -2,7 +2,8 @@ import { createMemo, createResource, For, Show, type JSX } from "solid-js"
 import { Collapsible } from "@ark-ui/solid/collapsible"
 import { ArrowUpRight, ChevronDown, File, MessageCircleQuestion } from "lucide-solid"
 import { ago } from "../../lib/format.ts"
-import { homeRequests, projectThreads, type ProjectSummary } from "../../state/home.ts"
+import { homeRequests, projectThreads, spaceRequests, type ProjectSummary } from "../../state/home.ts"
+import type { CaptainProfile } from "../../state/captains.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { ICON_BUTTON } from "../shell/menu.ts"
 import { fileName, openFile, PANE_ROW, projectFiles, ThreadLine } from "./bodies.tsx"
@@ -29,14 +30,18 @@ export function Section(props: { label: string; count: number; action?: JSX.Elem
   )
 }
 
-export type PaneContext = { readonly project: ProjectSummary; readonly onOpenThread: (id: number) => void }
+export type PaneContext = {
+  readonly project: ProjectSummary
+  readonly captain?: CaptainProfile | undefined
+  readonly onOpenThread: (id: number) => void
+}
 
 export function NeedsYouSection(props: PaneContext & { label: string }): JSX.Element {
-  const requests = () => homeRequests().filter((request) => request.projectId === props.project.id)
+  const requests = () => spaceRequests(props.project, homeRequests())
   const titles = createMemo(() => new Map(projectThreads(props.project).map((thread) => [thread.id, thread.title])))
   return (
-    <Show when={props.project.openRequests > 0}>
-      <Section label={props.label} count={props.project.openRequests}>
+    <Show when={requests().length > 0}>
+      <Section label={props.label} count={requests().length}>
         <For each={requests()}>
           {(request) => (
             <button type="button" onClick={() => props.onOpenThread(request.conversationId)} class={PANE_ROW}>

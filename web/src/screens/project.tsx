@@ -5,6 +5,7 @@ import {
   projectThreads,
   routeProject,
   routeThreadId,
+  spaceRequests,
   type ProjectSummary,
   type ThreadSummary,
 } from "../state/home.ts"
@@ -25,7 +26,7 @@ import { recordOf, numOf } from "../lib/parse.ts"
 import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
 import { modelName, models, searchModels, type ModelInfo, type ModelRef } from "../state/settings.ts"
 import { presets as presetStore, prompts } from "../state/extensions.ts"
-import { Menu } from "lucide-solid"
+import { Archive, GitFork, Menu, Settings } from "lucide-solid"
 import {
   openThreadTab,
   paneOpen,
@@ -43,14 +44,17 @@ import { Skullet } from "../components/ui/skeleton.tsx"
 import { Transcript, TranscriptSkeleton, type PendingMessage } from "../components/chat/transcript.tsx"
 import { Composer } from "../components/chat/composer.tsx"
 import { ThreadConversation } from "../components/chat/panel.tsx"
-import { ConversationTabs } from "../components/shell/conversation-tabs.tsx"
+import { ConversationTabs, type ConversationAction } from "../components/shell/conversation-tabs.tsx"
+import { SideThreadDialog } from "../components/shell/side-thread.tsx"
+import { openNewThread } from "../components/shell/new-thread.tsx"
+import { ProjectMark } from "../components/chat/project-glyph.tsx"
 import { ProjectPane } from "../components/pane/pane.tsx"
 import { ProjectSettings } from "../components/project/settings.tsx"
 import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 
-function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | undefined; onOpenThread: (id: number) => void }): JSX.Element {
+export function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | undefined; onOpenThread: (id: number) => void }): JSX.Element {
   const snapshot = (): Snapshot | undefined => props.snapshot
   const [optimistic, setOptimistic] = createSignal<readonly PendingMessage[]>([])
   const [answered, setAnswered] = createSignal<readonly AnsweredView[]>([])
@@ -67,8 +71,7 @@ function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | unde
     void refreshRequests()
   })
 
-  const projectRequests = (): readonly RequestRow[] =>
-    openRequests().filter((request) => request.projectId === props.project.id)
+  const projectRequests = (): readonly RequestRow[] => spaceRequests(props.project, openRequests())
 
   const answer = async (request: RequestRow, text: string): Promise<void> => {
     await respondToQuestion(request, text)
@@ -246,8 +249,14 @@ function busier(snapshot: { readonly docs: Readonly<Record<string, unknown>> }):
   return "run" in live && live.run !== undefined
 }
 
+const PROJECT_ACTIONS: readonly ConversationAction[] = [
+  { value: "settings", label: "Project settings", icon: Settings },
+  { value: "side", label: "Side thread…", icon: GitFork },
+  { value: "archive", label: "Archive project…", icon: Archive, separated: true },
+]
+
 /** The conversation's own spend: every model and tool bucket of its `pi.usage` ledger. */
-function costOf(snapshot: Snapshot | undefined): number | undefined {
+export function costOf(snapshot: Snapshot | undefined): number | undefined {
   const usage = recordOf(snapshot?.docs["pi.usage"])
   if (usage === undefined) return undefined
   const buckets = [...Object.values(recordOf(usage.models) ?? {}), ...Object.values(recordOf(usage.tools) ?? {})]
@@ -258,6 +267,7 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
   const streams = connect()
   const docked = mediaQuery("(min-width: 1280px)")
   const [settingsOpen, setSettingsOpen] = createSignal(false)
+  const [sideOpen, setSideOpen] = createSignal(false)
   const [expanded, setExpanded] = createSignal(false)
   const threads = createMemo(() => new Map(projectThreads(props.project).map((thread) => [thread.id, thread])))
   const thread = (): ThreadSummary | undefined => {
@@ -304,10 +314,14 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
         <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-ring">
           <ConversationTabs
             project={props.project}
+            base={`/p/${props.project.slug}`}
+            mark={<ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={14} class="shrink-0" />}
             threads={tabThreads()}
             activeThreadId={thread()?.id}
             cost={costOf(snapshot())}
-            onSettings={() => setSettingsOpen(true)}
+            actions={PROJECT_ACTIONS}
+            onAction={(value) => (value === "side" ? setSideOpen(true) : setSettingsOpen(true))}
+            onNewThread={openNewThread}
           />
           <Show
             when={filePath()}
@@ -365,6 +379,13 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
         open={settingsOpen()}
         onClose={() => setSettingsOpen(false)}
         onArchived={() => navigate("/")}
+      />
+      <SideThreadDialog
+        open={sideOpen()}
+        conv={props.project.coordinatorId}
+        name={props.project.name}
+        onClose={() => setSideOpen(false)}
+        onCreated={openThread}
       />
     </div>
   )

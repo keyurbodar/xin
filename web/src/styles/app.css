@@ -412,6 +412,22 @@
   }
 }
 
+/* A badge that arrives: .9 to 1 with a fade over 200ms on the spring curve. */
+@utility badge-in {
+  animation: badge-in var(--dur-base) var(--ease-spring) backwards;
+}
+
+@keyframes badge-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* A rejected input shakes once, 4px either side. */
 @utility shake {
   animation: shake 240ms linear backwards;
