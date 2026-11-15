@@ -29,7 +29,8 @@ export interface FilesService {
   read(path: string): Promise<string | undefined>
   readBytes(path: string): Promise<Uint8Array | undefined>
   stat(path: string): Promise<FileEntry | undefined>
-  write(path: string, text: string): Promise<FileEntry>
+  /** With `base`, refused with StaleWrite unless the file's current sha is `base`. */
+  write(path: string, text: string, base?: string): Promise<FileEntry>
   remove(path: string): Promise<boolean>
   /** Earlier versions, newest first. The current one is the file itself. */
   revisions(path: string): Promise<readonly FileVersion[]>
@@ -38,7 +39,7 @@ export interface FilesService {
   /** Moves a file with its versions. False when the source is missing or the destination exists. */
   move(from: string, to: string): Promise<boolean>
   /** Called with each changed path, or a prefix ending in `/`, after any write, move or delete through any route. */
-  watch(listener: (path: string) => void): () => void
+  watch(listener: (path: string) => void | Promise<void>): () => void
   grant(rule: FileGrant): () => void
 }
 

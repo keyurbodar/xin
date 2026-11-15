@@ -66,6 +66,7 @@ export function goalOps(goals: GoalsService): readonly Op[] {
   return [
     defineOp({
       name: "goal.get",
+      read: true,
       args: GET_ARGS,
       actors: ["owner", "agent"],
       run: async (_api, args) => ({

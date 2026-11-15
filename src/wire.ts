@@ -8,7 +8,13 @@ import type { Commands, Outcome } from "./ops.ts"
 const context = BACKGROUND_CONTEXT
 export const SNAPSHOT_ENTRIES = 60
 
-const CommandFrame = obj({ id: str({ minLength: 1, maxLength: 128 }), op: str({ minLength: 1 }), args: opt(unknown()) })
+const CommandFrame = obj({
+  id: str({ minLength: 1, maxLength: 128 }),
+  op: str({ minLength: 1 }),
+  args: opt(unknown()),
+  // Tabs loaded before the home declared its own reads still send this; it is accepted and ignored.
+  read: opt(bool()),
+})
 const ClientFrame = union([
   obj({ t: lit("cmd"), id: str({ minLength: 1, maxLength: 128 }), op: str({ minLength: 1 }), args: opt(unknown()) }),
   obj({
@@ -34,6 +40,7 @@ export type ServerFrame =
   | { readonly t: "resume"; readonly stream: string; readonly value?: unknown; readonly start?: number }
   | { readonly t: "ev"; readonly stream: string; readonly events: readonly unknown[] }
   | { readonly t: "error"; readonly message: string }
+  | { readonly t: "changed"; readonly stream: "home"; readonly rev: string }
 
 /** What a resubscribing client already holds: a conversation's entry ids from `start` up to `from`, or a home revision. */
 type Resume = { readonly start: number; readonly from: number } | { readonly rev: string }
@@ -187,6 +194,11 @@ export class Sockets {
 
   async closed(ws: WebSocket): Promise<void> {
     for (const name of attachment(ws).subs) await this.#unsubscribe(ws, name)
+  }
+
+  /** Tells every home subscriber that owner state changed, so its read cache is stale; carries no state. */
+  publishChanged(rev: string): void {
+    for (const ws of this.#subscribers("home")) send(ws, { t: "changed", stream: "home", rev })
   }
 
   async publishHome(): Promise<void> {
