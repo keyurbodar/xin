@@ -224,3 +224,39 @@ describe("Dreamer output", () => {
     expect(await runInDurableObject(stub, (home: Home) => readKv(home.db, PROFILE_KEY))).toBeUndefined()
   })
 })
+
+describe("Dreamer usage", () => {
+  it("books a real pass under dreamer on the pass model, and runs no pass at a dreamer cap of 0", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, (home: Home) => seed(home))
+    await runInDurableObject(stub, (home: Home) => run(home, "d7-usage-seed", "usage.features", {}))
+    script([dreamJson({ profile_md: "The owner takes the train to work.", add: [], retire: [] })])
+    await runInDurableObject(stub, (home: Home) => run(home, "d7-usage", "memory.forget", { query: "dinosaur" }))
+    await eventually(stub, async (home: Home) => (await readKv(home.db, PROFILE_KEY)) !== undefined)
+    const read = await runInDurableObject(stub, (home: Home) => run(home, "d7-usage-read", "usage.features", {}))
+    if (read.kind !== "ok") throw new Error(JSON.stringify(read))
+    const found = read.result as {
+      features: { feature: string; today: { tokens: number } }[]
+      byModel: { feature: string; provider: string; modelId: string; tokens: number }[]
+    }
+    expect(requests).toHaveLength(1)
+    expect(found.features.find((entry) => entry.feature === "dreamer")?.today.tokens).toBeGreaterThan(0)
+    expect(found.byModel).toContainEqual(
+      expect.objectContaining({ feature: "dreamer", provider: DREAM_MODEL.provider, modelId: DREAM_MODEL.modelId }),
+    )
+    expect(found.byModel.filter((row) => row.feature !== "dreamer" && row.provider === DREAM_MODEL.provider)).toEqual(
+      [],
+    )
+
+    await runInDurableObject(stub, (home: Home) =>
+      run(home, "d7-usage-cap", "usage.feature.cap.set", { feature: "dreamer", day: 0 }),
+    )
+    script([dreamJson({ profile_md: "Capped.", add: [], retire: [] })])
+    await runInDurableObject(stub, (home: Home) => run(home, "d7-usage-2", "memory.forget", { query: "dinosaur" }))
+    await runInDurableObject(stub, (home: Home) => home.harness.waitForIdle(context))
+    expect(requests).toHaveLength(0)
+    expect(await runInDurableObject(stub, (home: Home) => readKv(home.db, PROFILE_KEY))).toBe(
+      "The owner takes the train to work.",
+    )
+  })
+})

@@ -12,6 +12,7 @@ import {
 import { compile, map, num, obj, opt, tuple } from "@earendil-works/pi-schema"
 import { FEATURES, type Admission, type Feature, type FeatureTracker } from "../../src/contracts/models.ts"
 import type { GoalsService } from "../../src/contracts/goals.ts"
+import { PuckDoc } from "../../src/contracts/puck.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { parseWorkspace, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
@@ -19,6 +20,7 @@ const context = BACKGROUND_CONTEXT
 const MARKS = "usage.marks"
 const CAPS = "usage.feature.caps"
 const FEATURE_PREFIX = /^([a-z]+):(.+)$/
+const TOOL_PREFIX = "tool/"
 
 export const FEATURE_MIGRATIONS = [
   {
@@ -32,6 +34,7 @@ export const FEATURE_MIGRATIONS = [
 type Amount = { spend: number; tokens: number }
 type Cap = { readonly day?: number; readonly month?: number }
 type Marks = Record<string, Record<string, [number, number]>>
+type Delta = { feature: Feature; model: string } & Amount
 
 const CapSchema = obj({ day: opt(num({ minimum: 0 })), month: opt(num({ minimum: 0 })) })
 const capsCheck = compile(map(CapSchema))
@@ -61,6 +64,7 @@ export type FeatureRow = {
 export type BudgetPort = {
   readonly db: SqliteDatabase
   readonly harness: Harness
+  readonly conversations: () => Promise<readonly ConversationId[]>
   readonly goals: () => GoalsService | undefined
 }
 
@@ -71,6 +75,7 @@ export function createBudget(port: BudgetPort) {
   const trackers = new Set<FeatureTracker>()
   let caps: Record<string, Cap> = {}
   let today = ""
+  let marks: Marks | undefined
   const spent = new Map<Feature, { today: Amount; month: Amount }>()
 
   const slot = (feature: Feature): { today: Amount; month: Amount } => {
@@ -83,6 +88,7 @@ export function createBudget(port: BudgetPort) {
 
   async function load(): Promise<void> {
     caps = (await readJson(db, CAPS, capsCheck.check)) ?? {}
+    marks = await readJson(db, MARKS, marksCheck.check)
     today = dayOf(Date.now())
     spent.clear()
     const rows = await db.all<{ day: string; feature: string; spend: number; tokens: number }>(
@@ -109,54 +115,80 @@ export function createBudget(port: BudgetPort) {
     }
   }
 
+  /**
+   * A tracked conversation takes its tracker's feature. A chat (the root, a Puck chat, a project coordinator) or a thread
+   * running an armed goal is `goal`; otherwise a thread is `thread` and a chat is `chat`. Anything else is `other`, so
+   * the features sum to the session ledger. Only a chat or a thread pays the goal lookup's row.
+   */
   async function classify(conversation: ConversationId): Promise<Feature> {
     for (const tracker of trackers) if ((await tracker.conversations()).includes(conversation)) return tracker.feature
-    if ((await harness.snapshot(ThreadDoc, conversation, context)) === undefined) return "chat"
+    const base =
+      (await harness.snapshot(ThreadDoc, conversation, context)) !== undefined
+        ? "thread"
+        : (await chats()).has(String(conversation))
+          ? "chat"
+          : "other"
+    if (base === "other") return base
     const goal = await port.goals()?.get(conversation)
-    return goal?.phase === "active" && goal.activation === "armed" ? "goal" : "thread"
+    return goal?.phase === "active" && goal.activation === "armed" ? "goal" : base
   }
 
-  async function conversations(): Promise<ConversationId[]> {
-    const listed = new Set<ConversationId>([ROOT_CONVERSATION_ID])
+  async function chats(): Promise<Set<string>> {
+    const listed = new Set<string>([String(ROOT_CONVERSATION_ID)])
+    const puck = await harness.snapshot(PuckDoc, context)
+    for (const id of Object.keys(puck?.conversations ?? {})) listed.add(id)
     const workspace = await harness.snapshot(WorkspaceDoc, context)
     if (workspace !== undefined && parseWorkspace.check(workspace))
-      for (const space of Object.values(workspace.spaces)) {
-        listed.add(space.coordinatorId as ConversationId)
-        for (const threadId of space.threadIds) listed.add(threadId as ConversationId)
-      }
-    for (const tracker of trackers) for (const id of await tracker.conversations()) listed.add(id)
-    return [...listed]
+      for (const space of Object.values(workspace.spaces)) listed.add(String(space.coordinatorId))
+    return listed
   }
 
-  /** Books each conversation's `pi.usage` growth since the last pass under its feature and model; 1 kv row plus 1 row per changed (feature, model). */
-  async function record(): Promise<boolean> {
-    roll()
-    const stored = await readJson(db, MARKS, marksCheck.check)
-    const marks: Marks = {}
-    const deltas = new Map<string, { feature: Feature; model: string } & Amount>()
-    for (const id of await conversations()) {
+  /** Classifications made since the last flush; the flush that books them consumes them, so an admit costs no extra row. */
+  const classes = new Map<ConversationId, Feature>()
+  const featureOf = async (conversation: ConversationId): Promise<Feature> => {
+    const known = classes.get(conversation)
+    if (known !== undefined) return known
+    const feature = await classify(conversation)
+    classes.set(conversation, feature)
+    return feature
+  }
+
+  /** Every conversation's `pi.usage` growth past `marks`, models and tools alike, by (feature, model). */
+  async function measure(): Promise<{ next: Marks; deltas: Map<string, Delta> }> {
+    const next: Marks = {}
+    const deltas = new Map<string, Delta>()
+    for (const id of await port.conversations()) {
       const ledger = await harness.snapshot(UsageDoc, id, context)
       if (ledger === undefined) continue
-      const own = await classify(id)
-      const previous = stored?.[String(id)] ?? {}
+      const previous = marks?.[String(id)] ?? {}
       const current: Record<string, [number, number]> = {}
-      for (const [key, usage] of Object.entries(ledger.models)) {
+      const buckets = [
+        ...Object.entries(ledger.models),
+        ...Object.entries(ledger.tools).map(([name, usage]) => [`${TOOL_PREFIX}${name}`, usage] as const),
+      ]
+      for (const [key, usage] of buckets) {
         current[key] = [usage.cost.total, usage.totalTokens]
-        if (stored === undefined) continue
+        if (marks === undefined) continue
         const [spend, tokens] = previous[key] ?? [0, 0]
         const delta = { spend: usage.cost.total - spend, tokens: usage.totalTokens - tokens }
         if (delta.spend <= 0 && delta.tokens <= 0) continue
         const tagged = untag(key)
-        const feature = tagged.feature ?? own
-        const model = tagged.model
-        const bucket = `${feature}\u0000${model}`
-        const sum = deltas.get(bucket) ?? { feature, model, spend: 0, tokens: 0 }
+        const feature = tagged.feature ?? (await featureOf(id))
+        const bucket = `${feature}\u0000${tagged.model}`
+        const sum = deltas.get(bucket) ?? { feature, model: tagged.model, spend: 0, tokens: 0 }
         sum.spend += delta.spend
         sum.tokens += delta.tokens
         deltas.set(bucket, sum)
       }
-      marks[String(id)] = current
+      next[String(id)] = current
     }
+    return { next, deltas }
+  }
+
+  /** Books the growth since the last pass: 1 kv row plus 1 row per changed (feature, model), and nothing when idle. */
+  async function record(): Promise<boolean> {
+    roll()
+    const { next, deltas } = await measure()
     await db.transaction(async (tx) => {
       for (const delta of deltas.values())
         await tx.run(
@@ -167,8 +199,10 @@ export function createBudget(port: BudgetPort) {
           delta.spend,
           delta.tokens,
         )
-      if (stored === undefined || deltas.size > 0) await writeJson(tx, MARKS, marks)
+      if (marks === undefined || deltas.size > 0) await writeJson(tx, MARKS, next)
     })
+    marks = next
+    classes.clear()
     for (const delta of deltas.values()) {
       const entry = slot(delta.feature)
       entry.today.spend += delta.spend
@@ -179,18 +213,27 @@ export function createBudget(port: BudgetPort) {
     return deltas.size > 0
   }
 
-  function admit(feature: Feature): Admission {
+  function check(feature: Feature, pending: number): Admission {
     roll()
     const cap = caps[feature]
     if (cap === undefined) return { kind: "ok" }
     const entry = slot(feature)
-    if (cap.day !== undefined && entry.today.spend >= cap.day)
-      return { kind: "capped", feature, period: "day", spend: entry.today.spend, cap: cap.day }
-    if (cap.month !== undefined && entry.month.spend >= cap.month)
-      return { kind: "capped", feature, period: "month", spend: entry.month.spend, cap: cap.month }
+    const day = entry.today.spend + pending
+    const month = entry.month.spend + pending
+    if (cap.day !== undefined && day >= cap.day)
+      return { kind: "capped", feature, period: "day", spend: day, cap: cap.day }
+    if (cap.month !== undefined && month >= cap.month)
+      return { kind: "capped", feature, period: "month", spend: month, cap: cap.month }
     return { kind: "ok" }
   }
 
+  /** Flushed spend plus what the session ledger grew by since the last flush, measured in memory. */
+  async function admit(feature: Feature): Promise<Admission> {
+    if (caps[feature] === undefined) return { kind: "ok" }
+    let pending = 0
+    for (const delta of (await measure()).deltas.values()) if (delta.feature === feature) pending += delta.spend
+    return check(feature, pending)
+  }
   /** The compaction hook's pattern: a background call's usage lands in the conversation's `pi.usage`, keyed `<feature>:<provider>/<model>`. */
   function charge(feature: Feature, conversation: ConversationId, message: AssistantMessage): Promise<void> {
     const key = `${feature}:${message.provider}/${message.model}`
@@ -255,7 +298,7 @@ export function createBudget(port: BudgetPort) {
         today: { ...entry.today },
         month: { ...entry.month },
         cap: { day: cap?.day ?? null, month: cap?.month ?? null },
-        capped: admit(feature).kind === "capped",
+        capped: check(feature, 0).kind === "capped",
       }
     })
     const byModel = rows
@@ -281,13 +324,29 @@ export function createBudget(port: BudgetPort) {
     }
   }
 
-  return { load, record, admit, charge, classify, setCap, breakdown, track, todaySpend: () => spentToday() }
+  /** A home with no marks yet records its current ledger as the baseline, booking nothing; no row otherwise. */
+  async function seed(): Promise<void> {
+    if (marks === undefined) await record()
+  }
+
+  return {
+    load,
+    record,
+    seed,
+    admit,
+    charge,
+    classify: featureOf,
+    setCap,
+    breakdown,
+    track,
+    todaySpend: () => spentToday(),
+  }
 
   function spentToday(): { spend: number; capped: Feature[] } {
     roll()
     let spend = 0
     for (const entry of spent.values()) spend += entry.today.spend
-    return { spend, capped: FEATURES.filter((feature) => admit(feature).kind === "capped") }
+    return { spend, capped: FEATURES.filter((feature) => check(feature, 0).kind === "capped") }
   }
 }
 

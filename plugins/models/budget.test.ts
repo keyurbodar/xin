@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest"
 import { FEATURES } from "../../src/contracts/models.ts"
 import type { CommandId } from "../../src/ids.ts"
 import { addThreads, cmd as call, fresh, type Stub } from "../../test/support.ts"
-import type { Home } from "../../test/worker.ts"
+import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
 const Amount = obj({ spend: num(), tokens: num() })
@@ -42,9 +42,16 @@ const writes = (home: Home): number =>
 
 const line = (found: Breakdown, feature: string) => found.features.find((entry) => entry.feature === feature)
 
-function bill(home: Home, conversation: ConversationId, key: string, tokens: number, cost: number): Promise<void> {
+function bill(
+  home: Home,
+  conversation: ConversationId,
+  key: string,
+  tokens: number,
+  cost: number,
+  bucket: "models" | "tools" = "models",
+): Promise<void> {
   return home.harness.commit(async (tx) => {
-    const models = (await tx.doc(UsageDoc, conversation)).models
+    const models = (await tx.doc(UsageDoc, conversation))[bucket]
     if (!Object.hasOwn(models, key))
       models[key] = {
         input: 0,
@@ -158,4 +165,97 @@ describe("usage by feature", () => {
     expect(changed).toBe(2)
     expect(idle).toBe(0)
   })
+
+  it("sums every conversation's models and tools into the features, with unlisted spend under other", async () => {
+    const stub = fresh()
+    await breakdown(stub, "sum-seed")
+    const created = await call(stub, "sum-project", "project.create", { slug: "sum", name: "Sum" })
+    const project = created.result as { id: string; coordinatorId: number }
+    const [thread] = await addThreads(stub, project.id, ["summer"])
+    if (thread === undefined) throw new Error("no thread")
+    const puck = (await call(stub, "sum-puck", "puck.create", { title: "side chat" })).result as { id: string }
+    await runInDurableObject(stub, async (home: Home) => {
+      const root = (await home.root()).id
+      const loose = await home.harness.createConversation({ ownership: { kind: "ownerless" } }, context)
+      await bill(home, root, "faux/faux-1", 100, 0.5)
+      await bill(home, Number(puck.id) as ConversationId, "faux/faux-1", 30, 0.2)
+      await bill(home, project.coordinatorId as ConversationId, "faux/faux-1", 20, 0.1)
+      await bill(home, thread.id as ConversationId, "faux/faux-1", 40, 0.25)
+      await bill(home, thread.id as ConversationId, "web_search", 5, 0.05, "tools")
+      await bill(home, loose.id, "faux/faux-1", 9, 0.07)
+    })
+    const found = await breakdown(stub, "sum-read")
+    expect(line(found, "chat")?.today).toEqual({ spend: 0.8, tokens: 150 })
+    expect(line(found, "thread")?.today).toEqual({ spend: 0.3, tokens: 45 })
+    expect(line(found, "other")?.today).toEqual({ spend: 0.07, tokens: 9 })
+    expect(found.byModel).toContainEqual({
+      feature: "thread",
+      provider: "tool",
+      modelId: "web_search",
+      spend: 0.05,
+      tokens: 5,
+    })
+    const summary = await call(stub, "sum-summary", "usage.summary", {})
+    const today = (summary.result as { today: { spend: number; tokens: number } }).today
+    const features = found.features.reduce(
+      (sum, entry) => ({ spend: sum.spend + entry.today.spend, tokens: sum.tokens + entry.today.tokens }),
+      { spend: 0, tokens: 0 },
+    )
+    expect(features.tokens).toBe(today.tokens)
+    expect(features.spend).toBeCloseTo(today.spend, 9)
+  }, 30_000)
+
+  it("books a chat running an armed goal as goal", async () => {
+    const stub = fresh()
+    const root = await runInDurableObject(stub, async (home: Home) => (await home.root()).id)
+    expect(
+      await call(stub, "goal-root", "goal.set", { conversation: root, action: "create", objective: "ship it" }),
+    ).toMatchObject({ ok: true })
+    await call(stub, "goal-cap", "usage.feature.cap.set", { feature: "goal", day: 0 })
+    await runInDurableObject(stub, async (home: Home) => {
+      expect(await home.loader.ctx.models.admitConversation(root)).toMatchObject({ kind: "capped", feature: "goal" })
+    })
+  }, 30_000)
+
+  it("refuses a thread start once unflushed spend in the running loop passes the cap", async () => {
+    const stub = fresh()
+    const created = await call(stub, "loop-project", "project.create", { slug: "loop", name: "Loop" })
+    const project = created.result as { id: string; coordinatorId: number }
+    const [thread] = await addThreads(stub, project.id, ["looper"])
+    if (thread === undefined) throw new Error("no thread")
+    await call(stub, "loop-model", "conv.configure", { conv: project.coordinatorId, model: FAUX_MODEL })
+    await call(stub, "loop-default", "owner.defaults", { role: "thread", model: FAUX_MODEL })
+    await call(stub, "loop-cap", "usage.feature.cap.set", { feature: "thread", day: 1 })
+    await breakdown(stub, "loop-seed")
+    const outcome = await runInDurableObject(stub, async (home: Home) => {
+      await bill(home, thread.id as ConversationId, "faux/faux-1", 500, 1.5)
+      const before = writes(home)
+      const refused = await home.loader.ctx.threads.delegate(
+        { conversationId: project.coordinatorId as ConversationId, taskId: "loop-task" },
+        { task: "more", title: "more", mode: "async", clientRequestId: "loop-delegate" },
+        context,
+      )
+      return { refused, written: writes(home) - before }
+    })
+    expect(outcome.refused).toMatchObject({ kind: "rejected" })
+    expect(outcome.written).toBe(0)
+  }, 30_000)
+
+  it("refuses thread.create and thread.side at a thread cap of 0", async () => {
+    const stub = fresh()
+    const created = await call(stub, "side-project", "project.create", { slug: "side", name: "Side" })
+    const project = created.result as { id: string; coordinatorId: number }
+    await call(stub, "side-model", "conv.configure", { conv: project.coordinatorId, model: FAUX_MODEL })
+    await call(stub, "side-cap", "usage.feature.cap.set", { feature: "thread", day: 0 })
+    expect(
+      await call(stub, "side-create", "thread.create", { title: "t", task: "do it", project: project.id }),
+    ).toMatchObject({ ok: false, error: { code: "forbidden" } })
+    expect(
+      await call(stub, "side-side", "thread.side", { conv: project.coordinatorId, title: "t", task: "do it" }),
+    ).toMatchObject({ ok: false, error: { code: "forbidden" } })
+    await call(stub, "side-uncap", "usage.feature.cap.set", { feature: "thread", day: null })
+    expect(
+      await call(stub, "side-create-2", "thread.create", { title: "t", task: "do it", project: project.id }),
+    ).toMatchObject({ ok: true })
+  }, 30_000)
 })

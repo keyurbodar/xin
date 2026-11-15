@@ -17,6 +17,7 @@ import {
 } from "@earendil-works/pi-durable"
 import { bool, int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
+import { capReason, type Admission, type Feature } from "../../src/contracts/models.ts"
 import {
   SendModeSchema,
   type ReporterInput,
@@ -133,6 +134,8 @@ export type ThreadDeps = {
   threadRemovals(parent: ConversationId): readonly Extension[]
   settled(event: ThreadSettled): void
   disabled(ref: ModelRef): Promise<boolean>
+  admit(feature: Feature): Promise<Admission>
+  admitConversation(conversation: ConversationId): Promise<Admission>
 }
 
 const Anchor: AnchorTask = defineTask<null, { readonly phase: "done" }, null>({
@@ -182,15 +185,20 @@ function reporterTask(deps: ThreadDeps): ReporterTask {
         // A thread that joined or left a crew mid-run reports to the coordinator it has now.
         const current = await runtime.snapshot(ThreadDoc, task.input.threadId as ConversationId, taskContext)
         const parentId = current?.parentId ?? task.input.parentId
-        const accepted = await deps.intake.enqueue({
-          target: parentId as ConversationId,
-          commandId: `report:${task.input.threadId}:${task.input.run}`,
-          kind: "report",
-          threadId: String(task.input.threadId),
-          title: task.input.title,
-          status: checkpoint.status,
-          text: checkpoint.text,
-        })
+        const admission = await deps.admitConversation(parentId as ConversationId)
+        if (admission.kind === "capped")
+          console.warn(`threads: report of ${task.input.threadId} not delivered: ${capReason(admission)}`)
+        const accepted =
+          admission.kind === "ok" &&
+          (await deps.intake.enqueue({
+            target: parentId as ConversationId,
+            commandId: `report:${task.input.threadId}:${task.input.run}`,
+            kind: "report",
+            threadId: String(task.input.threadId),
+            title: task.input.title,
+            status: checkpoint.status,
+            text: checkpoint.text,
+          }))
         if (accepted) await deps.arm()
         const projectId = await projectIdOf(runtime, task.input.threadId, taskContext)
         if (projectId !== undefined)
@@ -640,6 +648,8 @@ export function lifecycle(deps: ThreadDeps): Threads {
       const model = parent === undefined ? undefined : (await parent.agent(context)).model
       if (model === undefined || (await deps.disabled(model)))
         throw new OpRejected("bad_args", "the target space has no usable model; pick one first")
+      const admission = await deps.admit("thread")
+      if (admission.kind === "capped") throw new OpRejected("forbidden", capReason(admission))
       const requestId = `thread-create:${api.commandId}`
       const created = await api.harness.commit(
         (tx) =>
@@ -693,6 +703,8 @@ export function lifecycle(deps: ThreadDeps): Threads {
       const model = parent === undefined ? undefined : (await parent.agent(context)).model
       if (model === undefined || (await deps.disabled(model)))
         throw new OpRejected("bad_args", "the conversation has no usable model; pick one first")
+      const admission = await deps.admit("thread")
+      if (admission.kind === "capped") throw new OpRejected("forbidden", capReason(admission))
       const requestId = `thread-side:${api.commandId}`
       const created = await api.harness.commit(
         (tx) =>

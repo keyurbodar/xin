@@ -47,6 +47,7 @@ const ports = (home: Home): SchedulesPort => ({
   intake: home.loader.ctx.intake,
   notify: home.loader.ctx.push,
   arm: async () => home.arm(home.harness.wake()),
+  admit: () => home.loader.ctx.models.admit("automation"),
 })
 
 const recordingPorts = (home: Home, sent: Notification[]): SchedulesPort => ({
@@ -426,6 +427,29 @@ describe("schedules", () => {
     expect(evidence.stored).toHaveLength(2)
     const targets = evidence.stored.map((row) => row.target)
     expect(targets[0]).not.toBe(targets[1])
+  })
+
+  it("books a scheduled conversation as automation and skips deliveries at an automation cap of 0", async () => {
+    const evidence = await runInDurableObject(fresh(), async (home: Home) => {
+      const delivered = record({ kind: "new" })
+      const due = dueOf(delivered, ANCHOR + 1)
+      if (due === undefined) throw new Error("expected a due window")
+      const next = await sendDue(ports(home), delivered, due, ANCHOR)
+      await home.harness.commit(async (tx) => {
+        ;(await tx.doc(SchedulesDoc)).records[next.id] = next
+      }, BACKGROUND_CONTEXT)
+      const target = next.runs?.[0]?.conversationId as ConversationId
+      await run(home, "auto-cap", "usage.feature.cap.set", { feature: "automation", day: 0 })
+      const capped = await home.loader.ctx.models.admitConversation(target)
+      const second = dueOf(next, ANCHOR + HOUR + 1)
+      if (second === undefined) throw new Error("expected a second due window")
+      const skipped = await sendDue(ports(home), next, second, ANCHOR + HOUR)
+      return { capped, next, skipped, stored: await rows(home) }
+    })
+    expect(evidence.capped).toMatchObject({ kind: "capped", feature: "automation" })
+    expect(evidence.stored).toHaveLength(1)
+    expect(evidence.skipped.cursor.index).toBe(evidence.next.cursor.index + 1)
+    expect(evidence.skipped.runs).toEqual(evidence.next.runs)
   })
 
   it("keeps an edit after an eviction", async () => {

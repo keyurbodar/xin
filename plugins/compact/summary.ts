@@ -128,7 +128,7 @@ function summaryText(message: AssistantMessage): string | undefined {
   return text.length === 0 ? undefined : text
 }
 
-async function summarizeOnUtility(
+async function summarize(
   compaction: Compaction,
   source: string,
   api: HookApi,
@@ -136,48 +136,58 @@ async function summarizeOnUtility(
   ports: SummaryPorts,
 ): Promise<string | undefined> {
   const utility = resolveModel({ role: "utility", owner: await ports.ownerDefaults() })
-  if (utility.kind === "none") return undefined
   const current = (await api.snapshot(AgentDoc, api.conversationId, context))?.model
-  if (current?.provider === utility.model.provider && current.modelId === utility.model.modelId) return undefined
-  const model = api.models.getModel(utility.model.provider, utility.model.modelId)
-  if (model === undefined) return undefined
+  const refs = [...(utility.kind === "none" ? [] : [utility.model]), ...(current === undefined ? [] : [current])]
+  const models = refs
+    .filter(
+      (ref, index) =>
+        refs.findIndex((other) => other.provider === ref.provider && other.modelId === ref.modelId) === index,
+    )
+    .flatMap((ref) => {
+      const model = api.models.getModel(ref.provider, ref.modelId)
+      return model === undefined ? [] : [model]
+    })
   const focus = compaction.instructions === undefined ? "" : `\n\nAdditional focus: ${compaction.instructions}`
   const sessionId = (await api.snapshot(ProviderDoc, api.conversationId, context))?.sessionId
   const reserve = Math.floor(0.8 * DEFAULT_COMPACTION_POLICY.reserveTokens)
-  try {
-    const message = await api.models.completeSimple(
-      model,
-      {
-        systemPrompt: SUMMARIZATION_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: `<conversation>\n${source}\n</conversation>\n\n${SUMMARIZATION_PROMPT}${focus}` },
-            ],
-            timestamp: Date.now(),
-          },
-        ],
-      },
-      {
-        cacheRetention: "none",
-        maxTokens: model.maxTokens > 0 ? Math.min(reserve, model.maxTokens) : reserve,
-        ...(sessionId === undefined ? {} : { sessionId }),
-        ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
-      },
-    )
-    await ports.charge(api.conversationId, message)
-    return summaryText(message)
-  } catch {
-    return undefined
+  for (const model of models) {
+    try {
+      const message = await api.models.completeSimple(
+        model,
+        {
+          systemPrompt: SUMMARIZATION_SYSTEM_PROMPT,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: `<conversation>\n${source}\n</conversation>\n\n${SUMMARIZATION_PROMPT}${focus}` },
+              ],
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        {
+          cacheRetention: "none",
+          maxTokens: model.maxTokens > 0 ? Math.min(reserve, model.maxTokens) : reserve,
+          ...(sessionId === undefined ? {} : { sessionId }),
+          ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
+        },
+      )
+      await ports.charge(api.conversationId, message)
+      const summary = summaryText(message)
+      if (summary !== undefined) return summary
+    } catch {
+      if (context.abortSignal?.aborted === true) return undefined
+    }
   }
+  return undefined
 }
 
 /**
  * `beforeCompact`: a threshold compaction whose source has a long tool result, and fits `PRUNED_BUDGET_TOKENS` once
- * those are cut, is placed as that pruned source with no model call; anything else is summarized on the owner's
- * utility model, its usage charged to the conversation like pi's own summary, or left to pi's summarizer on the
- * conversation's model when there is none, it is the same model, or the call fails.
+ * those are cut, is placed as that pruned source with no model call; anything else is summarized here, on the owner's
+ * utility model and then on the conversation's own model when there is no utility model or its call fails, so every
+ * summary's usage is charged as `compaction`. pi's summarizer runs only when both calls fail.
  */
 export function beforeCompact(ports: SummaryPorts): CompactionHooks["beforeCompact"] {
   return async (compaction, api, context) => {
@@ -189,7 +199,7 @@ export function beforeCompact(ports: SummaryPorts): CompactionHooks["beforeCompa
     )
       return { summary: `${PRUNED_PREFIX}${source.text}` }
     if ((await ports.admit()).kind === "capped") return { decline: true }
-    const summary = await summarizeOnUtility(compaction, source.text, api, context, ports)
+    const summary = await summarize(compaction, source.text, api, context, ports)
     return summary === undefined ? undefined : { summary }
   }
 }

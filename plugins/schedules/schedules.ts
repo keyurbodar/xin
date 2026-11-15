@@ -15,6 +15,7 @@ import {
 } from "@earendil-works/pi-durable"
 import { arr, bool, compile, int, lit, map, obj, opt, type Static, str, union } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
+import { capReason, type Admission } from "../../src/contracts/models.ts"
 import type { Notification, PushService } from "../../src/contracts/push.ts"
 import {
   DEFAULT_LIST_LIMIT,
@@ -137,6 +138,7 @@ export type SchedulesPort = {
   readonly intake: Pick<IntakeService, "enqueue">
   readonly notify: Pick<PushService, "notify" | "prefs">
   readonly arm: () => Promise<void>
+  readonly admit: () => Promise<Admission>
 }
 
 type TimerInput = { readonly id: string; readonly revision: number }
@@ -273,6 +275,11 @@ export async function sendDue(
   due: DueWindow,
   now: number,
 ): Promise<StoredSchedule> {
+  const admission = await port.admit()
+  if (admission.kind === "capped") {
+    console.warn(`schedules: skipped ${record.id}: ${capReason(admission)}`)
+    return { ...record, cursor: { last: due.latest, index: due.index + 1 } }
+  }
   const delivered = await deliveryOf(port, record)
   const after = await lastEntryId(port, delivered.target)
   await port.intake.enqueue({
@@ -409,6 +416,19 @@ async function deliveryOf(port: SchedulesPort, record: StoredSchedule): Promise<
       return _exhaustive
     }
   }
+}
+
+/** The conversations schedules created for their runs, which book their spend as `automation`. */
+export async function scheduledConversations(harness: Harness): Promise<ConversationId[]> {
+  const records = Object.values((await harness.snapshot(SchedulesDoc, context))?.records ?? {})
+  return records.flatMap((record) => [
+    ...(record.target.kind === "this_session"
+      ? []
+      : (record.runs ?? []).map((run) => run.conversationId as ConversationId)),
+    ...(record.target.kind === "new_once" && record.target.conversationId !== undefined
+      ? [record.target.conversationId as ConversationId]
+      : []),
+  ])
 }
 
 function createConversation(port: SchedulesPort): Promise<ConversationId> {

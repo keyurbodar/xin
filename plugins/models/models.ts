@@ -466,6 +466,7 @@ type Registry = {
 export type ModelsPort = {
   readonly db: SqliteDatabase
   readonly harness: Harness
+  readonly conversations: () => Promise<readonly ConversationId[]>
   readonly kek: string
   readonly providers: readonly Provider[]
   run(command: Command, actor: Actor): Promise<Outcome>
@@ -821,7 +822,12 @@ const commandId = (value: string): CommandId => value as CommandId
 export function create(deps: ModelsPort): ModelsParts {
   const { db, harness, run } = deps
   const recordUsage = usageRecorder(db, harness)
-  const budget = createBudget({ db, harness, goals: deps.goals ?? (() => undefined) })
+  const budget = createBudget({
+    db,
+    harness,
+    conversations: deps.conversations,
+    goals: deps.goals ?? (() => undefined),
+  })
   let flushedAt = 0
   const flush = async (): Promise<UsageState> => {
     flushedAt = Date.now()
@@ -1361,7 +1367,7 @@ export function create(deps: ModelsPort): ModelsParts {
       await registry.sync()
       await seedUsage(db, harness)
       await budget.load()
-      await budget.record()
+      await budget.seed()
       // A fresh process records nothing until the ledger has had time to move; the first alarm after boot is usually
       // an eviction recovery, not new spend, and a full pass reads every conversation.
       flushedAt = Date.now()

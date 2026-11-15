@@ -29,7 +29,7 @@ export const ModelRefSchema = obj({ provider: str({ minLength: 1 }), modelId: st
 export const ThinkingSchema = oneOf(MODEL_THINKING_LEVELS)
 
 /** What a model call was for, as the usage breakdown and the per-feature caps name it. */
-export const FEATURES = ["chat", "thread", "captain", "automation", "dreamer", "goal", "compaction"] as const
+export const FEATURES = ["chat", "thread", "captain", "automation", "dreamer", "goal", "compaction", "other"] as const
 export type Feature = (typeof FEATURES)[number]
 export const FeatureSchema = oneOf(FEATURES)
 
