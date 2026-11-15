@@ -15,7 +15,7 @@ import {
 } from "../../state/settings.ts"
 import { Failure, INPUT, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Group, Row, Saved, SelectField, type Choice } from "./parts.tsx"
-import { setTheme, theme } from "../../lib/theme.ts"
+import { setTheme, theme, themeOf } from "../../lib/theme.ts"
 
 const BLANK: OwnerSettings = { name: "", instructions: "" }
 
@@ -225,14 +225,15 @@ export function General(): JSX.Element {
         <Row title="Time zone" detail="Used by schedules and timestamps">
           <span class="font-mono text-sm text-ink-2">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
         </Row>
-        <Row title="Theme" detail="Dark or light, on this device">
+        <Row title="Theme" detail="Dark, light or rose, on this device">
           <SelectField
             ariaLabel="Theme"
             value={theme()}
-            onChange={(next) => setTheme(next === "light" ? "light" : "dark")}
+            onChange={(next) => setTheme(themeOf(next))}
             choices={[
               { value: "dark", label: "Dark" },
               { value: "light", label: "Light" },
+              { value: "rose", label: "Rose" },
             ]}
           />
         </Row>

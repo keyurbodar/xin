@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#090a0c" />
     <title>Ingle</title>
     <script>
-      document.documentElement.dataset.theme = localStorage.getItem("ingle.theme") === "light" ? "light" : "dark"
+      document.documentElement.dataset.theme = ["light", "rose"].includes(localStorage.getItem("ingle.theme")) ? localStorage.getItem("ingle.theme") : "dark"
     </script>
   </head>
   <body>

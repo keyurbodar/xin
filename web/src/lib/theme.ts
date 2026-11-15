@@ -1,10 +1,14 @@
 import { createSignal } from "solid-js"
 
-export type Theme = "dark" | "light"
+export type Theme = "dark" | "light" | "rose"
 
 const KEY = "ingle.theme"
 
-const [theme_, setTheme_] = createSignal<Theme>(document.documentElement.dataset.theme === "light" ? "light" : "dark")
+export function themeOf(value: string | undefined | null): Theme {
+  return value === "light" || value === "rose" ? value : "dark"
+}
+
+const [theme_, setTheme_] = createSignal<Theme>(themeOf(document.documentElement.dataset.theme))
 
 export const theme = theme_
 
