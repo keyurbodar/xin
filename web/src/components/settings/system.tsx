@@ -52,7 +52,7 @@ export function System(): JSX.Element {
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `xin-logs-${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.txt`
+      link.download = `ingle-logs-${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.txt`
       link.click()
       URL.revokeObjectURL(url)
       setNote(entries.length === 0 ? "Nothing was logged." : `${count(entries.length, "line")} downloaded.`)

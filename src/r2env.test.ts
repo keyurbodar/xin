@@ -34,7 +34,7 @@ const unsupported = (name: string): string | undefined =>
   name.startsWith("watch")
     ? "R2 has no change notifications; watch is not supported"
     : name.includes("exec")
-      ? "Xin runs files only, so exec returns shell_unavailable"
+      ? "Ingle runs files only, so exec returns shell_unavailable"
       : undefined
 
 const cases = createEnvConformance({ assertions, withEnv: provider, symlinks: false })

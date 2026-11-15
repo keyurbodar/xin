@@ -6,7 +6,7 @@ import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
 
 const ROOT = join(import.meta.dirname, "..")
 const GENERATED = join(ROOT, "src/catalog.gen.ts")
-const PROFILE = join(ROOT, "xin.profile.json")
+const PROFILE = join(ROOT, "ingle.profile.json")
 const TEMPLATE_DIR = join(ROOT, "plugins", TEMPLATE)
 const NAME = /^[a-z][a-z0-9-]*$/
 
@@ -41,11 +41,11 @@ const field = (value: unknown, key: string): unknown =>
 
 function parse(path: string, specifier: (module: string) => string, local: boolean): Found | undefined {
   const manifest = readJson(path)
-  const xin = field(manifest, "xin")
-  if (xin === undefined) return undefined
+  const ingle = field(manifest, "ingle")
+  if (ingle === undefined) return undefined
   const pkg = String(field(manifest, "name"))
-  const declared = field(xin, "plugins")
-  if (typeof declared !== "object" || declared === null) throw new Error(`${pkg}: xin.plugins must be an object`)
+  const declared = field(ingle, "plugins")
+  if (typeof declared !== "object" || declared === null) throw new Error(`${pkg}: ingle.plugins must be an object`)
   const plugins: Record<string, Declared> = {}
   for (const [name, entry] of Object.entries(declared)) {
     if (!NAME.test(name))
@@ -53,7 +53,7 @@ function parse(path: string, specifier: (module: string) => string, local: boole
         `${pkg}: plugin name "${name}" must be lowercase letters, digits and hyphens, starting with a letter, like "hello-world"`,
       )
     const module = field(entry, "module")
-    if (typeof module !== "string") throw new Error(`${pkg}: xin.plugins.${name}.module must be a path`)
+    if (typeof module !== "string") throw new Error(`${pkg}: ingle.plugins.${name}.module must be a path`)
     plugins[name] = {
       module,
       title: String(field(entry, "title") ?? name),
@@ -63,11 +63,11 @@ function parse(path: string, specifier: (module: string) => string, local: boole
           api: field(entry, "api"),
           requires: field(entry, "requires"),
         },
-        `${pkg}: xin.plugins.${name}`,
+        `${pkg}: ingle.plugins.${name}`,
       ),
     }
   }
-  const rows = field(xin, "bundle")
+  const rows = field(ingle, "bundle")
   const bundle: RowSpec[] = Array.isArray(rows)
     ? rows.map((row) => {
         const id = field(row, "id")
@@ -162,7 +162,7 @@ function render(found: readonly Found[]): string {
     "",
     `export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {${bundles.length === 0 ? "" : `\n${bundles.join("\n")}\n`}}`,
     "",
-    `export const XIN_VERSION = ${JSON.stringify(rootVersion())}`,
+    `export const INGLE_VERSION = ${JSON.stringify(rootVersion())}`,
     "",
   ].join("\n")
 }
@@ -174,7 +174,7 @@ const readProfile = (): Profile => {
   const bundles = field(value, "bundles")
   const patch = field(value, "patch")
   return {
-    bundles: Array.isArray(bundles) ? bundles.map(String) : ["xin-base"],
+    bundles: Array.isArray(bundles) ? bundles.map(String) : ["ingle-base"],
     patch: Array.isArray(patch) ? patch : [],
   }
 }
@@ -200,7 +200,7 @@ const readTemplate = (): Template => ({
 function createPlugin(name: string): void {
   const files = scaffold(name, readTemplate())
   const dir = join(ROOT, "plugins", name)
-  const pkg = `xin-plugin-${name}`
+  const pkg = `ingle-plugin-${name}`
   if (existsSync(dir)) throw new Error(`plugins/${name} already exists; choose another name`)
   if (Object.hasOwn(CORE_CATALOG, name)) throw new Error(`plugin ${name} is part of the kernel; choose another name`)
   const owner = discover().find((entry) => entry.pkg === pkg || entry.plugins[name] !== undefined)
@@ -220,10 +220,10 @@ function createPlugin(name: string): void {
 function setBundle(pkg: string, enabled: boolean): void {
   const profile = readProfile()
   if (!enabled && !profile.bundles.includes(pkg))
-    return void console.warn(`bundle ${pkg} is not in xin.profile.json; nothing to disable`)
+    return void console.warn(`bundle ${pkg} is not in ingle.profile.json; nothing to disable`)
   const others = profile.bundles.filter((name) => name !== pkg)
   writeProfile({ ...profile, bundles: enabled ? [...others, pkg] : others })
-  console.warn(`${enabled ? "enabled" : "disabled"} bundle ${pkg} in xin.profile.json`)
+  console.warn(`${enabled ? "enabled" : "disabled"} bundle ${pkg} in ingle.profile.json`)
 }
 
 async function bun(args: readonly string[]): Promise<void> {
@@ -262,8 +262,8 @@ async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
   generate()
 }
 
-const usage = `usage: bun scripts/xin.ts plugin <command>
-  list                       packages with a xin field, their plugins and whether their bundle is enabled
+const usage = `usage: bun scripts/ingle.ts plugin <command>
+  list                       packages with a ingle field, their plugins and whether their bundle is enabled
   new <name>                 create plugins/<name> from the template package plugins/hello
   generate                   rewrite src/catalog.gen.ts from plugins/* and installed dependencies
   add <spec> [--enable]      bun add <spec>, regenerate, and with --enable append its bundle to the profile
@@ -296,7 +296,7 @@ async function main(argv: readonly string[]): Promise<void> {
       const before = new Set(discover().map((entry) => entry.pkg))
       await bun(["add", target])
       const added = generate().filter((entry) => !before.has(entry.pkg))
-      if (added.length === 0) console.warn(`${target} declares no xin plugins; it is installed but adds nothing`)
+      if (added.length === 0) console.warn(`${target} declares no ingle plugins; it is installed but adds nothing`)
       if (flags.includes("--enable")) for (const entry of added) setBundle(entry.pkg, true)
       return
     }

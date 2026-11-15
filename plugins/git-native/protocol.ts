@@ -1,10 +1,10 @@
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
-const AGENT = "agent=xin-git-native/0.1"
+const AGENT = "agent=ingle-git-native/0.1"
 const FLUSH = encoder.encode("0000")
 const DELIM = encoder.encode("0001")
-const USER_AGENT = "git/2.0 (xin-git-native)"
+const USER_AGENT = "git/2.0 (ingle-git-native)"
 
 export type Fetcher = (input: string, init?: RequestInit) => Promise<Response>
 

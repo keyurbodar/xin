@@ -82,7 +82,7 @@ export class Streams {
     this.#onStatus("connecting")
     const url = new URL("/v1/socket", location.href)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
-    const socket = new WebSocket(url, ["xin", `bearer.${token()}`])
+    const socket = new WebSocket(url, ["ingle", `bearer.${token()}`])
     this.#ws = socket
     socket.addEventListener("open", () => {
       this.#retry = 0

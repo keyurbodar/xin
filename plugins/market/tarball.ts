@@ -9,7 +9,7 @@ const BLOCK = 512
 const PACKAGE_PREFIX = "package/"
 const MANIFEST = "package.json"
 
-export type ExtractedBundle = { readonly xin: unknown }
+export type ExtractedBundle = { readonly ingle: unknown }
 
 export type BundleFailure =
   | { readonly kind: "input"; readonly message: string }
@@ -104,7 +104,7 @@ async function readAllCapped(
   return bytes
 }
 
-const ManifestSchema = obj({ xin: opt(unknown()) }, { open: true })
+const ManifestSchema = obj({ ingle: opt(unknown()) }, { open: true })
 const manifestCheck = compile(ManifestSchema)
 
 export async function extractBundle(input: ExtractInput): Promise<BundleResult<ExtractedBundle>> {
@@ -127,7 +127,7 @@ export async function extractBundle(input: ExtractInput): Promise<BundleResult<E
     const detail = first === undefined ? `${MANIFEST} is invalid` : `${MANIFEST}${first.path}: ${first.message}`
     return { ok: false, error: { kind: "manifest", message: detail } }
   }
-  return { ok: true, value: { xin: document.xin } }
+  return { ok: true, value: { ingle: document.ingle } }
 }
 
 function protocolOf(url: string): string | undefined {

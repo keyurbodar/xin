@@ -5,7 +5,7 @@ const versions = (known: Readonly<Record<string, string>>) => (name: string) => 
 
 describe("plugin manifest", () => {
   it("defaults a plugin that declares nothing to api 1 with no requirements", () => {
-    expect(readManifest({}, "xin-plugin-x: xin.plugins.x")).toEqual(DEFAULT_MANIFEST)
+    expect(readManifest({}, "ingle-plugin-x: ingle.plugins.x")).toEqual(DEFAULT_MANIFEST)
   })
 
   it("keeps a declared requirement", () => {

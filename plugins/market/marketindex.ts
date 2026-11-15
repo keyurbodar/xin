@@ -30,7 +30,7 @@ export type MarketSource =
       readonly path?: string
     }
 
-export type MarketEngines = { readonly xin?: string }
+export type MarketEngines = { readonly ingle?: string }
 
 export type MarketVersion = {
   readonly version: string
@@ -272,13 +272,13 @@ function isRange(range: string): boolean {
 
 function engines(value: unknown, path: string): MarketEngines {
   const object = objectAt(value, path)
-  const xin = optional(object, "xin", path, (member, at) => {
+  const ingle = optional(object, "ingle", path, (member, at) => {
     const range = stringAt(member, at)
     if (range.startsWith("workspace:")) fail(at, "must not be a workspace: range")
     if (!isRange(range)) fail(at, "must be a SemVer range")
     return range
   })
-  return xin === undefined ? {} : { xin }
+  return ingle === undefined ? {} : { ingle }
 }
 
 function icon(value: unknown, path: string, indexUrl: URL): string {

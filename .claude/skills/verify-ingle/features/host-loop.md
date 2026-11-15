@@ -14,24 +14,24 @@ The Home DO opens pi's Harness inside `blockConcurrencyWhile`, arms its alarm be
 
 The client reads status. Recovery is invisible to the user: a reply that was cut off arrives once, after the restart.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-.claude/skills/verify-xin/xin.sh call GET /v1/status       # {"wake":{"active":false}}  HTTP 200
-.claude/skills/verify-xin/xin.sh call GET /v1/repair       # {"failure":null,"journal":N,"checkpoint":N}  HTTP 200
+.claude/skills/verify-ingle/ingle.sh call GET /v1/status       # {"wake":{"active":false}}  HTTP 200
+.claude/skills/verify-ingle/ingle.sh call GET /v1/repair       # {"failure":null,"journal":N,"checkpoint":N}  HTTP 200
 ```
 
 Eviction and alarms can't be triggered over HTTP. Prove them through the gate:
 
 ```bash
 id=$(bun scripts/gate.ts submit test --only=src/host.test.ts); bun scripts/gate.ts wait "$id"
-XIN_LOAD=1 bun scripts/gate.ts run test --only=test/load.bench.ts   # 100 threads, per-message rows
+INGLE_LOAD=1 bun scripts/gate.ts run test --only=test/load.bench.ts   # 100 threads, per-message rows
 ```
 
 ## Gotchas
 
 - Local workerd does not enforce production's per-invocation subrequest cap. The stress test proves correctness, not the deployed limit.
-- Restarting `wrangler dev` with the same `.verify/state` keeps DO storage. `xin.sh stop` deletes it.
+- Restarting `wrangler dev` with the same `.verify/state` keeps DO storage. `ingle.sh stop` deletes it.
 - The repair drop is the only route that reaches storage without the kernel, so a broken journal can still be fixed. Dropping it loses the state since the last checkpoint: `src/host.test.ts` proves the boot, the report and the reopen.
 
 Evidence from the last wrangler dev drive: `.verify/evidence/M0-auth.txt` (`/v1/status`) and `.verify/evidence/M5-workspace.txt`.

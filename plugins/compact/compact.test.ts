@@ -116,12 +116,12 @@ describe("compact", () => {
   })
 
   it("declares one bundle row for the composed tree", () => {
-    expect(manifest.xin.plugins.compact).toEqual({
+    expect(manifest.ingle.plugins.compact).toEqual({
       module: "./index.ts",
       title: "Compaction",
       description: "Manual conversation compaction for the owner.",
     })
-    expect(manifest.xin.bundle).toEqual([{ id: "compact", plugin: "compact" }])
+    expect(manifest.ingle.bundle).toEqual([{ id: "compact", plugin: "compact" }])
   })
 
   it("loads its row beside the composed tree and registers conv.compact", async () => {

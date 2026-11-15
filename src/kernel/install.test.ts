@@ -12,7 +12,7 @@ const pending = (ack: { result?: unknown }): unknown => field(ack.result, "pendi
 const deployerStub = async (stub: Stub): Promise<void> => {
   await cmd(stub, `off-${crypto.randomUUID()}`, "plugin.enable", { id: "deploy-hook", enabled: false })
   const put = await cmd(stub, `in-${crypto.randomUUID()}`, "bundle.put", {
-    package: "xin-test-deployer",
+    package: "ingle-test-deployer",
     rows: [{ id: "fake-deployer", plugin: "k-package-deployer", config: {} }],
   })
   expect(put.result).toMatchObject({ application: "applied" })
@@ -65,9 +65,9 @@ describe("package installs", () => {
     const installed = await cmd(stub, "p0", "plugin.packages")
     expect(field(installed.result, "installed")).toEqual(
       expect.arrayContaining([
-        { package: "xin", version: "dev" },
-        { package: "xin-plugin-deploy-hook", version: "0.1.0" },
-        { package: "xin-plugin-weather", version: "1.0.0" },
+        { package: "ingle", version: "dev" },
+        { package: "ingle-plugin-deploy-hook", version: "0.1.0" },
+        { package: "ingle-plugin-weather", version: "1.0.0" },
       ]),
     )
     expect(field(installed.result, "pending")).toEqual({ add: [], remove: [] })
@@ -80,16 +80,16 @@ describe("package installs", () => {
       ok: true,
       result: { pending: { add: ["left-pad@1.3.0", "@scope/x@~1"] } },
     })
-    expect(await cmd(stub, "u1", "plugin.uninstall", { package: "xin-plugin-weather" })).toMatchObject({
+    expect(await cmd(stub, "u1", "plugin.uninstall", { package: "ingle-plugin-weather" })).toMatchObject({
       ok: true,
       result: {
         application: "applied",
-        pending: { add: ["left-pad@1.3.0", "@scope/x@~1"], remove: ["xin-plugin-weather"] },
+        pending: { add: ["left-pad@1.3.0", "@scope/x@~1"], remove: ["ingle-plugin-weather"] },
       },
     })
     expect(pending(await cmd(stub, "p1", "plugin.packages"))).toEqual({
       add: ["left-pad@1.3.0", "@scope/x@~1"],
-      remove: ["xin-plugin-weather"],
+      remove: ["ingle-plugin-weather"],
     })
   })
 
@@ -100,13 +100,13 @@ describe("package installs", () => {
       add: ["left-pad@1.3.0"],
       remove: [],
     })
-    await cmd(stub, "u1", "plugin.uninstall", { package: "xin-plugin-weather" })
-    expect(pending(await cmd(stub, "u2", "plugin.uninstall", { package: "xin-plugin-weather" }))).toEqual({
+    await cmd(stub, "u1", "plugin.uninstall", { package: "ingle-plugin-weather" })
+    expect(pending(await cmd(stub, "u2", "plugin.uninstall", { package: "ingle-plugin-weather" }))).toEqual({
       add: ["left-pad@1.3.0"],
-      remove: ["xin-plugin-weather"],
+      remove: ["ingle-plugin-weather"],
     })
-    expect(pending(await cmd(stub, "i3", "plugin.install", { spec: "xin-plugin-weather" }))).toEqual({
-      add: ["left-pad@1.3.0", "xin-plugin-weather"],
+    expect(pending(await cmd(stub, "i3", "plugin.install", { spec: "ingle-plugin-weather" }))).toEqual({
+      add: ["left-pad@1.3.0", "ingle-plugin-weather"],
       remove: [],
     })
   })
@@ -133,13 +133,13 @@ describe("package installs", () => {
       ok: false,
       error: { code: "bad_args", message: "not-in-this-build is not in this build" },
     })
-    expect(await cmd(stub, "u2", "plugin.uninstall", { package: "xin" })).toMatchObject({
+    expect(await cmd(stub, "u2", "plugin.uninstall", { package: "ingle" })).toMatchObject({
       ok: false,
-      error: { code: "bad_args", message: "xin provides core and cannot be removed" },
+      error: { code: "bad_args", message: "ingle provides core and cannot be removed" },
     })
-    expect(await cmd(stub, "u3", "plugin.uninstall", { package: "xin-plugin-time" })).toMatchObject({
+    expect(await cmd(stub, "u3", "plugin.uninstall", { package: "ingle-plugin-time" })).toMatchObject({
       ok: false,
-      error: { code: "bad_args", message: "xin-plugin-time is a local package; disable its bundle instead" },
+      error: { code: "bad_args", message: "ingle-plugin-time is a local package; disable its bundle instead" },
     })
     expect(pending(await cmd(stub, "p1", "plugin.packages"))).toEqual({ add: [], remove: [] })
   })
@@ -161,15 +161,15 @@ describe("package installs", () => {
 
   it("keeps a pending upgrade across an eviction on the same build", async () => {
     const stub = fresh()
-    expect(await cmd(stub, "i1", "plugin.install", { spec: "xin-plugin-weather@2.0.0" })).toMatchObject({ ok: true })
+    expect(await cmd(stub, "i1", "plugin.install", { spec: "ingle-plugin-weather@2.0.0" })).toMatchObject({ ok: true })
     await evictDurableObject(stub)
     expect(pending(await cmd(stub, "p1", "plugin.packages"))).toEqual({
-      add: ["xin-plugin-weather@2.0.0"],
+      add: ["ingle-plugin-weather@2.0.0"],
       remove: [],
     })
     await evictDurableObject(stub)
     expect(pending(await cmd(stub, "p2", "plugin.packages"))).toEqual({
-      add: ["xin-plugin-weather@2.0.0"],
+      add: ["ingle-plugin-weather@2.0.0"],
       remove: [],
     })
   })
@@ -178,24 +178,24 @@ describe("package installs", () => {
     const stub = fresh()
     await writeStored(stub, {
       add: [
-        { spec: { kind: "registry", name: "xin-plugin-weather", range: "^1.0.0" }, build: "older" },
-        { spec: { kind: "registry", name: "xin-plugin-weather", range: "2.0.0" }, build: "older" },
+        { spec: { kind: "registry", name: "ingle-plugin-weather", range: "^1.0.0" }, build: "older" },
+        { spec: { kind: "registry", name: "ingle-plugin-weather", range: "2.0.0" }, build: "older" },
         { spec: { kind: "registry", name: "left-pad", range: "1.3.0" }, build: "older" },
       ],
       remove: [
-        { name: "xin-plugin-weather", build: "older" },
+        { name: "ingle-plugin-weather", build: "older" },
         { name: "not-in-this-build", build: "older" },
       ],
     })
     await evictDurableObject(stub)
     expect(pending(await cmd(stub, "p1", "plugin.packages"))).toEqual({
-      add: ["xin-plugin-weather@2.0.0", "left-pad@1.3.0"],
-      remove: ["xin-plugin-weather"],
+      add: ["ingle-plugin-weather@2.0.0", "left-pad@1.3.0"],
+      remove: ["ingle-plugin-weather"],
     })
     await evictDurableObject(stub)
     expect(pending(await cmd(stub, "p2", "plugin.packages"))).toEqual({
-      add: ["xin-plugin-weather@2.0.0", "left-pad@1.3.0"],
-      remove: ["xin-plugin-weather"],
+      add: ["ingle-plugin-weather@2.0.0", "left-pad@1.3.0"],
+      remove: ["ingle-plugin-weather"],
     })
   })
 

@@ -117,7 +117,7 @@ async function request(
       ...(init.body === undefined ? {} : { body: init.body }),
       headers: {
         accept: "application/vnd.github+json",
-        "user-agent": "Xin/0.1",
+        "user-agent": "Ingle/0.1",
         "x-github-api-version": "2022-11-28",
         ...(init.body === undefined ? {} : { "content-type": "application/json" }),
         ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),

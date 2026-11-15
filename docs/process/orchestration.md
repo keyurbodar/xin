@@ -1,4 +1,4 @@
-# Orchestration: how Xin gets built in parallel
+# Orchestration: how Ingle gets built in parallel
 
 There are two roles. The **lead** is the orchestrating session (Claude Opus): it plans waves, writes briefs, spawns workers, reviews, iterates, runs the full gate, and commits. **Workers** are subagents that implement exactly one lane each. Heavy jobs (format, lint, typecheck, tests, bundle) never run inside a worker. They go through one background queue.
 
@@ -7,7 +7,7 @@ flowchart LR
   L["Lead: plan wave, brief lanes"] -->|delegate_task async| W1["Worker lane A"]
   L -->|delegate_task async| W2["Worker lane B"]
   L -->|delegate_task async| W3["Worker lane C"]
-  W1 -->|"gate submit test --only=own path"| Q[("Gate queue in /tmp/xin-gate")]
+  W1 -->|"gate submit test --only=own path"| Q[("Gate queue in /tmp/ingle-gate")]
   W2 -->|gate submit| Q
   W3 -->|gate submit| Q
   L -->|"gate submit all, once per wave"| Q

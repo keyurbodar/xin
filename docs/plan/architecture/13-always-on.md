@@ -1,6 +1,6 @@
 # 19 · Always-on: clock, compaction, loop guard, schedules and goals
 
-This section decides what makes Xin usable as an agent that runs unattended for hours: it knows what time it is, it can be compacted on demand, it is nudged out of a tool loop, it can schedule its own future work, and it can carry one objective across many rounds. Every mechanism here is a port of a named dsh package. Nothing is invented (owner rule 2026-11-07, and the owner's approval of this list on 2026-11-07).
+This section decides what makes Ingle usable as an agent that runs unattended for hours: it knows what time it is, it can be compacted on demand, it is nudged out of a tool loop, it can schedule its own future work, and it can carry one objective across many rounds. Every mechanism here is a port of a named dsh package. Nothing is invented (owner rule 2026-11-07, and the owner's approval of this list on 2026-11-07).
 
 Read with: [10 Time](./10-time.md) for the alarm the rounds share, [06 Orchestration](./06-orchestration.md) for the run a round continues, [04 Intake and dispatch](./04-intake-and-dispatch.md) for the batch a fire becomes, [11 Failures and cost](./11-failures-and-cost.md) for what each wake costs.
 
@@ -16,7 +16,7 @@ Elapsed since the preceding step context: 1m 12s.
 
 - **Due.** A reading is written whenever the previous one is at least `refreshIntervalMs` old, so step 1 of a turn and every later step are eligible. Default `600000`; `0` writes one before every request. This is dsh's rule.
 - **Baselines.** Step 1 measures elapsed time from the last model-visible message, later steps from the previous reading in the same turn. A missing baseline renders `unavailable`, and a backward clock clamps to zero.
-- **Zone.** `timeZone` config, default `UTC`, validated with `Intl.DateTimeFormat` at load so a bad zone fails the row instead of the request. dsh resolves the zone per request from the browser; Xin's owner has one zone, so the row config is the only source.
+- **Zone.** `timeZone` config, default `UTC`, validated with `Intl.DateTimeFormat` at load so a bad zone fails the row instead of the request. dsh resolves the zone per request from the browser; Ingle's owner has one zone, so the row config is the only source.
 - **Text format** is dsh's: ISO-shaped with a numeric offset and the IANA zone in brackets, then the zone instruction, then elapsed time in `1d 2h 3m 4s` units.
 - **The reading is request-scoped, not a committed entry.** pi 1.5.0's `beforeRequest` replaces the messages of one request and exposes no commit, and dsh's durable reading is written by its own session log. So the reading reaches the model and nothing else: it is never in the transcript, the client never renders it, compaction never summarizes it, and the baseline after an eviction comes from the last real message. This is a logged deviation from dsh, not a design choice.
 - **Counters.** pi exposes no turn or step number to a hook. A turn is a run of requests in this conversation instance that begins at a user message, and a step counts requests since then, with a request signature so a retried or recovered request does not advance either.
@@ -122,7 +122,7 @@ A goal is a property of a conversation, not a project. The coordinator of a proj
 
 ## Not added (deliberate)
 
-- **No notifications classifier and no inbox priority.** Xin has no noisy external source yet. The 2 s / 8 s debounce already batches bursts, and the classifier waits until a plugin produces more noise than turns can absorb.
+- **No notifications classifier and no inbox priority.** Ingle has no noisy external source yet. The 2 s / 8 s debounce already batches bursts, and the classifier waits until a plugin produces more noise than turns can absorb.
 - **No agent-owned `foldContext` / `dropContext`.** dsh keeps compaction in a threshold policy the model cannot drive, and pi implements it; model-driven context surgery is a larger failure surface for a saving pi's background compaction already gets.
-- **No feedback store feeding the model.** dsh's `message-feedback` is log-only by design. If Xin wants "when did acting pay off" memory, it belongs in the Dreamer's notes over the transcript it already reads, not in a ratings table.
-- **No browser, no page cache.** The 2026-11-07 "no web row yet" decision is superseded: `tool-web` ships in `xin-plugin-web` as a disabled row ([15 Web](./15-web.md)) that searches the public web and fetches a page as text. It renders no JavaScript, keeps no cache and adds no second search provider.
+- **No feedback store feeding the model.** dsh's `message-feedback` is log-only by design. If Ingle wants "when did acting pay off" memory, it belongs in the Dreamer's notes over the transcript it already reads, not in a ratings table.
+- **No browser, no page cache.** The 2026-11-07 "no web row yet" decision is superseded: `tool-web` ships in `ingle-plugin-web` as a disabled row ([15 Web](./15-web.md)) that searches the public web and fetches a page as text. It renders no JavaScript, keeps no cache and adds no second search provider.

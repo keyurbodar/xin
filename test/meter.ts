@@ -26,8 +26,8 @@ type State = {
   keys: Map<string, Bucket>
 }
 
-const STATE = Symbol.for("xin.meter.state")
-const INSTALLED = Symbol.for("xin.meter.installed")
+const STATE = Symbol.for("ingle.meter.state")
+const INSTALLED = Symbol.for("ingle.meter.installed")
 
 const empty = (): Bucket => ({ calls: 0, reads: 0, writes: 0 })
 

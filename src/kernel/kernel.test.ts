@@ -4,7 +4,7 @@ import { cmd, field, fresh, rowOf, type Stub } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 const put = (stub: Stub, rows: readonly { id: string; plugin: string; config?: unknown }[]): ReturnType<typeof cmd> =>
-  cmd(stub, `put-${crypto.randomUUID()}`, "bundle.put", { package: "xin-test-row", rows })
+  cmd(stub, `put-${crypto.randomUUID()}`, "bundle.put", { package: "ingle-test-row", rows })
 
 describe("plugin kernel", () => {
   it("lists every kernel and feature row as active and failed rows with their error", async () => {

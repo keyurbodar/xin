@@ -216,7 +216,7 @@ describe("load", () => {
     }
     // Bounds are the measurement with about a third of headroom: a cold turn measured 42 calls, 14 reads and 11
     // writes, an idle alarm 4 reads and 2 writes, and a cold boot 281 reads, with 254 journal rows left to replay.
-    // Almost every written row is a journal row now, so a Xin regression still shows here in the small part: the
+    // Almost every written row is a journal row now, so a Ingle regression still shows here in the small part: the
     // intake document's three commits add two rows each, one stored and one truncated. The journal bound fails when
     // truncation stops, since the rows it should have deleted then survive to the cold start.
     const within = (name: string, value: number, bound: number): void => {

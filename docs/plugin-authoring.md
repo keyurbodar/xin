@@ -1,16 +1,16 @@
-# Write a Xin plugin
+# Write a Ingle plugin
 
 A plugin adds one ability to a Home: a tool the model can call, a prompt the owner runs as a slash command, a timer, an op, a route. It is one TypeScript module plus a manifest in `package.json`, and it runs with the same access as the kernel. Installing the build is the trust decision: there is nothing to approve and no sandbox.
 
-Work in a checkout of Xin. `bun install` here and in `web/` (the gate typechecks the client too), then:
+Work in a checkout of Ingle. `bun install` here and in `web/` (the gate typechecks the client too), then:
 
 ## 1 · Scaffold
 
 ```bash
-bun scripts/xin.ts plugin new greeting
+bun scripts/ingle.ts plugin new greeting
 ```
 
-This writes `plugins/greeting/` — `index.ts`, `package.json` and `greeting.test.ts` — regenerates `src/catalog.gen.ts`, and adds `xin-plugin-greeting` to `xin.profile.json`, the list of packages your build mounts. The name is lowercase letters, digits and hyphens, starting with a letter.
+This writes `plugins/greeting/` — `index.ts`, `package.json` and `greeting.test.ts` — regenerates `src/catalog.gen.ts`, and adds `ingle-plugin-greeting` to `ingle.profile.json`, the list of packages your build mounts. The name is lowercase letters, digits and hyphens, starting with a letter.
 
 ## 2 · Edit the module
 
@@ -77,13 +77,13 @@ bun scripts/gate.ts wait $id
 
 ## 4 · Deploy it
 
-Deploy the build the way you deploy Xin (`wrangler deploy`, or your CI's deploy step). Then `plugin.doctor` answers `ok: true`, `plugin.list` shows the plugin as active, and `prompt.list` shows the prompt.
+Deploy the build the way you deploy Ingle (`wrangler deploy`, or your CI's deploy step). Then `plugin.doctor` answers `ok: true`, `plugin.list` shows the plugin as active, and `prompt.list` shows the prompt.
 
 ## The manifest
 
 ```json
 {
-  "xin": {
+  "ingle": {
     "plugins": {
       "greeting": {
         "module": "./index.ts",
@@ -132,6 +132,6 @@ A plugin is on or off per **preset**, and a preset applies at one **scope**: the
 Delete `plugins/greeting/`, then:
 
 ```bash
-bun scripts/xin.ts plugin disable xin-plugin-greeting
-bun scripts/xin.ts plugin generate
+bun scripts/ingle.ts plugin disable ingle-plugin-greeting
+bun scripts/ingle.ts plugin generate
 ```

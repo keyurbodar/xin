@@ -69,7 +69,7 @@ export type Ack = {
 
 export const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Promise<Ack> =>
   stub
-    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
+    .fetch(new Request("https://ingle.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
     .then((reply) => reply.json<Ack>())
 
 export const field = (value: unknown, key: string): unknown =>
@@ -197,7 +197,7 @@ export const owner = (): DurableObjectStub<Home> => env.HOME.get(env.HOME.idFrom
 
 export const api = (path: string, init?: RequestInit) =>
   exports.default.fetch(
-    new Request(`https://xin.test${path}`, {
+    new Request(`https://ingle.test${path}`, {
       ...init,
       headers: { authorization: `Bearer ${OWNER}`, "content-type": "application/json", ...init?.headers },
     }),
@@ -212,8 +212,8 @@ export type Frame = { readonly t?: string; readonly [key: string]: unknown }
 
 export async function connect(): Promise<Socket> {
   const reply = await exports.default.fetch(
-    new Request("https://xin.test/v1/socket", {
-      headers: { upgrade: "websocket", "sec-websocket-protocol": `xin, bearer.${OWNER}` },
+    new Request("https://ingle.test/v1/socket", {
+      headers: { upgrade: "websocket", "sec-websocket-protocol": `ingle, bearer.${OWNER}` },
     }),
   )
   const ws = reply.webSocket

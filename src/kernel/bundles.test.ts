@@ -4,7 +4,7 @@ import { cmd, field, fresh, rowOf, type Stub } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import type { RuntimeBundle } from "./bundles.ts"
 
-const PACKAGE = "xin-plugin-demo"
+const PACKAGE = "ingle-plugin-demo"
 
 type BundleRowArg = {
   readonly id: string
@@ -106,7 +106,7 @@ describe("runtime bundles", () => {
 
   it("keeps a fresh install with a failing row installed and reports the row", async () => {
     const stub = fresh()
-    const name = "xin-plugin-broken"
+    const name = "ingle-plugin-broken"
     const failed = await put(stub, name, [{ id: "boom", plugin: "k-bundle-broken" }])
     expect(failed).toMatchObject({
       ok: true,
@@ -180,7 +180,7 @@ describe("runtime bundles", () => {
       ["too many rows", Array.from({ length: 65 }, (_, index) => ({ id: `r${index}`, plugin: "k-echo" }))],
     ]
     for (const [label, rows, requires] of cases)
-      expect(await put(stub, "xin-plugin-bad", rows, requires), label).toMatchObject({
+      expect(await put(stub, "ingle-plugin-bad", rows, requires), label).toMatchObject({
         ok: false,
         error: { code: "bad_args" },
       })
@@ -188,7 +188,7 @@ describe("runtime bundles", () => {
       ok: false,
       error: { code: "bad_args" },
     })
-    expect(await put(stub, "xin-plugin-time", [greeting("greet", "hello")])).toMatchObject({
+    expect(await put(stub, "ingle-plugin-time", [greeting("greet", "hello")])).toMatchObject({
       ok: false,
       error: { code: "bad_args" },
     })
@@ -198,11 +198,11 @@ describe("runtime bundles", () => {
 
   it("mounts a requires bundle with unknown plugins as missing and records the requirement", async () => {
     const stub = fresh()
-    const ack = await put(stub, "xin-plugin-remote", [{ id: "a", plugin: "not-a-plugin" }], ["left-pad@1.3.0"])
+    const ack = await put(stub, "ingle-plugin-remote", [{ id: "a", plugin: "not-a-plugin" }], ["left-pad@1.3.0"])
     expect(ack).toMatchObject({ ok: true, result: { application: "applied" } })
     expect(await rowOf(stub, "a")).toMatchObject({ state: { kind: "missing" } })
     expect(await list(stub)).toMatchObject([
-      { package: "xin-plugin-remote", requires: ["left-pad@1.3.0"], rows: [{ state: { kind: "missing" } }] },
+      { package: "ingle-plugin-remote", requires: ["left-pad@1.3.0"], rows: [{ state: { kind: "missing" } }] },
     ])
     expect(field((await cmd(stub, "pp", "plugin.packages")).result, "pending")).toMatchObject({
       add: ["left-pad@1.3.0"],
@@ -236,14 +236,14 @@ describe("runtime bundles", () => {
     const stub = fresh()
     await runInDurableObject(stub, async (home: Home) => {
       await Promise.all([
-        home.loader.ctx.packages.put(bundleOf("xin-plugin-one", "one-greet", "one")),
-        home.loader.ctx.packages.put(bundleOf("xin-plugin-two", "two-greet", "two")),
+        home.loader.ctx.packages.put(bundleOf("ingle-plugin-one", "one-greet", "one")),
+        home.loader.ctx.packages.put(bundleOf("ingle-plugin-two", "two-greet", "two")),
       ])
     })
     expect(await list(stub)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ package: "xin-plugin-one" }),
-        expect.objectContaining({ package: "xin-plugin-two" }),
+        expect.objectContaining({ package: "ingle-plugin-one" }),
+        expect.objectContaining({ package: "ingle-plugin-two" }),
       ]),
     )
     expect(await stored(stub, "one-greet")).toBe("one")
@@ -290,7 +290,7 @@ describe("runtime bundles", () => {
 
   it("keeps a removed bundle's requires pending", async () => {
     const stub = fresh()
-    const name = "xin-plugin-remote"
+    const name = "ingle-plugin-remote"
     await put(stub, name, [{ id: "a", plugin: "not-a-plugin" }], ["left-pad@1.3.0"])
     expect(await cmd(stub, "rm", "bundle.remove", { package: name })).toMatchObject({
       ok: true,
@@ -303,9 +303,9 @@ describe("runtime bundles", () => {
 
   it("cancels a pending code add of the bundle's name", async () => {
     const stub = fresh()
-    expect(await cmd(stub, "c1", "plugin.install", { spec: "xin-plugin-demo@1.0.0" })).toMatchObject({ ok: true })
+    expect(await cmd(stub, "c1", "plugin.install", { spec: "ingle-plugin-demo@1.0.0" })).toMatchObject({ ok: true })
     expect(field((await cmd(stub, "pp1", "plugin.packages")).result, "pending")).toEqual({
-      add: ["xin-plugin-demo@1.0.0"],
+      add: ["ingle-plugin-demo@1.0.0"],
       remove: [],
     })
 
@@ -316,6 +316,26 @@ describe("runtime bundles", () => {
   })
 
   it("does not mount a stored bundle whose package is compiled into the build", async () => {
+    const stub = fresh()
+    const name = "ingle-plugin-time"
+    const bundle: RuntimeBundle = {
+      package: name,
+      source: { kind: "registry", version: "1.0.0", integrity: "sha512-AAAA" },
+      rows: [{ id: "greet", plugin: "k-echo", config: { text: "hello" } }],
+      patch: [],
+      requires: [],
+    }
+    await runInDurableObject(stub, async (_home: Home, state) => {
+      state.storage.kv.put("plugins.bundles", [bundle])
+    })
+    await evictDurableObject(stub)
+
+    expect(await rowOf(stub, "greet")).toBeUndefined()
+    expect(await stored(stub, "greet")).toBeUndefined()
+    expect(await list(stub)).toMatchObject([{ package: name, rows: [{ id: "greet", state: { kind: "missing" } }] }])
+  })
+
+  it("does not mount a stored bundle under the pre-rename name of a compiled package", async () => {
     const stub = fresh()
     const name = "xin-plugin-time"
     const bundle: RuntimeBundle = {
@@ -337,7 +357,7 @@ describe("runtime bundles", () => {
 
   it("fails a second row of a plugin that registers a fixed extension name", async () => {
     const stub = fresh()
-    const name = "xin-plugin-duplicate"
+    const name = "ingle-plugin-duplicate"
     expect(await put(stub, name, [{ id: "second", plugin: "m2" }])).toMatchObject({
       ok: true,
       result: { application: "failed", rows: [{ id: "second", error: expect.stringContaining("m2") }] },
@@ -374,8 +394,8 @@ describe("runtime bundles", () => {
 
   it("lets a later bundle's patch win and restores the earlier one when it is removed", async () => {
     const stub = fresh()
-    const first = "xin-plugin-first"
-    const second = "xin-plugin-second"
+    const first = "ingle-plugin-first"
+    const second = "ingle-plugin-second"
     await put(stub, first, [], undefined, [{ id: "k-config", config: { greeting: "first" } }])
     await put(stub, second, [], undefined, [{ id: "k-config", config: { greeting: "second" } }])
     expect((await cmd(stub, "order-g1", "k.greeting")).result).toBe("second")
@@ -420,12 +440,12 @@ describe("runtime bundles", () => {
     })
     expect(await list(stub)).toMatchObject([{ patch: [{ id: "later", state: "unknown" }] }])
 
-    expect(await put(stub, "xin-plugin-later", [greeting("later", "mine")])).toMatchObject({ ok: true })
+    expect(await put(stub, "ingle-plugin-later", [greeting("later", "mine")])).toMatchObject({ ok: true })
     expect(await rowOf(stub, "later")).toMatchObject({ state: { kind: "active" }, config: { text: "patched" } })
     expect(await stored(stub, "later")).toBe("patched")
     expect(await list(stub)).toMatchObject([
       { package: PACKAGE, patch: [{ id: "later", state: "applied" }] },
-      { package: "xin-plugin-later" },
+      { package: "ingle-plugin-later" },
     ])
   })
 })

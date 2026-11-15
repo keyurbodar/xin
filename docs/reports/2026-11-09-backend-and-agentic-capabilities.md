@@ -1,4 +1,4 @@
-# Xin backend and agentic capabilities — current state
+# Ingle backend and agentic capabilities — current state
 
 **Date:** 2026-11-09
 **Tree:** `a5d4716` (this checkout is shallow; the history available here is one commit)
@@ -53,7 +53,7 @@ flowchart LR
 | Commands | `src/ops.ts:79` | `Commands.run` checks the receipt, the actor ceiling, invokes the op, stores the outcome. Failed ops store no receipt. |
 | Wire | `src/wire.ts:92`, `src/kernel/wire.ts` | One socket per tab, hibernation-safe subscriptions, snapshots, deltas, `history.page`, `session.*`, `POST /v1/cmd`, `POST /v1/auth`, `GET /v1/socket`. |
 | Features | `plugins/<name>/` | Native Cordis plugins. `src/catalog.ts` holds only the required kernel rows; `src/catalog.gen.ts` is generated from package manifests. |
-| Profile | `xin.profile.json` | Names the bundles that compose the tree; the owner patch is stored in `kv` `plugins.patch`. |
+| Profile | `ingle.profile.json` | Names the bundles that compose the tree; the owner patch is stored in `kv` `plugins.patch`. |
 
 ## How a run executes
 
@@ -147,7 +147,7 @@ The `plugins` host table created by migration 2 is not read or written anywhere 
 | 22 | Failures | `xin.error` entry for coordinator run failures, retry op that re-enqueues the original batch. | `plugins/failures/failures.ts` | Solid |
 | 23 | Plugin kernel | Cordis loader rows, bundles, profile patch, runtime bundles, owner patch, live reconfigure, failure isolation, `plugins/changed`. | `src/kernel/loader.ts`, `src/kernel/bundles.ts` | Solid |
 | 24 | Plugin manager | List/catalog/tree/enable/configure ops; optional `plugin_manager` agent tool, off by default. | `src/kernel/manager.ts`, `src/kernel/managertool.ts` | Solid |
-| 25 | Package install | Parse registry/git specs, record pending add/remove, boot reconcile, deployer seam, CLI `plugin add/sync/generate`. | `src/kernel/packages.ts`, `scripts/xin.ts` | Works, gaps |
+| 25 | Package install | Parse registry/git specs, record pending add/remove, boot reconcile, deployer seam, CLI `plugin add/sync/generate`. | `src/kernel/packages.ts`, `scripts/ingle.ts` | Works, gaps |
 | 26 | Market | Format-1 indexes, npm version documents, verified tarballs, install/update/skip/rollback, patch-level auto-update. | `plugins/market/market.ts:223` | Solid, no indexes configured |
 | 27 | Presets | Named tool-row allowlists, per-conversation record, live definitions, blank-conversation selection, thread inheritance. | `plugins/presets/presets.ts:85` | Solid |
 | 28 | Observability | `system.version`, `system.metrics`, `system.logs`, `GET /v1/status`; in-memory log ring. | `src/kernel/system.ts`, `src/kernel/logs.ts` | Partial |
@@ -189,10 +189,10 @@ The `plugins` host table created by migration 2 is not read or written anywhere 
 
 There are two kinds of package:
 
-- **Bundle** — data only. Its `package.json` `xin` field declares `bundle` and no `plugins`. The Worker fetches the tarball, verifies it, stores it in `kv` `plugins.bundles`, and mounts the rows live. No deploy.
-- **Code** — its `xin` field declares `plugins`. `plugin.install` records a pending spec in `kv` `plugins.packages`; `system.update` calls the `deployer` seam; `deploy-hook` POSTs the pending list to a configured hook; the pipeline runs `bun scripts/xin.ts plugin sync`, regenerates `src/catalog.gen.ts`, gates and deploys. The next boot reconciles the pending list.
+- **Bundle** — data only. Its `package.json` `ingle` field declares `bundle` and no `plugins`. The Worker fetches the tarball, verifies it, stores it in `kv` `plugins.bundles`, and mounts the rows live. No deploy.
+- **Code** — its `ingle` field declares `plugins`. `plugin.install` records a pending spec in `kv` `plugins.packages`; `system.update` calls the `deployer` seam; `deploy-hook` POSTs the pending list to a configured hook; the pipeline runs `bun scripts/ingle.ts plugin sync`, regenerates `src/catalog.gen.ts`, gates and deploys. The next boot reconciles the pending list.
 
-`plugin.install` / `plugin.uninstall` / `plugin.packages` and `GET /v1/build/packages` live in `src/kernel/packages.ts`. The CLI lives in `scripts/xin.ts`. The workflow is documented in `docs/deploy/install-pipeline.md`, but that document still uses the removed op name `plugin.secret.set`; the current op is `secret.set` (`src/kernel/secrets.ts:25`).
+`plugin.install` / `plugin.uninstall` / `plugin.packages` and `GET /v1/build/packages` live in `src/kernel/packages.ts`. The CLI lives in `scripts/ingle.ts`. The workflow is documented in `docs/deploy/install-pipeline.md`, but that document still uses the removed op name `plugin.secret.set`; the current op is `secret.set` (`src/kernel/secrets.ts:25`).
 
 ### Trust model
 
@@ -211,7 +211,7 @@ In-process plugins run in the Home isolate with full access to the services they
 | Plugin-manager mutations follow a `tools/pre-execute` and `user-approval` gate (P10, `09-plugins.md`) | No `tools/pre-execute` gate and no approval service exist in the tree; `plugin_manager` executes immediately (`src/kernel/managertool.ts`) | Any model that can call the tool can enable/configure rows without asking. |
 | `thread/settled` is an extension point (`09-plugins.md`) | Emitted, but no production listener (`plugins/orchestrator/index.ts`) | The seam is ready but unused. |
 | The Reporter is the single writer of a terminal status (`06-orchestration.md`) | The Reporter writes `completed`/`cancelled`/`failed` on a normal run, but the watchdog writes `failed` and the result itself before enqueuing the report (`plugins/watchdog/watchdog.ts` check phase); the Reporter then skips a thread that is no longer `working` | Two terminal writers on the failure path, contained by the status check. |
-| The only timer Xin owns is the debounce (`10-time.md`) | `clock.timer` is also used by files (weekly sweep), memory (Dreamer), watchdog, models (usage flush) and push (held delivery) (`plugins/*/index.ts`) | The single-alarm rule holds, but there are several plugin timers, not one. |
+| The only timer Ingle owns is the debounce (`10-time.md`) | `clock.timer` is also used by files (weekly sweep), memory (Dreamer), watchdog, models (usage flush) and push (held delivery) (`plugins/*/index.ts`) | The single-alarm rule holds, but there are several plugin timers, not one. |
 | One Home Durable Object per owner (`README.md`, `01-host.md`) | The Worker always resolves `env.HOME.idFromName("owner")` (`src/worker.ts`) | One Home and one identity for the deployment. This is single-tenant, not one Home per owner. |
 | The `plugins` table holds per-plugin sealed state (`02-state.md`) | Table exists from migration 2; nothing reads or writes it (`src/db.ts:10`) | Dead table; named credentials use `kv` `secret.*`. |
 
@@ -240,7 +240,7 @@ Ordered by what blocks the Space's three goals: a better backend/agentic experie
 12. **Market discovery is empty by default.** `market.indexes` defaults to `[]` (`plugins/market/market.ts` config). `market.search` works only after the owner configures index URLs. There is no shipped index and no keyword search against npm (removed in P9). A new owner sees an empty market.
 13. **No signature or author verification.** Tarballs are integrity-checked against the registry's `dist.integrity`, which proves the bytes match the registry document, not that the publisher is trusted. There is no signature, no publisher key and no allowlist.
 14. **No dependency resolution.** A bundle can `require` code package specs, and those are recorded as pending installs. There is no version solver, no conflict detection between bundles and no check that a required package's rows satisfy the configs the bundle assumes.
-15. **The plugin API has no version contract.** `engines.xin` is parsed by the market (`plugins/market/marketindex.ts`), but the loader does not enforce a plugin API version. The spec shows an authoring example; it does not define a compatibility boundary. A change to `src/contracts/*` or to a service interface breaks third-party code at boot with a row failure, not at install.
+15. **The plugin API has no version contract.** `engines.ingle` is parsed by the market (`plugins/market/marketindex.ts`), but the loader does not enforce a plugin API version. The spec shows an authoring example; it does not define a compatibility boundary. A change to `src/contracts/*` or to a service interface breaks third-party code at boot with a row failure, not at install.
 16. **No per-plugin quotas, telemetry or health.** A plugin can register unlimited tools, timers and ops. There is no per-row CPU, subrequest or storage budget, and no plugin-level metrics. `system.metrics` reports rows, storage and sockets, not per-plugin cost.
 17. **`plugin_manager` is off by default and has no install action.** The tool row is disabled in `src/catalog.ts` (`tool-plugins`), and the tool exposes list/catalog/tree/enable/configure only (`src/kernel/managertool.ts`). The agent cannot install, uninstall or inspect the market.
 
@@ -277,7 +277,7 @@ Ordered by what blocks the Space's three goals: a better backend/agentic experie
 - **The Dreamer.** One writer, a validated output contract, a size cap, a secret-leak check and an instruction-shape check; an invalid result retries once and leaves the cursor unchanged.
 - **Bundle layering.** The owner patch is a minimal departure from lower layers, runtime bundle updates restore the previous version on failure, and a fresh install with a failing row stays installed and reports it.
 - **Market tarball handling.** Redirects refused, byte caps, sha512 integrity, gunzip, ustar, only `package/package.json` trusted.
-- **Test breadth.** 66 files and about 11.9k lines cover the host loop, ops, wire, intake, models, files, orchestrator, jobs, questions, watchdog, memory, schedules, goals, presets, MCP, market, web, git, plugin kernel and live runs. The live test is opt-in through `XIN_LIVE=1`.
+- **Test breadth.** 66 files and about 11.9k lines cover the host loop, ops, wire, intake, models, files, orchestrator, jobs, questions, watchdog, memory, schedules, goals, presets, MCP, market, web, git, plugin kernel and live runs. The live test is opt-in through `INGLE_LIVE=1`.
 
 ## What I would do next
 
@@ -295,11 +295,11 @@ The repo's gate is the intended path; do not run `tsc`, `vitest` or `wrangler` d
 bun scripts/gate.ts submit fmt lint types test bundle
 bun scripts/gate.ts wait <id>
 bun scripts/gate.ts submit test --only=plugins/orchestrator   # one lane
-XIN_LIVE=1 bun scripts/gate.ts submit test --only=src/live    # live models, local only
-bun scripts/xin.ts plugin list                                # composed catalog
+INGLE_LIVE=1 bun scripts/gate.ts submit test --only=src/live    # live models, local only
+bun scripts/ingle.ts plugin list                                # composed catalog
 ```
 
-The live test reads `OPENCODE_API_KEY` from `.dev.vars` and picks the first answering model from `XIN_LIVE_MODELS`. It is skipped unless `XIN_LIVE=1`.
+The live test reads `OPENCODE_API_KEY` from `.dev.vars` and picks the first answering model from `INGLE_LIVE_MODELS`. It is skipped unless `INGLE_LIVE=1`.
 
 ## Appendix — files and entry points read
 
@@ -311,6 +311,6 @@ Contracts: `src/contracts/workspace.ts`, `threaddoc.ts`, `threads.ts`, `intake.t
 
 Features: `plugins/intake/*`, `plugins/orchestrator/*`, `plugins/workspace/*`, `plugins/models/*`, `plugins/files/*`, `plugins/memory/*`, `plugins/skills/*`, `plugins/mcp/*`, `plugins/schedules/*`, `plugins/goals/*`, `plugins/questions/*`, `plugins/jobs/*`, `plugins/watchdog/*`, `plugins/presets/*`, `plugins/market/*`, `plugins/push/*`, `plugins/failures/*`, `plugins/compact/*`, `plugins/guard/*`, `plugins/time/*`, `plugins/deploy-hook/*`.
 
-Build and test: `package.json`, `wrangler.jsonc`, `wrangler.free.jsonc`, `xin.profile.json`, `vitest.config.ts`, `scripts/boundaries.ts`, `scripts/xin.ts`, `test/worker.ts`, `test/kernel.ts`, `test/support.ts`, `test/live.ts`, `src/host.test.ts`, `src/ops.test.ts`, `src/cost.test.ts`, `src/live.test.ts`, `src/kernel/*.test.ts`, `plugins/**/*.test.ts`.
+Build and test: `package.json`, `wrangler.jsonc`, `wrangler.free.jsonc`, `ingle.profile.json`, `vitest.config.ts`, `scripts/boundaries.ts`, `scripts/ingle.ts`, `test/worker.ts`, `test/kernel.ts`, `test/support.ts`, `test/live.ts`, `src/host.test.ts`, `src/ops.test.ts`, `src/cost.test.ts`, `src/live.test.ts`, `src/kernel/*.test.ts`, `plugins/**/*.test.ts`.
 
 Spec and logs: `docs/plan/README.md`, `docs/plan/goal.md`, `docs/plan/milestones.md`, `docs/plan/architecture/01-host.md` through `14-client.md` (excluding client details), `docs/log/decisions.tsv`, `docs/log/waves/W3.md`, `docs/deploy/install-pipeline.md`.

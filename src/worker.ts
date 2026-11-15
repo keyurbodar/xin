@@ -30,7 +30,7 @@ async function rotationCheck(request: Request, env: Env): Promise<Response | und
   const presented = bearer(request)
   if (presented === undefined) return undefined
   try {
-    return await home(env).fetch("https://xin.internal/v1/auth", {
+    return await home(env).fetch("https://ingle.internal/v1/auth", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ token: presented }),
@@ -61,7 +61,7 @@ export default {
     if (uploaded !== undefined) return uploaded
     const forwarded = new Request(request)
     const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((part) => part.trim())
-    if (protocols.includes("xin")) forwarded.headers.set("x-xin-protocol", "xin")
+    if (protocols.includes("ingle")) forwarded.headers.set("x-ingle-protocol", "ingle")
     return home(env).fetch(forwarded)
   },
 } satisfies ExportedHandler<Env>

@@ -1,10 +1,10 @@
 {
-  "name": "xin-plugin-presets",
+  "name": "ingle-plugin-presets",
   "version": "0.1.0",
   "private": true,
   "description": "Named agent presets that choose a conversation's plugins.",
   "type": "module",
-  "xin": {
+  "ingle": {
     "plugins": {
       "presets": {
         "module": "./index.ts",

@@ -44,7 +44,7 @@ export type Composition = {
   readonly version: string
 }
 
-export type XinLoaderConfig = {
+export type IngleLoaderConfig = {
   readonly baseUrl: string
   readonly composition: Composition
   readonly runtime: readonly RuntimeBundle[]
@@ -65,7 +65,7 @@ const failure = async (fiber: Fiber): Promise<string> =>
 const changedRow = (left: Row, right: Row): boolean =>
   left.disabled !== right.disabled || JSON.stringify(left.config ?? null) !== JSON.stringify(right.config ?? null)
 
-export class XinLoader extends Loader {
+export class IngleLoader extends Loader {
   override internal = undefined
   readonly composition: Composition
   readonly warnings: string[]
@@ -83,11 +83,16 @@ export class XinLoader extends Loader {
   private mounted = false
   private quiet = false
 
-  constructor(ctx: Context, config: XinLoaderConfig) {
+  constructor(ctx: Context, config: IngleLoaderConfig) {
     super(ctx, { baseUrl: config.baseUrl })
     this.composition = config.composition
     this.warnings = [...config.warnings]
-    this.compiled = new Set(Object.values(config.composition.catalog).map((entry) => sourcePackage(entry.source)))
+    this.compiled = new Set(
+      Object.values(config.composition.catalog).flatMap((entry) => {
+        const name = sourcePackage(entry.source)
+        return name.startsWith("ingle") ? [name, `xin${name.slice("ingle".length)}`] : [name]
+      }),
+    )
     this.runtimeBundles = config.runtime.filter((bundle) => !this.compiled.has(bundle.package))
     for (const [name, entry] of Object.entries(config.composition.catalog)) this.builtins[name] = entry.plugin
     const lower = this.lowerOf(config.runtime)
@@ -284,7 +289,7 @@ export class XinLoader extends Loader {
 
 export type Kernel = {
   readonly root: Context
-  readonly loader: XinLoader
+  readonly loader: IngleLoader
   readonly failure: string | undefined
 }
 
@@ -295,7 +300,7 @@ export async function boot(runtime: Runtime, composition: Composition): Promise<
   const warnings: string[] = []
   const owner = readOwnerPatch(storage, (message) => void warnings.push(message))
   const runtimeBundles = readBundles(storage, (message) => void warnings.push(message))
-  await root.plugin(XinLoader, {
+  await root.plugin(IngleLoader, {
     baseUrl: "file:///bundle/",
     composition,
     runtime: runtimeBundles,
@@ -304,7 +309,7 @@ export async function boot(runtime: Runtime, composition: Composition): Promise<
     persist: (patch) => writeOwnerPatch(storage, patch),
   })
   const loader = root.get("loader")
-  if (!(loader instanceof XinLoader)) throw new Error("the loader did not start")
+  if (!(loader instanceof IngleLoader)) throw new Error("the loader did not start")
   root.provide("kernel", loader)
   await loader.mount()
   const broken = await loader.brokenRequired()

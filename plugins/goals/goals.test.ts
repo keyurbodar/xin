@@ -44,10 +44,10 @@ const stored = (stub: Stub, root: number): Promise<Goal | undefined> =>
 
 describe("row", () => {
   it("declares the goals, tool-goals and goal-rounds rows in one bundle", () => {
-    expect(manifest.xin.plugins.goals).toMatchObject({ module: "./index.ts" })
-    expect(manifest.xin.plugins["tool-goals"]).toMatchObject({ module: "./tools.ts" })
-    expect(manifest.xin.plugins["goal-rounds"]).toMatchObject({ module: "./rounds.ts" })
-    expect(manifest.xin.bundle).toEqual([
+    expect(manifest.ingle.plugins.goals).toMatchObject({ module: "./index.ts" })
+    expect(manifest.ingle.plugins["tool-goals"]).toMatchObject({ module: "./tools.ts" })
+    expect(manifest.ingle.plugins["goal-rounds"]).toMatchObject({ module: "./rounds.ts" })
+    expect(manifest.ingle.bundle).toEqual([
       { id: "goals", plugin: "goals" },
       { id: "tool-goals", plugin: "tool-goals" },
       { id: "goal-rounds", plugin: "goal-rounds" },

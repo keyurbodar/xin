@@ -98,7 +98,7 @@ export async function upload(request: Request, env: Env): Promise<Response | und
       result = await buffered(env, bytes)
     } else result = await streamed(env, body, target.staged, target.length)
     const committed = await env.HOME.get(env.HOME.idFromName("owner")).fetch(
-      new Request("https://xin.internal/v1/files/commit", {
+      new Request("https://ingle.internal/v1/files/commit", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

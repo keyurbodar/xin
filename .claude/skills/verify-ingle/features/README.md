@@ -1,6 +1,6 @@
-# Xin feature map
+# Ingle feature map
 
-One file per user-facing feature. Each is driven with `xin.sh` against `wrangler dev`, and with the gate where HTTP can't reach (eviction, alarms).
+One file per user-facing feature. Each is driven with `ingle.sh` against `wrangler dev`, and with the gate where HTTP can't reach (eviction, alarms).
 
 | Feature | File | Since |
 | --- | --- | --- |

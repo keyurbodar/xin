@@ -18,7 +18,7 @@ sequenceDiagram
   Note over H: constructor runs inside blockConcurrencyWhile
   E->>H: constructor
   H->>D: setAlarm now plus 60 s fallback
-  H->>H: root Context, provide host facts, XinLoader
+  H->>H: root Context, provide host facts, IngleLoader
   H->>H: mount composed rows; db row migrates host steps
   H->>P: pi row init: Harness.open with prefix pi_ and onWake to clock.arm, provides harness
   H->>H: rows that inject harness start; loader.await, all rows settled
@@ -51,7 +51,7 @@ The constructor steps, in order:
 constructor:
   blockConcurrencyWhile(
     1 setAlarm(now+60s) fallback
-    2 root Context; provide host facts; XinLoader (09 Plugins)
+    2 root Context; provide host facts; IngleLoader (09 Plugins)
     3 mount rows: db (migrate host steps), clock, pi (opens the Harness, provides harness), ops, http,
       wire (rehydrates sockets once harness exists), secrets, plugins, packages, system; the base bundle also
       carries tool-plugins, off by default

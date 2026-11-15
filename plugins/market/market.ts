@@ -173,25 +173,25 @@ const countingFetch =
     return fetchImpl(input, init)
   }
 
-function declarationOf(xin: unknown, label: string): Declaration {
-  if (!bundleCheck.check(xin)) {
-    const first = bundleCheck.errors(xin)[0]
+function declarationOf(ingle: unknown, label: string): Declaration {
+  if (!bundleCheck.check(ingle)) {
+    const first = bundleCheck.errors(ingle)[0]
     return bad(`${label} declares an invalid bundle${first === undefined ? "" : `: ${first.path} ${first.message}`}`)
   }
   return {
-    rows: xin.bundle.map((row) =>
+    rows: ingle.bundle.map((row) =>
       normalizeRow({ id: row.id, plugin: row.plugin, config: toJson(row.config), disabled: row.disabled }),
     ),
-    patch: (xin.patch ?? []).map((entry) =>
+    patch: (ingle.patch ?? []).map((entry) =>
       normalizePatch({ id: entry.id, config: toJson(entry.config), disabled: entry.disabled }),
     ),
-    requires: [...(xin.requires ?? [])],
+    requires: [...(ingle.requires ?? [])],
   }
 }
 
-function maybeDeclaration(xin: unknown, label: string): Declaration | undefined {
+function maybeDeclaration(ingle: unknown, label: string): Declaration | undefined {
   try {
-    return declarationOf(xin, label)
+    return declarationOf(ingle, label)
   } catch (error) {
     if (error instanceof OpRejected) return undefined
     throw error
@@ -229,7 +229,7 @@ function factOf(
 
 export function createMarket(ports: MarketPorts): MarketFeature {
   const { config, db, kv } = ports
-  const xinVersion = ports.packages.version
+  const ingleVersion = ports.packages.version
 
   const readPolicy = (): Policy => {
     const stored: unknown = kv.get(POLICY_KEY)
@@ -353,7 +353,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     )
     return toJson({
       entries: found.map((plugin) => {
-        const offered = offeredVersion(plugin.versions, xinVersion)
+        const offered = offeredVersion(plugin.versions, ingleVersion)
         return {
           name: plugin.name,
           title: plugin.title ?? null,
@@ -378,16 +378,16 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     const loaded = await load(budget, false)
     const plugin = loaded.plugins.find((candidate) => candidate.name === name)
     if (plugin === undefined) bad(`${name} is not in any market index`)
-    const offered = offeredVersion(plugin.versions, xinVersion)
+    const offered = offeredVersion(plugin.versions, ingleVersion)
     const facts = await installedFacts()
     const provided = facts.get(name)?.kind === "provided"
     const document = provided || offered === undefined ? undefined : await versionDocument(budget, name, offered)
-    const kind = provided ? "code" : document === undefined ? null : (kindOf(document.xin) ?? null)
+    const kind = provided ? "code" : document === undefined ? null : (kindOf(document.ingle) ?? null)
     const declaration = provided
       ? ports.declaration(name)
       : document === undefined || kind !== "bundle"
         ? undefined
-        : maybeDeclaration(document.xin, `${name}@${document.version}`)
+        : maybeDeclaration(document.ingle, `${name}@${document.version}`)
     const skipped = readSkipped()[name]
     return toJson({
       name,
@@ -396,7 +396,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       versions: plugin.versions.map((version) => ({
         version: version.version,
         publishTimestamp: version.publishTimestamp,
-        compatible: compatible(version, xinVersion),
+        compatible: compatible(version, ingleVersion),
         skipped: version.version === skipped,
       })),
       readme: document?.readme ?? null,
@@ -445,8 +445,8 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       if (document.error.kind === "input") bad(document.error.message)
       throw new Error(`${target.spec}: ${failureText(document.error)}`)
     }
-    const kind = kindOf(document.value.xin)
-    if (kind === undefined) bad(`${target.spec} is not a Xin plugin`)
+    const kind = kindOf(document.value.ingle)
+    if (kind === undefined) bad(`${target.spec} is not a Ingle plugin`)
     if (kind === "code") {
       ports.packages.install(target.spec)
       await record(name, version.version)
@@ -458,10 +458,10 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     if (!fetched.ok) throw new Error(`${target.spec}: ${fetched.error.message}`)
     const extracted = await extractBundle({ bytes: fetched.value, integrity })
     if (!extracted.ok) throw new Error(`${target.spec}: ${extracted.error.message}`)
-    const tarballKind = kindOf(extracted.value.xin)
+    const tarballKind = kindOf(extracted.value.ingle)
     if (tarballKind !== kind)
-      bad(`${target.spec}: the tarball declares ${tarballKind ?? "no"} Xin plugin, the index says ${kind}`)
-    const declaration = declarationOf(extracted.value.xin, target.spec)
+      bad(`${target.spec}: the tarball declares ${tarballKind ?? "no"} Ingle plugin, the index says ${kind}`)
+    const declaration = declarationOf(extracted.value.ingle, target.spec)
     const application = await ports.packages.put({
       package: name,
       source: { kind: "registry", version: version.version, integrity },
@@ -492,10 +492,11 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     if (facts.get(name)?.kind === "provided") bad(`${name} is provided by this build`)
     const target =
       requested === undefined
-        ? offeredVersion(plugin.versions, xinVersion)
+        ? offeredVersion(plugin.versions, ingleVersion)
         : plugin.versions.find((version) => version.version === requested)
     if (target === undefined) bad(`${name} has no version ${requested ?? "to offer"}`)
-    if (!compatible(target, xinVersion)) bad(`${name}@${target.version} requires xin ${target.engines.xin ?? "?"}`)
+    if (!compatible(target, ingleVersion))
+      bad(`${name}@${target.version} requires ingle ${target.engines.ingle ?? "?"}`)
     const fact = factOf(facts, name, target)
     if (mode === "install" && fact !== undefined) bad(`${name} is already installed`)
     if (mode === "update") {
@@ -515,7 +516,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     if (plugin === undefined) bad(`${name} is not in any market index`)
     const target =
       requested === undefined
-        ? offeredVersion(plugin.versions, xinVersion)
+        ? offeredVersion(plugin.versions, ingleVersion)
         : plugin.versions.find((version) => version.version === requested)
     if (target === undefined) bad(`${name} has no version ${requested ?? "to offer"}`)
     kv.put(SKIPPED_KEY, { ...readSkipped(), [name]: target.version })
@@ -551,11 +552,11 @@ export function createMarket(ports: MarketPorts): MarketFeature {
         package: name,
         reason: `${name}@${earlier.version} is not in the market index`,
       })
-    if (!compatible(target, xinVersion))
+    if (!compatible(target, ingleVersion))
       return toJson({
         application: "failed",
         package: name,
-        reason: `${name}@${target.version} requires xin ${target.engines.xin ?? "?"}`,
+        reason: `${name}@${target.version} requires ingle ${target.engines.ingle ?? "?"}`,
       })
     return installVersion(budget, name, target)
   }
@@ -569,7 +570,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       const fact = facts.get(plugin.name)
       if (fact === undefined || fact.kind !== "installed" || fact.version === undefined) continue
       if (!isSemver(fact.version)) continue
-      const offered = offeredVersion(plugin.versions, xinVersion)
+      const offered = offeredVersion(plugin.versions, ingleVersion)
       if (offered === undefined || skipped[plugin.name] === offered.version) continue
       if (compareVersions(offered.version, fact.version) <= 0) continue
       const [from, to] = [fact.version.split("."), offered.version.split(".")]

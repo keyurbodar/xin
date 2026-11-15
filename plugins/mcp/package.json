@@ -1,10 +1,10 @@
 {
-  "name": "xin-plugin-mcp",
+  "name": "ingle-plugin-mcp",
   "version": "0.1.0",
   "private": true,
   "description": "MCP servers as deferred tools.",
   "type": "module",
-  "xin": {
+  "ingle": {
     "plugins": {
       "mcp": {
         "module": "./index.ts",
