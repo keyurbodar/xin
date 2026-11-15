@@ -12,6 +12,7 @@
         "description": "Clone and read a public git repository of any host inside the Worker: history, a file at a revision, and a diff between two revisions.",
         "permissions": [
           "network",
+          "runtime",
           "storage"
         ],
         "contributes": {

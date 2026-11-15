@@ -236,7 +236,11 @@ export function apply(ctx: Context): void {
       name: "plugin.enable",
       args: obj({ id: FragmentId, enabled: bool() }),
       actors: OWNER,
-      run: async (_api, args) => toJson(await manager.enable(args.id, args.enabled)),
+      run: async (_api, args) => {
+        const result = toJson(await manager.enable(args.id, args.enabled))
+        await ctx.wire.publishHome()
+        return result
+      },
     }),
   )
   ctx.ops.define(

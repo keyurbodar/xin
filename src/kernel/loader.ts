@@ -19,8 +19,10 @@ import {
   DEFAULT_MANIFEST,
   describeProblem,
   injectOf,
+  permissionFor,
   type Manifest,
   type ManifestProblem,
+  type Permission,
 } from "./manifest.ts"
 import { sourcePackage, sourceVersion } from "./packages.ts"
 import { readOwnerPatch, writeOwnerPatch } from "./patch.ts"
@@ -112,6 +114,11 @@ export class IngleLoader extends Loader {
     this.unresolved = applied.unresolved
     this.missing = applied.rows.filter((row) => !this.has(row))
     this.persistPatch = config.persist
+    ctx.on("internal/get", (target: Context, service: string, _error: Error, next: () => unknown) => {
+      const refusal = this.refusal(target.fiber, service)
+      if (refusal !== undefined) throw new Error(refusal)
+      return next()
+    })
   }
 
   get lower(): readonly Row[] {
@@ -164,6 +171,22 @@ export class IngleLoader extends Loader {
       },
       entry?.manifest === undefined ? [] : injectOf(entry.plugin),
     )
+  }
+
+  /** The permissions a row's plugin declares, or undefined for a row with no manifest: kernel code, or not in this tree. */
+  permissionsOf(id: string): readonly Permission[] | undefined {
+    const plugin = this.pluginOfRow(id)
+    return plugin === undefined ? undefined : this.composition.catalog[plugin]?.manifest?.permissions
+  }
+
+  /** Why the code running in `fiber` may not use `service`: it runs in a plugin row that does not declare the permission. */
+  refusal(fiber: Fiber, service: string): string | undefined {
+    const permission = permissionFor(service)
+    if (permission === undefined) return undefined
+    const id = this.locate(fiber)
+    const permissions = id === undefined ? undefined : this.permissionsOf(id)
+    if (permissions === undefined || permissions.includes(permission)) return undefined
+    return `${id} uses the ${service} service without declaring the ${permission} permission`
   }
 
   /** Why a row may not register this tool or op: its plugin declares `contributes` and leaves the name out. */

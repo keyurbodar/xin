@@ -5,6 +5,7 @@ import { Sidebar } from "./sidebar.tsx"
 import { ConnectionBanner } from "./connection-banner.tsx"
 import { TabBar } from "./tabbar.tsx"
 import { CommandPalette } from "./palette.tsx"
+import { Toasts } from "../../plugins/slots.tsx"
 import { ProjectScreen } from "../../screens/project.tsx"
 import { ExtensionsScreen } from "../../screens/extensions.tsx"
 import { SettingsScreen } from "../../screens/settings.tsx"
@@ -72,6 +73,7 @@ export function Shell(): JSX.Element {
       <NewProjectDialog open={first() === "new"} onClose={() => navigate("/")} />
       <TabBar onProjects={() => setPalette(true)} />
       <CommandPalette open={palette()} onClose={() => setPalette(false)} />
+      <Toasts />
     </div>
   )
 }

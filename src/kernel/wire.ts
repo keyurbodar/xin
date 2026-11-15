@@ -67,7 +67,7 @@ export class Wire extends Service {
       const sockets = new Sockets({
         ctx: ctx.host.state,
         harness: inner.harness,
-        commands: ctx.ops.commands,
+        commands: ctx.ops,
         beforeWork: () => ctx.clock.arm(),
         typing: (conversation, on) => ctx.parallel("wire/typing", conversation, on),
         home: () => this.snapshot(),

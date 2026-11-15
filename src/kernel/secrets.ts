@@ -34,6 +34,8 @@ export class Secrets extends Service {
   }
 
   get(ref: string): string | undefined {
+    const refusal = this.ctx.get("kernel")?.refusal(this.ctx.fiber, "secrets")
+    if (refusal !== undefined) throw new Error(refusal)
     return this.sealed().get(ref)
   }
 

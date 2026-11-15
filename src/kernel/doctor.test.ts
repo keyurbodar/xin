@@ -78,6 +78,15 @@ describe("plugin doctor", () => {
     expect(issue(unpermitted, "permission")).toMatchObject({ permission: "secrets", service: "secrets" })
   })
 
+  it("refuses a row's reach past its permissions: a secret read, a nested inject, and acting as the owner", async () => {
+    const reply = await cmd(fresh(), "k-reach-1", "k.reach")
+    expect(reply.result).toMatchObject({
+      secret: expect.stringContaining("without declaring the secrets permission"),
+      inject: expect.stringContaining("without declaring the storage permission"),
+      owner: expect.stringContaining("may run ops only as an agent"),
+    })
+  })
+
   it("fails a row that registers an op its manifest does not declare", async () => {
     const undeclared = row(await doctor(fresh()), "k-undeclared")
     expect(undeclared.state).toMatchObject({ kind: "failed" })

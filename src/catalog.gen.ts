@@ -24,19 +24,22 @@ import * as p22 from "../plugins/models/index.ts"
 import * as p23 from "../plugins/models/tools.ts"
 import * as p24 from "../plugins/orchestrator/index.ts"
 import * as p25 from "../plugins/orchestrator/tools.ts"
-import * as p26 from "../plugins/presets/index.ts"
-import * as p27 from "../plugins/presets/preset.ts"
-import * as p28 from "../plugins/push/index.ts"
-import * as p29 from "../plugins/questions/index.ts"
-import * as p30 from "../plugins/questions/tools.ts"
-import * as p31 from "../plugins/schedules/index.ts"
-import * as p32 from "../plugins/schedules/tools.ts"
-import * as p33 from "../plugins/skills/index.ts"
-import * as p34 from "../plugins/skills/tools.ts"
-import * as p35 from "../plugins/time/index.ts"
-import * as p36 from "../plugins/watchdog/index.ts"
-import * as p37 from "../plugins/web/index.ts"
-import * as p38 from "../plugins/workspace/index.ts"
+import * as p26 from "../plugins/outline/index.ts"
+import * as p27 from "../plugins/presets/index.ts"
+import * as p28 from "../plugins/presets/preset.ts"
+import * as p29 from "../plugins/push/index.ts"
+import * as p30 from "../plugins/questions/index.ts"
+import * as p31 from "../plugins/questions/tools.ts"
+import * as p32 from "../plugins/schedules/index.ts"
+import * as p33 from "../plugins/schedules/tools.ts"
+import * as p34 from "../plugins/skills/index.ts"
+import * as p35 from "../plugins/skills/tools.ts"
+import * as p36 from "../plugins/standup/index.ts"
+import * as p37 from "../plugins/theme-pack/index.ts"
+import * as p38 from "../plugins/time/index.ts"
+import * as p39 from "../plugins/watchdog/index.ts"
+import * as p40 from "../plugins/web/index.ts"
+import * as p41 from "../plugins/workspace/index.ts"
 import type { Row } from "./kernel/layers.ts"
 import type { Catalog } from "./kernel/loader.ts"
 
@@ -50,7 +53,6 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: ["conversations"],
       contributes: { tools: [], ops: ["artifact.delete", "artifact.list", "artifact.read", "artifact.write"] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-artifacts@0.1.0",
@@ -59,13 +61,7 @@ export const CATALOG: Catalog = {
     plugin: p1,
     title: "Artifact tools",
     description: "The model-facing artifact tool. Disable to hide it; the artifacts service keeps running.",
-    manifest: {
-      api: 1,
-      requires: [],
-      permissions: ["conversations"],
-      contributes: { tools: ["artifact"], ops: [] },
-      slots: [],
-    },
+    manifest: { api: 1, requires: [], permissions: ["conversations"], contributes: { tools: ["artifact"], ops: [] } },
     local: true,
     source: "ingle-plugin-artifacts@0.1.0",
   },
@@ -74,7 +70,12 @@ export const CATALOG: Catalog = {
     title: "Compaction",
     description:
       "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
-    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: ["conv.compact"] }, slots: [] },
+    manifest: {
+      api: 1,
+      requires: [],
+      permissions: ["conversations", "models"],
+      contributes: { tools: [], ops: ["conv.compact"] },
+    },
     local: true,
     source: "ingle-plugin-compact@0.1.0",
   },
@@ -82,13 +83,7 @@ export const CATALOG: Catalog = {
     plugin: p3,
     title: "Deploy hook",
     description: "Deploys a new build by POSTing to a configured hook URL.",
-    manifest: {
-      api: 1,
-      requires: [],
-      permissions: ["network", "secrets"],
-      contributes: { tools: [], ops: [] },
-      slots: [],
-    },
+    manifest: { api: 1, requires: [], permissions: ["network", "secrets"], contributes: { tools: [], ops: [] } },
     local: true,
     source: "ingle-plugin-deploy-hook@0.1.0",
   },
@@ -101,7 +96,6 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: ["conversations"],
       contributes: { tools: [], ops: ["message.retry"] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-failures@0.1.0",
@@ -113,12 +107,11 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["routes", "storage"],
+      permissions: ["routes", "runtime", "storage"],
       contributes: {
         tools: [],
         ops: ["file.delete", "file.list", "file.put", "file.read", "file.revision", "file.revisions"],
       },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-files@0.1.0",
@@ -132,7 +125,6 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: ["files"],
       contributes: { tools: ["edit", "read", "write"], ops: [] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-files@0.1.0",
@@ -146,7 +138,6 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: ["network", "secrets"],
       contributes: { tools: ["git_blame", "git_diff", "git_log", "git_show"], ops: [] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-git@0.1.0",
@@ -159,9 +150,8 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["network", "storage"],
+      permissions: ["network", "runtime", "storage"],
       contributes: { tools: ["git_native_clone", "git_native_diff", "git_native_log", "git_native_show"], ops: [] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-git-native@0.1.0",
@@ -173,9 +163,8 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: [],
+      permissions: ["runtime"],
       contributes: { tools: [], ops: ["goal.get", "goal.set"] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-goals@0.1.0",
@@ -189,7 +178,6 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: [],
       contributes: { tools: ["create_goal", "get_goal", "update_goal"], ops: [] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-goals@0.1.0",
@@ -198,7 +186,7 @@ export const CATALOG: Catalog = {
     plugin: p11,
     title: "Goal rounds",
     description: "Continues an active goal with one automatic round each time a run ends.",
-    manifest: { api: 1, requires: [], permissions: ["conversations"], contributes: { tools: [], ops: [] }, slots: [] },
+    manifest: { api: 1, requires: [], permissions: ["conversations", "runtime"], contributes: { tools: [], ops: [] } },
     local: true,
     source: "ingle-plugin-goals@0.1.0",
   },
@@ -206,7 +194,7 @@ export const CATALOG: Catalog = {
     plugin: p12,
     title: "Loop guard",
     description: "Reminds the model when it repeats the same tool call with identical arguments.",
-    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] }, slots: [] },
+    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] } },
     local: true,
     source: "ingle-plugin-guard@0.1.0",
   },
@@ -214,7 +202,7 @@ export const CATALOG: Catalog = {
     plugin: p13,
     title: "Hello",
     description: "One tool and one prompt: the smallest plugin that adds something you can see.",
-    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: ["hello"], ops: [] }, slots: [] },
+    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: ["hello"], ops: [] } },
     local: true,
     source: "ingle-plugin-hello@0.1.0",
   },
@@ -225,9 +213,8 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "files", "models"],
+      permissions: ["conversations", "files", "models", "runtime"],
       contributes: { tools: [], ops: ["conv.stop", "history.page", "message.send", "message.withdraw"] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-intake@0.1.0",
@@ -236,13 +223,7 @@ export const CATALOG: Catalog = {
     plugin: p15,
     title: "Jobs",
     description: "Slow tools as jobs that report back.",
-    manifest: {
-      api: 1,
-      requires: [],
-      permissions: ["conversations"],
-      contributes: { tools: [], ops: ["job.list"] },
-      slots: [],
-    },
+    manifest: { api: 1, requires: [], permissions: ["conversations"], contributes: { tools: [], ops: ["job.list"] } },
     local: true,
     source: "ingle-plugin-jobs@0.1.0",
   },
@@ -253,7 +234,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["network", "plugins", "storage"],
+      permissions: ["network", "plugins", "runtime", "storage"],
       contributes: {
         tools: [],
         ops: [
@@ -270,7 +251,6 @@ export const CATALOG: Catalog = {
           "market.update",
         ],
       },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-market@0.1.0",
@@ -282,12 +262,11 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["storage"],
+      permissions: ["runtime", "storage"],
       contributes: {
         tools: [],
         ops: ["mcp.add", "mcp.list", "mcp.prompts", "mcp.remove", "mcp.resources", "mcp.tools"],
       },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-mcp@0.1.0",
@@ -296,13 +275,7 @@ export const CATALOG: Catalog = {
     plugin: p18,
     title: "MCP tools",
     description: "The model-facing mcp tools. Disable to hide them; the mcp service keeps running.",
-    manifest: {
-      api: 1,
-      requires: [],
-      permissions: [],
-      contributes: { tools: ["mcp_*", "tool_search"], ops: [] },
-      slots: [],
-    },
+    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: ["mcp_*", "tool_search"], ops: [] } },
     local: true,
     source: "ingle-plugin-mcp@0.1.0",
   },
@@ -310,7 +283,7 @@ export const CATALOG: Catalog = {
     plugin: p19,
     title: "MCP server",
     description: "One MCP server connection carried by a row, for bundles.",
-    manifest: { api: 1, requires: [], permissions: ["network", "secrets"], slots: [] },
+    manifest: { api: 1, requires: [], permissions: ["network", "secrets"] },
     local: true,
     source: "ingle-plugin-mcp@0.1.0",
   },
@@ -321,7 +294,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "models", "storage"],
+      permissions: ["conversations", "models", "runtime", "storage"],
       contributes: {
         tools: [],
         ops: [
@@ -336,7 +309,6 @@ export const CATALOG: Catalog = {
           "memory.suggested",
         ],
       },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-memory@0.1.0",
@@ -345,13 +317,7 @@ export const CATALOG: Catalog = {
     plugin: p21,
     title: "Memory tools",
     description: "The model-facing memory tools. Disable to hide them; the memory service keeps running.",
-    manifest: {
-      api: 1,
-      requires: [],
-      permissions: [],
-      contributes: { tools: ["recall", "remember"], ops: [] },
-      slots: [],
-    },
+    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: ["recall", "remember"], ops: [] } },
     local: true,
     source: "ingle-plugin-memory@0.1.0",
   },
@@ -362,11 +328,12 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "network", "storage"],
+      permissions: ["conversations", "network", "runtime", "storage"],
       contributes: {
         tools: [],
         ops: [
           "conv.configure",
+          "conv.context",
           "credential.delete",
           "credential.set",
           "models.list",
@@ -378,7 +345,6 @@ export const CATALOG: Catalog = {
           "usage.summary",
         ],
       },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-models@0.1.0",
@@ -392,7 +358,6 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: ["models", "network"],
       contributes: { tools: ["set_model"], ops: [] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-models@0.1.0",
@@ -405,8 +370,10 @@ export const CATALOG: Catalog = {
       api: 1,
       requires: [],
       permissions: ["conversations", "models"],
-      contributes: { tools: [], ops: ["thread.archive", "thread.create", "thread.send", "thread.stop"] },
-      slots: [],
+      contributes: {
+        tools: [],
+        ops: ["captain.*", "thread.archive", "thread.create", "thread.send", "thread.side", "thread.stop"],
+      },
     },
     local: true,
     source: "ingle-plugin-orchestrator@0.1.0",
@@ -418,10 +385,11 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: [],
+      permissions: ["plugins"],
       contributes: {
         tools: [
           "capabilities",
+          "captain_notes",
           "delegate_task",
           "task_cancel",
           "task_status",
@@ -432,13 +400,26 @@ export const CATALOG: Catalog = {
         ],
         ops: [],
       },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-orchestrator@0.1.0",
   },
-  presets: {
+  outline: {
     plugin: p26,
+    title: "Outline",
+    description: "A right-pane tab that lists a conversation's messages and tool calls as a jump list.",
+    manifest: {
+      api: 1,
+      requires: [],
+      permissions: [],
+      contributes: { tools: [], ops: [] },
+      slots: ["pane.tab", "message.renderer"],
+    },
+    local: true,
+    source: "ingle-plugin-outline@0.1.0",
+  },
+  presets: {
+    plugin: p27,
     title: "Presets",
     description: "Named agent presets that choose a conversation's plugins.",
     manifest: {
@@ -446,27 +427,26 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: ["conversations", "plugins", "storage"],
       contributes: { tools: [], ops: ["preset.list", "preset.select", "prompt.delete", "prompt.list", "prompt.put"] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-presets@0.1.0",
   },
   preset: {
-    plugin: p27,
+    plugin: p28,
     title: "Preset",
     description: "One agent preset carried by a row, for bundles.",
-    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] }, slots: [] },
+    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] } },
     local: true,
     source: "ingle-plugin-presets@0.1.0",
   },
   push: {
-    plugin: p28,
+    plugin: p29,
     title: "Web Push",
     description: "Encrypted pushes when no tab is open.",
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["network", "storage"],
+      permissions: ["network", "runtime", "storage"],
       contributes: {
         tools: [],
         ops: [
@@ -481,13 +461,12 @@ export const CATALOG: Catalog = {
           "push.unsubscribe",
         ],
       },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-push@0.1.0",
   },
   questions: {
-    plugin: p29,
+    plugin: p30,
     title: "Questions",
     description: "ask_user and pending requests.",
     manifest: {
@@ -495,13 +474,12 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: ["conversations"],
       contributes: { tools: [], ops: ["request.list", "request.respond"] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-questions@0.1.0",
   },
   "tool-questions": {
-    plugin: p30,
+    plugin: p31,
     title: "Questions tools",
     description: "The model-facing questions tools. Disable to hide them; the questions service keeps running.",
     manifest: {
@@ -509,13 +487,12 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: [],
       contributes: { tools: ["ask_user", "pending_request"], ops: [] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-questions@0.1.0",
   },
   schedules: {
-    plugin: p31,
+    plugin: p32,
     title: "Schedules",
     description: "Scheduled tasks: recurring rules that deliver a prompt to a conversation.",
     manifest: {
@@ -533,13 +510,12 @@ export const CATALOG: Catalog = {
           "schedule.view",
         ],
       },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-schedules@0.1.0",
   },
   "tool-schedules": {
-    plugin: p32,
+    plugin: p33,
     title: "Schedules tools",
     description:
       "The model-facing create, list, view and edit tools for scheduled tasks. Disable to hide them; the schedules service keeps running.",
@@ -548,13 +524,12 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: [],
       contributes: { tools: ["schedule_create", "schedule_edit", "schedule_list", "schedule_view"], ops: [] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-schedules@0.1.0",
   },
   skills: {
-    plugin: p33,
+    plugin: p34,
     title: "Skills",
     description: "Markdown skills loaded on demand.",
     manifest: {
@@ -562,38 +537,59 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: ["storage"],
       contributes: { tools: [], ops: ["skill.delete", "skill.list", "skill.put", "skill.read"] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-skills@0.1.0",
   },
   "tool-skills": {
-    plugin: p34,
+    plugin: p35,
     title: "Skills tools",
     description: "The model-facing skills tools. Disable to hide them; the skills service keeps running.",
-    manifest: { api: 1, requires: [], permissions: ["plugins"], contributes: { tools: ["skill"], ops: [] }, slots: [] },
+    manifest: { api: 1, requires: [], permissions: ["plugins"], contributes: { tools: ["skill"], ops: [] } },
     local: true,
     source: "ingle-plugin-skills@0.1.0",
   },
+  standup: {
+    plugin: p36,
+    title: "Standup",
+    description: "A /standup prompt, with a palette command and a composer button that start it.",
+    manifest: {
+      api: 1,
+      requires: [],
+      permissions: [],
+      contributes: { tools: [], ops: [] },
+      slots: ["palette.command", "composer.action"],
+    },
+    local: true,
+    source: "ingle-plugin-standup@0.1.0",
+  },
+  "theme-pack": {
+    plugin: p37,
+    title: "Theme pack",
+    description: "Three extra themes, Harbor, Moss and Paper, as pure colour data.",
+    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] }, slots: ["theme"] },
+    local: true,
+    source: "ingle-plugin-theme-pack@0.1.0",
+  },
   time: {
-    plugin: p35,
+    plugin: p38,
     title: "Current time",
     description:
       "A user-role time reading with the owner's zone and the elapsed time before each request, without a tool.",
-    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] }, slots: [] },
+    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] } },
     local: true,
     source: "ingle-plugin-time@0.1.0",
   },
   watchdog: {
-    plugin: p36,
+    plugin: p39,
     title: "Watchdog",
     description: "Fails stalled threads and overdue jobs.",
-    manifest: { api: 1, requires: [], permissions: ["conversations"], contributes: { tools: [], ops: [] }, slots: [] },
+    manifest: { api: 1, requires: [], permissions: ["conversations"], contributes: { tools: [], ops: [] } },
     local: true,
     source: "ingle-plugin-watchdog@0.1.0",
   },
   "tool-web": {
-    plugin: p37,
+    plugin: p40,
     title: "Web tools",
     description: "Search the public web and fetch a page as readable text.",
     manifest: {
@@ -601,19 +597,18 @@ export const CATALOG: Catalog = {
       requires: [],
       permissions: ["network"],
       contributes: { tools: ["web_fetch", "web_search"], ops: [] },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-web@0.1.0",
   },
   workspace: {
-    plugin: p38,
+    plugin: p41,
     title: "Workspace",
     description: "Projects and thread documents.",
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations"],
+      permissions: ["conversations", "runtime"],
       contributes: {
         tools: [],
         ops: [
@@ -633,7 +628,6 @@ export const CATALOG: Catalog = {
           "workspace.read",
         ],
       },
-      slots: [],
     },
     local: true,
     source: "ingle-plugin-workspace@0.1.0",
@@ -680,6 +674,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
     { id: "orchestrator", name: "cordis:orchestrator" },
     { id: "tool-orchestrator", name: "cordis:tool-orchestrator" },
   ],
+  "ingle-plugin-outline": [{ id: "outline", name: "cordis:outline" }],
   "ingle-plugin-presets": [
     {
       id: "presets",
@@ -715,6 +710,8 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
     { id: "skills", name: "cordis:skills" },
     { id: "tool-skills", name: "cordis:tool-skills" },
   ],
+  "ingle-plugin-standup": [{ id: "standup", name: "cordis:standup" }],
+  "ingle-plugin-theme-pack": [{ id: "theme-pack", name: "cordis:theme-pack" }],
   "ingle-plugin-time": [{ id: "time", name: "cordis:time", config: { timezone: "UTC" } }],
   "ingle-plugin-watchdog": [{ id: "watchdog", name: "cordis:watchdog" }],
   "ingle-plugin-web": [{ id: "tool-web", name: "cordis:tool-web", disabled: true }],

@@ -1,0 +1,26 @@
+{
+  "name": "ingle-plugin-standup",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A /standup prompt, with a palette command and a composer button that start it.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "standup": {
+        "module": "./index.ts",
+        "client": "./client.tsx",
+        "title": "Standup",
+        "description": "A /standup prompt, with a palette command and a composer button that start it.",
+        "api": 1,
+        "contributes": {},
+        "slots": ["palette.command", "composer.action"]
+      }
+    },
+    "bundle": [
+      {
+        "id": "standup",
+        "plugin": "standup"
+      }
+    ]
+  }
+}

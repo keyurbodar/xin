@@ -13,11 +13,13 @@
         "permissions": [
           "conversations",
           "network",
+          "runtime",
           "storage"
         ],
         "contributes": {
           "ops": [
             "conv.configure",
+            "conv.context",
             "credential.delete",
             "credential.set",
             "models.list",

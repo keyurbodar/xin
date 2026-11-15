@@ -9,7 +9,7 @@ export class Ops extends Service {
   readonly defined = new Map<string, Op>()
   /** The loader row that defined each op, for the doctor's inventory. */
   readonly rows = new Map<string, string | undefined>()
-  readonly commands: Commands
+  private readonly commands: Commands
 
   constructor(ctx: Context) {
     super(ctx, "ops")
@@ -38,7 +38,12 @@ export class Ops extends Service {
     }, `ops.define(${op.name})`)
   }
 
+  /** Run one command. A plugin row may act only for an agent: acting as the owner would let it run any op. */
   run(command: Command, actor: Actor): Promise<Outcome> {
+    const row = loaderRow(this.ctx)
+    const kernel: IngleLoader | undefined = this.ctx.get("kernel")
+    if (actor.kind !== "agent" && row !== undefined && kernel?.permissionsOf(row) !== undefined)
+      return Promise.reject(new Error(`${row} may run ops only as an agent, not as ${actor.kind}`))
     return this.commands.run(command, actor)
   }
 

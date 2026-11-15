@@ -1,4 +1,6 @@
 import { For, Match, Show, Switch, type JSX } from "solid-js"
+import { Dynamic } from "solid-js/web"
+import { host, slotItems } from "../plugins/slots.tsx"
 import { navigate, route } from "../lib/router.ts"
 import { Glyph, type GlyphName } from "../components/extensions/glyph.tsx"
 import { General } from "../components/settings/general.tsx"
@@ -8,7 +10,7 @@ import { Notifications } from "../components/settings/notifications.tsx"
 import { Profile } from "../components/settings/profile.tsx"
 import { System } from "../components/settings/system.tsx"
 
-type Tab = "general" | "usage" | "models" | "notifications" | "profile" | "system"
+type Tab = "general" | "usage" | "models" | "notifications" | "profile" | "system" | "plugin"
 
 type Entry = { readonly id: Tab; readonly label: string; readonly icon: GlyphName }
 
@@ -39,6 +41,7 @@ const TITLES: Readonly<Record<Tab, string>> = {
   notifications: "Notifications",
   profile: "Profile + token",
   system: "System",
+  plugin: "Plugins",
 }
 
 function tabOf(part: string | undefined): Tab {
@@ -53,6 +56,8 @@ function tabOf(part: string | undefined): Tab {
       return "profile"
     case "system":
       return "system"
+    case "plugin":
+      return "plugin"
     default:
       return "general"
   }
@@ -60,6 +65,8 @@ function tabOf(part: string | undefined): Tab {
 
 export function SettingsScreen(): JSX.Element {
   const tab = (): Tab => tabOf(route().parts[1])
+  const pages = slotItems("settings.page")
+  const page = () => pages().find((item) => item.key === `${route().parts[2]}:${route().parts[3]}`)
 
   return (
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
@@ -88,17 +95,35 @@ export function SettingsScreen(): JSX.Element {
             </>
           )}
         </For>
+        <Show when={pages().length > 0}>
+          <span class="label hidden px-2.5 pb-1 pt-3 sm:inline">Plugins</span>
+          <For each={pages()}>
+            {(item) => (
+              <button
+                type="button"
+                onClick={() => navigate(`/settings/plugin/${item.plugin}/${item.id}`)}
+                class="flex h-8 shrink-0 items-center gap-2 rounded-sm px-2.5 text-sm whitespace-nowrap"
+                classList={{ "bg-hover text-ink": page() === item, "text-ink-2 hover:bg-secondary": page() !== item }}
+              >
+                {item.title}
+              </button>
+            )}
+          </For>
+        </Show>
       </nav>
 
       <section class="flex min-w-0 flex-1 flex-col">
         <header class="flex h-14 shrink-0 items-center gap-3 border-b border-line-1 px-7">
-          <h1 class="text-lg font-medium text-ink">{TITLES[tab()]}</h1>
+          <h1 class="text-lg font-medium text-ink">{page()?.title ?? TITLES[tab()]}</h1>
           <Show when={tab() !== "profile"}>
             <span class="ml-auto text-xs text-ink-3">One owner</span>
           </Show>
         </header>
         <div class="min-h-0 flex-1 overflow-y-auto px-7 py-5">
           <Switch fallback={<General />}>
+            <Match when={tab() === "plugin" && page()}>
+              {(found) => <Dynamic component={found().component} host={host} />}
+            </Match>
             <Match when={tab() === "usage"}>
               <Usage />
             </Match>

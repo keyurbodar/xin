@@ -5,7 +5,8 @@ import { THINKING_LEVELS, type ThinkingLevel } from "../../state/conversation.ts
 import type { PresetRow } from "../../state/extensions.ts"
 import { priceMarks, type ModelInfo, type ModelRef } from "../../state/settings.ts"
 import { FileChip } from "../ui/file-chip.tsx"
-import { Icon } from "../ui/icon.tsx"
+import { Icon, isIconName } from "../ui/icon.tsx"
+import { bindComposer, host, slotItems } from "../../plugins/slots.tsx"
 import { Spinner } from "./ui.tsx"
 
 function errorText(failure: unknown): string {
@@ -358,6 +359,24 @@ export function Composer(props: {
     }
   }
 
+  let area: HTMLTextAreaElement | undefined
+  const actions = slotItems("composer.action")
+  const handle = {
+    insert: (text: string): void => {
+      const at = area?.selectionStart ?? draft().length
+      const end = area?.selectionEnd ?? at
+      setDraft((current) => current.slice(0, at) + text + current.slice(end))
+      grow.resize()
+      area?.focus()
+      area?.setSelectionRange(at + text.length, at + text.length)
+    },
+    submit: (text: string): void => {
+      setDraft(text)
+      void submit()
+    },
+  }
+  bindComposer(handle)
+
   const stop = async (): Promise<void> => {
     if (stopping()) return
     setStopping(true)
@@ -377,7 +396,10 @@ export function Composer(props: {
       <div class="mx-auto w-full max-w-[720px]">
         <div class="overflow-hidden rounded-md border border-line-2 bg-card focus-within:border-line-3 focus-within:shadow-composer">
           <textarea
-            ref={grow.ref}
+            ref={(element) => {
+              area = element
+              grow.ref(element)
+            }}
             value={draft()}
             rows={1}
             disabled={sending()}
@@ -423,6 +445,19 @@ export function Composer(props: {
               class="hidden"
               onChange={(event) => void attach(event.currentTarget.files)}
             />
+            <For each={actions()}>
+              {(action) => (
+                <button
+                  type="button"
+                  onClick={() => action.run(host, handle)}
+                  title={action.title}
+                  aria-label={action.title}
+                  class="grid h-8 min-w-8 place-items-center rounded-sm px-1.5 text-xs text-ink-2 hover:bg-secondary hover:text-ink"
+                >
+                  {action.icon !== undefined && isIconName(action.icon) ? <Icon name={action.icon} size={14} /> : action.title}
+                </button>
+              )}
+            </For>
             <span class="mx-1 h-2.5 w-px bg-line-2" aria-hidden="true" />
             <Show when={props.presets.length > 0}>
               <ToolButton

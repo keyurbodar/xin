@@ -6,6 +6,7 @@ import { projectGlyph, PROJECT_GLYPHS } from "../../lib/project-glyphs.ts"
 import { Corner, projectState } from "../chat/project-glyph.tsx"
 import { money } from "../../lib/format.ts"
 import { usage, owner, ownerName } from "../../state/settings.ts"
+import { SlotList } from "../../plugins/slots.tsx"
 
 function summary(project: ProjectSummary): string {
   const waiting = project.openRequests + project.threads.waiting.length
@@ -167,6 +168,7 @@ export function Sidebar(props: { onSearch: () => void; rail?: boolean | undefine
             </button>
           )}
         </For>
+        <SlotList slot="sidebar.section" />
       </div>
 
       <div class="mt-auto flex flex-col">

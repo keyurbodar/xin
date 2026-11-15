@@ -1,5 +1,6 @@
 import { render } from "solid-js/web"
 import { App } from "./app.tsx"
+import "./plugins/registry.ts"
 import "./styles/app.css"
 import "./styles/status.css"
 

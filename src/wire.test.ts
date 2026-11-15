@@ -95,6 +95,17 @@ describe("wire protocol", () => {
     socket.close()
   })
 
+  it("republishes the home projection when a plugin row is enabled or disabled", async () => {
+    const socket = await connect()
+    socket.send({ t: "sub", stream: "home" })
+    await socket.next((f) => f.t === "snap")
+    await cmd(owner(), `off-${crypto.randomUUID()}`, "plugin.enable", { id: "test", enabled: false })
+    expect(await socket.next((f) => f.t === "snap")).toMatchObject({ value: { plugins: { test: "disabled" } } })
+    await cmd(owner(), `on-${crypto.randomUUID()}`, "plugin.enable", { id: "test", enabled: true })
+    expect(await socket.next((f) => f.t === "snap")).toMatchObject({ value: { plugins: { test: "active" } } })
+    socket.close()
+  })
+
   it("lists a live socket and closes it by id", async () => {
     await closeAll()
     await until(async () => (await sessions()).length === 0)

@@ -1,0 +1,26 @@
+{
+  "name": "ingle-plugin-theme-pack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Three extra themes, Harbor, Moss and Paper, as pure colour data.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "theme-pack": {
+        "module": "./index.ts",
+        "client": "./client.tsx",
+        "title": "Theme pack",
+        "description": "Three extra themes, Harbor, Moss and Paper, as pure colour data.",
+        "api": 1,
+        "contributes": {},
+        "slots": ["theme"]
+      }
+    },
+    "bundle": [
+      {
+        "id": "theme-pack",
+        "plugin": "theme-pack"
+      }
+    ]
+  }
+}

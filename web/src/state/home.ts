@@ -36,9 +36,11 @@ export type HomeSnapshot = { readonly projects: readonly ProjectSummary[] }
 
 const [projects, setProjects] = createSignal<readonly ProjectSummary[]>([])
 const [loaded, setLoaded] = createSignal(false)
+const [plugins, setPlugins] = createSignal<Readonly<Record<string, string>>>({})
 
 export const homeProjects = projects
 export const homeLoaded = loaded
+export const homePlugins = plugins
 
 function threadsOf(value: unknown): readonly ThreadSummary[] {
   return listOf(value).flatMap((entry) => {
@@ -106,10 +108,16 @@ function parse(value: unknown): readonly ProjectSummary[] {
   })
 }
 
+function pluginStates(value: unknown): Readonly<Record<string, string>> {
+  const record = recordOf(value) ?? {}
+  return Object.fromEntries(Object.entries(record).flatMap(([row, state]) => (typeof state === "string" ? [[row, state]] : [])))
+}
+
 export function subscribeHome(streams: Streams): () => void {
   return streams.subscribe("home", {
     value: (value) => {
       setProjects(parse(value))
+      setPlugins(isRecord(value) ? pluginStates(value.plugins) : {})
       setLoaded(true)
     },
     delta: () => undefined,

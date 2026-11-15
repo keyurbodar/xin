@@ -16,9 +16,11 @@
         ],
         "contributes": {
           "ops": [
+            "captain.*",
             "thread.archive",
             "thread.create",
             "thread.send",
+            "thread.side",
             "thread.stop"
           ]
         }
@@ -27,9 +29,13 @@
         "module": "./tools.ts",
         "title": "Orchestrator tools",
         "description": "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running.",
+        "permissions": [
+          "plugins"
+        ],
         "contributes": {
           "tools": [
             "capabilities",
+            "captain_notes",
             "delegate_task",
             "task_cancel",
             "task_status",

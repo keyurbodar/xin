@@ -18,6 +18,7 @@ import {
 import { RoleSchema, StatusSchema } from "../../src/contracts/threaddoc.ts"
 import { type Context as KernelContext, textResult } from "../../src/kernel/index.ts"
 import { excerpt } from "../../src/transcript.ts"
+import { MAX_FILE_CHARS, NOTES_TOOL, writeOwnFile } from "./captains.ts"
 
 const MAX_READ_CHARS = 16_000
 const MAX_WAIT_MS = 8_000
@@ -344,7 +345,40 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
     },
   })
 
-  return [capabilities, delegate, threadCreate, taskStatus, taskCancel, threadSend, threadRead, threadList]
+  // Deferred, so only a Captain's conversation, which loads it at creation, is offered it.
+  const captainNotes = defineTool({
+    name: NOTES_TOOL,
+    description:
+      "Replace one of your standing files as a Captain: `notes` (your own running notes) or `crew_rules` (rules every crew thread reads). Send the whole new text.",
+    parameters: obj({
+      file: oneOf(["notes", "crew_rules"] as const),
+      text: str({ maxLength: MAX_FILE_CHARS }),
+    }),
+    deferred: true,
+    replay: "safe",
+    execute: async (args, api, callContext) => {
+      const file = args.file === "notes" ? "notes" : "crewRules"
+      const written = await api.commit((tx) => writeOwnFile(tx, api.conversationId, file, args.text), callContext)
+      if (written.kind === "not_captain")
+        return textResult("captain_notes is only available to a Captain.", {
+          details: { code: "capability_denied" },
+          isError: true,
+        })
+      return textResult(`Saved @${written.alias}'s ${args.file} (${args.text.length} characters).`)
+    },
+  })
+
+  return [
+    capabilities,
+    delegate,
+    threadCreate,
+    taskStatus,
+    taskCancel,
+    threadSend,
+    threadRead,
+    threadList,
+    captainNotes,
+  ]
 }
 
 export const name = "tool-orchestrator"

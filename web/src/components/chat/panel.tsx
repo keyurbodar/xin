@@ -19,6 +19,7 @@ import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import {
   createConversationView,
   liveOf,
+  toolResultsOf,
   type AnsweredView,
   type RequestRow,
   type Snapshot,
@@ -32,6 +33,8 @@ import { SchedulesTab } from "./schedules.tsx"
 import { AnsweredQuestionCard, OpenQuestionCard, ThreadRow } from "./cards.tsx"
 import { EntryList, itemsOf, type ItemContext } from "./entries.tsx"
 import { SteerComposer } from "./composer.tsx"
+import { Dynamic } from "solid-js/web"
+import { activeConversation, host, slotItems } from "../../plugins/slots.tsx"
 
 type Tab = "threads" | "files" | "memory" | "schedules" | "jobs"
 
@@ -237,6 +240,9 @@ function ThreadBody(props: {
     project: undefined,
     threads: [],
     links: new Map(),
+    get results() {
+      return toolResultsOf(props.snapshot.entries)
+    },
     requests: props.requests,
     density: "panel",
     onOpenThread: () => undefined,
@@ -366,7 +372,8 @@ export function ProjectPanel(props: {
   onClose?: (() => void) | undefined
   variant?: "sidebar" | "drawer" | "sheet" | undefined
 }): JSX.Element {
-  const [tab, setTab] = createSignal<Tab>("threads")
+  const [tab, setTab] = createSignal<string>("threads")
+  const paneTabs = slotItems("pane.tab")
   const [pill, setPill] = createSignal({ left: 0, width: 0 })
   let strip: HTMLDivElement | undefined
   const measure = (): void => {
@@ -425,7 +432,7 @@ export function ProjectPanel(props: {
                     class="absolute top-0 left-0 h-7 rounded-sm bg-hover transition-[transform,width] duration-200 ease-[var(--ease-in-out)]"
                     style={{ transform: `translateX(${pill().left}px)`, width: `${pill().width}px` }}
                   />
-                  <For each={TABS}>
+                  <For each={[...TABS, ...paneTabs().map((item) => ({ id: item.key, label: item.title }))]}>
                     {(entry) => (
                       <button
                         type="button"
@@ -476,6 +483,9 @@ export function ProjectPanel(props: {
                       </Match>
                       <Match when={current === "jobs"}>
                         <JobsTab />
+                      </Match>
+                      <Match when={paneTabs().find((item) => item.key === current)}>
+                        {(item) => <Dynamic component={item().component} host={host} conversation={activeConversation()} />}
                       </Match>
                     </Switch>
                   </div>

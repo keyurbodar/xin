@@ -1,0 +1,588 @@
+{
+  "version": "0.1.0",
+  "plugins": [
+    {
+      "name": "artifacts",
+      "title": "Artifacts",
+      "description": "Thread documents with a revision.",
+      "package": "ingle-plugin-artifacts",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations"
+      ],
+      "slots": [],
+      "rows": [
+        "artifacts"
+      ]
+    },
+    {
+      "name": "tool-artifacts",
+      "title": "Artifact tools",
+      "description": "The model-facing artifact tool. Disable to hide it; the artifacts service keeps running.",
+      "package": "ingle-plugin-artifacts",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations"
+      ],
+      "slots": [],
+      "rows": [
+        "tool-artifacts"
+      ]
+    },
+    {
+      "name": "compact",
+      "title": "Compaction",
+      "description": "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
+      "package": "ingle-plugin-compact",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "compact"
+      ]
+    },
+    {
+      "name": "deploy-hook",
+      "title": "Deploy hook",
+      "description": "Deploys a new build by POSTing to a configured hook URL.",
+      "package": "ingle-plugin-deploy-hook",
+      "version": "0.1.0",
+      "permissions": [
+        "network",
+        "secrets"
+      ],
+      "slots": [],
+      "rows": [
+        "deploy-hook"
+      ]
+    },
+    {
+      "name": "failures",
+      "title": "Failures",
+      "description": "Run failures as visible entries.",
+      "package": "ingle-plugin-failures",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations"
+      ],
+      "slots": [],
+      "rows": [
+        "failures"
+      ]
+    },
+    {
+      "name": "files",
+      "title": "Files",
+      "description": "R2-backed read, write and edit for pi's file tools.",
+      "package": "ingle-plugin-files",
+      "version": "0.1.0",
+      "permissions": [
+        "routes",
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "files"
+      ]
+    },
+    {
+      "name": "tool-files",
+      "title": "Files tools",
+      "description": "The model-facing files tools. Disable to hide them; the files service keeps running.",
+      "package": "ingle-plugin-files",
+      "version": "0.1.0",
+      "permissions": [
+        "files"
+      ],
+      "slots": [],
+      "rows": [
+        "tool-files"
+      ]
+    },
+    {
+      "name": "tool-git",
+      "title": "Git tools",
+      "description": "Read-only log, diff, show and blame for the project's GitHub repository.",
+      "package": "ingle-plugin-git",
+      "version": "0.1.0",
+      "permissions": [
+        "network",
+        "secrets"
+      ],
+      "slots": [],
+      "rows": [
+        "tool-git"
+      ]
+    },
+    {
+      "name": "tool-git-native",
+      "title": "Native git tools",
+      "description": "Clone and read a public git repository of any host inside the Worker: history, a file at a revision, and a diff between two revisions.",
+      "package": "ingle-plugin-git-native",
+      "version": "0.1.0",
+      "permissions": [
+        "network",
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "tool-git-native"
+      ]
+    },
+    {
+      "name": "goals",
+      "title": "Goals",
+      "description": "One durable objective per conversation: create, edit, pause, resume, complete, block and clear.",
+      "package": "ingle-plugin-goals",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "goals"
+      ]
+    },
+    {
+      "name": "tool-goals",
+      "title": "Goal tools",
+      "description": "The model-facing goal tools. Disable to hide them; the goals service keeps running.",
+      "package": "ingle-plugin-goals",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "tool-goals"
+      ]
+    },
+    {
+      "name": "goal-rounds",
+      "title": "Goal rounds",
+      "description": "Continues an active goal with one automatic round each time a run ends.",
+      "package": "ingle-plugin-goals",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations"
+      ],
+      "slots": [],
+      "rows": [
+        "goal-rounds"
+      ]
+    },
+    {
+      "name": "guard",
+      "title": "Loop guard",
+      "description": "Reminds the model when it repeats the same tool call with identical arguments.",
+      "package": "ingle-plugin-guard",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "guard"
+      ]
+    },
+    {
+      "name": "hello",
+      "title": "Hello",
+      "description": "One tool and one prompt: the smallest plugin that adds something you can see.",
+      "package": "ingle-plugin-hello",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "hello"
+      ]
+    },
+    {
+      "name": "intake",
+      "title": "Intake",
+      "description": "Inbound debounce, batch claim and dispatch.",
+      "package": "ingle-plugin-intake",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations",
+        "files",
+        "models"
+      ],
+      "slots": [],
+      "rows": [
+        "intake"
+      ]
+    },
+    {
+      "name": "jobs",
+      "title": "Jobs",
+      "description": "Slow tools as jobs that report back.",
+      "package": "ingle-plugin-jobs",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations"
+      ],
+      "slots": [],
+      "rows": [
+        "jobs"
+      ]
+    },
+    {
+      "name": "market",
+      "title": "Market",
+      "description": "Discovery, install and update checks for plugin packages.",
+      "package": "ingle-plugin-market",
+      "version": "0.1.0",
+      "permissions": [
+        "network",
+        "plugins",
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "market"
+      ]
+    },
+    {
+      "name": "mcp",
+      "title": "MCP",
+      "description": "MCP servers as deferred tools.",
+      "package": "ingle-plugin-mcp",
+      "version": "0.1.0",
+      "permissions": [
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "mcp"
+      ]
+    },
+    {
+      "name": "tool-mcp",
+      "title": "MCP tools",
+      "description": "The model-facing mcp tools. Disable to hide them; the mcp service keeps running.",
+      "package": "ingle-plugin-mcp",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "tool-mcp"
+      ]
+    },
+    {
+      "name": "mcp-server",
+      "title": "MCP server",
+      "description": "One MCP server connection carried by a row, for bundles.",
+      "package": "ingle-plugin-mcp",
+      "version": "0.1.0",
+      "permissions": [
+        "network",
+        "secrets"
+      ],
+      "slots": [],
+      "rows": []
+    },
+    {
+      "name": "memory",
+      "title": "Memory",
+      "description": "Notes with FTS recall and the Dreamer.",
+      "package": "ingle-plugin-memory",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations",
+        "models",
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "memory"
+      ]
+    },
+    {
+      "name": "tool-memory",
+      "title": "Memory tools",
+      "description": "The model-facing memory tools. Disable to hide them; the memory service keeps running.",
+      "package": "ingle-plugin-memory",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "tool-memory"
+      ]
+    },
+    {
+      "name": "models",
+      "title": "Models",
+      "description": "Run-time model catalog, credentials and set_model.",
+      "package": "ingle-plugin-models",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations",
+        "network",
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "models"
+      ]
+    },
+    {
+      "name": "tool-models",
+      "title": "Models tools",
+      "description": "The model-facing models tools. Disable to hide them; the models service keeps running.",
+      "package": "ingle-plugin-models",
+      "version": "0.1.0",
+      "permissions": [
+        "models",
+        "network"
+      ],
+      "slots": [],
+      "rows": [
+        "tool-models"
+      ]
+    },
+    {
+      "name": "orchestrator",
+      "title": "Orchestrator",
+      "description": "Coordinator tools and threads.",
+      "package": "ingle-plugin-orchestrator",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations",
+        "models"
+      ],
+      "slots": [],
+      "rows": [
+        "orchestrator"
+      ]
+    },
+    {
+      "name": "tool-orchestrator",
+      "title": "Orchestrator tools",
+      "description": "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running.",
+      "package": "ingle-plugin-orchestrator",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "tool-orchestrator"
+      ]
+    },
+    {
+      "name": "outline",
+      "title": "Outline",
+      "description": "A right-pane tab that lists a conversation's messages and tool calls as a jump list.",
+      "package": "ingle-plugin-outline",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [
+        "pane.tab",
+        "message.renderer"
+      ],
+      "rows": [
+        "outline"
+      ]
+    },
+    {
+      "name": "presets",
+      "title": "Presets",
+      "description": "Named agent presets that choose a conversation's plugins.",
+      "package": "ingle-plugin-presets",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations",
+        "plugins",
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "presets"
+      ]
+    },
+    {
+      "name": "preset",
+      "title": "Preset",
+      "description": "One agent preset carried by a row, for bundles.",
+      "package": "ingle-plugin-presets",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "preset-full",
+        "preset-minimal"
+      ]
+    },
+    {
+      "name": "push",
+      "title": "Web Push",
+      "description": "Encrypted pushes when no tab is open.",
+      "package": "ingle-plugin-push",
+      "version": "0.1.0",
+      "permissions": [
+        "network",
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "push"
+      ]
+    },
+    {
+      "name": "questions",
+      "title": "Questions",
+      "description": "ask_user and pending requests.",
+      "package": "ingle-plugin-questions",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations"
+      ],
+      "slots": [],
+      "rows": [
+        "questions"
+      ]
+    },
+    {
+      "name": "tool-questions",
+      "title": "Questions tools",
+      "description": "The model-facing questions tools. Disable to hide them; the questions service keeps running.",
+      "package": "ingle-plugin-questions",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "tool-questions"
+      ]
+    },
+    {
+      "name": "schedules",
+      "title": "Schedules",
+      "description": "Scheduled tasks: recurring rules that deliver a prompt to a conversation.",
+      "package": "ingle-plugin-schedules",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations"
+      ],
+      "slots": [],
+      "rows": [
+        "schedules"
+      ]
+    },
+    {
+      "name": "tool-schedules",
+      "title": "Schedules tools",
+      "description": "The model-facing create, list, view and edit tools for scheduled tasks. Disable to hide them; the schedules service keeps running.",
+      "package": "ingle-plugin-schedules",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "tool-schedules"
+      ]
+    },
+    {
+      "name": "skills",
+      "title": "Skills",
+      "description": "Markdown skills loaded on demand.",
+      "package": "ingle-plugin-skills",
+      "version": "0.1.0",
+      "permissions": [
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "skills"
+      ]
+    },
+    {
+      "name": "tool-skills",
+      "title": "Skills tools",
+      "description": "The model-facing skills tools. Disable to hide them; the skills service keeps running.",
+      "package": "ingle-plugin-skills",
+      "version": "0.1.0",
+      "permissions": [
+        "plugins"
+      ],
+      "slots": [],
+      "rows": [
+        "tool-skills"
+      ]
+    },
+    {
+      "name": "standup",
+      "title": "Standup",
+      "description": "A /standup prompt, with a palette command and a composer button that start it.",
+      "package": "ingle-plugin-standup",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [
+        "palette.command",
+        "composer.action"
+      ],
+      "rows": [
+        "standup"
+      ]
+    },
+    {
+      "name": "theme-pack",
+      "title": "Theme pack",
+      "description": "Three extra themes, Harbor, Moss and Paper, as pure colour data.",
+      "package": "ingle-plugin-theme-pack",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [
+        "theme"
+      ],
+      "rows": [
+        "theme-pack"
+      ]
+    },
+    {
+      "name": "time",
+      "title": "Current time",
+      "description": "A user-role time reading with the owner's zone and the elapsed time before each request, without a tool.",
+      "package": "ingle-plugin-time",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "time"
+      ]
+    },
+    {
+      "name": "watchdog",
+      "title": "Watchdog",
+      "description": "Fails stalled threads and overdue jobs.",
+      "package": "ingle-plugin-watchdog",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations"
+      ],
+      "slots": [],
+      "rows": [
+        "watchdog"
+      ]
+    },
+    {
+      "name": "tool-web",
+      "title": "Web tools",
+      "description": "Search the public web and fetch a page as readable text.",
+      "package": "ingle-plugin-web",
+      "version": "0.1.0",
+      "permissions": [
+        "network"
+      ],
+      "slots": [],
+      "rows": [
+        "tool-web"
+      ]
+    },
+    {
+      "name": "workspace",
+      "title": "Workspace",
+      "description": "Projects and thread documents.",
+      "package": "ingle-plugin-workspace",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations"
+      ],
+      "slots": [],
+      "rows": [
+        "workspace"
+      ]
+    }
+  ]
+}
