@@ -4,6 +4,7 @@ import { connect, connectionState, reauthorize } from "./state/connection.ts"
 import { subscribeHome } from "./state/home.ts"
 import { navigate, route } from "./lib/router.ts"
 import { Shell } from "./components/shell/shell.tsx"
+import { BootLoader } from "./components/ui/loaders.tsx"
 import { SignIn } from "./screens/signin.tsx"
 import { WelcomeScreen } from "./screens/welcome.tsx"
 
@@ -34,7 +35,7 @@ export function App(): JSX.Element {
   })
 
   return (
-    <Show when={authed() !== undefined} fallback={<div class="grid h-full place-items-center" />}>
+    <Show when={authed() !== undefined} fallback={<div class="grid h-full place-items-center"><BootLoader label="Starting Ingle" /></div>}>
         <Show when={authed()} fallback={<SignIn onSignedIn={enter} />}>
           <Show when={route().parts[0] === "welcome"} fallback={<Shell />}>
             <WelcomeScreen />

@@ -3,10 +3,10 @@ import { cmd } from "../../lib/api.ts"
 import { ago, describeRule } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import { Icon } from "../ui/icon.tsx"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
-import { Skullet } from "../ui/skeleton.tsx"
+import { Signal } from "../ui/signal.tsx"
+import { Loading, RowSkeleton } from "../ui/skeleton.tsx"
 import { Toggle } from "../extensions/chrome.tsx"
-import { createPaneAction, EmptyState, PanelGhost, ResourceError } from "./ui.tsx"
+import { createPaneAction, EmptyState, ResourceError } from "./ui.tsx"
 
 type ScheduleRun = {
   readonly slot: string
@@ -61,7 +61,7 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
     })
 
   return (
-    <Skullet loading={schedules.loading} sample={() => <PanelGhost rows={4} />} label="Loading schedules">
+    <Loading when={schedules.loading} skeleton={<RowSkeleton rows={4} />} label="Loading schedules">
       <Show when={schedules.error} fallback={null}>
         <ResourceError what="schedules" error={schedules.error} onRetry={() => void refetch()} />
       </Show>
@@ -91,7 +91,7 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
                 {(schedule) => (
                   <div class="flex flex-col gap-1.5 border-b border-line-1 px-3 py-3" classList={{ "opacity-60": !schedule.active }}>
                     <div class="flex items-center gap-2">
-                      <StatusGlyph state={schedule.active ? "queued" : "paused"} size={16} />
+                      <Signal state={schedule.active ? "queued" : "idle"} size={16} />
                       <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{schedule.title}</span>
                       <Toggle
                         on={schedule.active}
@@ -137,6 +137,6 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
           </Show>
         )}
       </Show>
-    </Skullet>
+    </Loading>
   )
 }

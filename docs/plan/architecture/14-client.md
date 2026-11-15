@@ -11,19 +11,20 @@ This section decides how the first-party web client is built and what it talks t
 
 ## Status palette
 
-The values live in `tokens.css`; `web/src/lib/status.ts` maps each state to its token.
+The values live in `tokens.css`; the `.sig` rules in `ingle-motion.css` pick each state's token, and `web/src/lib/status.ts` maps backend statuses onto the states and names them.
 
-| State | Token | Word |
-| --- | --- | --- |
-| queued | `ink-3` | Queued |
-| working | `working` | Working |
-| waiting | `needs` | Waiting on you |
-| done | `done` | Done |
-| failed | `failed` | Failed |
-| paused | `working` | Paused |
-| cancelled | `icon` | Cancelled |
+| State | Token | Word | Shape | Backend status |
+| --- | --- | --- | --- | --- |
+| idle | `ink-3` | Stopped | centre dot, still | `cancelled`; a paused schedule |
+| queued | `ink-3` | Queued | dim grid, still | anything not yet running |
+| working | `working` | Working | chasing ring, `--loop-chase` | `working` |
+| needs | `needs` | Needs you | plus, breathes `--loop-breathe` | `waiting` (a question to the owner) |
+| waiting | `ink-2` | Waiting | corners and centre, centre blinks `--loop-blink` | none yet |
+| done | `done` | Done | check, still | `completed` |
+| failed | `failed` | Failed | X, still | `failed` |
+| merged | `merged` | Merged | branch, still | none yet |
 
-Rows, chips and the sidebar use the **D Grid** family from `I2`: a 3×3 grid of square cells where every state is its own pattern, at 12, 16, 20 or 24px. Chat chips use the **Capsule** family, which pairs the glyph with the state's word.
+Every status in the client is the **Signal** (v5 page 16.1): a 3×3 grid of round dots at 12, 14, 16 or 20px, `components/ui/signal.tsx` over the `.sig` rules. Shape reads before colour, settled states crossfade dot by dot in 200ms, and only working, needs and waiting loop. fTz's paused and cancelled have no Signal shape (design system §0.8), so a cancelled thread and a paused schedule show idle.
 
 ## Stack
 
@@ -34,12 +35,12 @@ Rows, chips and the sidebar use the **D Grid** family from `I2`: a 3×3 grid of 
 | router | a 40-line hash router in `web/src/lib/router.ts` | six routes, no dependency, works on any static host |
 | icons | `lucide-solid` | the design names Lucide; imports are per icon, so the bundle carries only the icons used |
 | deltas | `@earendil-works/chord/delta` `applyImmutable` | the server sends the watch's decoded ops, so the client applies them with the library that defines them instead of a copy |
-| loading | `skullet` (measured skeletons), `torph` (text morph) | the owner's picks; a skeleton the size of the real content stops the layout shifting |
+| loading | `torph` (text morph); skeletons are plain `.im-skeleton` blocks | the owner's pick for text; v5 page 16.3 draws fixed skeletons at the real rows' measure, so skullet's measured ghosts were dropped |
 | syntax | `sugar-high`, the highlighter kiko ships | C12 tints fenced code; it is a few KB, has no dependencies, and escapes the code it marks up |
 | primitives | `@ark-ui/solid` | headless menus, popovers, selects and dialogs with real focus management, and `--transform-origin` so a popover scales from its trigger |
 | fonts | `@fontsource-variable/inter`, `@fontsource-variable/geist-mono` | self-hosted variable fonts, so no third-party font request |
 
-**What came from kiko, and what did not.** kiko's `apps/web-solid` is the reference for this stack, and Ingle takes its versions as they are: Solid 1.9, Vite 8, Tailwind 4.3, skullet for measured skeletons, torph for text morphs, and now sugar-high for code. The rest of kiko's list is declined until a frame asks for it: Kobalte and cmdk-solid (the palette is a plain list with its own keyboard handling, and no surface needs a focus-trapping primitive yet), TipTap and CodeMirror (every editor here is a plain textarea over markdown, not rich text), `@corvu/calendar` and `@corvu/resizable` (no date picker or split panes in the frames), virtua, mermaid, jszip, pdfjs-dist and `@pierre/trees` (no virtualised lists, diagrams, archives, PDFs or file trees), and Phosphor icons (the design names Lucide). The comparison is `docs/log/decisions.tsv` under P14.
+**What came from kiko, and what did not.** kiko's `apps/web-solid` is the reference for this stack, and Ingle takes its versions as they are: Solid 1.9, Vite 8, Tailwind 4.3, torph for text morphs (skullet was taken too and later dropped for page 16.3's skeletons), and now sugar-high for code. The rest of kiko's list is declined until a frame asks for it: Kobalte and cmdk-solid (the palette is a plain list with its own keyboard handling, and no surface needs a focus-trapping primitive yet), TipTap and CodeMirror (every editor here is a plain textarea over markdown, not rich text), `@corvu/calendar` and `@corvu/resizable` (no date picker or split panes in the frames), virtua, mermaid, jszip, pdfjs-dist and `@pierre/trees` (no virtualised lists, diagrams, archives, PDFs or file trees), and Phosphor icons (the design names Lucide). The comparison is `docs/log/decisions.tsv` under P14.
 
 ## Data
 
@@ -111,19 +112,23 @@ Layout (v4 shell, render 12.1): the sidebar (240, on bg) holds the app mark, sea
 
 ## Identity
 
-Status uses the D Grid family from `I2`. A 3 by 3 grid of cells gives every state its own pattern and its own loop, so shape reads before colour, even at 12px and in greyscale. `components/ui/status-glyph.tsx` draws it wherever a thread, a report or a job shows state.
+Status is the Signal (see Status palette). `components/ui/signal.tsx` draws it wherever a thread, a project, a report, a schedule or a job shows state, with the state's word as its accessible name.
 
-A project's mark is one of the 24 glyphs from `I3`, in `lib/project-glyphs.ts`. It is chosen from the project's own words, first match wins, and by slug when nothing matches. Picking or shuffling the glyph from New project would need a stored field on the project, which the schema does not have, so the mark stays derived. `components/chat/project-glyph.tsx` draws it on a 24-unit grid with a 1.5 stroke and at most one solid part, and puts the project's state on the tile's corner: a breathing white square while work runs, a pulsing orange square when someone waits on the owner, a red square after a failure. The glyph itself never changes.
+A project's mark is one of the 24 glyphs from `I3`, in `lib/project-glyphs.ts`. It is chosen from the project's own words, first match wins, and by slug when nothing matches. Picking or shuffling the glyph from New project would need a stored field on the project, which the schema does not have, so the mark stays derived. `components/chat/project-glyph.tsx` draws it on a 24-unit grid with a 1.5 stroke and at most one solid part, The glyph itself never changes, and the tile carries no status: the project's state is a Signal at the end of its sidebar row (fTz I3's corner square is dropped, per the v5 inventory).
 
 Empty states use the pictograms from `I4`, in `components/ui/pictogram.tsx`, at 88px. A 64 grid, a 1.5px stroke that stays 1.5px at any size, one orange detail, and one small loop per drawing. They never sit inside a control.
 
-Small loads use the arc from `I1`: a faint ring with a quarter arc turning once every 0.8s, in the current colour. The construction trace from the same frame is for a cold boot of the whole client. This client paints its shell at once and shows layout-matched skeletons (C11) while data lands, so the trace is never drawn.
+Indicators follow v5 page 16 and live in `components/ui/`:
+
+- `loaders.tsx`: `Spinner`, the arc (a faint ring and a quarter arc, one turn every .8s, 12/14/16/20/32, in the current colour, never the accent), which replaces a button's leading icon while it is busy. `BootLoader`, the construction trace (a pen draws a square, a circle and a triangle over dashed guides, 9s linear with a 1.8s hold), shown by `app.tsx` while the stored token is checked and faded in only after 400ms, so a fast boot never shows it. `Thinking`, three breathing dots before the first token; streaming and tool-running text uses `.im-shimmer`. `Progress`, determinate (`--p` scaleX) or indeterminate (`value` undefined). `ContextRing`, the 16px ring for the composer footer, which turns working at 85% and failed at 100%.
+- `skeleton.tsx`: `Loading` swaps a skeleton for its content, which fades in with `.im-content`; the skeleton itself fades in after `--skeleton-delay` (150ms) and pulses on `--loop-skeleton`. `ThreadSkeleton` stands in for a transcript, `RowSkeleton` for 46px two-line rows, `PaneSkeleton` for a right-pane section (28px header and rows), and `Bar` for anything else.
+- `morph-icon.tsx`: `MorphIcon` morphs a control's icon when it changes meaning, in 200ms out-quint: send→stop, copy→check (the check draws), chevron down→up, plus→×, eye→eye slashed (the slash draws) and pause→play. It plays once, at the change, and swaps with no motion under reduced motion.
 
 ## Motion
 
-Motion follows design system §7. Every rule lives in `web/src/styles/motion.css`; tokens are in `tokens.css` (`--dur-color|press|release|tooltip|fast|base|slow|drawer`, `--dur-exit-fast|base|slow|sheet`, `--ease-color|in-out|drawer|enter|exit|spring`, `--loop-skeleton|shimmer|working|needs|waiting`). Enter and exit both run on out-quint, exits are about 70% of the entrance, only transform and opacity move (grow-in-place height is the one exception), and nothing starts below scale .96.
+Motion follows design system §7. Every rule lives in `web/src/styles/motion.css`; tokens are in `tokens.css` (`--dur-color|press|release|tooltip|fast|base|slow|drawer`, `--dur-exit-fast|base|slow|sheet`, `--ease-color|in-out|drawer|enter|exit|spring`, `--loop-skeleton|shimmer|working|needs|waiting`). Enter and exit both run on out-quint, exits are about 70% of the entrance, only transform and opacity move (grow-in-place height is the one exception), and nothing starts below scale .96. The v5 motion file, `web/src/styles/ingle-motion.css` (a verbatim copy of the design handoff), holds the `.im-*` and `.sig` primitives the indicators use, and `indicators.css` adds the spinner, boot trace and morphing icons on its tokens; both honour `prefers-reduced-motion` and `:root[data-motion="reduce"]`.
 
-`web/src/lib/motion.ts` marks the root: `data-input="key"` after a keydown and `"pointer"` after a pointer moves or presses, and `data-hidden` while the tab is hidden. A keyboard-started action takes no time: the CSS zeroes the animation and transition durations under `data-input="key"`, `createPresence` and the extension sheets unmount at once, and the pane tab pill jumps. The command palette never animates. Hover is gated to `(hover: hover) and (pointer: fine)` by overriding Tailwind's `hover` variant, so taps never stick.
+`web/src/lib/motion.ts` marks the root: `data-input="key"` after a keydown and `"pointer"` after a pointer moves or presses, and `data-hidden` plus `data-visibility="hidden"` (the attribute `ingle-motion.css` reads) while the tab is hidden. A keyboard-started action takes no time: the CSS zeroes the animation and transition durations under `data-input="key"`, `createPresence` and the extension sheets unmount at once, and the pane tab pill jumps. The command palette never animates. Hover is gated to `(hover: hover) and (pointer: fine)` by overriding Tailwind's `hover` variant, so taps never stick.
 
 | Element | Motion | Reduce motion | Where |
 | --- | --- | --- | --- |
@@ -139,12 +144,15 @@ Motion follows design system §7. Every rule lives in `web/src/styles/motion.css
 | Grow in place (overview sections) | Ark `--height` 0 to full, 200 / 140; content opacity and translateY 4 after 60 | instant | `[data-scope=collapsible]` |
 | List arrival (sidebar projects and threads, overview sections) | first load only: opacity and translateY 8, 200, 40 stagger over the first six | 120 fade, no stagger | `arrive` via `arrival()` |
 | Fan-out row, report card, page surface, composer menu | 200 rise / 240 rise / 200 scale .98 / 150 drop | 120 fade | `row-in`, `card-in`, `enter`, `menu-in` |
-| Skeleton | Skullet `pulse`, 1 to .45 over 2.4s, held back 150 | still (Skullet) | `--skullet-animation` |
-| Streaming text | background-position sweep, `--loop-shimmer`, linear | still, ink-3 | `shimmer` |
-| Signal dots | working chase `--loop-working`, needs breathe `--loop-needs`; project corners breathe | still frame | `status.css`, `breath`, `pulse` |
+| Skeleton | fade in after 150, pulse 1 to .5 over 2.4s; content fades in 200 | still | `.im-skeleton`, `.im-content` |
+| Streaming text | background-position sweep, `--loop-shimmer`, linear | still, ink-3 | `.im-shimmer` (`shimmer` in the composer) |
+| Thinking dots | breathe `--loop-breathe`, 160 apart | still | `.im-dots` |
+| Signal dots | working chase `--loop-chase`, needs breathe `--loop-breathe`, waiting blink `--loop-blink`; state change crossfades each dot 200 | still frame | `.sig` |
+| Spinner, boot trace | rotate .8s linear; trace 9s linear | still ring; drawn trace, no pen | `indicators.css` |
+| Morphing icon | crossfade with 2px blur and scale .7, rotate, or stroke draw, 200 out-quint | swap | `.im-morph` in `indicators.css` |
 | Drag to reorder tabs | lift scale 1.02 and overlay shadow | no lift | `[data-tab-lifted]` |
 
-Loops (signal dots, shimmer, corners, spinners, pictograms) pause while the tab is hidden. There are no toasts yet, so the toast row of §7 has no consumer; the Send to Stop swap and attachment chips belong to the composer.
+Loops (signal dots, shimmer, thinking dots, skeletons, spinners, the boot trace, pictograms) pause while the tab is hidden. There are no toasts yet, so the toast row of §7 has no consumer; the Send to Stop swap and attachment chips belong to the composer.
 
 ## Decisions taken from the review frame's open questions
 

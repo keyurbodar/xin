@@ -11,7 +11,10 @@ export function trackMotion(): void {
   window.addEventListener("keydown", () => mark("key"), true)
   window.addEventListener("pointerdown", () => mark("pointer"), true)
   window.addEventListener("pointermove", () => mark("pointer"), { capture: true, passive: true })
-  document.addEventListener("visibilitychange", () => root.toggleAttribute("data-hidden", document.hidden))
+  document.addEventListener("visibilitychange", () => {
+    root.toggleAttribute("data-hidden", document.hidden)
+    root.dataset["visibility"] = document.hidden ? "hidden" : "visible"
+  })
 }
 
 export function keyStarted(): boolean {

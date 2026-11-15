@@ -1,6 +1,7 @@
 import { createSignal, onMount, type JSX } from "solid-js"
 import { setToken, verifyToken } from "../lib/auth.ts"
 import { OnboardingTopBar, type RailItem } from "../components/onboarding/chrome.tsx"
+import { Spinner } from "../components/ui/loaders.tsx"
 
 const STEPS: readonly RailItem[] = [
   { label: "Sign in", state: "current" },
@@ -95,7 +96,7 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
           >
             {busy() ? (
               <>
-                <span class="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-[1.5px] border-on-primary/25 border-t-on-primary" />
+                <Spinner size={14} class="shrink-0" label="Checking" />
                 Checking…
               </>
             ) : (

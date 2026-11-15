@@ -6,7 +6,7 @@ import { navigate } from "../lib/router.ts"
 import { mediaQuery } from "../lib/media.ts"
 import type { ProjectSummary } from "../state/home.ts"
 import { Markdown } from "../components/chat/markdown.tsx"
-import { Skullet } from "../components/ui/skeleton.tsx"
+import { Bar, Loading } from "../components/ui/skeleton.tsx"
 import { Icon } from "../components/ui/icon.tsx"
 import { EmptyState } from "../components/chat/ui.tsx"
 
@@ -156,7 +156,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
         </Show>
 
         <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-          <Skullet loading={content.loading} sample={() => <div class="h-3 w-2/3 rounded-2xs bg-secondary" />} label="Opening file">
+          <Loading when={content.loading} skeleton={<div class="flex flex-col gap-2.5"><Bar width="66%" /><Bar width="88%" /><Bar width="52%" /></div>} label="Opening file">
             <Show when={content()} fallback={<EmptyState pictogram="folder" title="File not found" detail="It may have been deleted." />}>
               {(entry) => (
                 <Show
@@ -206,7 +206,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
                 </Show>
               )}
             </Show>
-          </Skullet>
+          </Loading>
         </div>
       </section>
 

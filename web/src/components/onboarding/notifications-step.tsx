@@ -1,8 +1,8 @@
 import { For, onMount, type JSX } from "solid-js"
 import { Icon, type IconName } from "../ui/icon.tsx"
 import { navigate } from "../../lib/router.ts"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
-import type { VisualState } from "../../lib/status.ts"
+import { Signal } from "../ui/signal.tsx"
+import type { SignalState } from "../../lib/status.ts"
 import { GhostButton, PrimaryButton, StatusLine } from "./controls.tsx"
 import { enablePush, onboardingProject, onboardingPush, previousStep, projectPath } from "../../state/onboarding.ts"
 import { notifyNow, notifyPrefs, setNotifyPrefs, type NotifyKind } from "../../state/settings.ts"
@@ -37,11 +37,11 @@ const PREVIEWS: readonly Preview[] = [
 
 const KINDS: readonly {
   readonly key: NotifyKind
-  readonly state: VisualState
+  readonly state: SignalState
   readonly title: string
   readonly detail: string
 }[] = [
-  { key: "waiting", state: "waiting", title: "Waiting on you", detail: "A question, with the choices as buttons" },
+  { key: "waiting", state: "needs", title: "Waiting on you", detail: "A question, with the choices as buttons" },
   { key: "finished", state: "done", title: "Finished", detail: "When a report lands" },
   { key: "failed", state: "failed", title: "Failed", detail: "With what broke and a Retry link" },
 ]
@@ -127,7 +127,7 @@ export function NotificationsStep(): JSX.Element {
               {(kind) => (
                 <div class="flex items-center gap-3 border-b border-line-1 py-2.5 last:border-0">
                   <span class="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-line-2 bg-panel">
-                    <StatusGlyph state={kind.state} size={14} />
+                    <Signal state={kind.state} size={14} />
                   </span>
                   <div class="min-w-0 flex-1">
                     <div class="text-base font-medium">{kind.title}</div>

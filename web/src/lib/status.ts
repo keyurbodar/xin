@@ -1,40 +1,29 @@
-export type VisualState = "queued" | "working" | "waiting" | "done" | "failed" | "paused" | "cancelled"
+export type SignalState = "idle" | "queued" | "working" | "needs" | "waiting" | "done" | "failed" | "merged"
 
-export const STATE_COLOR: Readonly<Record<VisualState, string>> = {
-  queued: "var(--color-ink-3)",
-  working: "var(--color-working)",
-  waiting: "var(--color-needs)",
-  done: "var(--color-done)",
-  failed: "var(--color-failed)",
-  paused: "var(--color-working)",
-  cancelled: "var(--color-icon)",
-}
-
-export const STATE_WORD: Readonly<Record<VisualState, string>> = {
+export const STATE_WORD: Readonly<Record<SignalState, string>> = {
+  idle: "Stopped",
   queued: "Queued",
   working: "Working",
-  waiting: "Waiting on you",
+  needs: "Needs you",
+  waiting: "Waiting",
   done: "Done",
   failed: "Failed",
-  paused: "Paused",
-  cancelled: "Cancelled",
+  merged: "Merged",
 }
 
-/** Thread status words from the backend, mapped onto the seven visual states. */
-export function visualState(status: string): VisualState {
+/** Thread status words from the backend, mapped onto Signal's states. */
+export function visualState(status: string): SignalState {
   switch (status) {
     case "working":
       return "working"
     case "waiting":
-      return "waiting"
+      return "needs"
     case "completed":
       return "done"
     case "failed":
       return "failed"
     case "cancelled":
-      return "cancelled"
-    case "paused":
-      return "paused"
+      return "idle"
     default:
       return "queued"
   }

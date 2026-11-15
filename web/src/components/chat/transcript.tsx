@@ -10,6 +10,7 @@ import {
 } from "../../state/conversation.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { Icon } from "../ui/icon.tsx"
+import { Thinking } from "../ui/loaders.tsx"
 import { Markdown } from "./markdown.tsx"
 import { AnsweredQuestionCard } from "./cards.tsx"
 import { EntryList, OwnerBubble, itemsOf, type EntryItem, type ItemContext } from "./entries.tsx"
@@ -31,7 +32,7 @@ function threadsOf(project: ProjectSummary): readonly ThreadSummary[] {
 function CoordinatorMeta(props: { busy?: boolean | undefined }): JSX.Element {
   return (
     <div class="font-mono text-2xs leading-none text-icon">
-      <span classList={{ shimmer: props.busy === true }}>{props.busy === true ? "Coordinator · working" : "Coordinator"}</span>
+      <span classList={{ "im-shimmer": props.busy === true }}>{props.busy === true ? "Coordinator · working" : "Coordinator"}</span>
     </div>
   )
 }
@@ -168,9 +169,9 @@ export function Transcript(props: {
                 when={live().partial !== ""}
                 fallback={
                   <div class="text-base text-ink-3">
-                    <span class="shimmer">
-                      {live().tools.at(-1)?.name === undefined ? "Thinking" : `Running ${live().tools.at(-1)?.name}`}
-                    </span>
+                    <Show when={live().tools.at(-1)?.name} fallback={<Thinking>Thinking</Thinking>}>
+                      {(name) => <span class="im-shimmer">Running {name()}</span>}
+                    </Show>
                   </div>
                 }
               >
@@ -188,31 +189,6 @@ export function Transcript(props: {
         <For each={props.optimistic}>
           {(message) => <OwnerBubble text={message.text} attachments={message.attachments} density="chat" />}
         </For>
-      </div>
-    </div>
-  )
-}
-
-export function TranscriptSkeleton(): JSX.Element {
-  return (
-    <div class="mx-auto flex w-full max-w-[720px] flex-col gap-[18px] px-6 pb-6 pt-7">
-      <div class="flex justify-end">
-        <div class="h-11 w-[340px] rounded-md border border-line-2 bg-secondary" />
-      </div>
-      <div class="flex gap-3">
-        <span class="h-6 w-6 shrink-0 rounded-sm border border-line-2 bg-card" />
-        <div class="flex flex-1 flex-col gap-2.5">
-          <span class="h-2.5 w-24 rounded-2xs bg-secondary" />
-          <span class="h-3 w-[86%] rounded-2xs bg-secondary" />
-          <span class="h-3 w-[72%] rounded-2xs bg-secondary" />
-          <span class="h-3 w-[48%] rounded-2xs bg-secondary" />
-        </div>
-      </div>
-      <div class="flex gap-3">
-        <span class="h-6 w-6 shrink-0 rounded-sm border border-line-2 bg-card" />
-        <div class="flex flex-1 flex-col gap-2.5">
-          <span class="h-16 w-full rounded-md border border-line-2 bg-card" />
-        </div>
       </div>
     </div>
   )
