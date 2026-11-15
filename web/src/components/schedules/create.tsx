@@ -97,15 +97,15 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
 
   return (
     <Show when={props.open}>
-      <div class="fixed inset-0 z-50 grid place-items-center bg-page/80 p-6" onMouseDown={close}>
+      <div class="fixed inset-0 z-50 grid place-items-center bg-bg/80 p-6" onMouseDown={close}>
         <form
-          class="crosshair enter w-[520px] rounded-[4px] border border-line-inner bg-surface"
+          class="crosshair enter w-[520px] rounded-md border border-line-2 bg-panel"
           onMouseDown={(event) => event.stopPropagation()}
           onSubmit={(event) => void submit(event)}
         >
-          <div class="border-b border-line px-5 pb-4 pt-5">
+          <div class="border-b border-line-1 px-5 pb-4 pt-5">
             <div class="label">New schedule</div>
-            <h2 class="mt-2 text-[20px] font-light tracking-[-0.02em]">Run a task on a clock.</h2>
+            <h2 class="mt-2 text-xl font-light tracking-[-0.02em]">Run a task on a clock.</h2>
           </div>
 
           <div class="flex flex-col gap-4 px-5 py-4">
@@ -130,16 +130,16 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
             </Field>
             <Show when={parsed()}>
               {(schedule) => (
-                <div class="flex items-center gap-1.5 font-mono text-[11px] text-fg-3">
-                  <Icon name="check" size={12} class="text-ok" />
+                <div class="flex items-center gap-1.5 font-mono text-2xs text-ink-3">
+                  <Icon name="check" size={12} class="text-done" />
                   <span>{summary(schedule())}</span>
-                  <span class="text-fg-4">·</span>
+                  <span class="text-icon">·</span>
                   <span>{preview(schedule())}</span>
                 </div>
               )}
             </Show>
             <Show when={parseError()}>
-              {(message) => <div class="font-mono text-[11px] text-fg-4">{message()}</div>}
+              {(message) => <div class="font-mono text-2xs text-icon">{message()}</div>}
             </Show>
             <Field label="Target">
               <select class={INPUT} value={target()} onChange={(event) => setTarget(event.currentTarget.value as Target)}>
@@ -149,11 +149,11 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
               </select>
             </Field>
             <Show when={error() !== undefined}>
-              <div class="text-[12px] text-bad">{error()}</div>
+              <div class="text-sm text-failed">{error()}</div>
             </Show>
           </div>
 
-          <div class="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
+          <div class="flex items-center justify-end gap-2 border-t border-line-1 px-5 py-3">
             <Button size="sm" variant="quiet" onClick={close}>
               Cancel
             </Button>
@@ -168,7 +168,7 @@ export function CreateSchedule(props: { open: boolean; onClose: () => void; onCr
 }
 
 const INPUT =
-  "h-8 w-full rounded-[2px] border border-line-inner bg-raised px-2.5 text-[12.5px] outline-none placeholder:text-fg-4 focus:border-line-strong"
+  "h-8 w-full rounded-sm border border-line-2 bg-card px-2.5 text-sm outline-none placeholder:text-icon focus:border-line-3"
 
 function Field(props: { label: string; children: JSX.Element }): JSX.Element {
   return (

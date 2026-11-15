@@ -51,25 +51,25 @@ export function Installed(props: { onCustomize: (rowId: string) => void }): JSX.
   return (
     <div class="flex min-h-0 flex-1">
       <div class="flex min-w-0 flex-1 flex-col">
-        <div class="flex items-center gap-2 border-b border-line px-4 py-2.5">
-          <div class="flex h-7 w-[280px] items-center gap-2 rounded-[2px] border border-line-inner bg-surface px-2.5">
-            <Glyph name="search" size={13} class="text-fg-3" />
+        <div class="flex items-center gap-2 border-b border-line-1 px-4 py-2.5">
+          <div class="flex h-7 w-[280px] items-center gap-2 rounded-sm border border-line-2 bg-panel px-2.5">
+            <Glyph name="search" size={13} class="text-ink-3" />
             <input
               value={filter()}
               onInput={(event) => setFilter(event.currentTarget.value)}
               placeholder="Filter installed"
               spellcheck={false}
               aria-label="Filter installed extensions"
-              class="min-w-0 flex-1 bg-transparent text-[12.5px] text-fg placeholder:text-fg-4 focus:outline-none"
+              class="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-icon focus:outline-none"
             />
           </div>
-          <span class="text-[11.5px] text-fg-3">
+          <span class="text-xs text-ink-3">
             {list().length} {list().length === 1 ? "row" : "rows"}
           </span>
-          <span class="ml-auto text-[11.5px] text-fg-3">Compiled and runtime rows share one list</span>
+          <span class="ml-auto text-xs text-ink-3">Compiled and runtime rows share one list</span>
         </div>
 
-        <div class="grid grid-cols-[minmax(0,1fr)_86px_110px_80px_44px] items-center gap-2 border-b border-line px-4 py-2">
+        <div class="grid grid-cols-[minmax(0,1fr)_86px_110px_80px_44px] items-center gap-2 border-b border-line-1 px-4 py-2">
           <span class="label">Extension</span>
           <span class="label">Version</span>
           <span class="label">Status</span>
@@ -147,25 +147,25 @@ function InstalledRow(props: {
 
   return (
     <div
-      class="grid grid-cols-[minmax(0,1fr)_86px_110px_80px_44px] items-center gap-2 border-b border-line px-4 py-2.5"
-      classList={{ "bg-hover": props.selected, "opacity-55": props.row.state.kind === "disabled" }}
+      class="grid grid-cols-[minmax(0,1fr)_86px_110px_80px_44px] items-center gap-2 border-b border-line-1 px-4 py-2.5"
+      classList={{ "bg-secondary": props.selected, "opacity-55": props.row.state.kind === "disabled" }}
     >
       <button type="button" onClick={props.onSelect} class="flex min-w-0 items-center gap-2.5 text-left">
-        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg-2">
+        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary text-ink-2">
           <Glyph name="layers" size={15} />
         </span>
         <span class="min-w-0">
-          <span class="block truncate text-[12.5px] font-medium text-fg">{props.row.title}</span>
-          <span class="block truncate text-[11.5px] text-fg-3">
+          <span class="block truncate text-sm font-medium text-ink">{props.row.title}</span>
+          <span class="block truncate text-xs text-ink-3">
             {props.row.plugin} · {props.row.id}
           </span>
         </span>
       </button>
-      <span class="truncate font-mono text-[11.5px] text-fg-2">{version()}</span>
+      <span class="truncate font-mono text-xs text-ink-2">{version()}</span>
       <span>
         <StateChip state={props.row.state} />
       </span>
-      <span class="truncate text-[11.5px] capitalize text-fg-3">{props.row.layer}</span>
+      <span class="truncate text-xs capitalize text-ink-3">{props.row.layer}</span>
       <span class="flex justify-end">
         <Toggle
           on={!props.row.disabled}
@@ -223,18 +223,18 @@ function RowPanel(props: {
   }
 
   return (
-    <aside class="flex w-[460px] shrink-0 flex-col border-l border-line bg-surface">
-      <header class="flex items-center gap-3 border-b border-line px-4 py-3.5">
-        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg">
+    <aside class="flex w-[460px] shrink-0 flex-col border-l border-line-1 bg-panel">
+      <header class="flex items-center gap-3 border-b border-line-1 px-4 py-3.5">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary text-ink">
           <Glyph name="layers" size={18} />
         </span>
         <div class="min-w-0 flex-1">
-          <span class="block truncate text-[14px] font-medium text-fg">{props.row.title}</span>
-          <span class="block truncate text-[11.5px] text-fg-3">
+          <span class="block truncate text-base font-medium text-ink">{props.row.title}</span>
+          <span class="block truncate text-xs text-ink-3">
             {props.row.plugin} · {props.bundle === undefined ? "compiled" : props.bundle.package}
           </span>
         </div>
-        <button type="button" onClick={props.onClose} aria-label="Close details" class="text-fg-3 hover:text-fg">
+        <button type="button" onClick={props.onClose} aria-label="Close details" class="text-ink-3 hover:text-ink">
           <Glyph name="x" size={16} />
         </button>
       </header>
@@ -256,7 +256,7 @@ function RowPanel(props: {
           <section>
             <span class="label mb-2 block">Configuration</span>
             <Panel>
-              <pre class="max-h-[220px] overflow-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed text-fg-2">
+              <pre class="max-h-[220px] overflow-auto px-3 py-2.5 font-mono text-2xs leading-relaxed text-ink-2">
                 {JSON.stringify(props.row.config, null, 2)}
               </pre>
             </Panel>
@@ -267,19 +267,19 @@ function RowPanel(props: {
               <section>
                 <span class="label mb-2 block">Bundle</span>
                 <Panel>
-                  <div class="flex items-center justify-between border-b border-line px-3 py-2 text-[12px] last:border-0">
-                    <span class="text-fg-3">Package</span>
-                    <span class="font-mono text-[11.5px] text-fg-2">{bundle().package}</span>
+                  <div class="flex items-center justify-between border-b border-line-1 px-3 py-2 text-sm last:border-0">
+                    <span class="text-ink-3">Package</span>
+                    <span class="font-mono text-xs text-ink-2">{bundle().package}</span>
                   </div>
-                  <div class="flex items-center justify-between border-b border-line px-3 py-2 text-[12px] last:border-0">
-                    <span class="text-fg-3">Source</span>
-                    <span class="font-mono text-[11.5px] text-fg-2">
+                  <div class="flex items-center justify-between border-b border-line-1 px-3 py-2 text-sm last:border-0">
+                    <span class="text-ink-3">Source</span>
+                    <span class="font-mono text-xs text-ink-2">
                       {sourceLabel(bundle().source)}
                     </span>
                   </div>
-                  <div class="flex items-center justify-between px-3 py-2 text-[12px]">
-                    <span class="text-fg-3">Rows</span>
-                    <span class="font-mono text-[11.5px] text-fg-2">{bundle().rows.length}</span>
+                  <div class="flex items-center justify-between px-3 py-2 text-sm">
+                    <span class="text-ink-3">Rows</span>
+                    <span class="font-mono text-xs text-ink-2">{bundle().rows.length}</span>
                   </div>
                 </Panel>
               </section>
@@ -299,10 +299,10 @@ function RowPanel(props: {
                     Roll back {bundle().package}
                   </Button>
                   <Show when={note()}>
-                    {(message) => <span class="text-[11.5px] text-fg-3">{message()}</span>}
+                    {(message) => <span class="text-xs text-ink-3">{message()}</span>}
                   </Show>
                 </div>
-                <p class="mt-1.5 text-[11.5px] leading-snug text-fg-3">
+                <p class="mt-1.5 text-xs leading-snug text-ink-3">
                   Every applied install is recorded, so this returns to the version that ran before the current one.
                 </p>
               </section>
@@ -315,7 +315,7 @@ function RowPanel(props: {
         </div>
       </div>
 
-      <footer class="flex items-center gap-2 border-t border-line px-4 py-3">
+      <footer class="flex items-center gap-2 border-t border-line-1 px-4 py-3">
         <Button size="sm" onClick={props.onCustomize}>
           <Glyph name="sliders" size={14} />
           Configure
@@ -323,7 +323,7 @@ function RowPanel(props: {
         <span class="ml-auto" />
         <Show
           when={props.bundle !== undefined}
-          fallback={<span class="text-[11.5px] text-fg-4">Compiled in</span>}
+          fallback={<span class="text-xs text-icon">Compiled in</span>}
         >
           <Show
             when={confirming()}

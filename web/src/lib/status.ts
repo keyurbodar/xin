@@ -1,13 +1,13 @@
 export type VisualState = "queued" | "working" | "waiting" | "done" | "failed" | "paused" | "cancelled"
 
 export const STATE_COLOR: Readonly<Record<VisualState, string>> = {
-  queued: "#80756f",
-  working: "#6aa8ff",
-  waiting: "#ff5a00",
-  done: "#6fae5d",
-  failed: "#f0442e",
-  paused: "#f7a828",
-  cancelled: "#6b615c",
+  queued: "var(--color-ink-3)",
+  working: "var(--color-working)",
+  waiting: "var(--color-needs)",
+  done: "var(--color-done)",
+  failed: "var(--color-failed)",
+  paused: "var(--color-working)",
+  cancelled: "var(--color-icon)",
 }
 
 export const STATE_WORD: Readonly<Record<VisualState, string>> = {
@@ -38,12 +38,4 @@ export function visualState(status: string): VisualState {
     default:
       return "queued"
   }
-}
-
-/** The four numbers the home screen shows above the fold. */
-export type Counts = {
-  readonly waiting: number
-  readonly working: number
-  readonly finished: number
-  readonly failed: number
 }

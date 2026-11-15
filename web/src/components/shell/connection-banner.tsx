@@ -22,8 +22,8 @@ export function ConnectionBanner(): JSX.Element {
 
   return (
     <Show when={late()}>
-      <div class="flex h-8 shrink-0 items-center gap-2 border-b border-warn/25 bg-warn-bg px-4 text-[12px] text-warn">
-        <span class="h-1.5 w-1.5 rounded-[1px] bg-warn" />
+      <div class="flex h-8 shrink-0 items-center gap-2 border-b border-working/25 bg-working-soft px-4 text-sm text-working">
+        <span class="h-1.5 w-1.5 rounded-2xs bg-working" />
         Reconnecting to the home. What you see may be a moment behind.
       </div>
     </Show>
