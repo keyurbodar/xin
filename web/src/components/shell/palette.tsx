@@ -22,7 +22,7 @@ type Item = {
 
 const PAGES: readonly { title: string; meta: string; icon: IconName; path: string }[] = [
   { title: "Extensions", meta: "Page", icon: "grid", path: "/extensions" },
-  { title: "Schedules", meta: "Page", icon: "calendar", path: "/schedules" },
+  { title: "Automations", meta: "Page", icon: "calendar", path: "/automations" },
   { title: "Settings", meta: "Page", icon: "settings", path: "/settings/general" },
 ]
 

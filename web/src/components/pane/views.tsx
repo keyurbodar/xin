@@ -4,7 +4,7 @@ import { Brain, CalendarClock, Folder, LayoutList, ListTree, Puzzle, Timer, type
 import { activeConversation, host, slotItems } from "../../plugins/slots.tsx"
 import { Icon, isIconName } from "../ui/icon.tsx"
 import { MemoryTab } from "../chat/memory.tsx"
-import { SchedulesTab } from "../chat/schedules.tsx"
+import { AutomationsTab } from "../chat/automations.tsx"
 import { FilesView, JobsView, ThreadsView } from "./bodies.tsx"
 import { DriveSection, InProgressSection, NeedsYouSection, ThreadsSection, type PaneContext } from "./overview.tsx"
 
@@ -58,7 +58,7 @@ export const PANE_VIEWS: readonly PaneEntry[] = [
       <MemoryTab conversationId={context.project.coordinatorId} scope={`project:${context.project.id}`} />
     ),
   },
-  { id: "schedules", label: "Schedules", icon: CalendarClock, render: (context) => <SchedulesTab slug={context.project.slug} /> },
+  { id: "automations", label: "Automations", icon: CalendarClock, render: (context) => <AutomationsTab project={context.project} /> },
   { id: "jobs", label: "Jobs", icon: Timer, render: () => <JobsView /> },
   { id: "threads", label: "All threads", icon: ListTree, render: (context) => <ThreadsView {...context} /> },
 ]

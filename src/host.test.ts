@@ -131,7 +131,11 @@ describe("Home host loop", () => {
 
     const failed = await stub.fetch("https://ingle.test/v1/status", { headers: OWNER_HEADERS })
     expect(failed.status).toBe(503)
-    expect(await failed.json()).toMatchObject({ error: "boot_failed" })
+    expect(await failed.json()).toMatchObject({ error: "boot_failed", failure: expect.any(String) })
+
+    const hook = await stub.fetch(new Request("https://ingle.test/hooks/some-secret", { method: "POST", body: "{}" }))
+    expect(hook.status).toBe(503)
+    expect(await hook.text()).toBe("")
 
     const report = await stub.fetch("https://ingle.test/v1/repair", { headers: OWNER_HEADERS })
     expect(report.status).toBe(200)

@@ -4,7 +4,6 @@ import { cmd, uploadFile } from "../lib/api.ts"
 import { setPendingDraft } from "../lib/draft.ts"
 import { ago, bytes } from "../lib/format.ts"
 import { navigate } from "../lib/router.ts"
-import { mediaQuery } from "../lib/media.ts"
 import type { ProjectSummary } from "../state/home.ts"
 import { Markdown } from "../components/chat/markdown.tsx"
 import { Bar, Loading } from "../components/ui/skeleton.tsx"
@@ -79,7 +78,6 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
   }
   const [copied, setCopied] = createSignal(false)
   const [dropping, setDropping] = createSignal(false)
-  const wide = mediaQuery("(min-width: 1024px)")
 
   const shown = (): { text: string | null; type: string; size: number } | undefined => {
     const past = older()
@@ -116,9 +114,9 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
   }
 
   return (
-    <div class="flex min-h-0 flex-1 overflow-hidden">
-      <section class="flex min-w-0 flex-1 flex-col">
-        <header class="flex h-12 shrink-0 items-center gap-2 border-b border-line-1 px-4">
+    <div class="@container flex min-h-0 flex-1 overflow-hidden">
+      <section class="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header class="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-line-1 px-4 py-2">
           <button type="button" class="link truncate text-base" onClick={() => navigate(`/p/${props.project.slug}`)}>
             {props.project.name}
           </button>
@@ -235,65 +233,63 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
         </div>
       </section>
 
-      <Show when={wide()}>
-        <aside class="flex w-[320px] shrink-0 flex-col border-l border-line-1 bg-panel">
-          <div class="flex h-11 shrink-0 items-center gap-2 border-b border-line-1 px-3.5">
-            <span class="label">Files</span>
-            <span class="font-mono text-2xs text-icon">{files()?.length ?? 0}</span>
-          </div>
-          <div class="min-h-0 flex-1 overflow-y-auto">
-            <For each={files() ?? []}>
-              {(entry) => (
-                <button
-                  type="button"
-                  class="flex w-full items-center gap-2.5 border-b border-line-1 px-3 py-2.5 text-left hover:bg-secondary"
-                  classList={{ "bg-hover": entry.path === props.path }}
-                  onClick={() => {
-                    setViewing(undefined)
-                    navigate(`/p/${props.project.slug}/files/${encodeURIComponent(entry.path)}`)
-                  }}
-                >
-                  <span class="min-w-0 flex-1">
-                    <span class="block truncate text-sm text-ink">{name(entry.path)}</span>
-                    <span class="block truncate text-2xs text-icon">{folder(entry.path, root())}</span>
-                  </span>
-                  <span class="mono-meta shrink-0">{bytes(entry.size)}</span>
-                </button>
-              )}
-            </For>
-          </div>
-          <div class="shrink-0 p-3">
-            <label
-              class="flex flex-col items-center gap-1 rounded-md border border-dashed px-3 py-4 text-center text-xs text-icon"
-              classList={{ "border-primary/40 text-primary-ink": dropping(), "border-line-2": !dropping() }}
-              onDragOver={(event) => {
-                event.preventDefault()
-                setDropping(true)
-              }}
-              onDragLeave={() => setDropping(false)}
-              onDrop={(event) => {
-                event.preventDefault()
-                setDropping(false)
-                const dropped = event.dataTransfer?.files
-                if (dropped !== undefined && dropped.length > 0) void upload(dropped)
-              }}
-            >
-              <Icon name="upload" size={16} />
-              <span>Drop a file here</span>
-              <span class="text-2xs">It lands in this project's folder</span>
-              <input
-                type="file"
-                multiple
-                class="hidden"
-                onChange={(event) => {
-                  const picked = event.currentTarget.files
-                  if (picked !== null && picked.length > 0) void upload(picked)
+      <aside class="hidden w-[320px] shrink-0 flex-col border-l border-line-1 bg-panel @min-[50rem]:flex">
+        <div class="flex h-11 shrink-0 items-center gap-2 border-b border-line-1 px-3.5">
+          <span class="label">Files</span>
+          <span class="font-mono text-2xs text-icon">{files()?.length ?? 0}</span>
+        </div>
+        <div class="min-h-0 flex-1 overflow-y-auto">
+          <For each={files() ?? []}>
+            {(entry) => (
+              <button
+                type="button"
+                class="flex w-full items-center gap-2.5 border-b border-line-1 px-3 py-2.5 text-left hover:bg-secondary"
+                classList={{ "bg-hover": entry.path === props.path }}
+                onClick={() => {
+                  setViewing(undefined)
+                  navigate(`/p/${props.project.slug}/files/${encodeURIComponent(entry.path)}`)
                 }}
-              />
-            </label>
-          </div>
-        </aside>
-      </Show>
+              >
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm text-ink">{name(entry.path)}</span>
+                  <span class="block truncate text-2xs text-icon">{folder(entry.path, root())}</span>
+                </span>
+                <span class="mono-meta shrink-0">{bytes(entry.size)}</span>
+              </button>
+            )}
+          </For>
+        </div>
+        <div class="shrink-0 p-3">
+          <label
+            class="flex flex-col items-center gap-1 rounded-md border border-dashed px-3 py-4 text-center text-xs text-icon"
+            classList={{ "border-primary/40 text-primary-ink": dropping(), "border-line-2": !dropping() }}
+            onDragOver={(event) => {
+              event.preventDefault()
+              setDropping(true)
+            }}
+            onDragLeave={() => setDropping(false)}
+            onDrop={(event) => {
+              event.preventDefault()
+              setDropping(false)
+              const dropped = event.dataTransfer?.files
+              if (dropped !== undefined && dropped.length > 0) void upload(dropped)
+            }}
+          >
+            <Icon name="upload" size={16} />
+            <span>Drop a file here</span>
+            <span class="text-2xs">It lands in this project's folder</span>
+            <input
+              type="file"
+              multiple
+              class="hidden"
+              onChange={(event) => {
+                const picked = event.currentTarget.files
+                if (picked !== null && picked.length > 0) void upload(picked)
+              }}
+            />
+          </label>
+        </div>
+      </aside>
     </div>
   )
 }

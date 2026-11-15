@@ -30,6 +30,34 @@
       ]
     },
     {
+      "name": "automations",
+      "title": "Automations",
+      "description": "Stored prompts that start an agent run when a cron schedule, a one-time trigger or a webhook fires, with webhook coalescing and run history.",
+      "package": "ingle-plugin-automations",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations",
+        "routes",
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "automations"
+      ]
+    },
+    {
+      "name": "tool-automations",
+      "title": "Automations tools",
+      "description": "The model-facing create, list, update and trigger tools for automations. Disable to hide them; automations keep running.",
+      "package": "ingle-plugin-automations",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "tool-automations"
+      ]
+    },
+    {
       "name": "compact",
       "title": "Compaction",
       "description": "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
@@ -461,32 +489,6 @@
       "slots": [],
       "rows": [
         "tool-questions"
-      ]
-    },
-    {
-      "name": "schedules",
-      "title": "Schedules",
-      "description": "Scheduled tasks: recurring rules that deliver a prompt to a conversation.",
-      "package": "ingle-plugin-schedules",
-      "version": "0.1.0",
-      "permissions": [
-        "conversations"
-      ],
-      "slots": [],
-      "rows": [
-        "schedules"
-      ]
-    },
-    {
-      "name": "tool-schedules",
-      "title": "Schedules tools",
-      "description": "The model-facing create, list, view and edit tools for scheduled tasks. Disable to hide them; the schedules service keeps running.",
-      "package": "ingle-plugin-schedules",
-      "version": "0.1.0",
-      "permissions": [],
-      "slots": [],
-      "rows": [
-        "tool-schedules"
       ]
     },
     {
