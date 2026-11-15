@@ -51,7 +51,7 @@ export const PANE_VIEWS: readonly PaneEntry[] = [
     id: "files",
     label: "Drive",
     icon: HardDrive,
-    render: (context) => <DriveView conversationId={context.conversationId} projectId={context.project.id} />,
+    render: (context) => <DriveView conversationId={context.conversationId} projectId={context.project.id} projectSlug={context.project.slug} />,
   },
   {
     id: "memory",

@@ -1,6 +1,7 @@
 import { createResource, For, Show, type JSX } from "solid-js"
 import { Clock } from "lucide-solid"
 import { cmd } from "../../lib/api.ts"
+import { drive, type DriveListing } from "../../lib/drive.ts"
 import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import { STATE_WORD, visualState, type VisualState } from "../../lib/status.ts"
@@ -8,6 +9,28 @@ import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
 import { Skullet } from "../ui/skeleton.tsx"
 import { EmptyState, PanelGhost, ResourceError } from "../chat/ui.tsx"
+
+const FILES_FRESH_MS = 60_000
+const listed = new Map<string, { readonly at: number; readonly listing: Promise<DriveListing> }>()
+
+export function projectFiles(slug: string): Promise<DriveListing> {
+  const listing = drive.list({ kind: "project", id: slug }, "").then((found) => ({
+    ...found,
+    files: found.files.toSorted((left, right) => right.updated_at - left.updated_at),
+  }))
+  listed.set(slug, { at: Date.now(), listing })
+  listing.catch(() => listed.delete(slug))
+  return listing
+}
+
+export function forgetProjectFiles(slug: string): void {
+  listed.delete(slug)
+}
+
+export function recentProjectFiles(slug: string): Promise<DriveListing> {
+  const cached = listed.get(slug)
+  return cached !== undefined && Date.now() - cached.at < FILES_FRESH_MS ? cached.listing : projectFiles(slug)
+}
 
 export function fileName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1)

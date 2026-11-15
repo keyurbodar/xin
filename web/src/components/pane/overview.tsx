@@ -5,8 +5,8 @@ import { ago } from "../../lib/format.ts"
 import { homeRequests, projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { ICON_BUTTON } from "../shell/menu.ts"
-import { drive } from "../../lib/drive.ts"
-import { fileName, openFile, PANE_ROW, ThreadLine } from "./bodies.tsx"
+import { fileName, openFile, PANE_ROW, recentProjectFiles, ThreadLine } from "./bodies.tsx"
+import { settled } from "./drive.tsx"
 
 const DRIVE_ROWS = 4
 
@@ -92,11 +92,8 @@ export function ThreadsSection(props: PaneContext & { label: string }): JSX.Elem
 }
 
 export function DriveSection(props: PaneContext & { label: string }): JSX.Element {
-  const [listing] = createResource(
-    () => props.project.id,
-    (id) => drive.list({ kind: "project", id }, ""),
-  )
-  const files = () => listing()?.files.toSorted((left, right) => right.updated_at - left.updated_at)
+  const [listing] = createResource(() => props.project.slug, recentProjectFiles)
+  const files = () => settled(listing)?.files
   return (
     <Section
       label={props.label}
@@ -109,10 +106,10 @@ export function DriveSection(props: PaneContext & { label: string }): JSX.Elemen
     >
       <For
         each={(files() ?? []).slice(0, DRIVE_ROWS)}
-        fallback={<span class="px-2 py-1.5 text-sm text-ink-3">{listing.loading ? "Loading files" : "No files yet"}</span>}
+        fallback={<span class="px-2 py-1.5 text-sm text-ink-3">{listing.loading ? "Loading files" : listing.error === undefined ? "No files yet" : "Drive is unavailable"}</span>}
       >
         {(entry) => (
-          <button type="button" onClick={() => openFile(props.project.slug, `${listing()?.root ?? ""}${entry.path}`)} class={PANE_ROW}>
+          <button type="button" onClick={() => openFile(props.project.slug, `${settled(listing)?.root ?? ""}${entry.path}`)} class={PANE_ROW}>
             <File size={16} stroke-width={1.5} class="mt-0.5 shrink-0 text-ink-3" />
             <span class="min-w-0 flex-1 truncate text-sm text-ink">{fileName(entry.path)}</span>
             <span class="shrink-0 font-mono text-2xs text-ink-3">{ago(entry.updated_at)}</span>

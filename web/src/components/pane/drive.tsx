@@ -1,4 +1,4 @@
-import { batch, createMemo, createResource, createSignal, For, Show, untrack, type JSX } from "solid-js"
+import { batch, createMemo, createResource, createSignal, For, Show, untrack, type JSX, type Resource } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
 import {
@@ -40,10 +40,15 @@ import { Skullet } from "../ui/skeleton.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL } from "../shell/menu.ts"
 import { Markdown } from "../chat/markdown.tsx"
 import { createPaneAction, EmptyState, PanelGhost, ResourceError, Spinner } from "../chat/ui.tsx"
-import { fileName as baseName, PANE_ROW } from "./bodies.tsx"
+import { fileName as baseName, forgetProjectFiles, PANE_ROW } from "./bodies.tsx"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
 const CENTER_ROW = PANE_ROW.replace("items-start", "items-center")
+
+/** A resource's value, or undefined while it holds an error: reading a failed resource throws into the screen's boundary. */
+export function settled<T>(resource: Resource<T>): T | undefined {
+  return resource.error === undefined ? resource.latest : undefined
+}
 const SMALL = { size: 14, "stroke-width": 1.5 } as const
 
 type Row =
@@ -119,7 +124,7 @@ function CopyLink(props: { url: string }): JSX.Element {
 }
 
 /** The right pane's Drive: the conversation's scopes, one folder at a time, and the open file. One drive.list per folder open and per op. */
-export function DriveView(props: { conversationId: number; projectId: string }): JSX.Element {
+export function DriveView(props: { conversationId: number; projectId: string; projectSlug: string }): JSX.Element {
   const [scopes, { refetch: refetchScopes }] = createResource(() => props.conversationId, drive.scopes)
   const [picked, setPicked] = createSignal<string | undefined>()
   const [folder, setFolder] = createSignal("")
@@ -129,7 +134,7 @@ export function DriveView(props: { conversationId: number; projectId: string }):
   const action = createPaneAction()
 
   const current = createMemo((): MountedScope | undefined => {
-    const all = scopes() ?? []
+    const all = settled(scopes) ?? []
     return (
       all.find((mounted) => mounted.root === picked()) ??
       all.find((mounted) => mounted.scope.kind === "project" && mounted.scope.id === props.projectId) ??
@@ -146,10 +151,11 @@ export function DriveView(props: { conversationId: number; projectId: string }):
     if (mounted === undefined) throw new Error("no scope")
     return drive.list(mounted.scope, untrack(folder))
   })
-  const rows = createMemo(() => rowsOf(listing.latest?.files ?? [], folder()))
-  const openEntry = (): DriveEntry | undefined => listing.latest?.files.find((entry) => entry.path === open())
+  const rows = createMemo(() => rowsOf(settled(listing)?.files ?? [], folder()))
+  const openEntry = (): DriveEntry | undefined => settled(listing)?.files.find((entry) => entry.path === open())
 
   const reload = (): void => {
+    forgetProjectFiles(props.projectSlug)
     setVersion((value) => value + 1)
   }
   const choose = (root: string): void =>
@@ -199,7 +205,7 @@ export function DriveView(props: { conversationId: number; projectId: string }):
         {(mounted) => (
           <>
             <div class="flex items-center gap-1 px-1 pb-1">
-              <ScopeMenu scopes={scopes() ?? []} current={mounted()} onChoose={choose} />
+              <ScopeMenu scopes={settled(scopes) ?? []} current={mounted()} onChoose={choose} />
               <span class="flex-1" />
               <Show when={action.busy() === "upload"}>
                 <Spinner size={14} class="text-ink-3" />
@@ -260,7 +266,7 @@ export function DriveView(props: { conversationId: number; projectId: string }):
               when={open()}
               keyed
               fallback={
-                <Skullet loading={listing.loading && listing.latest === undefined} sample={() => <PanelGhost rows={6} />} label="Loading Drive">
+                <Skullet loading={listing.loading && settled(listing) === undefined} sample={() => <PanelGhost rows={6} />} label="Loading Drive">
                   <Show when={listing.error}>
                     <ResourceError what="this folder" error={listing.error} onRetry={() => void refetchListing()} />
                   </Show>
@@ -268,7 +274,7 @@ export function DriveView(props: { conversationId: number; projectId: string }):
                     class="flex flex-1 flex-col rounded-md transition-colors duration-[var(--dur-color)]"
                     classList={{ "bg-primary-soft": dropping() }}
                   >
-                    <Show when={listing.latest !== undefined && rows().length === 0}>
+                    <Show when={settled(listing) !== undefined && rows().length === 0}>
                       <EmptyState
                         pictogram="folder"
                         title={folder() === "" ? "Nothing in this drive yet" : "This folder is empty"}
@@ -294,7 +300,7 @@ export function DriveView(props: { conversationId: number; projectId: string }):
                             <span class="min-w-0 flex-1">
                               <span class="flex items-center gap-1.5">
                                 <span class="truncate text-sm text-ink">{row.name}</span>
-                                <Show when={listing.latest?.shares[row.entry.path] !== undefined}>
+                                <Show when={settled(listing)?.shares[row.entry.path] !== undefined}>
                                   <Link2 size={12} stroke-width={1.5} class="shrink-0 text-primary-ink" aria-label="Shared" />
                                 </Show>
                               </span>
@@ -319,10 +325,10 @@ export function DriveView(props: { conversationId: number; projectId: string }):
               {(path) => (
                 <FilePanel
                   mounted={mounted()}
-                  scopes={scopes() ?? []}
+                  scopes={settled(scopes) ?? []}
                   path={path}
                   entry={openEntry()}
-                  shareId={listing.latest?.shares[path]}
+                  shareId={settled(listing)?.shares[path]}
                   onBack={() => setOpen(undefined)}
                   onChanged={reload}
                   onMoved={(to, root) => {
@@ -343,7 +349,7 @@ export function DriveView(props: { conversationId: number; projectId: string }):
           </>
         )}
       </Show>
-      <Show when={scopes.loading && scopes.latest === undefined}>
+      <Show when={scopes.loading && settled(scopes) === undefined}>
         <PanelGhost rows={6} />
       </Show>
     </div>
@@ -412,7 +418,7 @@ function FilePanel(props: {
   const action = createPaneAction()
 
   const edit = (): void => {
-    setDraft(file()?.text ?? "")
+    setDraft(settled(file)?.text ?? "")
     setMode("edit")
   }
   const save = (): void =>
@@ -435,7 +441,7 @@ function FilePanel(props: {
       props.onChanged()
     })
 
-  const text = (): string | null => file()?.text ?? null
+  const text = (): string | null => settled(file)?.text ?? null
   const isText = (): boolean => text() !== null
 
   return (
@@ -446,7 +452,7 @@ function FilePanel(props: {
         </button>
         <span class="min-w-0 flex-1">
           <span class="block truncate text-sm font-medium text-ink">{baseName(props.path)}</span>
-          <Show when={props.entry ?? file()}>
+          <Show when={props.entry ?? settled(file)}>
             {(entry) => (
               <span class="block truncate font-mono text-2xs text-ink-3">
                 {bytes(entry().size)} · {ago(entry().updated_at)}
@@ -556,7 +562,7 @@ function FilePanel(props: {
 
       <Show when={mode() === "read"}>
         <Skullet loading={file.loading} sample={() => <PanelGhost rows={3} />} label="Opening file">
-          <Show when={file()}>
+          <Show when={settled(file)}>
             {(loaded) => <FileBody file={loaded()} />}
           </Show>
         </Skullet>
@@ -626,7 +632,7 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
         <ResourceError what="history" error={history.error} onRetry={() => void refetch()} />
       </Show>
       <Skullet loading={history.loading} sample={() => <PanelGhost rows={3} />} label="Loading history">
-        <Show when={history()}>
+        <Show when={settled(history)}>
           {(data) => (
             <>
               <div class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm">
@@ -662,7 +668,7 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
         {(sha256) => (
           <div class="mt-2 flex flex-col gap-2 rounded-md border border-line-2 p-2">
             <div class="flex items-center gap-2">
-              <span class="flex-1 text-xs text-ink-3">Earlier version · {ago(older()?.updated_at)}</span>
+              <span class="flex-1 text-xs text-ink-3">Earlier version · {ago(settled(older)?.updated_at)}</span>
               <Button size="sm" variant="ghost" disabled={action.busy() !== undefined} onClick={() => restore(sha256())}>
                 {action.busy() === sha256() ? "Restoring" : "Restore this version"}
               </Button>
@@ -671,7 +677,7 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
               {(message) => <p class="font-mono text-2xs text-failed">{message()}</p>}
             </Show>
             <Skullet loading={older.loading} sample={() => <PanelGhost rows={2} />} label="Opening version">
-              <Show when={older()}>{(loaded) => <FileBody file={loaded()} />}</Show>
+              <Show when={settled(older)}>{(loaded) => <FileBody file={loaded()} />}</Show>
             </Skullet>
           </div>
         )}
