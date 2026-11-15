@@ -1,13 +1,10 @@
-import { createSignal, onMount, type JSX } from "solid-js"
+import { createSignal, onMount, Show, type JSX } from "solid-js"
+import { Eye, EyeOff, KeyRound } from "lucide-solid"
 import { setToken, verifyToken } from "../lib/auth.ts"
-import { OnboardingTopBar, type RailItem } from "../components/onboarding/chrome.tsx"
+import { OnboardingFrame } from "../components/onboarding/chrome.tsx"
+import { INPUT_BOX, PrimaryButton } from "../components/onboarding/controls.tsx"
 
-const STEPS: readonly RailItem[] = [
-  { label: "Sign in", state: "current" },
-  { label: "Model key", state: "todo" },
-  { label: "First project", state: "todo" },
-  { label: "First message", state: "todo" },
-]
+const WRONG_TOKEN = "That token doesn’t match this instance. Check the last deploy output."
 
 export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
   const [value, setValue] = createSignal("")
@@ -15,7 +12,6 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
   const [busy, setBusy] = createSignal(false)
   const [revealed, setRevealed] = createSignal(false)
 
-  /** The QR code links here with the token attached; it fills the field once and leaves the address bar clean. */
   onMount(() => {
     const query = window.location.hash.split("?")[1]
     const offered = new URLSearchParams(query ?? "").get("token")
@@ -26,89 +22,82 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
 
   const submit = async (event: Event): Promise<void> => {
     event.preventDefault()
-    if (busy()) return
+    const candidate = value().trim()
+    if (busy() || candidate === "") return
     setBusy(true)
     setError(undefined)
-    const accepted = await verifyToken(value().trim())
+    const accepted = await verifyToken(candidate)
     setBusy(false)
     if (!accepted) {
-      setError("That token doesn’t match this instance.")
+      setError(WRONG_TOKEN)
       return
     }
-    setToken(value().trim())
+    setToken(candidate)
     props.onSignedIn()
   }
 
   return (
-    <div class="flex h-full flex-col bg-bg text-ink">
-      <OnboardingTopBar items={STEPS} />
-      <div class="atmos flex min-h-0 flex-1 justify-center overflow-y-auto px-6 pb-16 pt-[22vh]">
-        <form onSubmit={submit} class="enter w-full max-w-[440px]">
-          <div class="label">Owner access</div>
-          <h1 class="mt-3 text-2xl font-light leading-[1.15] tracking-[-0.03em]">Sign in to your workspace</h1>
-          <p class="mt-3 text-base leading-[1.6] text-ink-3">
-            This instance belongs to one owner. Paste the owner token from your deploy output to unlock it.
-          </p>
+    <OnboardingFrame current={0} done={() => false}>
+      <form onSubmit={submit} class="im-arrive w-full max-w-[440px] rounded-lg border border-line-1 bg-card px-7 pb-7 pt-6">
+        <p class="text-sm text-ink-3">Step 1 of 4</p>
+        <h1 class="mt-1.5 text-2xl font-semibold tracking-[-0.02em]">Sign in to your Ingle</h1>
+        <p class="mt-2 text-base leading-5 text-ink-2">
+          This instance belongs to one owner. Paste the owner token from your deploy output to unlock it.
+        </p>
 
-          <div class="mt-6 flex flex-col gap-1.5">
-            <span class="text-sm font-medium text-ink-2">Owner token</span>
-            <div
-              class="flex h-10 items-center gap-2 rounded-sm border bg-panel px-3 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]"
-              classList={{ "border-failed": error() !== undefined && !busy(), "border-line-2": error() === undefined || busy() }}
-            >
-              <input
-                type={revealed() ? "text" : "password"}
-                value={value()}
-                onInput={(event) => {
-                  setValue(event.currentTarget.value)
-                  if (error() !== undefined) setError(undefined)
-                }}
-                autocomplete="current-password"
-                spellcheck={false}
-                placeholder="owner token"
-                aria-label="Owner token"
-                disabled={busy()}
-                class="h-full min-w-0 flex-1 bg-transparent font-mono text-sm tracking-[0.08em] text-ink placeholder:tracking-normal placeholder:text-icon focus:outline-none disabled:opacity-60"
-              />
-              <button
-                type="button"
-                onClick={() => setRevealed((shown) => !shown)}
-                class="shrink-0 font-mono text-2xs uppercase tracking-[0.08em] text-ink-3 hover:text-ink"
-              >
-                {revealed() ? "Hide" : "Show"}
-              </button>
-            </div>
-            <span class="text-sm leading-[1.5] text-ink-3">
-              The token stays in this browser. Rotate it any time under Settings, Profile + token.
-            </span>
-          </div>
-
-          <p class="mt-2 min-h-4 text-sm leading-4 text-failed" role="alert">
-            {error() ?? ""}
-          </p>
-
-          <button
-            type="submit"
-            disabled={busy() || value().trim() === ""}
-            aria-busy={busy()}
-            class="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary text-base font-medium text-on-primary enabled:hover:bg-primary disabled:opacity-40"
+        <label class="mt-6 flex flex-col gap-2">
+          <span class="text-sm font-medium text-ink-2">Owner token</span>
+          <div
+            class={INPUT_BOX}
+            classList={{ "im-reject border-failed": error() !== undefined, "border-line-2": error() === undefined }}
           >
-            {busy() ? (
-              <>
-                <span class="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-[1.5px] border-on-primary/25 border-t-on-primary" />
-                Checking…
-              </>
-            ) : (
-              "Continue"
-            )}
-          </button>
+            <KeyRound size={14} stroke-width={1.75} class="shrink-0 text-icon" aria-hidden="true" />
+            <input
+              type={revealed() ? "text" : "password"}
+              value={value()}
+              onInput={(event) => {
+                setValue(event.currentTarget.value)
+                if (error() !== undefined) setError(undefined)
+              }}
+              autocomplete="current-password"
+              spellcheck={false}
+              autofocus
+              placeholder="Paste the owner token"
+              aria-invalid={error() !== undefined}
+              aria-describedby="signin-note"
+              disabled={busy()}
+              class="h-full min-w-0 flex-1 bg-transparent font-mono text-base text-ink placeholder:font-sans placeholder:text-placeholder focus:outline-none disabled:opacity-60"
+            />
+            <button
+              type="button"
+              onClick={() => setRevealed((shown) => !shown)}
+              aria-label={revealed() ? "Hide the token" : "Show the token"}
+              aria-pressed={revealed()}
+              class="im-press grid h-6 w-6 shrink-0 place-items-center rounded-sm text-icon hover:text-ink-2"
+            >
+              <Show when={revealed()} fallback={<Eye size={14} stroke-width={1.75} aria-hidden="true" />}>
+                <EyeOff size={14} stroke-width={1.75} aria-hidden="true" />
+              </Show>
+            </button>
+          </div>
+          <span
+            id="signin-note"
+            role={error() === undefined ? undefined : "alert"}
+            class="text-sm"
+            classList={{ "text-failed": error() !== undefined, "text-ink-3": error() === undefined }}
+          >
+            {error() ?? "The token stays in this browser. You can rotate it later in Settings → Profile + token."}
+          </span>
+        </label>
 
-          <p class="mt-4 text-center text-xs leading-[1.5] text-ink-3">
-            Lost the token? Read <span class="font-mono text-2xs text-ink-2">OWNER_TOKEN</span> from the deployment’s
-            secrets.
-          </p>
-        </form>
-      </div>
-    </div>
+        <div class="mt-5">
+          <PrimaryButton type="submit" wide label={busy() ? "Checking" : "Continue"} busy={busy()} disabled={value().trim() === ""} />
+        </div>
+
+        <p class="mt-5 text-center text-sm text-ink-3">
+          Lost the token? Run <code class="font-mono text-ink-2">wrangler secret put OWNER_TOKEN</code> and redeploy.
+        </p>
+      </form>
+    </OnboardingFrame>
   )
 }

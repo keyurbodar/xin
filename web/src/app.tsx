@@ -35,7 +35,12 @@ export function App(): JSX.Element {
 
   return (
     <Show when={authed() !== undefined} fallback={<div class="grid h-full place-items-center" />}>
-        <Show when={authed()} fallback={<SignIn onSignedIn={enter} />}>
+        <Show when={authed()} fallback={<SignIn
+              onSignedIn={() => {
+                enter()
+                navigate("/welcome")
+              }}
+            />}>
           <Show when={route().parts[0] === "welcome"} fallback={<Shell />}>
             <WelcomeScreen />
           </Show>

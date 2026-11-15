@@ -1,70 +1,54 @@
 import { Match, Switch, type JSX } from "solid-js"
-import { OnboardingTopBar, type RailItem } from "../components/onboarding/chrome.tsx"
+import { OnboardingFrame } from "../components/onboarding/chrome.tsx"
 import { ProviderStep } from "../components/onboarding/provider-step.tsx"
-import { ProjectStep } from "../components/onboarding/project-step.tsx"
-import { MessageStep } from "../components/onboarding/message-step.tsx"
-import { NotificationsStep } from "../components/onboarding/notifications-step.tsx"
+import { CaptainStep } from "../components/onboarding/captain-step.tsx"
+import { ThreadStep } from "../components/onboarding/thread-step.tsx"
+import { NotificationsDialog } from "../components/onboarding/notifications-dialog.tsx"
 import {
-  ONBOARDING_STEPS,
   goToStep,
+  onboardingCaptain,
   onboardingIndex,
-  onboardingProject,
   onboardingProvider,
-  onboardingPush,
+  onboardingReported,
   onboardingStep,
 } from "../state/onboarding.ts"
 
-export function WelcomeScreen(): JSX.Element {
-  const items = (): readonly RailItem[] =>
-    ONBOARDING_STEPS.map(
-      (step, index): RailItem => ({
-        label: step.label,
-        state:
-          index === onboardingIndex()
-            ? "current"
-            : index < onboardingIndex() || complete(index)
-              ? "done"
-              : "todo",
-      }),
-    )
-
-  return (
-    <div class="flex h-full flex-col bg-bg text-ink">
-      <OnboardingTopBar
-        items={items()}
-        onSelect={(index) => {
-          if (index <= onboardingIndex()) goToStep(index)
-        }}
-      />
-      <div class="min-h-0 flex-1 overflow-y-auto">
-        <Switch>
-          <Match when={onboardingStep() === "provider"}>
-            <ProviderStep />
-          </Match>
-          <Match when={onboardingStep() === "project"}>
-            <ProjectStep />
-          </Match>
-          <Match when={onboardingStep() === "message"}>
-            <MessageStep />
-          </Match>
-          <Match when={onboardingStep() === "notifications"}>
-            <NotificationsStep />
-          </Match>
-        </Switch>
-      </div>
-    </div>
-  )
-}
-
-function complete(index: number): boolean {
+function done(index: number): boolean {
   switch (index) {
     case 0:
-      return onboardingProvider() !== undefined
+      return true
     case 1:
-      return onboardingProject() !== undefined
+      return onboardingProvider() !== undefined || onboardingIndex() > 1
+    case 2:
+      return onboardingCaptain() !== undefined
     case 3:
-      return onboardingPush().kind === "on"
+      return onboardingReported()
     default:
       return false
   }
+}
+
+export function WelcomeScreen(): JSX.Element {
+  return (
+    <OnboardingFrame
+      current={onboardingIndex()}
+      done={done}
+      onSelect={(index) => {
+        if (index <= onboardingIndex() || done(index - 1)) goToStep(index)
+      }}
+    >
+      <Switch>
+        <Match when={onboardingStep() === "provider"}>
+          <ProviderStep />
+        </Match>
+        <Match when={onboardingStep() === "captain"}>
+          <CaptainStep />
+        </Match>
+        <Match when={onboardingStep() === "thread"}>
+          <ThreadStep />
+        </Match>
+      </Switch>
+      <NotificationsDialog />
+    </OnboardingFrame>
+  )
 }
