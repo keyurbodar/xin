@@ -1,9 +1,26 @@
 import { batch, createMemo, createResource, createSignal, For, Show, untrack, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
-import { ArrowLeft, BookText, Check, ChevronRight, ChevronsUpDown, File, Folder, FolderInput, History, Pencil, Sparkles, Trash2, Upload } from "lucide-solid"
+import {
+  ArrowLeft,
+  BookText,
+  Check,
+  ChevronRight,
+  ChevronsUpDown,
+  Copy,
+  File,
+  Folder,
+  FolderInput,
+  History,
+  Link2,
+  Pencil,
+  Sparkles,
+  Trash2,
+  Upload,
+} from "lucide-solid"
 import { putFile } from "../../lib/api.ts"
 import {
+  copyLink,
   crumbsOf,
   drive,
   folderOf,
@@ -17,12 +34,14 @@ import {
   rowsOf,
   saveBlock,
   scopeTitle,
+  shareUrl,
   SKILLS_FOLDER,
   splitUploads,
   uploadPath,
   uploadSummary,
   writeArgs,
   type ConflictChoice,
+  type CopyOutcome,
   type DriveEntry,
   type DriveFile,
   type DriveListing,
@@ -67,6 +86,9 @@ function ReservedNote(props: { reserved: Reserved }): JSX.Element {
     </div>
   )
 }
+
+const clipboard = (): ((text: string) => Promise<void>) | undefined =>
+  navigator.clipboard === undefined ? undefined : (text) => navigator.clipboard.writeText(text)
 
 /** The right pane's Drive: the conversation's scopes, one folder at a time, and the open file. One drive.list per folder open and per op. */
 export function DriveView(props: { conversationId: number; prefer: DriveScope; projectSlug: string }): JSX.Element {
@@ -236,7 +258,15 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
                           <button type="button" class={PANE_ROW} onClick={() => setOpen(row.entry.path)}>
                             <ReservedIcon reserved={reservedOf(row.entry.path)} class="mt-0.5 shrink-0 text-ink-3" />
                             <span class="min-w-0 flex-1">
-                              <span class="block truncate text-sm text-ink">{row.name}</span>
+                              <span class="flex items-center gap-1.5">
+                                <span class="truncate text-sm text-ink">{row.name}</span>
+                                <Show when={settled(listing)?.shares[row.entry.path] !== undefined}>
+                                  <span class="flex shrink-0 items-center gap-1 rounded-xs border border-primary/30 bg-primary-soft px-1 text-2xs text-primary-ink">
+                                    <Link2 size={10} stroke-width={1.75} />
+                                    Shared
+                                  </span>
+                                </Show>
+                              </span>
                               <span class="block truncate text-xs text-ink-3">
                                 {reservedOf(row.entry.path)?.kind === "instructions"
                                   ? "Instructions · "
@@ -261,6 +291,7 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
                   scopes={settled(scopes) ?? []}
                   path={path}
                   entry={openEntry()}
+                  shareId={settled(listing)?.shares[path]}
                   onBack={() => setOpen(undefined)}
                   onChanged={reload}
                   onMoved={(to, root) => {
@@ -337,6 +368,7 @@ function FilePanel(props: {
   scopes: readonly MountedScope[]
   path: string
   entry: DriveEntry | undefined
+  shareId: string | undefined
   onBack: () => void
   onChanged: () => void
   onMoved: (to: string, root: string) => void
@@ -386,6 +418,42 @@ function FilePanel(props: {
       }
       await write(next.write)
     })
+  const [copied, setCopied] = createSignal<CopyOutcome | undefined>()
+  let focusNext: "link" | "share" | undefined
+  let linkField: HTMLInputElement | undefined
+  const focusOnce = (target: "link" | "share", element: HTMLElement): void => {
+    if (focusNext !== target) return
+    focusNext = undefined
+    queueMicrotask(() => {
+      element.focus()
+      if (element instanceof HTMLInputElement) element.select()
+    })
+  }
+  const copy = async (url: string): Promise<void> => {
+    const outcome = await copyLink(url, clipboard())
+    setCopied(outcome)
+    if (outcome === "manual") {
+      linkField?.focus()
+      linkField?.select()
+      return
+    }
+    setTimeout(() => setCopied((now) => (now === "copied" ? undefined : now)), 1500)
+  }
+  const share = (): void =>
+    void action.run("share", async () => {
+      const link = await drive.share(scope(), props.path)
+      focusNext = "link"
+      props.onChanged()
+      await copy(`${location.origin}${link.url}`)
+    })
+  const unshare = (): void =>
+    void action.run("share", async () => {
+      await drive.unshare(scope(), props.path)
+      setCopied(undefined)
+      focusNext = "share"
+      props.onChanged()
+    })
+
   const text = (): string | null => settled(file)?.text ?? null
   const isText = (): boolean => text() !== null
 
@@ -421,6 +489,19 @@ function FilePanel(props: {
         >
           <History {...SMALL} />
         </button>
+        <Show when={props.shareId === undefined}>
+          <button
+            type="button"
+            class={ICON_BUTTON}
+            aria-label="Share a link"
+            title="Share a link"
+            ref={(element) => focusOnce("share", element)}
+            disabled={action.busy() === "share"}
+            onClick={share}
+          >
+            <Link2 {...SMALL} />
+          </button>
+        </Show>
         <button type="button" class={ICON_BUTTON} aria-label="Move or rename" title="Move or rename" onClick={() => setMoving(true)}>
           <FolderInput {...SMALL} />
         </button>
@@ -430,6 +511,45 @@ function FilePanel(props: {
       </div>
 
       <Show when={reserved()}>{(kind) => <ReservedNote reserved={kind()} />}</Show>
+
+      <Show when={props.shareId}>
+        {(id) => (
+          <div class="mx-2 mb-2 flex items-center gap-2 rounded-sm border border-primary/30 bg-primary-soft py-1 pl-2.5 pr-1 text-xs">
+            <Link2 size={12} stroke-width={1.5} class="shrink-0 text-primary-ink" />
+            <input
+              ref={(element) => {
+                linkField = element
+                focusOnce("link", element)
+              }}
+              readonly
+              aria-label="Share link"
+              title="Anyone with this link can open the file"
+              value={shareUrl(location.origin, id(), props.path)}
+              onFocus={(event) => event.currentTarget.select()}
+              class="min-w-0 flex-1 truncate bg-transparent font-mono text-2xs text-ink-2 outline-none"
+            />
+            <button
+              type="button"
+              class={ICON_BUTTON}
+              aria-label={copied() === "copied" ? "Copied" : "Copy link"}
+              title={copied() === "copied" ? "Copied" : "Copy link"}
+              onClick={() => void copy(shareUrl(location.origin, id(), props.path))}
+            >
+              <Show when={copied() === "copied"} fallback={<Copy {...SMALL} />}>
+                <Check {...SMALL} class="text-done" />
+              </Show>
+            </button>
+            <button type="button" class="link shrink-0 pr-1.5 text-xs" disabled={action.busy() === "share"} onClick={unshare}>
+              Stop sharing
+            </button>
+          </div>
+        )}
+      </Show>
+      <Show when={props.shareId !== undefined && copied() === "manual"}>
+        <p role="status" class="mx-2 mb-2 font-mono text-2xs text-failed">
+          The browser blocked the clipboard. The link is selected: press Ctrl+C (⌘C on a Mac) to copy it.
+        </p>
+      </Show>
 
       <Show when={action.failed()}>
         {(message) => <p class="mx-2 mb-2 font-mono text-2xs text-failed">{message()}</p>}
@@ -527,6 +647,7 @@ function FilePanel(props: {
         open={deleting()}
         scope={scope()}
         path={props.path}
+        shared={props.shareId !== undefined}
         onClose={() => setDeleting(false)}
         onDeleted={() => {
           setDeleting(false)
@@ -694,7 +815,7 @@ function MoveDialog(props: {
           </select>
         </Field>
       </Show>
-      <Field label="Path" hint={`Inside ${target()?.root ?? props.mounted.root}. Earlier versions move with the file.`}>
+      <Field label="Path" hint={`Inside ${target()?.root ?? props.mounted.root}. Earlier versions and the share link move with the file.`}>
         <input class={`${FIELD_INPUT} h-[34px] font-mono text-sm`} value={to()} onInput={(event) => setTo(event.currentTarget.value)} autofocus />
       </Field>
     </Dialog>
@@ -705,6 +826,7 @@ function DeleteDialog(props: {
   open: boolean
   scope: DriveScope
   path: string
+  shared: boolean
   onClose: () => void
   onDeleted: () => void
 }): JSX.Element {
@@ -739,6 +861,7 @@ function DeleteDialog(props: {
     >
       <p class="text-sm leading-[1.5] text-ink-2">
         {`${props.path} and its earlier versions are removed for good.`}
+        {props.shared ? " Its share link stops working." : ""}
         {reservedOf(props.path)?.kind === "instructions" ? " Conversations in this scope lose these instructions." : ""}
         {reservedOf(props.path)?.kind === "skill" ? " The skill is uninstalled from this scope." : ""}
       </p>
