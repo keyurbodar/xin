@@ -1,6 +1,7 @@
 import { defineExtension, type Extension } from "@earendil-works/pi-durable"
 import type { ThreadsService } from "../../src/contracts/threads.ts"
 import type { Op } from "../../src/ops.ts"
+import { threadCache } from "./cache.ts"
 import { threadService, type ServiceDeps } from "./service.ts"
 import { lifecycle, type ThreadDeps } from "./threads.ts"
 
@@ -16,7 +17,11 @@ export function create(deps: OrchestratorDeps): Orchestrator {
   const threads = lifecycle(deps)
   return {
     threads: threadService(deps, threads),
-    extension: defineExtension({ name: "xin.orchestrator", tasks: [threads.anchor, threads.reporter] }),
+    extension: defineExtension({
+      name: "xin.orchestrator",
+      tasks: [threads.anchor, threads.reporter],
+      hooks: [threadCache],
+    }),
     ops: threads.ops,
   }
 }

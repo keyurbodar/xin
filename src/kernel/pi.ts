@@ -39,6 +39,7 @@ export class Pi extends Service {
       {
         models: () => this.currentModels(),
         registry: this.registry,
+        settings: { stream: { cacheRetention: "long" } },
         env: (target) => this.envSources.map((source) => source(target)).find((env) => env !== undefined),
         onWake: (wake) => void this.ctx.clock.arm(wake).catch(() => abort("alarm write failed")),
         onReport: (report: Report) => {
