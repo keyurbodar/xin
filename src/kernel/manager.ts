@@ -222,10 +222,22 @@ export function apply(ctx: Context): void {
   }))
   const OWNER = ["owner"] as const
   ctx.ops.define(
-    defineOp({ name: "plugin.list", args: obj({}), actors: OWNER, run: async () => toJson(await manager.list()) }),
+    defineOp({
+      name: "plugin.list",
+      read: true,
+      args: obj({}),
+      actors: OWNER,
+      run: async () => toJson(await manager.list()),
+    }),
   )
   ctx.ops.define(
-    defineOp({ name: "plugin.catalog", args: obj({}), actors: OWNER, run: async () => toJson(manager.catalog()) }),
+    defineOp({
+      name: "plugin.catalog",
+      read: true,
+      args: obj({}),
+      actors: OWNER,
+      run: async () => toJson(manager.catalog()),
+    }),
   )
   ctx.ops.define(defineOp({ name: "plugin.tree", args: obj({}), actors: OWNER, run: async () => manager.tree() }))
   ctx.ops.define(

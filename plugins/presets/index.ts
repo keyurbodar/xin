@@ -91,6 +91,7 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
   ctx.ops.define(
     defineOp({
       name: "preset.list",
+      read: true,
       args: obj({}),
       actors: ["owner"],
       run: async () => ({

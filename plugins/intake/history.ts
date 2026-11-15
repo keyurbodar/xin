@@ -13,6 +13,7 @@ const toJson = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value))
 export function historyOp(): Op {
   return defineOp({
     name: "history.page",
+    read: true,
     args: obj({
       conversationId: int({ minimum: 0 }),
       before: opt(int({ minimum: 0 })),

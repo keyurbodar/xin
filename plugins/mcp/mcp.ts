@@ -717,6 +717,7 @@ export function create(ports: McpPorts): McpModule {
 
   const list: Op = defineOp({
     name: "mcp.list",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => {
@@ -747,6 +748,7 @@ export function create(ports: McpPorts): McpModule {
 
   const read: Op = defineOp({
     name: "mcp.tools",
+    read: true,
     args: obj({ name: str({ pattern: NAME_SOURCE }) }),
     actors: ["owner"],
     run: async (_api, { name }) => {
@@ -759,6 +761,7 @@ export function create(ports: McpPorts): McpModule {
 
   const resources: Op = defineOp({
     name: "mcp.resources",
+    read: true,
     args: obj({ name: str({ pattern: NAME_SOURCE }) }),
     actors: ["owner"],
     run: async (_api, { name }) => {
@@ -773,6 +776,7 @@ export function create(ports: McpPorts): McpModule {
 
   const prompts: Op = defineOp({
     name: "mcp.prompts",
+    read: true,
     args: obj({ name: str({ pattern: NAME_SOURCE }) }),
     actors: ["owner"],
     run: async (_api, { name }) => {

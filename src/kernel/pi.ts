@@ -2,7 +2,9 @@ import { type Context, Service } from "@deepseek-ai/cordis"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { createModels, type Models } from "@earendil-works/pi-ai"
 import {
+  type ConversationId,
   createRegistry,
+  type Cursor,
   type EnvTarget,
   type Extension,
   Harness,
@@ -31,6 +33,7 @@ export class Pi extends Service {
   readonly installed = new Map<string, Installed>()
   readonly modelSources: (() => Models)[] = []
   readonly envSources: EnvProvider[] = []
+  private storage: JournalStorage | undefined
 
   constructor(ctx: Context) {
     super(ctx, "pi")
@@ -39,8 +42,10 @@ export class Pi extends Service {
 
   async [Service.init](): Promise<void> {
     const { state, abort } = this.ctx.host
+    const storage = await JournalStorage.open(state.storage, BACKGROUND_CONTEXT)
+    this.storage = storage
     const harness = await Harness.open(
-      await JournalStorage.open(state.storage, BACKGROUND_CONTEXT),
+      storage,
       {
         models: () => this.currentModels(),
         registry: this.registry,
@@ -55,6 +60,18 @@ export class Pi extends Service {
     )
     this.ctx.effect(() => () => harness.close(BACKGROUND_CONTEXT), "harness.close")
     this.ctx.provide("harness", harness)
+  }
+
+  /** Every conversation id, read from the in-memory storage the harness runs on, so a scan costs no row. */
+  async conversations(): Promise<ConversationId[]> {
+    const ids: ConversationId[] = []
+    let cursor: Cursor | undefined
+    do {
+      const page = await this.storage?.scanConversations({}, 256, cursor, BACKGROUND_CONTEXT)
+      for (const record of page?.items ?? []) ids.push(record.id)
+      cursor = page?.next
+    } while (cursor !== undefined)
+    return ids
   }
 
   install(extension: Extension): () => void {

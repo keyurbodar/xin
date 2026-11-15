@@ -29,6 +29,8 @@ export type Op = {
   readonly receipts?: boolean
   /** Arg field names that carry a credential, at any depth: `ops/before` listeners see them redacted. */
   readonly credentials?: readonly string[]
+  /** The op changes no owner state, so running it never announces a home change. */
+  readonly read?: true
   invoke(api: OpApi, args: unknown): Promise<Outcome>
 }
 
@@ -52,6 +54,7 @@ export function defineOp<A>(definition: {
   readonly actors: readonly Actor["kind"][]
   readonly receipts?: boolean
   readonly credentials?: readonly string[]
+  readonly read?: true
   run(api: OpApi, args: A): Promise<JsonValue>
 }): Op {
   const validator = compile(definition.args)
@@ -60,6 +63,7 @@ export function defineOp<A>(definition: {
     actors: definition.actors,
     ...(definition.receipts === undefined ? {} : { receipts: definition.receipts }),
     ...(definition.credentials === undefined ? {} : { credentials: definition.credentials }),
+    ...(definition.read === undefined ? {} : { read: definition.read }),
     invoke: async (api, args) => {
       if (!validator.check(args)) {
         const message = validator

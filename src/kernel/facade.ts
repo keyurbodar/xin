@@ -39,11 +39,12 @@ const ALLOWED: Readonly<Record<string, Readonly<Record<string, Member>>>> = {
       },
     },
   },
-  wire: { home: {}, publishHome: {} },
+  wire: { home: {}, publishHome: {}, announce: {} },
   pi: {
     install: {},
     env: {},
     extensions: {},
+    conversations: { needs: "conversations" },
     models: { needs: "models" },
     currentModels: { needs: "models", view: modelsView },
     registry: { view: registryView },

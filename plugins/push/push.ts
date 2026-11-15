@@ -190,12 +190,14 @@ export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly O
   return [
     defineOp({
       name: "push.key",
+      read: true,
       args: obj({}),
       actors: ["owner"],
       run: async () => ({ applicationServerKey: vapidPublicKey(await loadVapid(db)) }),
     }),
     defineOp({
       name: "notify.prefs",
+      read: true,
       args: obj({}),
       actors: ["owner"],
       run: async () => readPrefs(db),
@@ -229,6 +231,7 @@ export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly O
     }),
     defineOp({
       name: "notify.quiet",
+      read: true,
       args: obj({}),
       actors: ["owner"],
       run: async () => readQuiet(db),
@@ -284,6 +287,7 @@ export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly O
     }),
     defineOp({
       name: "push.list",
+      read: true,
       args: obj({}),
       actors: ["owner"],
       run: async () => {
