@@ -23,6 +23,7 @@ const NAME_SOURCE = "^[a-z0-9]+(?:-[a-z0-9]+)*$"
 const URL_SOURCE = "^https://\\S+$"
 const SERVER_KEY = "mcp:"
 const MAX_TOOL_NAME = 64
+const MAX_RESULT_CHARS = 8_000
 const CLIENT = { name: "xin", version: "0.1.0" } as const
 
 const CachedToolSchema = obj({
@@ -143,6 +144,29 @@ function contentText(value: unknown): string {
   if (value.type === "resource") return resourceText(value.resource)
   if (value.type === "resource_link") return `[resource link: ${String(value.uri ?? "")}]`
   return ""
+}
+
+type LlmContent = ReturnType<typeof toLlmContent>
+
+/** Keeps the head of a tool result: text past `limit` characters is dropped and one note says so; the caller keeps the full result in `details`. */
+function capText(content: LlmContent, limit: number): LlmContent {
+  const total = content.reduce((sum, part) => sum + (part.type === "text" ? part.text.length : 0), 0)
+  if (total <= limit) return content
+  let left = limit
+  const kept: LlmContent = []
+  for (const part of content) {
+    if (part.type !== "text") {
+      kept.push(part)
+      continue
+    }
+    if (left > 0) kept.push({ type: "text", text: part.text.slice(0, left) })
+    left -= part.text.length
+  }
+  kept.push({
+    type: "text",
+    text: `[Result cut at ${limit.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} characters.]`,
+  })
+  return kept
 }
 
 function readText(result: ReadResourceResult): string {
@@ -454,7 +478,13 @@ export function create(ports: McpPorts): McpModule {
           const result = await call((client) =>
             client.callTool(tool.name, args, run.signal === undefined ? undefined : { signal: run.signal }),
           )
-          return { output: toLlmContent(result), isError: result.isError === true }
+          const output = toLlmContent(result)
+          const capped = capText(output, MAX_RESULT_CHARS)
+          return {
+            output: capped,
+            isError: result.isError === true,
+            ...(capped === output ? {} : { details: { content: JSON.parse(JSON.stringify(result.content ?? [])) } }),
+          }
         },
       ),
     )
