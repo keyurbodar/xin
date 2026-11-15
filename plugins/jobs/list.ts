@@ -28,6 +28,7 @@ function stateOf(job: JobRecord): JobState {
 export function listJobsOp(): Op {
   return defineOp({
     name: "job.list",
+    read: true,
     args: obj({ limit: opt(int({ minimum: 1, maximum: MAX_LISTED })) }),
     actors: ["owner"],
     run: async (api, args) => {

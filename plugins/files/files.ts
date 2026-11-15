@@ -19,6 +19,7 @@ import type { Env } from "../../src/env.ts"
 import type { Route } from "../../src/module.ts"
 import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import { blobKey, FileIndex, type FileRow, normalizePath, putFile, R2Env, resolvePath } from "../../src/r2env.ts"
+import { shareKey } from "../../src/share.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -198,11 +199,25 @@ export function create(deps: FilesPort): FilesPlugin {
       return true
     },
     watch: subscribe(listeners),
+    textOf: async (sha256) => {
+      const object = await deps.env.FILES.get(blobKey(sha256))
+      return object === null ? null : object.text()
+    },
+    share: async (id, version) => {
+      await deps.env.FILES.put(
+        shareKey(id),
+        JSON.stringify({ key: blobKey(version.sha256), type: version.type, name: version.name }),
+      )
+    },
+    unshare: async (id) => {
+      await deps.env.FILES.delete(shareKey(id))
+    },
     grant: subscribe(grants),
   }
 
   const list = defineOp({
     name: "file.list",
+    read: true,
     args: obj({ prefix: opt(str()) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { prefix }) => {
@@ -217,6 +232,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const read = defineOp({
     name: "file.read",
+    read: true,
     args: obj({ path: str({ minLength: 1 }) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { path }) => {
@@ -234,6 +250,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const revision = defineOp({
     name: "file.revision",
+    read: true,
     args: obj({ path: str({ minLength: 1 }), sha256: str({ minLength: 64, maxLength: 64 }) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { path, sha256 }) => {
@@ -251,6 +268,7 @@ export function create(deps: FilesPort): FilesPlugin {
 
   const revisions = defineOp({
     name: "file.revisions",
+    read: true,
     args: obj({ path: str({ minLength: 1 }) }),
     actors: ["owner", "agent", "plugin"],
     run: async (api, { path }) => {

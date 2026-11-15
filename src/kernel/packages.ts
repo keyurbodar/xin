@@ -379,6 +379,7 @@ export function apply(ctx: Context): void {
   ctx.ops.define(
     defineOp({
       name: "plugin.packages",
+      read: true,
       args: obj({}),
       actors: OWNER,
       run: async () => toJson({ ...view(), bundles: await bundles.list() }),
@@ -397,6 +398,7 @@ export function apply(ctx: Context): void {
       name: "bundle.put",
       args: BundleArgs,
       actors: OWNER,
+      credentials: ["config"],
       run: async (_api, args) => toJson(await bundles.put(localBundle(args))),
     }),
   )

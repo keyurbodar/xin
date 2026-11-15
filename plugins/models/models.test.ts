@@ -5,11 +5,13 @@ import {
   type Conversation,
   type ConversationId,
   type EntryRecord,
+  ROOT_CONVERSATION_ID,
 } from "@earendil-works/pi-durable"
-import { arr, bool, compile, int, lit, obj, str, union } from "@earendil-works/pi-schema"
+import { arr, bool, compile, int, lit, num, obj, str, union, unknown, type Static } from "@earendil-works/pi-schema"
 import { describe, expect, it } from "vitest"
 import source from "./models.ts?raw"
 import { resolveModel } from "../../src/contracts/models.ts"
+import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
 import type { Actor } from "../../src/ops.ts"
 import { addThreads, api, cmd as call, fresh, owner } from "../../test/support.ts"
@@ -384,6 +386,281 @@ describe("models", () => {
       expect(typeof model.cost.input).toBe("number")
       expect(typeof model.cost.output).toBe("number")
     }
+  })
+
+  it("serves the picker catalog with providers, prices, reasoning levels, favourites and enabled models", async () => {
+    const stub = fresh()
+    const EntrySchema = obj(
+      {
+        provider: str(),
+        modelId: str(),
+        contextWindow: num(),
+        thinking: arr(str()),
+        cost: obj({ input: num(), output: num(), cacheRead: num(), cacheWrite: num() }),
+        keyed: bool(),
+        enabled: bool(),
+        favorite: bool(),
+      },
+      { open: true },
+    )
+    const CatalogSchema = obj(
+      {
+        providers: arr(obj({ id: str(), keyed: bool(), models: num(), enabled: num() }, { open: true })),
+        models: arr(EntrySchema),
+        favorites: arr(unknown()),
+      },
+      { open: true },
+    )
+    const catalogCheck = compile(CatalogSchema)
+    type Catalog = Static<typeof CatalogSchema>
+    type Entry = Catalog["models"][number]
+    const catalog = async (id: string, args: object = {}): Promise<Catalog> => {
+      const reply = await call(stub, id, "models.catalog", args)
+      expect(reply.ok, JSON.stringify(reply)).toBe(true)
+      if (!catalogCheck.check(reply.result)) throw new Error(`malformed catalog ${JSON.stringify(reply.result)}`)
+      return reply.result
+    }
+    const entry = (found: Catalog, ref: { provider: string; modelId: string }): Entry | undefined =>
+      found.models.find((model) => model.provider === ref.provider && model.modelId === ref.modelId)
+
+    const first = await catalog("catalog-1", { provider: WIDE_MODEL.provider })
+    const wide = entry(first, WIDE_MODEL)
+    expect(wide).toMatchObject({
+      contextWindow: 128_000,
+      thinking: ["off"],
+      keyed: true,
+      enabled: true,
+      favorite: false,
+    })
+    expect(typeof wide?.cost.cacheRead).toBe("number")
+    expect(first.providers.find((provider) => provider.id === WIDE_MODEL.provider)).toMatchObject({
+      keyed: true,
+      models: 2,
+      enabled: 2,
+    })
+
+    expect(await call(stub, "catalog-fav", "models.favorite", { model: WIDE_MODEL, favorite: true })).toMatchObject({
+      ok: true,
+      result: { favorites: [WIDE_MODEL] },
+    })
+    expect(await call(stub, "catalog-off", "models.enable", { model: WIDE_MODEL, enabled: false })).toMatchObject({
+      ok: true,
+    })
+    const second = await catalog("catalog-2", { query: "alt" })
+    expect(second.models[0]).toMatchObject({ ...WIDE_MODEL, favorite: true, enabled: false })
+    expect(second.favorites).toEqual([WIDE_MODEL])
+    const enabledOnly = await catalog("catalog-3", { provider: WIDE_MODEL.provider, enabledOnly: true })
+    expect(entry(enabledOnly, WIDE_MODEL)).toBeUndefined()
+    expect(enabledOnly.providers.find((provider) => provider.id === WIDE_MODEL.provider)).toMatchObject({ enabled: 1 })
+
+    expect(await call(stub, "catalog-pick", "conv.configure", { model: WIDE_MODEL })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    await call(stub, "catalog-on", "models.enable", { model: WIDE_MODEL, enabled: true })
+    expect(await call(stub, "catalog-pick-2", "conv.configure", { model: WIDE_MODEL })).toMatchObject({ ok: true })
+  })
+
+  it("keeps a disabled model out of models.list, owner defaults and delegate_task", async () => {
+    const stub = fresh()
+    const created = await call(stub, "off-project", "project.create", { slug: "off", name: "Off" })
+    const project = created.result as { coordinatorId: number }
+    expect(await call(stub, "off-default", "owner.defaults", { role: "chat", model: WIDE_MODEL })).toMatchObject({
+      ok: true,
+    })
+    expect(await call(stub, "off-refused", "models.enable", { model: WIDE_MODEL, enabled: false })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+    expect(await call(stub, "off-narrow", "models.enable", { model: narrow, enabled: false })).toMatchObject({
+      ok: true,
+    })
+
+    const listed = (await call(stub, "off-list", "models.list", { includeUnkeyed: true })) as ListReply
+    expect(listed.result.models.some((model) => model.modelId === narrow.modelId)).toBe(false)
+    expect(listed.result.models.find((model) => model.modelId === WIDE_MODEL.modelId)).toMatchObject({
+      thinking: ["off"],
+    })
+    expect(await call(stub, "off-thread-default", "owner.defaults", { role: "thread", model: narrow })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+
+    const outcome = await runInDurableObject(stub, (home: Home) =>
+      home.loader.ctx.threads.delegate(
+        { conversationId: project.coordinatorId as ConversationId, taskId: "off-task" },
+        { task: "say hi", title: "hi", model: narrow, mode: "async", clientRequestId: "off-delegate" },
+        context,
+      ),
+    )
+    expect(outcome).toMatchObject({ kind: "no_model" })
+  })
+
+  it("moves conversations off a model the owner disables and keeps it out of Captains and project defaults", async () => {
+    const stub = fresh()
+    const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+    const created = await call(stub, "move-project", "project.create", { slug: "move", name: "Move" })
+    const project = created.result as { id: string; coordinatorId: number }
+    const [thread] = await addThreads(stub, project.id, ["mover"])
+    if (thread === undefined) throw new Error("no thread")
+    await call(stub, "move-default", "owner.defaults", { role: "chat", model: WIDE_MODEL })
+    await call(stub, "move-coord", "conv.configure", { conv: project.coordinatorId, model: narrow })
+    await call(stub, "move-thread", "conv.configure", { conv: thread.id, model: narrow })
+
+    await call(stub, "move-project-default", "project.update", {
+      id: project.id,
+      settings: { models: { thread: narrow } },
+    })
+    expect(await call(stub, "move-refused", "models.enable", { model: narrow, enabled: false })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    await call(stub, "move-project-clear", "project.update", {
+      id: project.id,
+      settings: { models: { thread: WIDE_MODEL } },
+    })
+
+    const disabled = await call(stub, "move-off", "models.enable", { model: narrow, enabled: false })
+    expect(disabled).toMatchObject({ ok: true })
+    expect((disabled.result as { moved: number[] }).moved.toSorted()).toEqual(
+      [project.coordinatorId, thread.id].toSorted(),
+    )
+    const models = await runInDurableObject(stub, async (home: Home) =>
+      Promise.all(
+        [project.coordinatorId, thread.id].map(async (id) => {
+          const conversation = await home.harness.conversation(id as ConversationId, context)
+          return conversation === undefined ? undefined : (await conversation.agent(context)).model
+        }),
+      ),
+    )
+    expect(models).toEqual([WIDE_MODEL, WIDE_MODEL])
+
+    expect(
+      await call(stub, "move-project-off", "project.update", {
+        id: project.id,
+        settings: { models: { chat: narrow } },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "bad_args" } })
+    expect(
+      await call(stub, "move-captain", "captain.create", { projectId: project.id, name: "Off Captain", model: narrow }),
+    ).toMatchObject({ ok: false, error: { code: "bad_args" } })
+  }, 30_000)
+
+  it("moves Puck chats, pruned threads and automation threads off a disabled model too", async () => {
+    const stub = fresh()
+    const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+    const created = await call(stub, "every-project", "project.create", { slug: "every", name: "Every" })
+    const project = created.result as { id: string; coordinatorId: number }
+    const [pruned] = await addThreads(stub, project.id, ["pruned"])
+    if (pruned === undefined) throw new Error("no thread")
+    await call(stub, "every-default", "owner.defaults", { role: "chat", model: WIDE_MODEL })
+    await call(stub, "every-thread-default", "owner.defaults", { role: "thread", model: WIDE_MODEL })
+    await call(stub, "every-coord", "conv.configure", { conv: project.coordinatorId, model: WIDE_MODEL })
+    const puck = (await call(stub, "every-puck", "puck.create", { title: "side" })).result as { id: string }
+    const automation = (await call(stub, "every-auto", "automation.create", {
+      title: "Standing",
+      prompt: "Keep notes",
+      project: project.id,
+      target: { kind: "same" },
+      triggers: [],
+    })) as { result: { id: string } }
+    const run = (await call(stub, "every-auto-run", "automation.trigger", { id: automation.result.id })) as {
+      result: { threadId: number }
+    }
+    const standing = run.result.threadId
+    expect(standing, JSON.stringify(run)).toEqual(expect.any(Number))
+    await runInDurableObject(stub, (home: Home) =>
+      home.harness.commit(async (tx) => {
+        for (const space of Object.values((await tx.doc(WorkspaceDoc)).spaces))
+          space.threadIds = space.threadIds.filter((id) => id !== pruned.id)
+      }, context),
+    )
+    const targets = [Number(puck.id), pruned.id, standing]
+    for (const [index, conv] of targets.entries()) {
+      const configured = await call(stub, `every-narrow-${index}`, "conv.configure", { conv, model: narrow })
+      expect(configured.ok, JSON.stringify({ conv, configured })).toBe(true)
+    }
+
+    const disabled = await call(stub, "every-off", "models.enable", { model: narrow, enabled: false })
+    expect((disabled.result as { moved: number[] }).moved.toSorted()).toEqual(targets.toSorted())
+    const after = await runInDurableObject(stub, async (home: Home) =>
+      Promise.all(
+        targets.map(async (id) => (await home.harness.conversation(id as ConversationId, context))?.agent(context)),
+      ),
+    )
+    expect(after.map((agent) => agent?.model)).toEqual([WIDE_MODEL, WIDE_MODEL, WIDE_MODEL])
+  }, 30_000)
+
+  it("refuses to start a turn or a thread on a disabled model at every start point", async () => {
+    const stub = fresh()
+    const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+    const created = await call(stub, "start-project", "project.create", { slug: "start", name: "Start" })
+    const project = created.result as { id: string; coordinatorId: number }
+    const [thread] = await addThreads(stub, project.id, ["starter"])
+    if (thread === undefined) throw new Error("no thread")
+    const captain = (await call(stub, "start-captain", "captain.create", {
+      projectId: project.id,
+      name: "Start Captain",
+      model: WIDE_MODEL,
+    })) as { ok: boolean; result: { id: string } }
+    expect(captain.ok, JSON.stringify(captain)).toBe(true)
+    await call(stub, "start-off", "models.enable", { model: narrow, enabled: false })
+    await runInDurableObject(stub, async (home: Home) => {
+      await home.root()
+      for (const id of [ROOT_CONVERSATION_ID, project.coordinatorId, thread.id])
+        await (await home.harness.conversation(id as ConversationId, context))?.configure({ model: narrow }, context)
+    })
+
+    const refused = { ok: false, error: { code: "bad_args" } }
+    expect(await call(stub, "start-msg", "message.send", { text: "hi", clientTs: 1 })).toMatchObject(refused)
+    expect(
+      await call(stub, "start-send", "thread.send", { threadId: thread.id, text: "again", mode: "queue" }),
+    ).toMatchObject(refused)
+    expect(
+      await call(stub, "start-create", "thread.create", { title: "t", task: "do it", project: project.id }),
+    ).toMatchObject(refused)
+    expect(
+      await call(stub, "start-side", "thread.side", { conv: project.coordinatorId, title: "t", task: "do it" }),
+    ).toMatchObject(refused)
+    expect(
+      await call(stub, "start-captain-update", "captain.update", { id: captain.result.id, model: narrow }),
+    ).toMatchObject(refused)
+    const outcome = await runInDurableObject(stub, (home: Home) =>
+      home.loader.ctx.threads.delegate(
+        { conversationId: project.coordinatorId as ConversationId, taskId: "start-task" },
+        { task: "say hi", title: "hi", mode: "async", clientRequestId: "start-delegate" },
+        context,
+      ),
+    )
+    expect(outcome).toMatchObject({ kind: "no_model" })
+  }, 30_000)
+
+  it("checks a disabled model at send time without reading a row", async () => {
+    const stub = fresh()
+    const counts = await runInDurableObject(stub, async (home: Home) => {
+      await home.root()
+      const calls = (match: (sql: string) => boolean): number =>
+        Object.entries(home.meter().statements)
+          .filter(([sql]) => match(sql))
+          .reduce((sum, [, bucket]) => sum + bucket.calls, 0)
+      const any = () => calls(() => true)
+      const kv = () => calls((sql) => sql.includes("FROM kv"))
+      const before = any()
+      await home.services.models.disabled(FAUX_MODEL)
+      const check = any() - before
+      const spendBefore = kv()
+      await home.services.models.spend()
+      const spend = kv() - spendBefore
+      const sendBefore = kv()
+      await home.commands.run(
+        { id: crypto.randomUUID() as CommandId, op: "message.send", args: { text: "hi", clientTs: 1 } },
+        { kind: "owner" },
+      )
+      return { check, spend, send: kv() - sendBefore }
+    })
+    expect(counts.check).toBe(0)
+    expect(counts.send).toBe(counts.spend)
   })
 
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {

@@ -46,6 +46,7 @@ export function create(ports: MemoryPorts): MemoryPlugin {
   const memory: MemoryService = {
     remember: async (draft) => {
       const inserted = await appendNote(ports.db, draft)
+      if (inserted) ports.changed()
       await requestPass(ports, draft.at + IDLE_MS)
       return inserted
     },
@@ -209,6 +210,7 @@ function edit(ports: MemoryPorts): Op {
 function suggested(ports: MemoryPorts): Op {
   return defineOp({
     name: "memory.suggested",
+    read: true,
     args: obj({ conversationId: int({ minimum: 0 }), scope: opt(str({ pattern: SCOPE_PATTERN })) }),
     actors: ["owner"],
     run: async (_api, args) => {
@@ -293,6 +295,7 @@ async function dismissedOf(ports: MemoryPorts): Promise<readonly string[]> {
 function list(ports: MemoryPorts): Op {
   return defineOp({
     name: "memory.list",
+    read: true,
     args: obj({ scope: opt(str({ pattern: SCOPE_PATTERN })) }),
     actors: ["owner"],
     run: async (_api, args) => {
@@ -315,6 +318,7 @@ function list(ports: MemoryPorts): Op {
 function profile(ports: MemoryPorts): Op {
   return defineOp({
     name: "memory.profile",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => ({ profile_md: await readProfile(ports.db) }),

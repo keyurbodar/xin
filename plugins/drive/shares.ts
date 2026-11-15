@@ -1,7 +1,6 @@
 import type { SqliteDatabase, SqliteMigration } from "@earendil-works/chord/sqlite"
 import type { FilesService } from "../../src/contracts/files.ts"
-import { blobKey, toHex } from "../../src/r2env.ts"
-import { shareKey } from "../../src/share.ts"
+import { toHex } from "../../src/r2env.ts"
 
 export const MIGRATIONS: readonly SqliteMigration[] = [
   {
@@ -12,7 +11,6 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
 
 export type SharesPort = {
   readonly db: SqliteDatabase
-  readonly bucket: R2Bucket
   readonly files: FilesService
 }
 
@@ -42,15 +40,12 @@ export function createShares(port: SharesPort): Shares {
   const publish = async (path: string, id: string): Promise<boolean> => {
     const entry = await port.files.stat(path)
     if (entry === undefined) return false
-    await port.bucket.put(
-      shareKey(id),
-      JSON.stringify({ key: blobKey(entry.sha256), type: entry.type, name: nameOf(path) }),
-    )
+    await port.files.share(id, { sha256: entry.sha256, type: entry.type, name: nameOf(path) })
     return true
   }
 
   const drop = async (path: string, id: string): Promise<void> => {
-    await port.bucket.delete(shareKey(id))
+    await port.files.unshare(id)
     await port.db.run("DELETE FROM drive_shares WHERE path = ?", path)
     ;(await byPath()).delete(path)
   }

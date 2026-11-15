@@ -78,4 +78,9 @@ export class Ops extends Service {
   list(): readonly string[] {
     return [...state.get(this).defined.keys()].toSorted()
   }
+
+  /** The op is defined and declares that it changes no owner state. */
+  reads(name: string): boolean {
+    return state.get(this).defined.get(name)?.read === true
+  }
 }

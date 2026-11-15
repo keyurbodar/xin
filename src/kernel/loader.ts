@@ -118,6 +118,12 @@ export class IngleLoader extends Loader {
     this.unresolved = applied.unresolved
     this.missing = applied.rows.filter((row) => !this.has(row))
     this.persistPatch = config.persist
+    const pluginRowOf = (fiber: Fiber): string | undefined => this.pluginRow(fiber)
+    ctx.on("internal/listener", function (this: Context, name: unknown) {
+      if (typeof name !== "string" || !name.startsWith("internal/")) return
+      const id = pluginRowOf(this.fiber)
+      if (id !== undefined) throw new Error(`${id} may not listen to ${name}; only the kernel may`)
+    })
     ctx.on("internal/get", (target: Context, service: string, _error: Error, next: () => unknown) => {
       this.refuse(target, service)
       return this.handOut(target, next())
@@ -132,10 +138,9 @@ export class IngleLoader extends Loader {
       return serve(this.ctx, name, get.call(this, name, strict))
     }
     const root = ctx.root
-    const pluginRow = (fiber: Fiber): string | undefined => this.pluginRow(fiber)
     Object.defineProperty(this.ctx, "root", {
       get(this: Context): Context {
-        return pluginRow(this.fiber) === undefined ? root : root.extend({ fiber: this.fiber })
+        return pluginRowOf(this.fiber) === undefined ? root : root.extend({ fiber: this.fiber })
       },
     })
   }
