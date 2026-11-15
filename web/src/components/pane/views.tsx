@@ -1,12 +1,13 @@
 import { For, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import { Brain, CalendarClock, Folder, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
+import { Brain, CalendarClock, HardDrive, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
 import { activeConversation, host, slotItems } from "../../plugins/slots.tsx"
 import { Icon, isIconName } from "../ui/icon.tsx"
 import { MemoryTab } from "../chat/memory.tsx"
 import { AutomationsTab } from "../chat/automations.tsx"
-import { FilesView, JobsView, ThreadsView } from "./bodies.tsx"
+import { JobsView, ThreadsView } from "./bodies.tsx"
 import { CrewSection, CrewView } from "./crew.tsx"
+import { DriveView } from "./drive.tsx"
 import { DriveSection, InProgressSection, NeedsYouSection, ThreadsSection, type PaneContext } from "./overview.tsx"
 
 export type { PaneContext }
@@ -79,7 +80,18 @@ export const PANE_VIEWS: readonly PaneEntry[] = [
       </Show>
     ),
   },
-  { id: "files", label: "Files", icon: Folder, scope: "project", render: (context) => <FilesView slug={context.project.slug} /> },
+  {
+    id: "files",
+    label: "Drive",
+    icon: HardDrive,
+    render: (context) => (
+      <DriveView
+        conversationId={context.conversationId}
+        prefer={context.captain === undefined ? { kind: "project", id: context.project.id } : { kind: "captain", id: context.captain.id }}
+        projectSlug={context.project.slug}
+      />
+    ),
+  },
   {
     id: "memory",
     label: "Memory",

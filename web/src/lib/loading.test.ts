@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { firstLoad, firstLoadFor, valueFor, type Keyed } from "./loading.ts"
+import { firstLoad, firstLoadFor, settled, valueFor, type Keyed } from "./loading.ts"
 
 test("a skeleton shows while the first value is pending and never on a refetch or an error", () => {
   expect(firstLoad({ state: "unresolved" })).toBe(false)
@@ -20,4 +20,10 @@ test("a new key counts as a first load and never shows the old key's value; a sa
   expect(valueFor({ state: "refreshing", latest: alpha }, "/beta.md")).toBeUndefined()
   expect(valueFor({ state: "ready", latest: alpha }, "/beta.md")).toBeUndefined()
   expect(valueFor<string>({ state: "errored", latest: undefined }, "/alpha.md")).toBeUndefined()
+})
+
+test("a failed resource reads as no value instead of throwing", () => {
+  expect(settled({ error: undefined, latest: 3 })).toBe(3)
+  expect(settled({ error: new Error("no op drive.list"), latest: 3 })).toBeUndefined()
+  expect(settled<number>({ error: undefined, latest: undefined })).toBeUndefined()
 })
