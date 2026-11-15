@@ -111,6 +111,8 @@ Layout (v4 shell, render 12.1): the sidebar (240, on bg) holds the app mark, sea
 
 ## Identity
 
+The app mark is the Ingle avatar from the brand handoff. `components/ui/brand-mark.tsx` paints `public/brand/ingle-mark-20.svg` as a CSS mask over `currentColor`, so it takes the surrounding ink and follows `data-theme` (dark, light, rose) without per-theme files. It sits alone at 20px in the sidebar header and beside the word Ingle in the onboarding and sign-in top bar. `index.html` links `favicon.ico`, `favicon.svg` (which follows `prefers-color-scheme`, since a tab icon cannot read `data-theme`) and `apple-touch-icon.png`. There is no web manifest, so the 192 and 512 icons are not shipped.
+
 Status uses the D Grid family from `I2`. A 3 by 3 grid of cells gives every state its own pattern and its own loop, so shape reads before colour, even at 12px and in greyscale. `components/ui/status-glyph.tsx` draws it wherever a thread, a report or a job shows state.
 
 A project's mark is one of the 24 glyphs from `I3`, in `lib/project-glyphs.ts`. It is chosen from the project's own words, first match wins, and by slug when nothing matches. Picking or shuffling the glyph from New project would need a stored field on the project, which the schema does not have, so the mark stays derived. `components/chat/project-glyph.tsx` draws it on a 24-unit grid with a 1.5 stroke and at most one solid part, and puts the project's state on the tile's corner: a breathing white square while work runs, a pulsing orange square when someone waits on the owner, a red square after a failure. The glyph itself never changes.
