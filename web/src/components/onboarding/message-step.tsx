@@ -18,7 +18,7 @@ export function MessageStep(): JSX.Element {
   const project = onboardingProject
 
   return (
-    <div class="enter px-6 pb-16 pt-10 md:pt-12">
+    <div class="im-content px-6 pb-16 pt-10 md:pt-12">
       <div class="mx-auto flex w-full max-w-[760px] flex-col gap-6">
         <div class="flex flex-col gap-2.5">
           <span class="label">Step 3 of 4</span>

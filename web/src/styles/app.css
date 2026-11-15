@@ -2,6 +2,7 @@
 @import "@fontsource-variable/geist-mono/wght.css";
 @import "tailwindcss";
 @import "./tokens.css";
+@import "./ingle-motion.css";
 @import "./motion.css";
 
 @layer base {

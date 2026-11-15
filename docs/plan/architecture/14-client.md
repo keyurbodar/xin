@@ -121,30 +121,32 @@ Small loads use the arc from `I1`: a faint ring with a quarter arc turning once 
 
 ## Motion
 
-Motion follows design system §7. Every rule lives in `web/src/styles/motion.css`; tokens are in `tokens.css` (`--dur-color|press|release|tooltip|fast|base|slow|drawer`, `--dur-exit-fast|base|slow|sheet`, `--ease-color|in-out|drawer|enter|exit|spring`, `--loop-skeleton|shimmer|working|needs|waiting`). Enter and exit both run on out-quint, exits are about 70% of the entrance, only transform and opacity move (grow-in-place height is the one exception), and nothing starts below scale .96.
+Motion is the handoff file `web/src/styles/ingle-motion.css` (design system §0.8, canvas page 17), vendored verbatim and imported after `tokens.css`; it owns the motion tokens (`--ease-*`, `--dur-*`, `--loop-*`, the scales) and the `.im-*` and `.sig` primitives. Other lanes build on its class names, so the path stays. Ark overlays animate with keyframes on `data-state` because Ark's presence waits for `animationend`; app-driven UI uses transitions and `@starting-style` so it can be interrupted.
 
-`web/src/lib/motion.ts` marks the root: `data-input="key"` after a keydown and `"pointer"` after a pointer moves or presses, and `data-hidden` while the tab is hidden. A keyboard-started action takes no time: the CSS zeroes the animation and transition durations under `data-input="key"`, `createPresence` and the extension sheets unmount at once, and the pane tab pill jumps. The command palette never animates. Hover is gated to `(hover: hover) and (pointer: fine)` by overriding Tailwind's `hover` variant, so taps never stick.
+`web/src/styles/motion.css` holds only what the file leaves to the app: Tailwind's `hover` variant gated to `(hover: hover) and (pointer: fine)`, the combined transition for an element that is both `.im-press` and `.im-hover` (each sets `transition` on its own), the left-edge variant of `.im-sheet` (`data-side="left"`) for the sidebar drawer, the pane tab pill (`.im-pill`, translate and width over `--dur-flip` in-out), and the composer's `menu-in` and `shake` and the project corner's `breath` and `pulse` on the file's keyframes. Each has the same reduce rule both ways the file has them.
 
-| Element | Motion | Reduce motion | Where |
-| --- | --- | --- | --- |
-| Button, `[role=button]` | press scale .97, 120 down / 160 up, out-quint; not on keyboard press | no scale | base layer |
-| Button, link, tab, menu item, option, `.tint` | colour 100 in / 140 out, ease | same | base layer |
-| Switch | knob `translate-x-3` and track colour, 150 in-out | instant | `knob` |
-| Menu, popover, select, combobox (Ark) | opacity and scale .97 from `--transform-origin`, 150 / 100 | 120 fade | `[data-scope][data-part=content][data-state]` |
-| Dialog | opacity and scale .96, centred, 200 / 140; scrim fades with it | 120 fade | `dialog-in`, `dialog-out`, `fade-in`, `fade-out` |
-| Right sheet (install review, undocked pane) | translateX 100% to 0 on the drawer curve, 240 / 180 | 120 fade | `sheet-in`, `sheet-out` |
-| Sidebar drawer (narrow screens) | translateX -100% to 0 on the drawer curve, 240 / 180 | 120 fade | `drawer-in`, `drawer-out` |
-| Pane tab pill | FLIP translateX and scaleX, 200 in-out, pointer select only | instant | `glide` in `lib/motion.ts` |
-| Pane swap | opacity and translateY 4, 150 | instant | `pane-swap` |
-| Grow in place (overview sections) | Ark `--height` 0 to full, 200 / 140; content opacity and translateY 4 after 60 | instant | `[data-scope=collapsible]` |
-| List arrival (sidebar projects and threads, overview sections) | first load only: opacity and translateY 8, 200, 40 stagger over the first six | 120 fade, no stagger | `arrive` via `arrival()` |
-| Fan-out row, report card, page surface, composer menu | 200 rise / 240 rise / 200 scale .98 / 150 drop | 120 fade | `row-in`, `card-in`, `enter`, `menu-in` |
-| Skeleton | Skullet `pulse`, 1 to .45 over 2.4s, held back 150 | still (Skullet) | `--skullet-animation` |
-| Streaming text | background-position sweep, `--loop-shimmer`, linear | still, ink-3 | `shimmer` |
-| Signal dots | working chase `--loop-working`, needs breathe `--loop-needs`; project corners breathe | still frame | `status.css`, `breath`, `pulse` |
-| Drag to reorder tabs | lift scale 1.02 and overlay shadow | no lift | `[data-tab-lifted]` |
+`web/src/lib/motion.ts` sets `:root[data-visibility]` from `visibilitychange`, so loops pause in a hidden tab, and tracks whether the last input was a key. A keyboard-started action takes no time: components that render the moving element put `data-instant` on it at that moment (pane view, pane pill, overview sections), a MutationObserver puts it on any `.im-*` overlay that mounts or changes `data-state` after a keypress (menus, popovers, dialogs, sheets), and `createPresence` unmounts at once. `stagger()` adds `.im-stagger` and each row's `--i` on a list's first load only. Nothing sets `:root[data-motion="reduce"]` yet because Appearance has no such setting; the file and the glue already honour it.
 
-Loops (signal dots, shimmer, corners, spinners, pictograms) pause while the tab is hidden. There are no toasts yet, so the toast row of §7 has no consumer; the Send to Stop swap and attachment chips belong to the composer.
+| Surface | Primitive | Where |
+| --- | --- | --- |
+| Icon buttons | `.im-press .im-hover` | `shell/menu.ts` `ICON_BUTTON` |
+| Rows and tabs | `.im-hover` | sidebar rows, pane rows, inactive conversation and pane tabs |
+| Menus and popovers (Ark) | `.im-pop` | `MENU_CONTENT` |
+| Dialogs | `.im-dialog` + sibling `.im-scrim`, `data-state` from `createPresence` | `ui/dialog.tsx`, add-from-URL, new schedule |
+| Right sheet | `.im-sheet` + `.im-scrim` | install review, undocked project pane |
+| Sidebar drawer | `.im-sheet[data-side="left"]` + `.im-scrim` | `shell/shell.tsx` |
+| Pane view swap | `.im-pane` | `pane/pane.tsx` |
+| Pane tab pill | `.im-pill` | `pane/pane.tsx` |
+| Conversation tabs | `.im-tab .im-lift .im-flip`: open scales in, close fades then neighbours slide (FLIP on `translate`), drag lifts with `data-dragging` and `--drag-x` | `shell/conversation-tabs.tsx` |
+| Overview sections | `.im-grow` + `.im-chevron` | `pane/overview.tsx` |
+| First-load lists | `.im-stagger` via `stagger()` | sidebar projects and threads, overview sections, thread fan-out |
+| Report card | `.im-event` | `chat/cards.tsx` |
+| Signal | `.sig` with `data-state` (waiting maps to `needs`, paused to `waiting`, cancelled to `idle`) | `ui/status-glyph.tsx` |
+| Working text, streaming caret | `.im-shimmer`, `.im-caret` | transcript, cards, pane rows |
+| Switches | `.im-switch` with an `<i>` knob | extensions `Toggle`, onboarding notifications |
+| Onboarding and sign-in pages | `.im-content` | onboarding steps, sign-in |
+
+Skeletons stay on Skullet (layout-matched, held back 150ms) with its `pulse` animation rather than `.im-skeleton`. No toasts exist yet, so `.im-toast` has no consumer; the Send/Stop morph, upload progress, context ring and attachment chips belong to the composer lane.
 
 ## Decisions taken from the review frame's open questions
 
