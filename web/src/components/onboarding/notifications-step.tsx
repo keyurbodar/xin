@@ -91,7 +91,7 @@ export function NotificationsStep(): JSX.Element {
           <For each={PREVIEWS}>
             {(preview, index) => (
               <div
-                class="absolute left-1/2 flex w-[360px] max-w-[calc(100%_-_32px)] items-start gap-2.5 rounded-md border border-line-3 bg-card px-3 py-2.5 text-sm shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+                class="absolute left-1/2 flex w-[360px] max-w-[calc(100%_-_32px)] items-start gap-2.5 rounded-md bg-card px-3 py-2.5 text-sm shadow-popover"
                 style={{
                   top: `${56 + index() * 10}px`,
                   transform: `translateX(-50%) scale(${1 - index() * 0.04}) translateY(${index() * 8}px)`,

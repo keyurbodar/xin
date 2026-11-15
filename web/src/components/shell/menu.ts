@@ -1,5 +1,5 @@
 export const MENU_CONTENT =
-  "z-[var(--z-overlay-content)] min-w-[200px] rounded-md bg-popover p-1 text-ink shadow-overlay outline-none"
+  "z-[var(--z-overlay-content)] min-w-[200px] rounded-md bg-popover p-1 text-ink shadow-popover outline-none"
 
 export const MENU_ITEM =
   "flex h-8 cursor-default items-center gap-2.5 rounded-sm px-2 text-sm text-ink outline-none select-none data-[highlighted]:bg-hover data-[disabled]:text-icon"

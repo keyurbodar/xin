@@ -220,7 +220,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
     <Show when={props.open}>
       <div class="fixed inset-0 z-50 flex justify-center bg-bg/80" onMouseDown={close}>
         <div
-          class="crosshair mt-[150px] h-fit w-[560px] overflow-hidden rounded-md border border-line-2 bg-panel shadow-[0_8px_12px_rgb(0_0_0/50%)]"
+          class="crosshair mt-[150px] h-fit w-[560px] overflow-hidden rounded-md bg-panel shadow-popover"
           onMouseDown={(event) => event.stopPropagation()}
           role="dialog"
           aria-modal="true"

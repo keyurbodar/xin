@@ -75,8 +75,13 @@ export function openThreadTab(projectId: string, threadId: number): void {
   updateProject(projectId, (tabs) => (tabs.threads.includes(threadId) ? tabs : { ...tabs, threads: [...tabs.threads, threadId] }))
 }
 
-export function closeThreadTab(projectId: string, threadId: number): void {
-  updateProject(projectId, (tabs) => ({ ...tabs, threads: tabs.threads.filter((id) => id !== threadId) }))
+export function closeThreadTabs(projectId: string, threadIds: readonly number[]): void {
+  updateProject(projectId, (tabs) => ({ ...tabs, threads: tabs.threads.filter((id) => !threadIds.includes(id)) }))
+}
+
+/** Puts back an earlier tab order; tabs opened since keep their place after it. */
+export function restoreThreadTabs(projectId: string, threads: readonly number[]): void {
+  updateProject(projectId, (tabs) => ({ ...tabs, threads: [...new Set([...threads, ...tabs.threads])] }))
 }
 
 export function moveThreadTab(projectId: string, threadId: number, index: number): void {
