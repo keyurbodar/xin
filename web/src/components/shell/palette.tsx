@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { activeProjects } from "../../state/home.ts"
 import { navigate } from "../../lib/router.ts"
+import { openThreadTab } from "../../state/tabs.ts"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
 import type { VisualState } from "../../lib/status.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
@@ -70,7 +71,10 @@ function items(): readonly Item[] {
           title: thread.title,
           meta: `${project.name}${thread.statusLine === undefined ? "" : ` · ${thread.statusLine}`}`,
           state,
-          open: () => navigate(`/p/${project.slug}`),
+          open: () => {
+            openThreadTab(project.id, thread.id)
+            navigate(`/p/${project.slug}/t/${thread.id}`)
+          },
         })
       }
     }
@@ -216,7 +220,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
     <Show when={props.open}>
       <div class="fixed inset-0 z-50 flex justify-center bg-bg/80" onMouseDown={close}>
         <div
-          class="crosshair enter mt-[150px] h-fit w-[560px] overflow-hidden rounded-md border border-line-2 bg-panel shadow-[0_8px_12px_rgb(0_0_0/50%)]"
+          class="crosshair mt-[150px] h-fit w-[560px] overflow-hidden rounded-md border border-line-2 bg-panel shadow-[0_8px_12px_rgb(0_0_0/50%)]"
           onMouseDown={(event) => event.stopPropagation()}
           role="dialog"
           aria-modal="true"

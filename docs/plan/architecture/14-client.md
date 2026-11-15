@@ -51,7 +51,7 @@ The client talks to the Worker over the same contract the agent uses.
 - **There is no Home or Inbox screen.** `#/` opens the first active project's chat, and questions are answered on their thread card in that chat with `request.respond`.
 - **One entry renders once.** `components/chat/entries.tsx` maps a transcript's entries to items and renders them; the project chat and a thread's body both call it, so a new entry kind reaches both.
 - **A send is keyed once per draft.** The composer mints one command id and `clientTs` per draft text and reuses them on retry, so a lost ack cannot add a second message: the host dedupes on the command id.
-- **The composer's row is attach, preset, model, effort, send** (`V3-a`). The preset comes from `preset.list`'s `conversations` map and changes with `preset.select`; the effort comes from the snapshot's `pi.agent.thinkingLevel` and changes with `conv.configure { thinking }`, and the chip is drawn only when the catalog calls the current model reasoning. The model menu puts **This project** first, then **Catalog**, marks each price with `$` to `$$$`, and greys a model whose provider has no credential with `no key` instead of hiding it, from `models.list { includeUnkeyed: true }`. Once the catalog passes twelve models the menu searches the server (`models.list { query }`), because the op caps a reply at forty and a client-side filter could never reach the rest.
+- **The composer's row is +, model, reasoning, then the context ring and send** (`web/src/components/composer/`, all popovers on `@ark-ui/solid`, scaling .97→1 from `--transform-origin` over 150ms, 100ms out). The **+ menu** uploads attachments (also ⌘/, drag-and-drop and paste) and inserts mentions of what the project has: Threads (`@thread:<id>`, from the project's thread groups), Files (`@<path>`, from `file.list` under the project, attachments excluded), Skills (`@skill:<name>`, `skill.list`), Prompts (`/name `, `prompt.list`, expanded on send) and Memory (the note quoted, `memory.list { scope: project:<id> }`); a category with nothing in it is hidden. **Attachments** are a grid of chips with a thumbnail for images, the size and kind, and the upload's real XHR progress as Preparing → percent → Finishing; removing one aborts its request (`uploadFile` takes an `AbortSignal`). The **model picker** is a popover with a search field, a rail of provider marks (favourites star first), and a listbox grouped by provider with favourites first and a check on the current model; a model whose provider has no credential is greyed with `no key` and cannot be picked, from `models.list { includeUnkeyed: true }`, and a query searches the server (`models.list { query }`). Favourites are kept in this browser (`localStorage` `ingle.favoriteModels`) because no op writes `owner.favorites`. The **reasoning menu** lists the `ThinkingSchema` levels (Off, Low, Medium, High) when the model reasons, set with `conv.configure { thinking }`, and a **Modes** section with the presets (`preset.select`), fixed once the conversation has started. The **context ring** reads `conv.context` when the composer mounts, when its popover opens and when a turn ends (`pi.live.run` goes away), never on a timer, and shows used / window, one row per category (System prompt, Tools, Conversation), Compact at `compactAt` / window, and "estimated" when `measured` is false. **Send** becomes **Stop** (`conv.stop`, inverse) while the run is live and the draft is empty.
 - **Auth** is the owner token, kept in `localStorage`, checked with `GET /v1/status`. Same-origin in production; Vite proxies `/v1` and `/health` to `wrangler dev` in development.
 
 Deviations from the backend spec that the UI needs are logged in `docs/log/decisions.tsv` as they land.
@@ -74,7 +74,7 @@ The client needed owner-only ops the agent never asks for: the reads behind ever
 | `push.list` | `{}` | `[{ endpoint, origin }]`, one row per subscribed browser, for the pane's Other devices list |
 | `owner.read` / `owner.set` | `{}` / `{ name?, instructions? }` | `{ name, instructions }`, trimmed on write; the instructions render as the `<owner>` system section for every conversation |
 | `session.list` / `session.close` | `{}` / `{ id? }` | one row per live socket `{ id, since, origin }`; close drops that socket, or every socket when the id is omitted, and answers `{ closed }` |
-| `session.rotate` | `{}` | mints a new owner token, stores its digest, closes every socket, and answers `{ token }` once; the Worker answers 204 from `POST /v1/auth { token }` for a rotated token, so the old one is dead at the next request |
+| `session.rotate` | `{}` | mints a new owner token, stores its digest, closes every socket, and answers `{ token }` once; the home authorizes every forwarded request against the digest it holds in memory, so the old token is dead at the next request |
 | `system.logs` | `{}` | `{ entries: [{ at, level: "warn" \| "error", text }] }`, the ring the home kept since it woke (200 lines, newest last); System downloads it as a text file |
 | `skill.read` | `{ name }` | `{ name, description, markdown }`: the full skill document the model receives, stored copy first, then the derived header and body |
 | `mcp.tools` | `{ name }` | `{ name, tools: [{ name, description? }] }` for one server, from its last successful connect |
@@ -97,7 +97,8 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 | Route | Frame | What it is |
 | --- | --- | --- |
 | `#/` | D1 | the first active project's chat; with no project, an empty state that opens New project |
-| `#/p/:slug` | D1, D2, D5, D6 | project chat: transcript, composer, right panel (Threads, Files, Memory, Automations, Jobs). An opened thread widens the panel to 520, so the coordinator stays in view (`V3-a`). The more menu in the top bar opens project settings: the same name and goal as New project, saved with `project.update`, and Archive with `project.archive`. Memory reads `memory.list` and `memory.suggested`, and drives add, pin, edit, forget and dismiss; Automations lists the project's automations from `automation.list` with pause and resume through `automation.update`, and draws the last run as a dot |
+| `#/p/:slug`, `#/p/:slug/t/<threadId>` | D1, D2, D5, D6 | the project workspace: a centre panel with a tab bar of open conversations (the coordinator first, then every thread the person opened; the address names the active one) and a right pane. Thread tabs open from the sidebar, the palette, Overview, the view menu and transcript cards, close with × or a middle click, reorder by drag (pointer capture, 1.02 lift, neighbours slide), and persist per project in `localStorage["ingle.tabs"]` (`state/tabs.ts`); tabs of threads the home no longer lists are dropped. Right of the tabs: the active conversation's spend (the sum of `cost.total` over every bucket of its `docs["pi.usage"]`), a more menu (Project settings, Archive project, both opening the settings dialog with `project.update` and `project.archive`), and a show-pane button when the pane is hidden. A thread tab renders the thread's transcript with the same `Transcript` and the steer composer (`thread.send`, `thread.stop`). New thread (sidebar and the tab bar's +) opens a dialog that calls `thread.create` with a title and a task |
+| right pane | D2 | `components/pane/views.tsx` holds the one registry: `PANE_VIEWS` (`{id, label, icon, render}`: Overview, Files, Memory, Automations (the project's automations from `automation.list`, pause and resume, last run as a dot), Jobs, All threads) drives the pane tabs, the + view menu and the bodies, and `OVERVIEW_SECTIONS` (same shape without an icon) drives Overview. The + menu is a searchable Popover + Listbox: the views, then a Crew group of the project's threads (each opens a centre tab) and All threads with its count. Overview: Needs you (the home snapshot's `requests`, shown when `openRequests` > 0), In progress (working and waiting threads with their status line), Threads, and Drive (`file.list` count and the newest four files). Sections are collapsible 28px rows on secondary. Ingle has no issues or pull requests, so the pane has no PR section. Memory reads `memory.list` and `memory.suggested`; Schedules lists with `outcomes: true` |
 | `#/p/:slug/files/<path>` | D5 | the file reader: breadcrumb, size and age, Copy and Download, the document, and the project's file list beside it |
 | `#/p/:slug/run/<conversationId>` | D6 | one automation's delivered run, read-only: the transcript the timer produced, with a breadcrumb back to the project |
 | `#/automations` | D6 | every automation with pause, resume (`automation.update`) and delete (`automation.delete`), and a New automation form: title, prompt, a cron read in the browser's time zone, a project and a target, saved with `automation.create`. A minimal port of the old Schedules screen; XIN-21 redesigns it |
@@ -106,7 +107,7 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 | `#/signin` | O1 | owner token |
 | `#/welcome` | O2–O5 | first provider key, first project, first message, notifications |
 
-Layout metrics are tokens in `tokens.css`: sidebar `--w-sidebar` (240), right pane `--w-pane` (432), chat column `--w-column` (720), tab bar `--h-topbar` (44) with 28px tabs. The shell that reads them lands with the shell layer; until then the old layout below 1280px collapses the sidebar to a rail and below 1024px uses a bottom tab bar, and the right panel docks at 1280 and up.
+Layout (v4 shell, render 12.1): the sidebar (240, on bg) holds the app mark, search (⌘K) and collapse (⌘B), the nav rows New thread, Automations, Extensions and Settings, a Projects section with each project's state glyph and +, the current project's Threads (all statuses, newest first, with a filter toggle), and the owner menu (Settings; Theme: Dark, Light, Rose). The centre and the pane are panels inset 8 from the window with radius 12 and an 8 gutter; the pane is 432 and docked from 1280. Below 1280 the pane overlays the centre from the right; below 1024 the sidebar is a drawer opened from the menu button in the tab bar, closed by the scrim, its × or any navigation. Expand widens the pane over the centre. The chat column never exceeds 720. There is no rail and no bottom tab bar.
 
 ## Identity
 
@@ -120,19 +121,32 @@ Small loads use the arc from `I1`: a faint ring with a quarter arc turning once 
 
 ## Motion
 
-Tokens are `--dur-instant|fast|base|slow|deliberate` (80/140/200/320/480) and `--ease-standard|enter|exit|spring` (F4). Exits are always faster than entrances, and spring is only for a surface arriving from an edge on touch.
+Motion is the handoff file `web/src/styles/ingle-motion.css` (design system §0.8, canvas page 17), vendored verbatim and imported after `tokens.css`; it owns the motion tokens (`--ease-*`, `--dur-*`, `--loop-*`, the scales) and the `.im-*` and `.sig` primitives. Other lanes build on its class names, so the path stays. Ark overlays animate with keyframes on `data-state` because Ark's presence waits for `animationend`; app-driven UI uses transitions and `@starting-style` so it can be interrupted.
 
-| Surface | Enter | Exit | Utility |
-| --- | --- | --- | --- |
-| Dialog | 200, opacity and scale .98 to 1, enter curve | 140, exit curve | `enter`, `dialog-out` |
-| Right sheet and panel drawer | 320, 24px from the right plus fade, standard | 200, exit curve | `slide-right`, `slide-right-out` |
-| Bottom sheet | 320 on the spring, 100% from the bottom | 200, exit curve | `sheet-in`, `sheet-out` |
-| Menu and popover | 140, 4px drop, enter curve | unmount | `menu-in` |
-| Fan-out row | 200, 4px drop, 40ms stagger capped at six | unmount | `row-in` |
-| Report card | 320, 6px rise | unmount | `card-in` |
-| Scrim | 200 linear fade | 200 | `fade-in` |
+`web/src/styles/motion.css` holds only what the file leaves to the app: Tailwind's `hover` variant gated to `(hover: hover) and (pointer: fine)`, the combined transition for an element that is both `.im-press` and `.im-hover` (each sets `transition` on its own), the left-edge variant of `.im-sheet` (`data-side="left"`) for the sidebar drawer, the pane tab pill (`.im-pill`, translate and width over `--dur-flip` in-out), and the composer's `menu-in` and `shake` and the project corner's `breath` and `pulse` on the file's keyframes. Each has the same reduce rule both ways the file has them.
 
-Panel tabs slide their pill over 200 and crossfade the body over 140. Controls answer within 80ms: a press scales .98, a hover tints in 80 and fades out over 140, a toggle knob travels in 140, and a rejected input shakes 4px once over 240. `prefers-reduced-motion` collapses every animation and transition to 1ms.
+`web/src/lib/motion.ts` sets `:root[data-visibility]` from `visibilitychange`, so loops pause in a hidden tab, and tracks whether the last input was a key. A keyboard-started action takes no time: components that render the moving element put `data-instant` on it at that moment (pane view, pane pill, overview sections), a MutationObserver puts it on any `.im-*` overlay that mounts or changes `data-state` after a keypress (menus, popovers, dialogs, sheets), and `createPresence` unmounts at once. `stagger()` adds `.im-stagger` and each row's `--i` on a list's first load only. Nothing sets `:root[data-motion="reduce"]` yet because Appearance has no such setting; the file and the glue already honour it.
+
+| Surface | Primitive | Where |
+| --- | --- | --- |
+| Icon buttons | `.im-press .im-hover` | `shell/menu.ts` `ICON_BUTTON` |
+| Rows and tabs | `.im-hover` | sidebar rows, pane rows, inactive conversation and pane tabs |
+| Menus and popovers (Ark) | `.im-pop` | `MENU_CONTENT` |
+| Dialogs | `.im-dialog` + sibling `.im-scrim`, `data-state` from `createPresence` | `ui/dialog.tsx`, add-from-URL, new automation |
+| Right sheet | `.im-sheet` + `.im-scrim` | install review, undocked project pane |
+| Sidebar drawer | `.im-sheet[data-side="left"]` + `.im-scrim` | `shell/shell.tsx` |
+| Pane view swap | `.im-pane` | `pane/pane.tsx` |
+| Pane tab pill | `.im-pill` | `pane/pane.tsx` |
+| Conversation tabs | `.im-tab .im-lift .im-flip`: open scales in, close fades then neighbours slide (FLIP on `translate`), drag lifts with `data-dragging` and `--drag-x` | `shell/conversation-tabs.tsx` |
+| Overview sections | `.im-grow` + `.im-chevron` | `pane/overview.tsx` |
+| First-load lists | `.im-stagger` via `stagger()` | sidebar projects and threads, overview sections, thread fan-out |
+| Report card | `.im-event` | `chat/cards.tsx` |
+| Signal | `.sig` with `data-state` (waiting maps to `needs`, paused to `waiting`, cancelled to `idle`) | `ui/status-glyph.tsx` |
+| Working text, streaming caret | `.im-shimmer`, `.im-caret` | transcript, cards, pane rows |
+| Switches | `.im-switch` with an `<i>` knob | extensions `Toggle`, onboarding notifications |
+| Onboarding and sign-in pages | `.im-content` | onboarding steps, sign-in |
+
+Skeletons stay on Skullet (layout-matched, held back 150ms) with its `pulse` animation rather than `.im-skeleton`. No toasts exist yet, so `.im-toast` has no consumer; the Send/Stop morph, upload progress, context ring and attachment chips belong to the composer lane.
 
 ## Decisions taken from the review frame's open questions
 

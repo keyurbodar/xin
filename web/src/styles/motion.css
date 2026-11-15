@@ -1,0 +1,132 @@
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+.im-press.im-hover {
+  transition:
+    transform var(--dur-release) var(--ease-out),
+    background-color var(--dur-hover-out) var(--ease-color),
+    color var(--dur-hover-out) var(--ease-color);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .im-press.im-hover:hover {
+    transition-duration: var(--dur-release), var(--dur-hover-in), var(--dur-hover-in);
+  }
+}
+
+.im-press.im-hover:active:not(:disabled, [aria-disabled="true"]) {
+  transition-duration: var(--dur-press), var(--dur-hover-in), var(--dur-hover-in);
+}
+
+.im-sheet[data-side="left"][data-state="open"] {
+  animation-name: im-sheet-left-in;
+}
+
+.im-sheet[data-side="left"][data-state="closed"] {
+  animation-name: im-sheet-left-out;
+}
+
+@keyframes im-sheet-left-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes im-sheet-left-out {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.im-pill {
+  transition:
+    translate var(--dur-flip) var(--ease-in-out),
+    width var(--dur-flip) var(--ease-in-out);
+}
+
+@utility menu-in {
+  animation: im-pop-in var(--dur-popover) var(--ease-out) backwards;
+}
+
+@utility shake {
+  animation: im-shake var(--dur-shake) var(--ease-in-out);
+}
+
+@utility breath {
+  animation: im-breathe var(--loop-blink) ease-in-out infinite;
+}
+
+@utility pulse {
+  animation: im-breathe var(--loop-breathe) ease-in-out infinite;
+}
+
+:root[data-visibility="hidden"] :is(.breath, .pulse, .spinner-arc, .animate-pulse, .animate-spin) {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .im-sheet[data-side="left"][data-state="open"] {
+    animation-name: im-fade-in;
+  }
+
+  .im-sheet[data-side="left"][data-state="closed"] {
+    animation-name: im-fade-out;
+  }
+
+  .im-press.im-hover:active {
+    transform: none;
+  }
+
+  .im-pill {
+    transition: none;
+  }
+
+  .menu-in {
+    animation: im-fade-in var(--dur-reduce) var(--ease-out) backwards;
+  }
+
+  .shake,
+  .breath,
+  .pulse,
+  .spinner-arc,
+  .animate-pulse,
+  .animate-spin {
+    animation: none;
+  }
+}
+
+:root[data-motion="reduce"] {
+  .im-sheet[data-side="left"][data-state="open"] {
+    animation-name: im-fade-in;
+  }
+
+  .im-sheet[data-side="left"][data-state="closed"] {
+    animation-name: im-fade-out;
+  }
+
+  .im-press.im-hover:active {
+    transform: none;
+  }
+
+  .im-pill {
+    transition: none;
+  }
+
+  .menu-in {
+    animation: im-fade-in var(--dur-reduce) var(--ease-out) backwards;
+  }
+
+  .shake,
+  .breath,
+  .pulse,
+  .spinner-arc,
+  .animate-pulse,
+  .animate-spin {
+    animation: none;
+  }
+}

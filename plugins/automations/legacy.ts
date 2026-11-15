@@ -1,8 +1,9 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { type ConversationId, defineDoc, type Harness } from "@earendil-works/pi-durable"
 import { bool, compile, int, lit, map, obj, opt, type Static, str, union } from "@earendil-works/pi-schema"
+import { IntakeDoc } from "../../src/contracts/intake.ts"
 import { scopeOf } from "../../src/contracts/scope.ts"
-import type { CreateInput, Engine, TriggerInput } from "./automations.ts"
+import { type CreateInput, type Engine, LEGACY_RUN, type TriggerInput } from "./automations.ts"
 import { nextCron, parseCron } from "./cron.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -70,9 +71,10 @@ async function importRecord(engine: Engine, harness: Harness, record: LegacyReco
   const id = `sched-${record.id}`
   const cron = record.when.kind === "rrule" ? cronOf(record.when.rrule, record.tz, record.anchor, now) : undefined
   const due = record.active ? dueSlot(record, cron, now) : undefined
-  if (due !== undefined)
+  const key = due === undefined ? undefined : `${LEGACY_RUN}${record.id}:${new Date(due).toISOString()}`
+  if (key !== undefined && !(await inIntake(harness, key)))
     await engine.store.addRun({
-      id: `legacy:${record.id}:${due}`,
+      id: key,
       automation_id: id,
       trigger_id: null,
       source: "schedule",
@@ -112,8 +114,19 @@ function dueSlot(record: LegacyRecord, cron: string | undefined, now: number): n
     return record.cursor.last < at && at <= now ? at : undefined
   }
   if (cron === undefined) return undefined
-  const next = nextCron(parseCron(cron), record.tz, Math.max(record.cursor.last, record.anchor - 1))
-  return next !== undefined && next <= now ? next : undefined
+  const parsed = parseCron(cron)
+  let latest: number | undefined
+  for (let after = Math.max(record.cursor.last, record.anchor - 1); ;) {
+    const next = nextCron(parsed, record.tz, after)
+    if (next === undefined || next > now) return latest
+    latest = next
+    after = next
+  }
+}
+
+async function inIntake(harness: Harness, key: string): Promise<boolean> {
+  const intake = await harness.snapshot(IntakeDoc, context)
+  return intake?.items.some((item) => item.commandId === key) ?? false
 }
 
 async function placementOf(harness: Harness, record: LegacyRecord): Promise<Pick<CreateInput, "target" | "project">> {

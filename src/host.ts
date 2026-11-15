@@ -11,6 +11,7 @@ import type { DbService } from "./kernel/db.ts"
 import type { Profile } from "./kernel/layers.ts"
 import { boot, type Composition, type Kernel, type IngleLoader } from "./kernel/loader.ts"
 import { parseProfilePatch } from "./kernel/patch.ts"
+import { OwnerAuth } from "./kernel/token.ts"
 import type { Provider } from "./module.ts"
 import type { Actor, Command, Outcome } from "./ops.ts"
 
@@ -26,9 +27,11 @@ export class Home extends DurableObject<Env> {
   /** Why the home cannot serve, from the kernel or from a boot that threw: a home that cannot boot answers only repair. */
   #failure: string | undefined
   #restarting: Promise<void> | undefined
+  readonly #auth: OwnerAuth
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
+    this.#auth = new OwnerAuth(ctx.storage.sql, env.OWNER_TOKEN)
     void ctx.blockConcurrencyWhile(() => this.#open())
   }
 
@@ -73,6 +76,7 @@ export class Home extends DurableObject<Env> {
           state: this.ctx,
           env: this.env,
           providers: this.providers(),
+          auth: this.#auth,
           abort: (reason) => this.ctx.abort(reason),
           restart: () =>
             (this.#restarting ??= this.ctx
@@ -121,13 +125,18 @@ export class Home extends DurableObject<Env> {
     return this.harness.root(BACKGROUND_CONTEXT)
   }
 
+  /**
+   * The home is the auth boundary: the Worker forwards a request unchecked, so every route is gated here except a
+   * webhook, whose secret in the path is its credential.
+   */
   override async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname
+    const hook = path.startsWith("/hooks/")
+    if (hook && this.#failure !== undefined) return new Response(null, { status: 503 })
+    if (!hook && !(await this.#auth.authorizes(request))) return new Response("unauthorized", { status: 401 })
     if (path === REPAIR) return this.#repair(request)
     if (this.#failure !== undefined)
-      return path.startsWith("/hooks/")
-        ? new Response(null, { status: 503 })
-        : Response.json({ error: "boot_failed", failure: this.#failure }, { status: 503 })
+      return Response.json({ error: "boot_failed", failure: this.#failure }, { status: 503 })
     const { root } = this.#current
     const route = root.http.find(request)
     return route === undefined ? new Response("not found", { status: 404 }) : route(request)

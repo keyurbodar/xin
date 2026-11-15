@@ -59,7 +59,8 @@ export function CreateAutomation(props: { open: boolean; onClose: () => void; on
     <Show when={props.open}>
       <div class="fixed inset-0 z-50 grid place-items-center bg-bg/80 p-6" onMouseDown={close}>
         <form
-          class="crosshair enter w-[520px] rounded-md border border-line-2 bg-panel"
+          data-state="open"
+          class="crosshair im-dialog w-[520px] rounded-md border border-line-2 bg-panel"
           onMouseDown={(event) => event.stopPropagation()}
           onSubmit={(event) => void submit(event)}
         >

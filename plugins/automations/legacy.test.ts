@@ -1,9 +1,10 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
-import { cmd, type Stub, fresh } from "../../test/support.ts"
+import { cmd, eventually, type Stub, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import type { AutomationDetail, AutomationView } from "./automations.ts"
+import { IntakeDoc } from "../../src/contracts/intake.ts"
 import { LegacySchedulesDoc } from "./legacy.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -87,6 +88,20 @@ async function seed(stub: Stub, records: Record<string, unknown>): Promise<void>
   )
 }
 
+/** The latest instant at or before `now` whose UTC minute is 45: 15 past the hour in Asia/Kolkata. */
+function latestQuarterTo(now: number): number {
+  const slot = new Date(now)
+  slot.setUTCMinutes(45, 0, 0)
+  return slot.getTime() > now ? slot.getTime() - HOUR : slot.getTime()
+}
+
+const intakeKeys = (stub: Stub, prefix: string) =>
+  runInDurableObject(stub, async (home: Home) =>
+    ((await home.harness.snapshot(IntakeDoc, context))?.items ?? [])
+      .map((item) => item.commandId)
+      .filter((key) => key.includes(prefix)),
+  )
+
 const legacyDoc = (stub: Stub) =>
   runInDurableObject(stub, (home: Home) => home.harness.snapshot(LegacySchedulesDoc, context))
 
@@ -138,13 +153,13 @@ describe("legacy schedule import", () => {
 
     const missed = await detail(stub, "sched-missed")
     expect(missed).toMatchObject({ enabled: true, triggers: [] })
-    expect(missed.runs.map((run) => run.id)).toEqual([`legacy:missed:${now - HOUR}`])
+    expect(missed.runs.map((run) => run.id)).toEqual([`sched:missed:${new Date(now - HOUR).toISOString()}`])
 
     const midsend = await detail(stub, "sched-midsend")
     expect(midsend.triggers).toMatchObject([{ kind: "schedule", cron: "15 * * * *" }])
     expect(midsend.runs).toHaveLength(1)
-    expect(midsend.runs[0]?.id).toMatch(/^legacy:midsend:\d+$/)
-    const slot = Number(midsend.runs[0]?.id.split(":")[2])
+    expect(midsend.runs[0]?.id).toBe(`sched:midsend:${new Date(latestQuarterTo(now)).toISOString()}`)
+    const slot = latestQuarterTo(now)
     expect(slot).toBeGreaterThan(now - 3 * HOUR)
     expect(slot).toBeLessThanOrEqual(now)
     expect(new Date(slot).getUTCMinutes()).toBe(45)
@@ -163,7 +178,49 @@ describe("legacy schedule import", () => {
 
     expect((await listed(stub)).map((automation) => automation.id).toSorted()).toEqual(first)
     expect((await detail(stub, "sched-daily")).triggers).toHaveLength(1)
-    expect((await detail(stub, "sched-missed")).runs.map((run) => run.id)).toEqual([`legacy:missed:${now - HOUR}`])
+    expect((await detail(stub, "sched-missed")).runs.map((run) => run.id)).toEqual([
+      `sched:missed:${new Date(now - HOUR).toISOString()}`,
+    ])
     expect(await detail(stub, "sched-midsend")).toMatchObject({ runs: [{ id: midsend.runs[0]?.id }] })
+    const slotKey = midsend.runs[0]?.id ?? ""
+    await runInDurableObject(stub, (home: Home) => home.loader.ctx.automations.fire(Date.now()))
+    await eventually(
+      stub,
+      async (home: Home) => (await home.loader.ctx.automations.store.run(slotKey))?.status !== "queued",
+    )
+    expect(await intakeKeys(stub, ":midsend:")).toEqual([slotKey])
+  })
+
+  it("does not deliver again a slot the old schedule already put into intake", async () => {
+    const stub = fresh()
+    const root = await runInDurableObject(stub, async (home: Home) => Number((await home.root()).id))
+    const now = Date.now()
+    const record = legacyRecords(root, root, now)["midsend"] as Record<string, unknown>
+    const key = `sched:claimed:${new Date(latestQuarterTo(now)).toISOString()}`
+    await runInDurableObject(stub, (home: Home) =>
+      home.harness.commit(async (tx) => {
+        Object.assign((await tx.doc(LegacySchedulesDoc)).records, { claimed: { ...record, id: "claimed" } })
+        const intake = await tx.doc(IntakeDoc)
+        intake.items.push({
+          id: intake.nextId,
+          target: root,
+          kind: "job",
+          commandId: key,
+          body: JSON.stringify({ kind: "job", text: "run claimed" }),
+          clientTs: latestQuarterTo(now),
+          firstAt: now,
+          fireAt: now + DAY,
+          status: "pending",
+          batchId: null,
+        })
+        intake.nextId += 1
+      }, context),
+    )
+
+    await evictDurableObject(stub)
+    await runInDurableObject(stub, (home: Home) => home.loader.ctx.automations.fire(Date.now()))
+
+    expect(await detail(stub, "sched-claimed")).toMatchObject({ enabled: true, runs: [] })
+    expect(await intakeKeys(stub, ":claimed:")).toEqual([key])
   })
 })

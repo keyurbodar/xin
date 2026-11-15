@@ -43,6 +43,8 @@ const DEFAULT_MAX_WAIT_S = 24 * 3600
 const HOOK_PATH = "/hooks/"
 const SECRET = /^[A-Za-z0-9_-]{43}$/
 const OWNER: Actor = { kind: "owner" }
+/** A run imported from the old schedules keeps their delivery key, so a delivery already in intake is not repeated. */
+export const LEGACY_RUN = "sched:"
 
 export type ScheduleInput = { readonly kind: "schedule"; readonly cron: string; readonly tz?: string | undefined }
 export type OnceInput = { readonly kind: "once"; readonly at: string }
@@ -521,7 +523,7 @@ export class Engine {
       const automation = await this.store.automation(run.automation_id)
       if (automation === undefined) return await this.store.failed(id, "the automation was deleted", now)
       const text = taskText(automation.prompt, run.input)
-      const command = commandId(`automation:${run.id}`)
+      const command = commandId(run.id.startsWith(LEGACY_RUN) ? run.id : `automation:${run.id}`)
       if (automation.target === "same" && automation.thread_id !== null) {
         const delivered = await this.#continue(automation, automation.thread_id, run, text, command, now)
         if (delivered) return await this.#notify(automation, run)
