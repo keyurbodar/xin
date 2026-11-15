@@ -18,7 +18,7 @@ Issues are host tables, not pi documents. They do not need to change atomically 
 
 ## Rules
 
-- State edits (create, rename, reorder, make default, delete) append a `states` event on issue 0, so `rev` moves and clients refetch the state list. No issue timeline shows these events.
+- State edits (create, rename, reorder, make default, delete) bump `statesRev` in `issue_meta`. The home snapshot carries `issues: { rev, statesRev }`, so a client reads `issue.states` again only when `statesRev` moves.
 
 - Sub-issues go one level deep. Every mutation reads and checks its rows inside its own write transaction, so concurrent edits cannot form a cycle or leave `closed_at` or the assignee index out of step with the row.
 - `issue.get` returns the newest 100 timeline events. Its `earlier` cursor pages back through the older ones.
@@ -35,7 +35,7 @@ A scoped agent:
 - may name only conversations in its project as threads, assignees or mentions;
 - may link or parent only issues in its project.
 
-An owner-created issue takes its project from the `project` argument, or else from the project of `threads[0]`.
+An owner-created issue takes its project from the `project` argument, or else from the project of `threads[0]`. On every path, owner ops included, an issue in a project refuses assignees, threads and mentions whose conversation belongs to a different project, and refuses a parent or link to an issue in a different project. Home-wide issues and conversations with no project are not restricted.
 
 ## Wakes
 

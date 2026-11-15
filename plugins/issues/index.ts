@@ -108,7 +108,7 @@ export async function apply(ctx: Context): Promise<void> {
     comment: async (actor, id, input) => settle(await issues.comment(actor, id, input)),
   }
   ctx.provide("issues", service)
-  ctx.wire.home("issues", async () => ({ issues: { rev: await issues.rev() } }))
+  ctx.wire.home("issues", async () => ({ issues: { rev: await issues.rev(), statesRev: await issues.statesRev() } }))
   await deliver(await issues.pending())
 
   const ops = [
@@ -123,7 +123,7 @@ export async function apply(ctx: Context): Promise<void> {
       args: obj({ name: str({ minLength: 1, maxLength: 60 }), closed: opt(bool()) }),
       actors: ["owner"],
       run: async (_api, args) => {
-        const state = await issues.createState(OWNER_ACTOR, { name: args.name, closed: args.closed ?? false })
+        const state = await issues.createState({ name: args.name, closed: args.closed ?? false })
         await ctx.wire.publishHome()
         return state
       },
@@ -138,7 +138,7 @@ export async function apply(ctx: Context): Promise<void> {
       }),
       actors: ["owner"],
       run: async (_api, args) => {
-        const state = await issues.updateState(OWNER_ACTOR, args)
+        const state = await issues.updateState(args)
         await ctx.wire.publishHome()
         return state
       },

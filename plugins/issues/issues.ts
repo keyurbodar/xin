@@ -50,7 +50,7 @@ export type IssueEvent = {
   readonly issue: number
   readonly at: number
   readonly actor: string
-  readonly kind: "created" | "changed" | "comment" | "linked" | "unlinked" | "states"
+  readonly kind: "created" | "changed" | "comment" | "linked" | "unlinked"
   readonly data: { [key: string]: JsonValue }
   readonly replyTo: number | null
 }
@@ -106,16 +106,13 @@ export type Change = { readonly issue: Issue; readonly events: IssueEvent[]; rea
 
 export interface IssuesService {
   states(): Promise<IssueState[]>
-  createState(actor: IssueActor, input: { readonly name: string; readonly closed: boolean }): Promise<IssueState>
-  updateState(
-    actor: IssueActor,
-    input: {
-      readonly id: string
-      readonly name?: string
-      readonly position?: number
-      readonly isDefault?: true
-    },
-  ): Promise<IssueState>
+  createState(input: { readonly name: string; readonly closed: boolean }): Promise<IssueState>
+  updateState(input: {
+    readonly id: string
+    readonly name?: string
+    readonly position?: number
+    readonly isDefault?: true
+  }): Promise<IssueState>
   deleteState(
     actor: IssueActor,
     input: { readonly id: string; readonly moveTo: string },
@@ -136,6 +133,7 @@ export interface IssuesService {
   pending(): Promise<Wake[]>
   delivered(commandId: string): Promise<void>
   rev(): Promise<number>
+  statesRev(): Promise<number>
 }
 
 declare module "@deepseek-ai/cordis" {
@@ -155,8 +153,6 @@ const LIST_LIMIT = 50
 const LIST_MAX = 200
 const TIMELINE_PAGE = 100
 const AGENT_HOPS = 3
-/** State edits are timeline events on issue 0, so they move `rev` and no issue timeline shows them. */
-const STATES_EVENT = 0
 const MANY = 20
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const URL_PATTERN = /^https?:\/\/\S+$/
@@ -405,6 +401,12 @@ const syncAssignees = async (q: SqliteExecutor, id: number, before: Assignee[], 
     if (!old.has(token)) await q.run("INSERT INTO issue_assignees (assignee, issue_id) VALUES (?, ?)", token, id)
 }
 
+const bumpStates = async (q: SqliteExecutor): Promise<void> => {
+  await q.run(
+    "INSERT INTO issue_meta (key, value) VALUES ('states_rev', 1) ON CONFLICT (key) DO UPDATE SET value = value + 1",
+  )
+}
+
 const stateName = async (q: SqliteExecutor, id: JsonValue | undefined): Promise<string> =>
   typeof id === "string"
     ? ((await q.get<{ name: string }>("SELECT name FROM issue_states WHERE id = ?", id))?.name ?? id)
@@ -494,7 +496,15 @@ async function queueWakes(q: SqliteExecutor, issue: Issue, events: IssueEvent[],
   return wakes
 }
 
-const normalize = async (q: SqliteExecutor, fields: IssueFields, self: number | undefined, scope: Scope) => {
+const apart = (left: string | null, right: string | null): boolean => left !== null && right !== null && left !== right
+
+const normalize = async (
+  q: SqliteExecutor,
+  fields: IssueFields,
+  self: number | undefined,
+  project: string | null,
+  scope: Scope,
+) => {
   const title = fields.title?.trim()
   if (title !== undefined && title.length === 0) fail("a title cannot be empty")
   if (title !== undefined) within(title, LIMITS.title, "a title")
@@ -522,6 +532,7 @@ const normalize = async (q: SqliteExecutor, fields: IssueFields, self: number | 
   if (fields.parent !== undefined && fields.parent !== null) {
     if (fields.parent === self) fail("an issue cannot be its own parent")
     const parent = await visible(q, fields.parent, scope)
+    if (apart(project, parent.project)) fail(`#${parent.id} is in another project`)
     if (parent.parent !== null) fail(`#${parent.id} is already a sub-issue; sub-issues go one level deep`)
     if (self !== undefined && (await q.get<{ id: number }>("SELECT id FROM issues WHERE parent = ? LIMIT 1", self)))
       fail(`#${self} has sub-issues, so it cannot become one`)
@@ -545,23 +556,29 @@ export function createIssues(port: IssuesPort): IssuesService {
     return project === undefined ? undefined : { project }
   }
 
-  const conversations = async (ids: readonly number[], what: string, scope: Scope): Promise<void> => {
+  /** Refuses a conversation in another project: any other project for an agent, a different one for the owner. */
+  const conversations = async (ids: readonly number[], what: string, project: string | null, scope: Scope) => {
     for (const id of ids) {
       if (!(await port.conversationExists(id))) fail(`${what} ${id} is not a conversation`)
-      if (scope !== undefined && (await port.projectOf(id)) !== scope.project)
-        fail(`${what} ${id} is outside this project`)
+      const theirs = (await port.projectOf(id)) ?? null
+      const outside =
+        scope === undefined ? theirs !== null && project !== null && theirs !== project : theirs !== project
+      if (outside) fail(`${what} ${id} is outside this project`)
     }
   }
 
-  const checkConversations = async (fields: IssueFields, scope: Scope): Promise<void> => {
+  const checkConversations = async (fields: IssueFields, project: string | null, scope: Scope): Promise<void> => {
     if (fields.assignees !== undefined)
       await conversations(
         fields.assignees.flatMap((assignee) => (assignee.kind === "person" ? [] : [assignee.id])),
         "assignee",
+        project,
         scope,
       )
-    if (fields.threads !== undefined) await conversations(fields.threads, "thread", scope)
+    if (fields.threads !== undefined) await conversations(fields.threads, "thread", project, scope)
   }
+
+  const projectOfIssue = async (id: number): Promise<string | null> => (await row(db, id))?.project ?? null
 
   const linked = async (id: number): Promise<IssueDetail["links"]> => {
     const rows = await db.all<LinkRow>(
@@ -583,7 +600,7 @@ export function createIssues(port: IssuesPort): IssuesService {
   return {
     states: async () => (await stateRows(db)).map(stateOf),
 
-    createState: async (actor, input) => {
+    createState: async (input) => {
       const name = input.name.trim()
       if (name.length === 0) fail("a state needs a name")
       return db.transaction(async (tx) => {
@@ -599,12 +616,12 @@ export function createIssues(port: IssuesPort): IssuesService {
           input.closed ? 1 : 0,
           position,
         )
-        await appendEvent(tx, STATES_EVENT, actor, port.now(), "states", { created: id })
+        await bumpStates(tx)
         return stateOf(await stateById(tx, id))
       })
     },
 
-    updateState: async (actor, input) => {
+    updateState: async (input) => {
       const name = input.name?.trim()
       if (name !== undefined && name.length === 0) fail("a state needs a name")
       return db.transaction(async (tx) => {
@@ -618,7 +635,7 @@ export function createIssues(port: IssuesPort): IssuesService {
         }
         if (input.isDefault === true && state.is_default === 0)
           await tx.run("UPDATE issue_states SET is_default = (id = ?) WHERE closed = ?", state.id, state.closed)
-        await appendEvent(tx, STATES_EVENT, actor, port.now(), "states", { updated: state.id })
+        await bumpStates(tx)
         return stateOf(await stateById(tx, state.id))
       })
     },
@@ -649,20 +666,20 @@ export function createIssues(port: IssuesPort): IssuesService {
           wakes.push(...(await queueWakes(tx, issueOf(await requireRow(tx, before.id)), [event], actor)))
         }
         await tx.run("DELETE FROM issue_states WHERE id = ?", state.id)
-        await appendEvent(tx, STATES_EVENT, actor, at, "states", { deleted: state.id, moveTo: target.id })
+        await bumpStates(tx)
         return { moved: moved.length, wakes }
       })
     },
 
     create: async (actor, input) => {
       const scope = await scopeOf(actor)
-      await checkConversations(input, scope)
       const owner = input.threads?.[0]
       const project =
         scope?.project ?? input.project ?? (owner === undefined ? undefined : await port.projectOf(owner)) ?? null
+      await checkConversations(input, project, scope)
       const at = port.now()
       return db.transaction(async (tx) => {
-        const fields = await normalize(tx, input, undefined, scope)
+        const fields = await normalize(tx, input, undefined, project, scope)
         const state =
           fields.state === undefined
             ? ((await tx.get<StateRow>(
@@ -782,11 +799,12 @@ export function createIssues(port: IssuesPort): IssuesService {
 
     update: async (actor, id, input) => {
       const scope = await scopeOf(actor)
-      await checkConversations(input, scope)
+      const project = await projectOfIssue(id)
+      await checkConversations(input, project, scope)
       const at = port.now()
       return db.transaction(async (tx) => {
         const before = issueOf(await visible(tx, id, scope))
-        const fields = await normalize(tx, input, id, scope)
+        const fields = await normalize(tx, input, id, before.project, scope)
         const events: IssueEvent[] = []
         const sets: string[] = []
         const params: SqliteValue[] = []
@@ -851,8 +869,8 @@ export function createIssues(port: IssuesPort): IssuesService {
             : [Math.min(id, other), Math.max(id, other), "related"]
       const at = port.now()
       return db.transaction(async (tx) => {
-        await visible(tx, id, scope)
-        await visible(tx, other, scope)
+        const [mine, theirs] = [await visible(tx, id, scope), await visible(tx, other, scope)]
+        if (apart(mine.project, theirs.project)) fail(`#${other} is in another project`)
         const changed = on
           ? await tx.runCounted(
               "INSERT INTO issue_links (from_id, to_id, kind) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
@@ -886,7 +904,7 @@ export function createIssues(port: IssuesPort): IssuesService {
       const mentions = unique(input.mentions ?? [], String)
       if (mentions.length > MANY) fail(`at most ${MANY} mentions`)
       const scope = await scopeOf(actor)
-      await conversations(mentions, "mention", scope)
+      await conversations(mentions, "mention", await projectOfIssue(id), scope)
       const at = port.now()
       return db.transaction(async (tx) => {
         await visible(tx, id, scope)
@@ -911,6 +929,9 @@ export function createIssues(port: IssuesPort): IssuesService {
     delivered: async (commandId) => {
       await db.run("DELETE FROM issue_wakes WHERE command_id = ?", commandId)
     },
+
+    statesRev: async () =>
+      (await db.get<{ value: number }>("SELECT value FROM issue_meta WHERE key = 'states_rev'"))?.value ?? 0,
 
     rev: async () => (await db.get<{ rev: number | null }>("SELECT max(id) AS rev FROM issue_events"))?.rev ?? 0,
   }

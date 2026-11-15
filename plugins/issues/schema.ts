@@ -71,6 +71,7 @@ export const MIGRATIONS: readonly SqliteMigration[] = [
         reply_to INTEGER
       )`,
       "CREATE INDEX issue_events_issue ON issue_events (issue_id, id)",
+      "CREATE TABLE issue_meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL) WITHOUT ROWID",
       `CREATE TABLE issue_wakes (
         command_id TEXT PRIMARY KEY,
         issue_id INTEGER NOT NULL,

@@ -79,6 +79,37 @@ describe("issue scope", () => {
   })
 })
 
+describe("issue cross-project writes", () => {
+  it("refuses another project's conversations, parents and links on owner ops too", async () => {
+    const stub = fresh()
+    const a = await project(stub, "east")
+    const b = await project(stub, "west")
+    const east = await ok<Issue>(stub, "issue.create", { title: "East", project: a.id })
+    const west = await ok<Issue>(stub, "issue.create", { title: "West", project: b.id })
+    const free = await ok<Issue>(stub, "issue.create", { title: "Home-wide" })
+    const refused = async (op: string, args: unknown) => {
+      const ack = await call(stub, op, args)
+      expect(ack.ok, JSON.stringify(ack)).toBe(false)
+      return ack.error?.message ?? ""
+    }
+    expect(
+      await refused("issue.update", { id: east.id, assignees: [{ kind: "captain", id: b.coordinatorId }] }),
+    ).toContain("outside this project")
+    expect(await refused("issue.update", { id: east.id, threads: [b.coordinatorId] })).toContain("outside this project")
+    expect(await refused("issue.comment", { id: east.id, body: "x", mentions: [b.coordinatorId] })).toContain(
+      "outside this project",
+    )
+    expect(await refused("issue.create", { title: "Mixed", threads: [a.coordinatorId, b.coordinatorId] })).toContain(
+      "outside this project",
+    )
+    expect(await refused("issue.update", { id: east.id, parent: west.id })).toContain("another project")
+    expect(await refused("issue.link", { id: east.id, kind: "related", other: west.id })).toContain("another project")
+    await ok(stub, "issue.update", { id: east.id, assignees: [{ kind: "captain", id: a.coordinatorId }] })
+    await ok(stub, "issue.link", { id: east.id, kind: "blocks", other: free.id })
+    await ok(stub, "issue.update", { id: free.id, threads: [b.coordinatorId] })
+  })
+})
+
 describe("issue writes under concurrency", () => {
   it("never lets two re-parentings form a cycle", async () => {
     const stub = fresh()
@@ -218,24 +249,26 @@ describe("issue wake rules", () => {
     expect(left).toEqual([])
   })
 
-  it("moves the home revision on every state edit", async () => {
+  it("moves statesRev, and only statesRev, on every state edit", async () => {
     const stub = fresh()
-    const rev = () =>
+    const revs = () =>
       runInDurableObject(stub, async (home: Home) => {
         const snapshot = await home.loader.ctx.wire.snapshot()
-        return (snapshot["issues"] as { rev: number }).rev
+        return snapshot["issues"] as { rev: number; statesRev: number }
       })
-    const seen = [await rev()]
+    const start = await revs()
+    const seen = [start.statesRev]
     await ok(stub, "issue.state.create", { name: "Triage" })
-    seen.push(await rev())
+    seen.push((await revs()).statesRev)
     await ok(stub, "issue.state.update", { id: "triage", name: "Triage queue" })
-    seen.push(await rev())
+    seen.push((await revs()).statesRev)
     await ok(stub, "issue.state.update", { id: "triage", position: 0 })
-    seen.push(await rev())
+    seen.push((await revs()).statesRev)
     await ok(stub, "issue.state.delete", { id: "triage", moveTo: "todo" })
-    seen.push(await rev())
-    expect(seen.toSorted((left, right) => left - right)).toEqual(seen)
-    expect(new Set(seen).size).toBe(seen.length)
+    const end = await revs()
+    seen.push(end.statesRev)
+    expect(seen).toEqual([0, 1, 2, 3, 4])
+    expect(end.rev).toBe(start.rev)
   })
 
   it("delivers a wake left in the outbox by a crash on the next boot", async () => {
