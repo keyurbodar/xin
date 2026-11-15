@@ -2,7 +2,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { env } from "cloudflare:workers"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { api, addThreads, cmd, field, owner } from "../../test/support.ts"
 import { M4_MODEL } from "../../test/plugins/m4.ts"
 import { type Home } from "../../test/worker.ts"
@@ -85,6 +85,22 @@ describe("files", () => {
     const shared = a?.r2_key ?? ""
     const listed = await env.FILES.list({ prefix: shared })
     expect(listed.objects.map((object) => object.key)).toEqual([shared])
+  })
+
+  it("puts a blob again when its last put is over an hour old, so the orphan sweep grace restarts", async () => {
+    const body = `aged-${crypto.randomUUID()}`
+    const key = blobKey(await sha256Hex(body))
+    expect((await put("/projects/m4/aged-a.txt", body)).status).toBe(200)
+    const before = await env.FILES.head(key)
+    vi.useFakeTimers({ toFake: ["Date"] })
+    try {
+      vi.setSystemTime(Date.now() + 2 * 60 * 60_000)
+      expect((await put("/projects/m4/aged-b.txt", body)).status).toBe(200)
+    } finally {
+      vi.useRealTimers()
+    }
+    const after = await env.FILES.head(key)
+    expect(after?.version).not.toBe(before?.version)
   })
 
   it("stages a body over the buffer limit, keeps one blob and leaves no staged copy", async () => {

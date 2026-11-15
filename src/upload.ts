@@ -17,12 +17,21 @@ function contentLength(request: Request): number | undefined {
   return Number.isSafeInteger(length) && length >= 0 ? length : undefined
 }
 
-/** Blobs are content-addressed, so bytes already stored under their digest are never written again. */
-const stored = async (env: Env, digest: string): Promise<boolean> => (await env.FILES.head(blobKey(digest))) !== null
+/** Far inside the orphan sweep's 24 h grace, so a reused blob cannot be swept before its commit lands. */
+const REUSE_MS = 60 * 60_000
+
+/**
+ * Blobs are content-addressed, so bytes stored under their digest within the last hour are not written again. An older
+ * blob is written anyway: the put refreshes `uploaded`, which is what keeps the sweep off it until the commit.
+ */
+async function fresh(env: Env, digest: string): Promise<boolean> {
+  const head = await env.FILES.head(blobKey(digest))
+  return head !== null && Date.now() - head.uploaded.getTime() < REUSE_MS
+}
 
 async function buffered(env: Env, bytes: Uint8Array): Promise<Stored> {
   const digest = await sha256(bytes)
-  if (!(await stored(env, digest))) await env.FILES.put(blobKey(digest), bytes)
+  if (!(await fresh(env, digest))) await env.FILES.put(blobKey(digest), bytes)
   return { digest, size: bytes.byteLength }
 }
 
@@ -48,7 +57,7 @@ async function streamed(env: Env, body: ReadableStream<Uint8Array>, staged: stri
     throw error
   }
   const digest = toHex(await hasher.digest)
-  if (!(await stored(env, digest))) await copy(env, staged, blobKey(digest))
+  if (!(await fresh(env, digest))) await copy(env, staged, blobKey(digest))
   return { digest, size: length }
 }
 
