@@ -17,11 +17,11 @@ function argString(args: Record<string, unknown>, key: string): string | undefin
 function threadTone(state: VisualState): string {
   switch (state) {
     case "waiting":
-      return "text-accent-text"
+      return "text-primary-ink"
     case "failed":
-      return "text-bad"
+      return "text-failed"
     default:
-      return "text-fg-3"
+      return "text-ink-3"
   }
 }
 
@@ -66,22 +66,22 @@ export function ThreadRow(props: {
       type="button"
       onClick={() => props.onClick?.()}
       style={{ "animation-delay": `${Math.min(props.index ?? 0, 5) * 40}ms` }}
-      class="row-in flex w-full items-start gap-2.5 bg-raised px-2.5 py-2 text-left hover:bg-hover disabled:cursor-default"
+      class="row-in flex w-full items-start gap-2.5 bg-card px-2.5 py-2 text-left hover:bg-secondary disabled:cursor-default"
       classList={{
-        "border-b border-line last:border-b-0": props.flush === true,
-        "border border-accent-line": props.flush !== true && state() === "waiting",
-        "border border-line-inner": props.flush !== true && state() !== "waiting",
-        "rounded-[2px]": props.flush !== true,
+        "border-b border-line-1 last:border-b-0": props.flush === true,
+        "border border-primary/40": props.flush !== true && state() === "waiting",
+        "border border-line-2": props.flush !== true && state() !== "waiting",
+        "rounded-sm": props.flush !== true,
       }}
     >
       <StatusGlyph state={state()} size={16} class="mt-px" />
       <span class="min-w-0 flex-1">
         <span class="flex items-baseline gap-2">
-          <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{props.title}</span>
+          <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.title}</span>
           <span class="mono-meta shrink-0">{props.thread === undefined ? "—" : ago(props.thread.beatAt)}</span>
         </span>
         <span
-          class={`mt-0.5 block truncate text-[12px] ${threadTone(state())}`}
+          class={`mt-0.5 block truncate text-sm ${threadTone(state())}`}
           classList={{ shimmer: state() === "working" }}
         >
           {threadLine(props.thread, state())}
@@ -144,8 +144,8 @@ export function ThreadFan(props: {
         </Show>
       }
     >
-      <div class="max-w-[560px] overflow-hidden rounded-[2px] border border-line-inner">
-        <div class="flex items-center gap-2 border-b border-line bg-raised px-2.5 py-2">
+      <div class="max-w-[560px] overflow-hidden rounded-sm border border-line-2">
+        <div class="flex items-center gap-2 border-b border-line-1 bg-card px-2.5 py-2">
           <span class="label flex-1">{rows().length} threads</span>
           <span class="mono-meta">{tally()}</span>
         </div>
@@ -178,23 +178,23 @@ export function ReportCard(props: { row: BatchRow; onOpenThread: (id: number) =>
   const long = (): boolean => props.row.text.length > 320
 
   return (
-    <div class="card-in max-w-[560px] overflow-hidden rounded-[4px] border border-line-inner bg-raised">
-      <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5">
+    <div class="card-in max-w-[560px] overflow-hidden rounded-md border border-line-2 bg-card">
+      <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5">
         <StatusGlyph state={state()} size={16} />
-        <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{props.row.title}</span>
+        <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.row.title}</span>
         <span class="mono-meta shrink-0">{STATE_WORD[state()]}</span>
       </div>
       <div class="relative px-3.5 py-3">
         <div class="overflow-hidden" classList={{ "max-h-none": expanded(), "max-h-[132px]": !expanded() }}>
-          <div class="text-[13px] leading-[1.6] text-fg-2">
+          <div class="text-base leading-[1.6] text-ink-2">
             <Markdown muted text={props.row.text} />
           </div>
         </div>
         <Show when={long() && !expanded()}>
-          <div class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-raised to-transparent" />
+          <div class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-card to-transparent" />
         </Show>
       </div>
-      <div class="flex items-center gap-2 border-t border-line px-3.5 py-2">
+      <div class="flex items-center gap-2 border-t border-line-1 px-3.5 py-2">
         <Show when={threadId()}>
           {(id) => <Button onClick={() => props.onOpenThread(id())}>View thread</Button>}
         </Show>
@@ -227,21 +227,21 @@ export function QuestionInboundCard(props: {
   }
   return (
     <div
-      class="max-w-[560px] overflow-hidden rounded-[4px] border bg-raised"
-      classList={{ "border-accent-line": state() === "waiting", "border-line-inner": state() !== "waiting" }}
+      class="max-w-[560px] overflow-hidden rounded-md border bg-card"
+      classList={{ "border-primary/40": state() === "waiting", "border-line-2": state() !== "waiting" }}
     >
       <div
         class="flex items-center gap-2.5 border-b px-3.5 py-2.5"
-        classList={{ "border-accent-line bg-accent-dim": state() === "waiting", "border-line": state() !== "waiting" }}
+        classList={{ "border-primary/40 bg-primary-soft": state() === "waiting", "border-line-1": state() !== "waiting" }}
       >
         <StatusGlyph state={state()} size={16} />
-        <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{props.row.title}</span>
-        <span class="text-[11px]" classList={{ "text-accent-text": state() === "waiting", "text-fg-3": state() !== "waiting" }}>
+        <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.row.title}</span>
+        <span class="text-2xs" classList={{ "text-primary-ink": state() === "waiting", "text-ink-3": state() !== "waiting" }}>
           {label()}
         </span>
       </div>
-      <div class="px-3.5 py-3 text-[13.5px] leading-[1.6] text-fg">{props.row.text}</div>
-      <div class="flex items-center gap-2 border-t border-line px-3.5 py-2">
+      <div class="px-3.5 py-3 text-base leading-[1.6] text-ink">{props.row.text}</div>
+      <div class="flex items-center gap-2 border-t border-line-1 px-3.5 py-2">
         <Show when={threadId()}>
           {(id) => (
             <Button variant="primary" onClick={() => props.onOpenThread(id())}>
@@ -250,9 +250,6 @@ export function QuestionInboundCard(props: {
           )}
         </Show>
         <Show when={state() === "waiting"}>
-          <Button variant="ghost" onClick={() => navigate("/inbox")}>
-            Answer in Inbox
-          </Button>
           <span class="ml-auto mono-meta">Choices arrive on the thread card</span>
         </Show>
       </div>
@@ -267,18 +264,18 @@ export function JobCard(props: { row: BatchRow; onOpenThread: (id: number) => vo
     return Number.isInteger(id) && id > 0 ? id : undefined
   }
   return (
-    <div class="max-w-[560px] overflow-hidden rounded-[4px] border border-line-inner bg-raised">
-      <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5">
+    <div class="max-w-[560px] overflow-hidden rounded-md border border-line-2 bg-card">
+      <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5">
         <StatusGlyph state={state()} size={16} />
-        <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{props.row.title}</span>
+        <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.row.title}</span>
         <span class="mono-meta shrink-0">{STATE_WORD[state()]}</span>
       </div>
-      <div class="px-3.5 py-3 text-[13px] leading-[1.6] text-fg-2">
+      <div class="px-3.5 py-3 text-base leading-[1.6] text-ink-2">
         <Markdown muted text={props.row.text} />
       </div>
       <Show when={threadId()}>
         {(id) => (
-          <div class="flex items-center gap-2 border-t border-line px-3.5 py-2">
+          <div class="flex items-center gap-2 border-t border-line-1 px-3.5 py-2">
             <Button onClick={() => props.onOpenThread(id())}>Open thread</Button>
           </div>
         )}
@@ -305,13 +302,13 @@ export function FailureCard(props: { failure: FailureData; onRetry: () => Promis
   }
 
   return (
-    <div class="overflow-hidden rounded-[4px] border border-failed/40 bg-raised">
+    <div class="overflow-hidden rounded-md border border-failed/40 bg-card">
       <div class="flex items-center gap-2.5 border-b border-failed/30 px-3.5 py-2.5">
         <StatusGlyph state="failed" size={16} />
-        <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">The turn failed</span>
+        <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">The turn failed</span>
         <span class="mono-meta shrink-0">{props.failure.reason}</span>
       </div>
-      <pre class="m-0 whitespace-pre-wrap border-b border-line bg-surface px-3.5 py-2.5 font-mono text-[12px] leading-[1.6] text-bad">
+      <pre class="m-0 whitespace-pre-wrap border-b border-line-1 bg-panel px-3.5 py-2.5 font-mono text-sm leading-[1.6] text-failed">
         {props.failure.error}
       </pre>
       <div class="flex items-center gap-2 px-3.5 py-2">
@@ -325,7 +322,7 @@ export function FailureCard(props: { failure: FailureData; onRetry: () => Promis
           {props.failure.batchId === undefined ? "Nothing to resubmit" : "Resubmits the message that failed"}
         </span>
         <Show when={error()}>
-          <span class="ml-auto truncate text-[12px] text-bad">{error()}</span>
+          <span class="ml-auto truncate text-sm text-failed">{error()}</span>
         </Show>
       </div>
     </div>
@@ -357,28 +354,28 @@ export function OpenQuestionCard(props: {
   }
 
   return (
-    <div class="overflow-hidden rounded-[4px] border border-accent-line bg-raised">
-      <div class="flex items-center gap-2.5 border-b border-accent-line bg-accent-dim px-3 py-2.5">
+    <div class="overflow-hidden rounded-md border border-primary/40 bg-card">
+      <div class="flex items-center gap-2.5 border-b border-primary/40 bg-primary-soft px-3 py-2.5">
         <StatusGlyph state="waiting" size={16} />
-        <span class="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{props.title}</span>
-        <span class="text-[11px] text-accent-text">{ago(props.request.askedAt)}</span>
+        <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.title}</span>
+        <span class="text-2xs text-primary-ink">{ago(props.request.askedAt)}</span>
       </div>
       <div class="flex flex-col gap-2 px-3 py-3">
-        <div class="text-[13.5px] leading-[1.6] text-fg">{props.request.question}</div>
+        <div class="text-base leading-[1.6] text-ink">{props.request.question}</div>
         <For each={props.request.options}>
           {(option, index) => (
             <button
               type="button"
               disabled={sending()}
               onClick={() => void submit(option)}
-              class="flex items-center gap-2.5 rounded-[2px] border border-line-inner bg-surface px-3 py-2 text-left hover:border-line-strong hover:bg-hover disabled:opacity-60"
+              class="flex items-center gap-2.5 rounded-sm border border-line-2 bg-panel px-3 py-2 text-left hover:border-line-3 hover:bg-secondary disabled:opacity-60"
             >
-              <span class="w-3 font-mono text-[10px] text-fg-4">{index() + 1}</span>
-              <span class="min-w-0 flex-1 text-[13px] text-fg">{option}</span>
+              <span class="w-3 font-mono text-2xs text-icon">{index() + 1}</span>
+              <span class="min-w-0 flex-1 text-base text-ink">{option}</span>
             </button>
           )}
         </For>
-        <div class="flex h-9 items-center gap-2 rounded-[2px] border border-line-inner bg-surface pl-3 pr-1">
+        <div class="flex h-9 items-center gap-2 rounded-sm border border-line-2 bg-panel pl-3 pr-1">
           <input
             value={answer()}
             disabled={sending()}
@@ -390,13 +387,13 @@ export function OpenQuestionCard(props: {
               }
             }}
             placeholder="Something else…"
-            class="min-w-0 flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-fg-4"
+            class="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-icon"
           />
           <button
             type="button"
             disabled={sending() || answer().trim() === ""}
             onClick={() => void submit(answer())}
-            class="grid h-7 w-7 place-items-center rounded-[2px] text-fg-2 hover:bg-hover hover:text-fg disabled:text-fg-4"
+            class="grid h-7 w-7 place-items-center rounded-sm text-ink-2 hover:bg-secondary hover:text-ink disabled:text-icon"
             aria-label="Send answer"
           >
             <Show when={sending()} fallback={<Icon name="arrow-up" size={14} />}>
@@ -405,10 +402,10 @@ export function OpenQuestionCard(props: {
           </button>
         </div>
         <Show when={error()}>
-          <div class="text-[12px] text-bad">{error()}</div>
+          <div class="text-sm text-failed">{error()}</div>
         </Show>
         <Show when={sending()}>
-          <div class="text-[12px] text-fg-3">Sending your answer…</div>
+          <div class="text-sm text-ink-3">Sending your answer…</div>
         </Show>
       </div>
     </div>
@@ -421,15 +418,15 @@ export function AnsweredQuestionCard(props: {
   answeredAt: number
 }): JSX.Element {
   return (
-    <div class="overflow-hidden rounded-[4px] border border-line-inner bg-raised">
-      <div class="flex items-center gap-2.5 border-b border-line px-3 py-2">
+    <div class="overflow-hidden rounded-md border border-line-2 bg-card">
+      <div class="flex items-center gap-2.5 border-b border-line-1 px-3 py-2">
         <StatusGlyph state="done" size={16} />
-        <span class="min-w-0 flex-1 truncate text-[12.5px] text-fg-2">{props.question}</span>
+        <span class="min-w-0 flex-1 truncate text-sm text-ink-2">{props.question}</span>
         <span class="mono-meta shrink-0">answered · {ago(props.answeredAt)}</span>
       </div>
       <div class="flex items-center gap-2 px-3 py-2">
-        <Icon name="check" size={14} class="text-ok" />
-        <span class="text-[13px] text-fg">{props.answer}</span>
+        <Icon name="check" size={14} class="text-done" />
+        <span class="text-base text-ink">{props.answer}</span>
       </div>
     </div>
   )
@@ -437,10 +434,10 @@ export function AnsweredQuestionCard(props: {
 
 export function SystemNotice(props: { text: string }): JSX.Element {
   return (
-    <div class="flex items-center gap-2.5 text-[12px] text-fg-3">
-      <span class="h-px flex-1 bg-line" />
+    <div class="flex items-center gap-2.5 text-sm text-ink-3">
+      <span class="h-px flex-1 bg-line-1" />
       <span class="whitespace-nowrap">{props.text}</span>
-      <span class="h-px flex-1 bg-line" />
+      <span class="h-px flex-1 bg-line-1" />
     </div>
   )
 }

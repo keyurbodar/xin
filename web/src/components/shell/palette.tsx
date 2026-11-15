@@ -18,8 +18,6 @@ type Item = {
 }
 
 const PAGES: readonly { title: string; meta: string; icon: IconName; path: string }[] = [
-  { title: "Home", meta: "Page", icon: "home", path: "/" },
-  { title: "Inbox", meta: "Page", icon: "inbox", path: "/inbox" },
   { title: "Extensions", meta: "Page", icon: "grid", path: "/extensions" },
   { title: "Schedules", meta: "Page", icon: "calendar", path: "/schedules" },
   { title: "Settings", meta: "Page", icon: "settings", path: "/settings/general" },
@@ -27,7 +25,6 @@ const PAGES: readonly { title: string; meta: string; icon: IconName; path: strin
 
 const ACTIONS: readonly { title: string; meta: string; icon: IconName; path: string }[] = [
   { title: "New project", meta: "Action", icon: "plus", path: "/new" },
-  { title: "Open Inbox", meta: "Action", icon: "inbox", path: "/inbox" },
 ]
 
 const TABS: readonly { id: Kind | "all"; label: string }[] = [
@@ -125,7 +122,7 @@ function Marked(props: { text: string; query: string }): JSX.Element {
     <For each={parts()}>
       {(part) => (
         <Show when={part.hit} fallback={<>{part.text}</>}>
-          <span class="text-fg underline decoration-accent underline-offset-[3px]">{part.text}</span>
+          <span class="text-ink underline decoration-primary underline-offset-[3px]">{part.text}</span>
         </Show>
       )}
     </For>
@@ -217,34 +214,34 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
 
   return (
     <Show when={props.open}>
-      <div class="fixed inset-0 z-50 flex justify-center bg-page/80" onMouseDown={close}>
+      <div class="fixed inset-0 z-50 flex justify-center bg-bg/80" onMouseDown={close}>
         <div
-          class="crosshair enter mt-[150px] h-fit w-[560px] overflow-hidden rounded-[4px] border border-line-inner bg-surface shadow-[0_8px_12px_rgb(0_0_0/50%)]"
+          class="crosshair enter mt-[150px] h-fit w-[560px] overflow-hidden rounded-md border border-line-2 bg-panel shadow-[0_8px_12px_rgb(0_0_0/50%)]"
           onMouseDown={(event) => event.stopPropagation()}
           role="dialog"
           aria-modal="true"
           aria-label="Command palette"
         >
-          <div class="flex h-12 items-center gap-2.5 border-b border-line px-4">
-            <Icon name="search" size={16} class="text-fg-3" />
+          <div class="flex h-12 items-center gap-2.5 border-b border-line-1 px-4">
+            <Icon name="search" size={16} class="text-ink-3" />
             <input
               ref={input}
               value={query()}
               onInput={(event) => setQuery(event.currentTarget.value)}
               placeholder="Search projects, threads, pages and actions"
-              class="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-fg-4"
+              class="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-icon"
             />
             <span class="kbd">esc</span>
           </div>
 
-          <div class="flex gap-0.5 border-b border-line px-2.5 py-1.5">
+          <div class="flex gap-0.5 border-b border-line-1 px-2.5 py-1.5">
             <For each={TABS}>
               {(entry) => (
                 <button
                   type="button"
                   onClick={() => setTab(entry.id)}
-                  class="flex h-6 items-center rounded-[2px] px-2 text-[12px]"
-                  classList={{ "bg-selected text-fg": tab() === entry.id, "text-fg-3 hover:text-fg-2": tab() !== entry.id }}
+                  class="flex h-6 items-center rounded-sm px-2 text-sm"
+                  classList={{ "bg-hover text-ink": tab() === entry.id, "text-ink-3 hover:text-ink-2": tab() !== entry.id }}
                 >
                   {entry.label}
                 </button>
@@ -253,7 +250,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
           </div>
 
           <div class="max-h-[420px] overflow-y-auto pb-1.5">
-            <Show when={results().length > 0} fallback={<div class="px-4 py-6 text-center text-[12.5px] text-fg-3">Nothing matches that.</div>}>
+            <Show when={results().length > 0} fallback={<div class="px-4 py-6 text-center text-sm text-ink-3">Nothing matches that.</div>}>
               <For each={groups()}>
                 {(group) => (
                   <>
@@ -264,10 +261,10 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
                           type="button"
                           onMouseEnter={() => setCursor(position(item))}
                           onClick={() => choose(item)}
-                          class="mx-1.5 flex h-9 w-[calc(100%-12px)] items-center gap-2.5 rounded-[2px] px-2.5 text-left text-[12.5px]"
+                          class="mx-1.5 flex h-9 w-[calc(100%-12px)] items-center gap-2.5 rounded-sm px-2.5 text-left text-sm"
                           classList={{
-                            "bg-selected text-fg": cursor() === position(item),
-                            "text-fg-2": cursor() !== position(item),
+                            "bg-hover text-ink": cursor() === position(item),
+                            "text-ink-2": cursor() !== position(item),
                           }}
                         >
                           <Show
@@ -276,7 +273,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
                               <Icon
                                 name={item.icon ?? "file"}
                                 size={14}
-                                class={cursor() === position(item) ? "text-fg" : "text-fg-3"}
+                                class={cursor() === position(item) ? "text-ink" : "text-ink-3"}
                               />
                             }
                           >
@@ -295,7 +292,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
             </Show>
           </div>
 
-          <div class="flex h-9 items-center gap-3.5 border-t border-line px-4 text-[11px] text-fg-4">
+          <div class="flex h-9 items-center gap-3.5 border-t border-line-1 px-4 text-2xs text-icon">
             <span class="flex items-center gap-1.5">
               <span class="kbd">↑</span>
               <span class="kbd">↓</span>move

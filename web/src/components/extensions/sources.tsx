@@ -128,8 +128,8 @@ export function Sources(): JSX.Element {
       <div class="flex max-w-[880px] flex-col gap-6 px-8 pb-12 pt-6">
         <div>
           <span class="label">Extensions › Sources</span>
-          <h2 class="mt-1.5 text-[18px] font-medium tracking-[-0.02em]">Where extensions come from</h2>
-          <p class="mt-1.5 max-w-[560px] text-[12.5px] leading-relaxed text-fg-3">
+          <h2 class="mt-1.5 text-lg font-medium tracking-[-0.02em]">Where extensions come from</h2>
+          <p class="mt-1.5 max-w-[560px] text-sm leading-relaxed text-ink-3">
             Discover searches every index URL that is on. Each index is one https document in the market format; packages from
             a URL or git build stay off until you enable them.
           </p>
@@ -141,8 +141,8 @@ export function Sources(): JSX.Element {
 
         <Show when={note()}>
           {(message) => (
-            <div class="flex items-center gap-2 rounded-[4px] border border-ok/30 bg-ok-bg px-3.5 py-2.5 text-[12.5px] text-fg-2">
-              <Glyph name="check" size={13} class="text-ok" />
+            <div class="flex items-center gap-2 rounded-md border border-done/30 bg-done-soft px-3.5 py-2.5 text-sm text-ink-2">
+              <Glyph name="check" size={13} class="text-done" />
               {message()}
             </div>
           )}
@@ -166,7 +166,7 @@ export function Sources(): JSX.Element {
                 <section class="flex flex-col gap-2.5">
                   <div class="flex items-center gap-2">
                     <span class="label">Indexes</span>
-                    <span class="text-[12px] text-fg-3">
+                    <span class="text-sm text-ink-3">
                       {indexes().length} {indexes().length === 1 ? "source" : "sources"}
                     </span>
                   </div>
@@ -174,20 +174,20 @@ export function Sources(): JSX.Element {
                     <Show
                       when={indexes().length > 0}
                       fallback={
-                        <div class="px-3.5 py-3 text-[12.5px] text-fg-3">
+                        <div class="px-3.5 py-3 text-sm text-ink-3">
                           No index is configured. Discover has nothing to read until you add one.
                         </div>
                       }
                     >
                       <For each={indexes()}>
                         {(url) => (
-                          <div class="flex items-center gap-3 border-b border-line px-3.5 py-2.5 last:border-0">
-                            <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[2px] border border-line-inner bg-hover text-fg-2">
+                          <div class="flex items-center gap-3 border-b border-line-1 px-3.5 py-2.5 last:border-0">
+                            <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary text-ink-2">
                               <Glyph name="globe" size={15} />
                             </span>
                             <div class="min-w-0 flex-1">
-                              <span class="block truncate font-mono text-[11.5px] text-fg">{url}</span>
-                              <span class="block text-[11.5px] text-fg-3">On · market format 1</span>
+                              <span class="block truncate font-mono text-xs text-ink">{url}</span>
+                              <span class="block text-xs text-ink-3">On · market format 1</span>
                             </div>
                             <Toggle
                               on
@@ -199,8 +199,8 @@ export function Sources(): JSX.Element {
                         )}
                       </For>
                     </Show>
-                    <div class="flex items-center gap-2 border-t border-line px-3.5 py-2.5">
-                      <Glyph name="plus" size={13} class="text-fg-3" />
+                    <div class="flex items-center gap-2 border-t border-line-1 px-3.5 py-2.5">
+                      <Glyph name="plus" size={13} class="text-ink-3" />
                       <input
                         value={draft()}
                         onInput={(event) => setDraft(event.currentTarget.value)}
@@ -239,11 +239,11 @@ export function Sources(): JSX.Element {
           </div>
           <Panel>
             <PolicyRow icon="shield" title="Signed packages only" detail="Every tarball is checked against the integrity the index declares." value="On" />
-            <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5">
-              <Glyph name="refresh" size={14} class="shrink-0 text-fg-2" />
+            <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5">
+              <Glyph name="refresh" size={14} class="shrink-0 text-ink-2" />
               <div class="min-w-0 flex-1">
-                <span class="block text-[12.5px] text-fg">Auto-update</span>
-                <span class="block text-[11.5px] leading-snug text-fg-3">
+                <span class="block text-sm text-ink">Auto-update</span>
+                <span class="block text-xs leading-snug text-ink-3">
                   Patch versions apply when indexes refresh; a minor or major version asks here first.
                 </span>
               </div>
@@ -262,14 +262,14 @@ export function Sources(): JSX.Element {
           <section class="flex flex-col gap-2.5">
             <div class="flex items-center gap-2">
               <span class="label">Skipped versions</span>
-              <span class="text-[12px] text-fg-3">Updates you told this build to ignore</span>
+              <span class="text-sm text-ink-3">Updates you told this build to ignore</span>
             </div>
             <Panel>
               <For each={skipped()}>
                 {(entry) => (
-                  <div class="flex items-center gap-3 border-b border-line px-3.5 py-2.5 last:border-0">
-                    <Glyph name="package" size={13} class="shrink-0 text-fg-3" />
-                    <span class="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-2">
+                  <div class="flex items-center gap-3 border-b border-line-1 px-3.5 py-2.5 last:border-0">
+                    <Glyph name="package" size={13} class="shrink-0 text-ink-3" />
+                    <span class="min-w-0 flex-1 truncate font-mono text-xs text-ink-2">
                       {entry.name}
                       {entry.version === undefined ? "" : `@${entry.version}`}
                     </span>
@@ -286,19 +286,19 @@ export function Sources(): JSX.Element {
         <section class="flex flex-col gap-2.5">
           <div class="flex items-center gap-2">
             <span class="label">Compiled packages</span>
-            <span class="text-[12px] text-fg-3">In the deployed image; not removable</span>
+            <span class="text-sm text-ink-3">In the deployed image; not removable</span>
           </div>
           <Panel>
             <Show
               when={installed().length > 0}
-              fallback={<div class="px-3.5 py-3 text-[12.5px] text-fg-3">No package metadata in this build.</div>}
+              fallback={<div class="px-3.5 py-3 text-sm text-ink-3">No package metadata in this build.</div>}
             >
               <For each={installed()}>
                 {(entry) => (
-                  <div class="flex items-center gap-3 border-b border-line px-3.5 py-2 last:border-0">
-                    <Glyph name="package" size={13} class="text-fg-3" />
-                    <span class="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-2">{entry.package}</span>
-                    <span class="font-mono text-[11px] text-fg-4">{entry.version}</span>
+                  <div class="flex items-center gap-3 border-b border-line-1 px-3.5 py-2 last:border-0">
+                    <Glyph name="package" size={13} class="text-ink-3" />
+                    <span class="min-w-0 flex-1 truncate font-mono text-xs text-ink-2">{entry.package}</span>
+                    <span class="font-mono text-2xs text-icon">{entry.version}</span>
                   </div>
                 )}
               </For>
@@ -312,13 +312,13 @@ export function Sources(): JSX.Element {
 
 function PolicyRow(props: { icon: "shield" | "refresh" | "user"; title: string; detail: string; value: string }): JSX.Element {
   return (
-    <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5 last:border-0">
-      <Glyph name={props.icon} size={14} class="shrink-0 text-fg-2" />
+    <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5 last:border-0">
+      <Glyph name={props.icon} size={14} class="shrink-0 text-ink-2" />
       <div class="min-w-0 flex-1">
-        <span class="block text-[12.5px] text-fg">{props.title}</span>
-        <span class="block text-[11.5px] leading-snug text-fg-3">{props.detail}</span>
+        <span class="block text-sm text-ink">{props.title}</span>
+        <span class="block text-xs leading-snug text-ink-3">{props.detail}</span>
       </div>
-      <span class="shrink-0 rounded-[2px] border border-line-inner px-1.5 py-0.5 font-mono text-[10.5px] text-fg-2">
+      <span class="shrink-0 rounded-sm border border-line-2 px-1.5 py-0.5 font-mono text-2xs text-ink-2">
         {props.value}
       </span>
     </div>

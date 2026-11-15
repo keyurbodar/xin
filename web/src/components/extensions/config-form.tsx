@@ -264,12 +264,12 @@ export function ConfigForm(props: {
     <div class="flex min-h-0 flex-col gap-3">
       <div class="flex items-center gap-2">
         <span class="label">Settings</span>
-        <div class="ml-auto flex items-center gap-0.5 rounded-[2px] border border-line-inner p-px">
+        <div class="ml-auto flex items-center gap-0.5 rounded-sm border border-line-2 p-px">
           <button
             type="button"
             onClick={() => setMode("form")}
-            class="h-6 rounded-[1px] px-2 text-[11.5px]"
-            classList={{ "bg-selected text-fg": mode() === "form", "text-fg-3": mode() !== "form" }}
+            class="h-6 rounded-2xs px-2 text-xs"
+            classList={{ "bg-hover text-ink": mode() === "form", "text-ink-3": mode() !== "form" }}
           >
             Form
           </button>
@@ -279,8 +279,8 @@ export function ConfigForm(props: {
               setRaw(JSON.stringify(configOf(fields()), null, 2))
               setMode("raw")
             }}
-            class="h-6 rounded-[1px] px-2 font-mono text-[11px]"
-            classList={{ "bg-selected text-fg": mode() === "raw", "text-fg-3": mode() !== "raw" }}
+            class="h-6 rounded-2xs px-2 font-mono text-2xs"
+            classList={{ "bg-hover text-ink": mode() === "raw", "text-ink-3": mode() !== "raw" }}
           >
             Raw
           </button>
@@ -297,7 +297,7 @@ export function ConfigForm(props: {
               setRaw(event.currentTarget.value)
             }}
             spellcheck={false}
-            class="min-h-[220px] w-full resize-y rounded-[2px] border border-line-inner bg-page p-3 font-mono text-[11.5px] leading-relaxed text-fg focus:border-line-strong focus:outline-none"
+            class="min-h-[220px] w-full resize-y rounded-sm border border-line-2 bg-bg p-3 font-mono text-xs leading-relaxed text-ink focus:border-line-3 focus:outline-none"
             aria-label="Raw config JSON"
           />
         }
@@ -305,25 +305,25 @@ export function ConfigForm(props: {
         <Show
           when={fields().length > 0}
           fallback={
-            <div class="rounded-[4px] border border-dashed border-line-inner px-3.5 py-4">
-              <p class="text-[12.5px] text-fg-2">This row declares no settings schema.</p>
-              <p class="mt-1 text-[11.5px] text-fg-3">
+            <div class="rounded-md border border-dashed border-line-2 px-3.5 py-4">
+              <p class="text-sm text-ink-2">This row declares no settings schema.</p>
+              <p class="mt-1 text-xs text-ink-3">
                 Raw mode still writes a config object through plugin.configure, if the row accepts one.
               </p>
             </div>
           }
         >
-          <div class="flex flex-col overflow-hidden rounded-[4px] border border-line">
+          <div class="flex flex-col overflow-hidden rounded-md border border-line-1">
             <For each={fields()}>
               {(field) => {
                 const problem = () => problems().get(field.key)
                 return (
-                  <div class="grid grid-cols-[200px_1fr] items-start gap-4 border-b border-line px-3.5 py-3 last:border-0">
+                  <div class="grid grid-cols-[200px_1fr] items-start gap-4 border-b border-line-1 px-3.5 py-3 last:border-0">
                     <div class="min-w-0">
-                      <span class="block text-[12.5px] text-fg">{field.label}</span>
+                      <span class="block text-sm text-ink">{field.label}</span>
                       <span class="mono-meta block">{field.key}</span>
                       <Show when={field.description}>
-                        {(description) => <span class="mt-1 block text-[11.5px] leading-snug text-fg-3">{description()}</span>}
+                        {(description) => <span class="mt-1 block text-xs leading-snug text-ink-3">{description()}</span>}
                       </Show>
                     </div>
                     <div class="min-w-0">
@@ -338,7 +338,7 @@ export function ConfigForm(props: {
                             }
                             spellcheck={false}
                             class={INPUT}
-                            classList={{ "border-bad/50": problem() !== undefined }}
+                            classList={{ "border-failed/50": problem() !== undefined }}
                           />
                         )}
                       </Show>
@@ -355,7 +355,7 @@ export function ConfigForm(props: {
                               )
                             }
                             class={`${INPUT} max-w-[160px] font-mono`}
-                            classList={{ "border-bad/50": problem() !== undefined }}
+                            classList={{ "border-failed/50": problem() !== undefined }}
                           />
                         )}
                       </Show>
@@ -384,7 +384,7 @@ export function ConfigForm(props: {
                             spellcheck={false}
                             placeholder="One entry per line"
                             class={`${MONO_INPUT} h-auto min-h-[64px] resize-y py-2 leading-relaxed`}
-                            classList={{ "border-bad/50": problem() !== undefined }}
+                            classList={{ "border-failed/50": problem() !== undefined }}
                           />
                         )}
                       </Show>
@@ -417,12 +417,12 @@ export function ConfigForm(props: {
                             }
                             spellcheck={false}
                             class={`${MONO_INPUT} h-auto min-h-[64px] resize-y py-2 leading-relaxed`}
-                            classList={{ "border-bad/50": problem() !== undefined }}
+                            classList={{ "border-failed/50": problem() !== undefined }}
                           />
                         )}
                       </Show>
                       <Show when={problem()}>
-                        {(message) => <span class="mt-1 block text-[11.5px] text-bad">{message()}</span>}
+                        {(message) => <span class="mt-1 block text-xs text-failed">{message()}</span>}
                       </Show>
                     </div>
                   </div>
@@ -439,12 +439,12 @@ export function ConfigForm(props: {
 
       <div class="flex items-center gap-2">
         <Show when={problems().size > 0}>
-          <span class="text-[11.5px] text-bad">
+          <span class="text-xs text-failed">
             {problems().size} {problems().size === 1 ? "field needs" : "fields need"} fixing
           </span>
         </Show>
         <Show when={saved()}>
-          <span class="flex items-center gap-1.5 text-[11.5px] text-fg-3">
+          <span class="flex items-center gap-1.5 text-xs text-ink-3">
             <GlyphCheck /> Saved
           </span>
         </Show>

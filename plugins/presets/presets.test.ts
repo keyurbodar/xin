@@ -11,6 +11,15 @@ const context = BACKGROUND_CONTEXT
 const FILES = ["read", "write", "edit"]
 const THREAD_PROMPT = "You are a thread named"
 const PACKAGE = "ingle-plugin-presets-test"
+const LEAN_OMITTED = [
+  "schedule_create",
+  "schedule_list",
+  "schedule_view",
+  "schedule_edit",
+  "get_goal",
+  "create_goal",
+  "update_goal",
+]
 const MINIMAL: readonly string[] = ["tool-memory", "tool-skills"]
 
 type PresetRow = { readonly id: string; readonly plugin: string; readonly config?: Record<string, unknown> }
@@ -190,6 +199,41 @@ describe("presets", () => {
     expect(offered, JSON.stringify(offers.seen.map((offer) => offer.tools))).toBeDefined()
     if (offered === undefined) return
     for (const name of FILES) expect(offered.tools, name).not.toContain(name)
+    expect(offered.tools).toContain("remember")
+  }, 20_000)
+
+  it("leaves the schedule and goal tools out of a delegated thread but not its coordinator", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "lean")
+    await chooseModel(stub, project.coordinatorId)
+    const coordinator = recordOffers()
+    await turn(stub, project.coordinatorId, "go", [coordinatorStep(coordinator)])
+    expect(coordinator.latest().tools).toEqual(expect.arrayContaining(LEAN_OMITTED))
+
+    const offers = recordOffers()
+    await delegateThread(stub, project.coordinatorId, offers)
+
+    const offered = threadOffer(offers)
+    expect(offered, JSON.stringify(offers.seen.map((offer) => offer.tools))).toBeDefined()
+    if (offered === undefined) return
+    for (const name of LEAN_OMITTED) expect(offered.tools, name).not.toContain(name)
+    expect(offered.tools).toContain("remember")
+    expect(offered.tools).toContain("read")
+  }, 20_000)
+
+  it("keeps a delegated thread lean when its project preset is the full one", async () => {
+    const stub = fresh()
+    await install(stub, rows())
+    const project = await makeProject(stub, "lean-all", "test-all")
+    await chooseModel(stub, project.coordinatorId)
+    const offers = recordOffers()
+
+    await delegateThread(stub, project.coordinatorId, offers)
+
+    const offered = threadOffer(offers)
+    expect(offered, JSON.stringify(offers.seen.map((offer) => offer.tools))).toBeDefined()
+    if (offered === undefined) return
+    for (const name of LEAN_OMITTED) expect(offered.tools, name).not.toContain(name)
     expect(offered.tools).toContain("remember")
   }, 20_000)
 

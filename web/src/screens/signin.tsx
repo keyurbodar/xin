@@ -40,21 +40,21 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
   }
 
   return (
-    <div class="flex h-full flex-col bg-page text-fg">
+    <div class="flex h-full flex-col bg-bg text-ink">
       <OnboardingTopBar items={STEPS} />
       <div class="atmos flex min-h-0 flex-1 justify-center overflow-y-auto px-6 pb-16 pt-[22vh]">
         <form onSubmit={submit} class="enter w-full max-w-[440px]">
           <div class="label">Owner access</div>
-          <h1 class="mt-3 text-[28px] font-light leading-[1.15] tracking-[-0.03em]">Sign in to your workspace</h1>
-          <p class="mt-3 text-[13px] leading-[1.6] text-fg-3">
+          <h1 class="mt-3 text-2xl font-light leading-[1.15] tracking-[-0.03em]">Sign in to your workspace</h1>
+          <p class="mt-3 text-base leading-[1.6] text-ink-3">
             This instance belongs to one owner. Paste the owner token from your deploy output to unlock it.
           </p>
 
           <div class="mt-6 flex flex-col gap-1.5">
-            <span class="text-[12px] font-medium text-fg-2">Owner token</span>
+            <span class="text-sm font-medium text-ink-2">Owner token</span>
             <div
-              class="flex h-10 items-center gap-2 rounded-[2px] border bg-surface px-3 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]"
-              classList={{ "border-bad": error() !== undefined && !busy(), "border-line-inner": error() === undefined || busy() }}
+              class="flex h-10 items-center gap-2 rounded-sm border bg-panel px-3 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.18)]"
+              classList={{ "border-failed": error() !== undefined && !busy(), "border-line-2": error() === undefined || busy() }}
             >
               <input
                 type={revealed() ? "text" : "password"}
@@ -68,22 +68,22 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
                 placeholder="owner token"
                 aria-label="Owner token"
                 disabled={busy()}
-                class="h-full min-w-0 flex-1 bg-transparent font-mono text-[12.5px] tracking-[0.08em] text-fg placeholder:tracking-normal placeholder:text-fg-4 focus:outline-none disabled:opacity-60"
+                class="h-full min-w-0 flex-1 bg-transparent font-mono text-sm tracking-[0.08em] text-ink placeholder:tracking-normal placeholder:text-icon focus:outline-none disabled:opacity-60"
               />
               <button
                 type="button"
                 onClick={() => setRevealed((shown) => !shown)}
-                class="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-3 hover:text-fg"
+                class="shrink-0 font-mono text-2xs uppercase tracking-[0.08em] text-ink-3 hover:text-ink"
               >
                 {revealed() ? "Hide" : "Show"}
               </button>
             </div>
-            <span class="text-[12px] leading-[1.5] text-fg-3">
+            <span class="text-sm leading-[1.5] text-ink-3">
               The token stays in this browser. Rotate it any time under Settings, Profile + token.
             </span>
           </div>
 
-          <p class="mt-2 min-h-4 text-[12px] leading-4 text-bad" role="alert">
+          <p class="mt-2 min-h-4 text-sm leading-4 text-failed" role="alert">
             {error() ?? ""}
           </p>
 
@@ -91,11 +91,11 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
             type="submit"
             disabled={busy() || value().trim() === ""}
             aria-busy={busy()}
-            class="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[2px] bg-accent text-[14px] font-medium text-ink enabled:hover:bg-accent disabled:opacity-40"
+            class="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-primary text-base font-medium text-on-primary enabled:hover:bg-primary disabled:opacity-40"
           >
             {busy() ? (
               <>
-                <span class="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-[1.5px] border-ink/25 border-t-ink" />
+                <span class="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-[1.5px] border-on-primary/25 border-t-on-primary" />
                 Checking…
               </>
             ) : (
@@ -103,8 +103,8 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
             )}
           </button>
 
-          <p class="mt-4 text-center text-[11.5px] leading-[1.5] text-fg-3">
-            Lost the token? Read <span class="font-mono text-[11px] text-fg-2">OWNER_TOKEN</span> from the deployment’s
+          <p class="mt-4 text-center text-xs leading-[1.5] text-ink-3">
+            Lost the token? Read <span class="font-mono text-2xs text-ink-2">OWNER_TOKEN</span> from the deployment’s
             secrets.
           </p>
         </form>

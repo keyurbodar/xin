@@ -5,6 +5,7 @@ import {
   type ConversationId,
   defineTask,
   type DocumentReader,
+  type Extension,
   type Harness,
   type ModelRef,
   type Registry,
@@ -129,6 +130,7 @@ export type ThreadDeps = {
   arm(wake?: Wake): Promise<void>
   readonly intake: IntakeService
   readonly watchdog: WatchdogService
+  threadRemovals(parent: ConversationId): readonly Extension[]
   settled(event: ThreadSettled): void
 }
 
@@ -554,6 +556,7 @@ export function lifecycle(deps: ThreadDeps): Threads {
     await configure(tx, child.id, {
       model: args.model,
       tools: { remove: [...args.removeTools] },
+      extensions: { remove: [...deps.threadRemovals(args.parentId)] },
       instructions:
         args.forkFrom === undefined
           ? `You are a thread named "${args.title}". Answer the brief; your last message is reported to the coordinator.`

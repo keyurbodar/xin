@@ -1,8 +1,22 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import { fauxAssistantMessage, type FauxResponseStep, type TranscriptContext } from "@earendil-works/pi-ai"
-import type { Conversation, EntryRecord, TaskId } from "@earendil-works/pi-durable"
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  type FauxResponseStep,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai"
+import {
+  type Conversation,
+  defineExtension,
+  defineTool,
+  type EntryRecord,
+  type TaskId,
+  UsageDoc,
+} from "@earendil-works/pi-durable"
+import { obj } from "@earendil-works/pi-schema"
 import { runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
+import { DREAM_MODEL, requests as utilityRequests, script as scriptUtility } from "../../test/plugins/m7.ts"
 import { answer, M8_MODEL, respond } from "../../test/plugins/m8.ts"
 import { cmd, eventually, field, fresh, rowOf, turn, type Stub } from "../../test/support.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
@@ -36,7 +50,113 @@ const mount = (stub: Stub): Promise<void> =>
     await home.loader.await()
   })
 
+const HEAD = "HEAD-OF-THE-LOG "
+const MIDDLE = "middle-of-the-log "
+const TAIL = " TAIL-OF-THE-LOG"
+const LOG = `${HEAD}${MIDDLE.repeat(2_400)}${TAIL}`
+const DUMPS = 5
+const SUMMARY_ASK = "Create a structured context checkpoint summary"
+
+const dump = defineTool({
+  name: "dump_log",
+  description: "Return the whole build log.",
+  parameters: obj({}),
+  execute: async () => ({ output: [{ type: "text", text: LOG }] }),
+})
+
+const withDump = (stub: Stub): Promise<void> =>
+  runInDurableObject(stub, async (home: Home) => {
+    if (!home.loader.ctx.pi.installed.has("tool-compact-dump"))
+      home.loader.ctx.pi.install(defineExtension({ name: "tool-compact-dump", tools: [dump] }))
+  })
+
+const useUtility = (stub: Stub): Promise<void> =>
+  runInDurableObject(stub, (home: Home) =>
+    home.db.run(
+      "INSERT INTO kv (key, value) VALUES ('owner.defaults', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      JSON.stringify({ utility: DREAM_MODEL }),
+    ),
+  )
+
+const summaryRequests = (seen: readonly TranscriptContext[]): number =>
+  seen.filter((request) => promptText(request.messages).includes(SUMMARY_ASK)).length
+
+const chat = (seen: TranscriptContext[]): FauxResponseStep[] =>
+  Array.from({ length: 8 }, (_, index) => (request: TranscriptContext) => {
+    seen.push(request)
+    if (promptText(request.messages).includes(SUMMARY_ASK)) return fauxAssistantMessage("default summary")
+    if (index < DUMPS)
+      return fauxAssistantMessage([fauxToolCall("dump_log", {}, { id: `dump-${index}` })], { stopReason: "toolUse" })
+    return fauxAssistantMessage(`answer ${index}`)
+  })
+
+async function thresholdCompaction(stub: Stub, firstText: string): Promise<string> {
+  await mount(stub)
+  await withDump(stub)
+  await turn(stub, `compact-log-${crypto.randomUUID()}`, { text: firstText })
+  await turn(stub, `compact-next-${crypto.randomUUID()}`, { text: "next ".repeat(24_000) })
+  await eventually(stub, async (home: Home) =>
+    (await history(await home.root())).some((candidate) => candidate.kind === "pi.compaction"),
+  )
+  const entries = await runInDurableObject(stub, async (home: Home) => history(await home.root()))
+  const entry = entries.find((candidate) => candidate.kind === "pi.compaction")
+  expect(entry?.data).toMatchObject({ reason: "threshold" })
+  return promptText([...(entry?.model ?? [])])
+}
+
 describe("compact", () => {
+  it("places a pruned transcript for a threshold compaction a huge tool result dominates, with no model call", async () => {
+    const stub = fresh()
+    const seen: TranscriptContext[] = []
+    respond(chat(seen))
+    scriptUtility([])
+    await useUtility(stub)
+
+    const summary = await thresholdCompaction(stub, "read the build log")
+
+    expect(summaryRequests(seen)).toBe(0)
+    expect(utilityRequests).toHaveLength(0)
+    expect(summary).toContain("[User]: read the build log")
+    expect(summary).toContain(HEAD)
+    expect(summary).toContain(TAIL)
+    expect(summary).toContain("chars pruned")
+    expect(summary.split(MIDDLE.trim()).length - 1).toBeLessThan(120 * DUMPS)
+    expect(summary.length).toBeLessThan(20_000)
+  }, 60_000)
+
+  it("summarizes on the owner's utility model when pruning leaves too much", async () => {
+    const stub = fresh()
+    const seen: TranscriptContext[] = []
+    respond(chat(seen))
+    scriptUtility([fauxAssistantMessage("utility summary")])
+    await useUtility(stub)
+
+    const summary = await thresholdCompaction(stub, `read the build log ${"notes ".repeat(8_000)}`)
+
+    expect(summaryRequests(seen)).toBe(0)
+    expect(utilityRequests).toHaveLength(1)
+    expect(promptText(utilityRequests[0]!.messages)).toContain(SUMMARY_ASK)
+    expect(promptText(utilityRequests[0]!.messages)).toContain(TAIL)
+    expect(summary).toContain("utility summary")
+    const usage = await runInDurableObject(stub, async (home: Home) =>
+      home.harness.snapshot(UsageDoc, (await home.root()).id, context),
+    )
+    expect(usage?.models[`${DREAM_MODEL.provider}/${DREAM_MODEL.modelId}`]?.totalTokens).toBeGreaterThan(0)
+  }, 60_000)
+
+  it("leaves the summary to pi on the conversation's model without a utility default", async () => {
+    const stub = fresh()
+    const seen: TranscriptContext[] = []
+    respond(chat(seen))
+    scriptUtility([])
+
+    const summary = await thresholdCompaction(stub, `read the build log ${"notes ".repeat(8_000)}`)
+
+    expect(summaryRequests(seen)).toBe(1)
+    expect(utilityRequests).toHaveLength(0)
+    expect(summary).toContain("default summary")
+  }, 60_000)
+
   it("condenses an idle conversation and answers with the compaction id", async () => {
     const stub = fresh()
     await mount(stub)
@@ -119,7 +239,8 @@ describe("compact", () => {
     expect(manifest.ingle.plugins.compact).toEqual({
       module: "./index.ts",
       title: "Compaction",
-      description: "Manual conversation compaction for the owner.",
+      description:
+        "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
     })
     expect(manifest.ingle.bundle).toEqual([{ id: "compact", plugin: "compact" }])
   })
