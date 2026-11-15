@@ -1,8 +1,9 @@
-import { runInDurableObject } from "cloudflare:test"
+import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { env, exports } from "cloudflare:workers"
 import { describe, expect, it } from "vitest"
-import { TEST_PROFILE } from "../test/worker.ts"
+import { TEST_PROFILE, type Home as TestHome } from "../test/worker.ts"
 import type { Home } from "./host.ts"
+import { blobKey, sha256 } from "./r2env.ts"
 
 const call = (path: string, init?: RequestInit) => exports.default.fetch(new Request(`https://ingle.test${path}`, init))
 
@@ -88,12 +89,145 @@ describe("Worker auth", () => {
   }, 30_000)
 })
 
-async function rotate(): Promise<string> {
-  const reply = await call("/v1/cmd", {
+const owner = () => env.HOME.get(env.HOME.idFromName("owner")) as DurableObjectStub<TestHome>
+
+const bearer = (token: string) => ({ authorization: `Bearer ${token}` })
+
+const dial = (presented: string) =>
+  call("/v1/socket", { headers: { upgrade: "websocket", "sec-websocket-protocol": `ingle, bearer.${presented}` } })
+
+/** Home requests and `kv` token reads one call costs, counted around it. */
+async function costOf(
+  send: () => Promise<Response>,
+): Promise<{ status: number; requests: number; tokenReads: number }> {
+  const tokenReads = async () => (await owner().meter()).statements["SELECT kv"]?.calls ?? 0
+  const [requests, reads] = [await owner().requests(), await tokenReads()]
+  const reply = await send()
+  await reply.body?.cancel()
+  return {
+    status: reply.status,
+    requests: (await owner().requests()) - requests,
+    tokenReads: (await tokenReads()) - reads,
+  }
+}
+
+describe("Home auth boundary", () => {
+  const ROUTES: readonly (readonly [string, RequestInit])[] = [
+    ["/v1/status", {}],
+    ["/v1/cmd", { method: "POST", body: JSON.stringify({ id: "nope-1", op: "session.rotate", args: {} }) }],
+    ["/v1/auth", { method: "POST" }],
+    ["/v1/repair", { method: "POST", body: JSON.stringify({ drop: "all" }) }],
+    ["/v1/socket", { headers: { upgrade: "websocket" } }],
+    ["/v1/files/commit", { method: "POST", body: "{}" }],
+    ["/v1/build/packages", {}],
+  ]
+
+  it("refuses every route called on the home directly without a valid token", async () => {
+    const stub = owner()
+    for (const [path, init] of ROUTES)
+      for (const headers of [{}, bearer("nope"), bearer(""), { authorization: "test-owner-token" }]) {
+        const reply = await stub.fetch(
+          new Request(`https://ingle.internal${path}`, { ...init, headers: { ...init.headers, ...headers } }),
+        )
+        expect(reply.status, `${path} ${JSON.stringify(headers)}`).toBe(401)
+      }
+    for (const protocol of ["ingle, bearer.nope", "ingle, bearer.", "ingle"]) {
+      const reply = await stub.fetch(
+        new Request("https://ingle.internal/v1/socket", {
+          headers: { upgrade: "websocket", "sec-websocket-protocol": protocol },
+        }),
+      )
+      expect(reply.status, protocol).toBe(401)
+    }
+  })
+
+  it("answers a bearer-less request in the Worker without waking the home", async () => {
+    for (const headers of [{}, { authorization: "Bearer " }, { "sec-websocket-protocol": "ingle" }])
+      expect(await costOf(() => call("/v1/status", { headers }))).toEqual({ status: 401, requests: 0, tokenReads: 0 })
+  })
+
+  it("authorizes a rotated token in the one forwarded request, with no storage read after the first", async () => {
+    const token = await rotate()
+    expect(await costOf(() => call("/v1/status", { headers: bearer(token) }))).toEqual({
+      status: 200,
+      requests: 1,
+      tokenReads: 0,
+    })
+    expect(await costOf(() => call("/v1/status", { headers: bearer("test-owner-token") }))).toEqual({
+      status: 200,
+      requests: 1,
+      tokenReads: 0,
+    })
+    expect(await costOf(() => call("/v1/status", { headers: bearer("nope") }))).toEqual({
+      status: 401,
+      requests: 1,
+      tokenReads: 0,
+    })
+  })
+
+  it("re-reads the rotated token once after an eviction and still refuses the one it replaced", async () => {
+    const stub = env.HOME.get(env.HOME.newUniqueId()) as DurableObjectStub<TestHome>
+    const replaced = await rotate(stub)
+    const token = await rotate(stub)
+    await evictDurableObject(stub)
+    const status = (presented: string) =>
+      stub.fetch(new Request("https://ingle.internal/v1/status", { headers: bearer(presented) }))
+    const reads = async () => (await stub.meter()).statements["SELECT kv"]?.calls ?? 0
+    expect((await status("test-owner-token")).status).toBe(200)
+    const booted = await reads()
+    expect((await status(token)).status).toBe(200)
+    expect((await reads()) - booted).toBe(1)
+    expect((await status(replaced)).status).toBe(401)
+    expect((await status(token)).status).toBe(200)
+    expect((await reads()) - booted).toBe(1)
+  }, 30_000)
+
+  it("refuses a socket handshake with a wrong or replaced token and accepts the rotated one", async () => {
+    const replaced = await rotate()
+    const token = await rotate()
+    expect((await dial("nope")).status).toBe(401)
+    expect((await dial(replaced)).status).toBe(401)
+    const accepted = await dial(token)
+    expect(accepted.status).toBe(101)
+    accepted.webSocket?.accept()
+    accepted.webSocket?.close()
+  })
+
+  it("closes an open socket on rotation, and the token it dialled with is dead at its next handshake", async () => {
+    const before = await rotate()
+    const reply = await dial(before)
+    const ws = reply.webSocket
+    if (ws === null) throw new Error(`no socket: ${reply.status}`)
+    const closed = new Promise<number>((resolve) => ws.addEventListener("close", (event) => resolve(event.code)))
+    ws.accept()
+    await rotate()
+    expect(await closed).toBe(1000)
+    expect((await dial(before)).status).toBe(401)
+  })
+
+  it("refuses an upload with a wrong or replaced token before any byte reaches R2", async () => {
+    const replaced = await rotate()
+    const token = await rotate()
+    for (const presented of ["nope", replaced]) {
+      const body = `refused-${crypto.randomUUID()}`
+      const reply = await call("/files/projects/auth/refused.txt", { method: "PUT", headers: bearer(presented), body })
+      expect(reply.status).toBe(401)
+      expect(await env.FILES.head(blobKey(await sha256(new TextEncoder().encode(body))))).toBeNull()
+    }
+    const body = `accepted-${crypto.randomUUID()}`
+    const accepted = await call("/files/projects/auth/accepted.txt", { method: "PUT", headers: bearer(token), body })
+    expect(accepted.status).toBe(200)
+    expect(await env.FILES.head(blobKey(await sha256(new TextEncoder().encode(body))))).not.toBeNull()
+  })
+})
+
+async function rotate(stub?: DurableObjectStub<TestHome>): Promise<string> {
+  const init = {
     method: "POST",
     headers: { authorization: "Bearer test-owner-token", "content-type": "application/json" },
     body: JSON.stringify({ id: `rotate-${crypto.randomUUID()}`, op: "session.rotate", args: {} }),
-  })
+  }
+  const reply = await (stub === undefined ? call("/v1/cmd", init) : stub.fetch("https://ingle.internal/v1/cmd", init))
   const body = await reply.json<{ ok: boolean; result?: unknown }>()
   const token = typeof body.result === "object" && body.result !== null ? Reflect.get(body.result, "token") : undefined
   if (!body.ok || typeof token !== "string") throw new Error(`session.rotate: ${JSON.stringify(body)}`)

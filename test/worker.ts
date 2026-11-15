@@ -154,6 +154,8 @@ export type TestEnv = Omit<Env, "HOME"> & {
   readonly ECHO: Fetcher
 }
 
+const REQUESTS = Symbol.for("ingle.test.requests")
+
 export class Home extends ProductHome {
   readonly hanging = Promise.withResolvers<void>()
 
@@ -164,6 +166,17 @@ export class Home extends ProductHome {
 
   meter(): Sample {
     return sample()
+  }
+
+  override fetch(request: Request): Promise<Response> {
+    const holder = globalThis as unknown as Record<symbol, number | undefined>
+    holder[REQUESTS] = (holder[REQUESTS] ?? 0) + 1
+    return super.fetch(request)
+  }
+
+  /** Requests this isolate's homes have answered, kept across evictions like the meter. */
+  requests(): number {
+    return (globalThis as unknown as Record<symbol, number | undefined>)[REQUESTS] ?? 0
   }
 
   meterLabel(label: string): void {
