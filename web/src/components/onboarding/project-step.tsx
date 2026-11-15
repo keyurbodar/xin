@@ -80,7 +80,7 @@ export function ProjectStep(): JSX.Element {
   }
 
   return (
-    <div class="enter px-6 pb-16 pt-12 md:pt-16">
+    <div class="im-content px-6 pb-16 pt-12 md:pt-16">
       <div class="mx-auto grid w-full max-w-[1024px] grid-cols-1 justify-center gap-12 lg:grid-cols-[560px_400px] lg:gap-16">
         <div class="flex flex-col gap-4">
           <StepHeading
