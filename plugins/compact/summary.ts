@@ -151,6 +151,7 @@ async function summarizeOnUtility(
         cacheRetention: "none",
         maxTokens: model.maxTokens > 0 ? Math.min(reserve, model.maxTokens) : reserve,
         ...(sessionId === undefined ? {} : { sessionId }),
+        ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
       },
     )
     return summaryText(message)
