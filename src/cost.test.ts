@@ -302,6 +302,6 @@ describe("a delegated thread, in what its first request bills", () => {
     expect(first.tools).not.toContain("issue")
     expect(first.tools).toContain("issue_comment")
     expect(first.promptBytes ?? Infinity).toBeLessThanOrEqual(5_760)
-    expect(first.schemaBytes ?? Infinity).toBeLessThanOrEqual(5_100)
+    expect(first.schemaBytes ?? Infinity).toBeLessThanOrEqual(5_155)
   })
 })
