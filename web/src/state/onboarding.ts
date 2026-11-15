@@ -4,11 +4,13 @@ import {
   ensureCaptain,
   firstOpenStep,
   readProgress,
+  skipTarget,
   type CaptainInput,
   type CaptainResult,
   type SendKey,
 } from "../lib/onboarding.ts"
 import { enablePush as enableBrowserPush } from "../lib/push.ts"
+import { navigate } from "../lib/router.ts"
 import { models, saveCredential, type ModelInfo } from "./settings.ts"
 
 export type OnboardingStepId = "signin" | "provider" | "captain" | "thread"
@@ -71,6 +73,23 @@ export function nextStep(): void {
 
 export function previousStep(): void {
   goToStep(stepIndex() - 1)
+}
+
+export function canSkip(step: 1 | 2 | 3): boolean {
+  return skipTarget(step, firstCaptain() !== undefined) !== undefined
+}
+
+export function skipStep(step: 1 | 2 | 3): void {
+  const target = skipTarget(step, firstCaptain() !== undefined)
+  if (target === undefined) return
+  switch (target.kind) {
+    case "next":
+      nextStep()
+      return
+    case "shell":
+      navigate("/")
+      return
+  }
 }
 
 export function forgetProvider(): void {

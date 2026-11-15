@@ -1,5 +1,15 @@
 import { afterEach, expect, test } from "bun:test"
-import { captainModel, ensureCaptain, firstOpenStep, readProgress, sendKeyFor, type CaptainInput, type SendKey } from "./onboarding.ts"
+import {
+  captainModel,
+  ensureCaptain,
+  firstOpenStep,
+  projectPlan,
+  readProgress,
+  sendKeyFor,
+  skipTarget,
+   type CaptainInput,
+  type SendKey,
+} from "./onboarding.ts"
 
 type Sent = { readonly id: string; readonly op: string; readonly args: Record<string, unknown> }
 
@@ -92,7 +102,7 @@ test("the first project is created under a command id derived from its slug, so 
 test("a live project is reused for the Captain", async () => {
   serve({
     "captain.list": () => [],
-    "workspace.read": () => ({ projects: [{ id: "prj_old", archived: true }, { id: "prj_live", archived: false }] }),
+    "workspace.read": () => ({ projects: [{ id: "prj_old", slug: "old", archived: true }, { id: "prj_live", slug: "live", archived: false }] }),
     "captain.create": (args) => ({ ...profile("Bosun", "bosun"), projectId: args["projectId"] }),
   })
   await ensureCaptain(input, "cmd-1")
@@ -117,4 +127,55 @@ test("a new Captain gets an explicit model: the picked one, else the first keyed
   expect(captainModel(keyed, "anthropic/m2")).toEqual({ provider: "anthropic", modelId: "m2" })
   expect(captainModel(keyed, "openai/gone")).toEqual({ provider: "anthropic", modelId: "m1" })
   expect(captainModel([], "")).toBeUndefined()
+})
+
+test("an archived onboarding project is not revived: the Captain gets a new project under a free slug", async () => {
+  serve({
+    "captain.list": () => [],
+    "workspace.read": () => ({ projects: [{ id: "prj_onboarding-bosun", slug: "bosun", archived: true }] }),
+    "project.create": (args) => ({ id: `prj_onboarding-${String(args["slug"])}`, slug: args["slug"], archived: false }),
+    "captain.create": (args) => ({ ...profile("Bosun", "bosun"), projectId: args["projectId"] }),
+  })
+  await ensureCaptain(input, "cmd-1")
+  const created = sent.filter((entry) => entry.op === "project.create")
+  expect(created.map((entry) => [entry.id, entry.args["slug"]])).toEqual([["onboarding-bosun-2", "bosun-2"]])
+  expect(sent.find((entry) => entry.op === "captain.create")?.args["projectId"]).toBe("prj_onboarding-bosun-2")
+})
+
+test("a create that replays an archived project moves on to the next free slug", async () => {
+  serve({
+    "captain.list": () => [],
+    "workspace.read": () => ({ projects: [] }),
+    "project.create": (args) =>
+      args["slug"] === "bosun"
+        ? { id: "prj_onboarding-bosun", slug: "bosun", archived: true }
+        : { id: `prj_onboarding-${String(args["slug"])}`, slug: args["slug"], archived: false },
+    "captain.create": (args) => ({ ...profile("Bosun", "bosun"), projectId: args["projectId"] }),
+  })
+  await ensureCaptain(input, "cmd-1")
+  expect(sent.filter((entry) => entry.op === "project.create").map((entry) => entry.id)).toEqual([
+    "onboarding-bosun",
+    "onboarding-bosun-2",
+  ])
+  expect(sent.find((entry) => entry.op === "captain.create")?.args["projectId"]).toBe("prj_onboarding-bosun-2")
+})
+
+test("the project plan reuses a live project, else picks the first slug no project holds", () => {
+  const archived = { id: "prj_a", slug: "bosun", archived: true }
+  expect(projectPlan([archived, { id: "prj_b", slug: "x", archived: false }], "Bosun")).toEqual({ kind: "reuse", id: "prj_b" })
+  expect(projectPlan([], "Bosun")).toEqual({ kind: "create", slug: "bosun", commandId: "onboarding-bosun" })
+  expect(projectPlan([archived, { id: "prj_c", slug: "bosun-2", archived: true }], "Bosun")).toEqual({
+    kind: "create",
+    slug: "bosun-3",
+    commandId: "onboarding-bosun-3",
+  })
+})
+
+test("Skip moves past the key step, leaves for the shell from the Captain and thread steps, and hides once a Captain exists", () => {
+  expect(skipTarget(1, false)).toEqual({ kind: "next" })
+  expect(skipTarget(1, true)).toEqual({ kind: "next" })
+  expect(skipTarget(2, false)).toEqual({ kind: "shell" })
+  expect(skipTarget(3, false)).toEqual({ kind: "shell" })
+  expect(skipTarget(2, true)).toBeUndefined()
+  expect(skipTarget(3, true)).toBeUndefined()
 })

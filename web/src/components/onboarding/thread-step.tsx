@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, Index, Match, Show, Switch, type JSX } from "solid-js"
 import { ArrowUp, Check, Circle } from "lucide-solid"
-import { IngleMark } from "./chrome.tsx"
+import { BrandMark } from "../ui/brand-mark.tsx"
 import { QuietButton, StatusLine } from "./controls.tsx"
 import { itemsOf, OwnerBubble, type EntryItem } from "../chat/entries.tsx"
 import { Markdown } from "../chat/markdown.tsx"
@@ -16,6 +16,7 @@ import {
   openNotifications,
   previousStep,
   sendFirstMessage,
+  skipStep,
 } from "../../state/onboarding.ts"
 import { sendKeyFor, type CaptainResult, type SendKey } from "../../lib/onboarding.ts"
 import { navigate } from "../../lib/router.ts"
@@ -168,7 +169,7 @@ export function ThreadStep(): JSX.Element {
           <p class="text-base text-ink-2">Create a Captain first, then send it the first thing to work on.</p>
           <div class="mt-4 flex items-center justify-between">
             <QuietButton label="Back" back onClick={previousStep} />
-            <QuietButton label="Skip for now" onClick={() => navigate("/")} />
+            <QuietButton label="Skip for now" onClick={() => skipStep(3)} />
           </div>
         </section>
       }
@@ -231,7 +232,7 @@ function CaptainChat(props: { captain: CaptainResult }): JSX.Element {
       <section class="im-arrive flex min-w-0 flex-1 flex-col rounded-lg border border-line-1 bg-card">
         <header class="flex h-11 items-center gap-2 border-b border-line-1 px-4">
           <span class="grid h-5 w-5 place-items-center rounded-sm bg-secondary text-ink">
-            <IngleMark size={13} />
+            <BrandMark class="h-[13px] w-[13px]" />
           </span>
           <span class="text-base font-medium">{props.captain.name}</span>
           <span class="ml-auto text-sm text-ink-3">Step 4 of 4</span>

@@ -1,20 +1,16 @@
 import { expect, test } from "bun:test"
-import { wrapFocus } from "./focus.ts"
+import { nextFocus } from "./focus.ts"
 
-const items = ["not-now", "turn-on"] as const
-
-test("Tab from the last control or from outside the dialog wraps to the first", () => {
-  expect(wrapFocus(items, "turn-on", false)).toBe("not-now")
-  expect(wrapFocus(items, null, false)).toBe("not-now")
+test("Tab wraps from the last stop to the first, and Shift+Tab from the first to the last", () => {
+  expect(nextFocus(3, 0, false)).toBe(1)
+  expect(nextFocus(3, 2, false)).toBe(0)
+  expect(nextFocus(3, 0, true)).toBe(2)
+  expect(nextFocus(3, 1, true)).toBe(0)
 })
 
-test("Shift+Tab from the first control or from outside wraps to the last", () => {
-  expect(wrapFocus(items, "not-now", true)).toBe("turn-on")
-  expect(wrapFocus<string>(items, "checklist", true)).toBe("turn-on")
-})
-
-test("Tab between controls inside the dialog is left to the browser", () => {
-  expect(wrapFocus(items, "not-now", false)).toBeUndefined()
-  expect(wrapFocus(items, "turn-on", true)).toBeUndefined()
-  expect(wrapFocus([], null, false)).toBeUndefined()
+test("focus outside the trap enters at the near end, and an empty trap moves nothing", () => {
+  expect(nextFocus(3, -1, false)).toBe(0)
+  expect(nextFocus(3, -1, true)).toBe(2)
+  expect(nextFocus(0, -1, false)).toBeUndefined()
+  expect(nextFocus(1, 0, false)).toBe(0)
 })
