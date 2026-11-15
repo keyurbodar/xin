@@ -15,14 +15,13 @@ export function apply(ctx: Context): void {
 function commentTool(issues: IssuesService) {
   return defineTool({
     name: "issue_comment",
-    description: "Comment on an issue. replyTo: top comment id; mentions: conv ids to wake.",
-    parameters: obj({ id: int(), body: str(), replyTo: opt(int()), mentions: opt(arr(int())) }),
+    description: "Comment on an issue; mentions are conversation ids to wake.",
+    parameters: obj({ id: int(), body: str(), mentions: opt(arr(int())) }),
     replay: "unsafe",
-    execute: async ({ id, body, replyTo, mentions }, api) =>
+    execute: async ({ id, body, mentions }, api) =>
       refusing(async () => {
         const { events } = await issues.comment({ kind: "thread", id: api.conversationId }, id, {
           body,
-          ...(replyTo === undefined ? {} : { replyTo }),
           ...(mentions === undefined ? {} : { mentions }),
         })
         return `Commented on #${id} (comment ${events[0]?.id ?? "?"}).`
