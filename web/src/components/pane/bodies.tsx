@@ -29,6 +29,10 @@ export function projectFiles(slug: string): Promise<readonly FileEntry[]> {
   return rows
 }
 
+export function forgetProjectFiles(slug: string): void {
+  listed.delete(slug)
+}
+
 export function recentProjectFiles(slug: string): Promise<readonly FileEntry[]> {
   const cached = listed.get(slug)
   return cached !== undefined && Date.now() - cached.at < FILES_FRESH_MS ? cached.rows : projectFiles(slug)
