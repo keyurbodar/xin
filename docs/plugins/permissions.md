@@ -12,6 +12,7 @@ A plugin declares the guarded services it uses in its manifest's `permissions`. 
 | `conversations` | `harness` | Read and write your conversations |
 | `plugins` | `kernel`, `packages`, `plugins` | Install, enable and configure plugins |
 | `network` | nothing it can enforce | Connect to the internet |
+| `owner` | none: `ops.run` with you as the actor | Act as you: run any op you can, such as starting threads |
 | `runtime` | `host` | Full access to your Home: raw storage, keys and the file bucket |
 
 `runtime` reaches the raw SQLite, the encryption key and the R2 bucket, so it implies all the others. Avoid it if a narrower service does the job. Services outside this table, such as `pi`, `ops`, `prompts`, `clock` and `wire`, need no permission.
