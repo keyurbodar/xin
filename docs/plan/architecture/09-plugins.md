@@ -148,6 +148,7 @@ A package declares its plugins in `package.json`. Everything is optional; a plug
 | `conversations` | `harness` | Read and write your conversations |
 | `plugins` | `kernel`, `packages`, `plugins` | Install, enable and configure plugins |
 | `network` | none (no sandbox to enforce it) | Connect to the internet |
+| `owner` | none: `ops.run` with the owner as actor | Act as you: run any op you can, such as starting threads |
 | `runtime` | `host` (raw Durable Object storage, environment and bindings) | Full access to your Home: raw storage, keys and the file bucket |
 
 `runtime` implies every other permission, since `host` reaches the raw SQLite, `KEK` and the R2 bucket. Eleven shipped plugins inject `host` today and declare it; narrowing them to guarded `kv` and bucket services is the way to shrink that list.

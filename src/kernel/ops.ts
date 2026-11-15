@@ -57,10 +57,13 @@ export class Ops extends Service {
     }, `ops.define(${op.name})`)
   }
 
-  /** Run one command. A plugin row may act only for an agent: acting as the owner would let it run any op. */
+  /** Run one command. A plugin row acts for an agent, or as the owner when its manifest declares `owner`: that lets it run any op. */
   run(command: Command, actor: Actor): Promise<Outcome> {
-    const row = kernelOf(this)?.pluginRow(this.ctx.fiber)
-    if (actor.kind !== "agent" && row !== undefined)
+    const kernel = kernelOf(this)
+    const row = kernel?.pluginRow(this.ctx.fiber)
+    const asOwner =
+      actor.kind === "owner" && row !== undefined && kernel?.permissionsOf(row)?.includes("owner") === true
+    if (actor.kind !== "agent" && row !== undefined && !asOwner)
       return Promise.reject(new Error(`${row} may run ops only as an agent, not as ${actor.kind}`))
     return state.get(this).commands.run(command, actor)
   }

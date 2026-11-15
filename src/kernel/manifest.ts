@@ -22,6 +22,7 @@ export const PERMISSIONS = {
   plugins: { title: "Install, enable and configure plugins", services: ["kernel", "packages", "plugins"] },
   network: { title: "Connect to the internet", services: [] },
   runtime: { title: "Full access to your Home: raw storage, keys and the file bucket", services: ["host"] },
+  owner: { title: "Act as you: run any op you can, such as starting threads", services: [] },
 } as const satisfies Readonly<Record<string, { readonly title: string; readonly services: readonly string[] }>>
 
 export type Permission = keyof typeof PERMISSIONS
