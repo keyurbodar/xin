@@ -308,7 +308,13 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
   const paneShown = createMemo(() => paneOpen() || sheet.mounted())
   const pane = createMemo(() =>
     paneShown() ? (
-      <ProjectPane project={props.project} expanded={expanded()} onExpand={setExpanded} onOpenThread={openThread} />
+      <ProjectPane
+        project={props.project}
+        conversationId={thread()?.id ?? props.project.coordinatorId}
+        expanded={expanded()}
+        onExpand={setExpanded}
+        onOpenThread={openThread}
+      />
     ) : undefined,
   )
   const filePath = (): string | undefined => {

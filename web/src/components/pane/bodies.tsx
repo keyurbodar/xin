@@ -1,8 +1,9 @@
 import { createResource, For, Show, type JSX } from "solid-js"
 import { firstLoad } from "../../lib/loading.ts"
-import { Clock, File } from "lucide-solid"
+import { Clock } from "lucide-solid"
 import { cmd } from "../../lib/api.ts"
-import { ago, bytes } from "../../lib/format.ts"
+import { drive, type DriveListing } from "../../lib/drive.ts"
+import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import { STATE_WORD, visualState, type SignalState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
@@ -10,33 +11,26 @@ import { Signal } from "../ui/signal.tsx"
 import { Loading, PaneSkeleton, RowSkeleton } from "../ui/skeleton.tsx"
 import { EmptyState, ResourceError } from "../chat/ui.tsx"
 
-export type FileEntry = {
-  readonly path: string
-  readonly size: number
-  readonly type: string
-  readonly sha256: string
-  readonly updated_at: number
-}
-
 const FILES_FRESH_MS = 60_000
-const listed = new Map<string, { readonly at: number; readonly rows: Promise<readonly FileEntry[]> }>()
+const listed = new Map<string, { readonly at: number; readonly listing: Promise<DriveListing> }>()
 
-export function projectFiles(slug: string): Promise<readonly FileEntry[]> {
-  const rows = cmd<readonly FileEntry[]>("file.list", { prefix: `/projects/${slug}` }).then((found) =>
-    found.toSorted((left, right) => right.updated_at - left.updated_at),
-  )
-  listed.set(slug, { at: Date.now(), rows })
-  rows.catch(() => listed.delete(slug))
-  return rows
+export function projectFiles(slug: string): Promise<DriveListing> {
+  const listing = drive.list({ kind: "project", id: slug }, "").then((found) => ({
+    ...found,
+    files: found.files.toSorted((left, right) => right.updated_at - left.updated_at),
+  }))
+  listed.set(slug, { at: Date.now(), listing })
+  listing.catch(() => listed.delete(slug))
+  return listing
 }
 
 export function forgetProjectFiles(slug: string): void {
   listed.delete(slug)
 }
 
-export function recentProjectFiles(slug: string): Promise<readonly FileEntry[]> {
+export function recentProjectFiles(slug: string): Promise<DriveListing> {
   const cached = listed.get(slug)
-  return cached !== undefined && Date.now() - cached.at < FILES_FRESH_MS ? cached.rows : projectFiles(slug)
+  return cached !== undefined && Date.now() - cached.at < FILES_FRESH_MS ? cached.listing : projectFiles(slug)
 }
 
 export function fileName(path: string): string {
@@ -49,51 +43,6 @@ export function openFile(slug: string, path: string): void {
 
 export const PANE_ROW =
   "im-hover flex w-full items-start gap-2.5 rounded-sm px-2 py-1.5 text-left"
-
-export function FilesView(props: { slug: string }): JSX.Element {
-  const [files, { refetch }] = createResource(() => props.slug, projectFiles)
-  const root = (): string => `/projects/${props.slug}/`
-  const folder = (path: string): string => {
-    const relative = path.startsWith(root()) ? path.slice(root().length) : path
-    const cut = relative.lastIndexOf("/")
-    return cut === -1 ? "project root" : relative.slice(0, cut)
-  }
-
-  return (
-    <Loading when={firstLoad(files)} skeleton={<PaneSkeleton rows={5} />} label="Loading files">
-      <Show when={files.error}>
-        <ResourceError what="files" error={files.error} onRetry={() => void refetch()} />
-      </Show>
-      <Show when={files()}>
-        {(rows) => (
-          <Show
-            when={rows().length > 0}
-            fallback={<EmptyState pictogram="folder" title="No files yet" detail="Files a thread writes land here under the project folder." />}
-          >
-            <div class="flex items-center gap-2 px-2 pb-1">
-              <span class="flex-1 text-xs text-ink-3">{rows().length} files</span>
-              <span class="truncate font-mono text-2xs text-icon">{root()}</span>
-            </div>
-            <For each={rows()}>
-              {(entry) => (
-                <button type="button" onClick={() => openFile(props.slug, entry.path)} class={PANE_ROW}>
-                  <File size={16} stroke-width={1.5} class="mt-0.5 shrink-0 text-ink-3" />
-                  <span class="min-w-0 flex-1">
-                    <span class="block truncate text-sm text-ink">{fileName(entry.path)}</span>
-                    <span class="block truncate text-xs text-ink-3">
-                      {folder(entry.path)} · {ago(entry.updated_at)}
-                    </span>
-                  </span>
-                  <span class="shrink-0 font-mono text-2xs text-ink-3">{bytes(entry.size)}</span>
-                </button>
-              )}
-            </For>
-          </Show>
-        )}
-      </Show>
-    </Loading>
-  )
-}
 
 type JobEntry = {
   readonly id: number
