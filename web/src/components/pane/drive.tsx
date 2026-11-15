@@ -1,31 +1,21 @@
-import { batch, createMemo, createResource, createSignal, For, Show, untrack, type JSX, type Resource } from "solid-js"
+import { batch, createMemo, createResource, createSignal, For, Show, untrack, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
-import {
-  ArrowLeft,
-  BookText,
-  Check,
-  ChevronRight,
-  ChevronsUpDown,
-  Copy,
-  File,
-  Folder,
-  FolderInput,
-  History,
-  Link2,
-  Pencil,
-  Sparkles,
-  Trash2,
-  Upload,
-} from "lucide-solid"
+import { ArrowLeft, BookText, Check, ChevronRight, ChevronsUpDown, File, Folder, FolderInput, History, Pencil, Sparkles, Trash2, Upload } from "lucide-solid"
 import { putFile } from "../../lib/api.ts"
 import {
+  crumbsOf,
   drive,
+  folderOf,
   INSTRUCTIONS_CAP,
   INSTRUCTIONS_FILE,
+  moveTarget,
+  pickScope,
   reservedOf,
-  shareUrl,
+  rowsOf,
+  scopeTitle,
   SKILLS_FOLDER,
+  uploadPath,
   type DriveEntry,
   type DriveFile,
   type DriveListing,
@@ -34,57 +24,20 @@ import {
   type Reserved,
 } from "../../lib/drive.ts"
 import { ago, bytes } from "../../lib/format.ts"
+import { firstLoad, settled } from "../../lib/loading.ts"
 import { Button } from "../ui/button.tsx"
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
-import { Skullet } from "../ui/skeleton.tsx"
+import { Spinner } from "../ui/loaders.tsx"
+import { Loading, PaneSkeleton } from "../ui/skeleton.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL } from "../shell/menu.ts"
 import { Markdown } from "../chat/markdown.tsx"
-import { createPaneAction, EmptyState, PanelGhost, ResourceError, Spinner } from "../chat/ui.tsx"
+import { createPaneAction, EmptyState, ResourceError } from "../chat/ui.tsx"
 import { fileName as baseName, forgetProjectFiles, PANE_ROW } from "./bodies.tsx"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
 const CENTER_ROW = PANE_ROW.replace("items-start", "items-center")
 
-/** A resource's value, or undefined while it holds an error: reading a failed resource throws into the screen's boundary. */
-export function settled<T>(resource: Resource<T>): T | undefined {
-  return resource.error === undefined ? resource.latest : undefined
-}
 const SMALL = { size: 14, "stroke-width": 1.5 } as const
-
-type Row =
-  | { readonly kind: "folder"; readonly name: string; readonly path: string; readonly files: number }
-  | { readonly kind: "file"; readonly name: string; readonly entry: DriveEntry }
-
-function rowsOf(files: readonly DriveEntry[], folder: string): readonly Row[] {
-  const folders = new Map<string, number>()
-  const leaves: Row[] = []
-  for (const entry of files) {
-    if (!entry.path.startsWith(folder)) continue
-    const rest = entry.path.slice(folder.length)
-    const cut = rest.indexOf("/")
-    if (cut === -1) leaves.push({ kind: "file", name: rest, entry })
-    else folders.set(rest.slice(0, cut), (folders.get(rest.slice(0, cut)) ?? 0) + 1)
-  }
-  const dirs = [...folders].map(([name, files]): Row => ({ kind: "folder", name, path: `${folder}${name}/`, files }))
-  return [...dirs.toSorted((a, b) => a.name.localeCompare(b.name)), ...leaves.toSorted((a, b) => a.name.localeCompare(b.name))]
-}
-
-function scopeTitle(mounted: MountedScope): string {
-  switch (mounted.scope.kind) {
-    case "user":
-      return "Personal"
-    case "project":
-      return "Project"
-    case "captain":
-      return "Captain"
-    case "automation":
-      return "Automation"
-    default: {
-      const _exhaustive: never = mounted.scope
-      return _exhaustive
-    }
-  }
-}
 
 function ReservedIcon(props: { reserved: Reserved | undefined; class: string }): JSX.Element {
   return (
@@ -107,24 +60,8 @@ function ReservedNote(props: { reserved: Reserved }): JSX.Element {
   )
 }
 
-function CopyLink(props: { url: string }): JSX.Element {
-  const [copied, setCopied] = createSignal(false)
-  const copy = async (): Promise<void> => {
-    await navigator.clipboard.writeText(props.url)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
-  return (
-    <button type="button" class={ICON_BUTTON} aria-label={copied() ? "Copied" : "Copy link"} title={copied() ? "Copied" : "Copy link"} onClick={() => void copy()}>
-      <Show when={copied()} fallback={<Copy {...SMALL} />}>
-        <Check {...SMALL} class="text-done" />
-      </Show>
-    </button>
-  )
-}
-
 /** The right pane's Drive: the conversation's scopes, one folder at a time, and the open file. One drive.list per folder open and per op. */
-export function DriveView(props: { conversationId: number; projectId: string; projectSlug: string }): JSX.Element {
+export function DriveView(props: { conversationId: number; prefer: DriveScope; projectSlug: string }): JSX.Element {
   const [scopes, { refetch: refetchScopes }] = createResource(() => props.conversationId, drive.scopes)
   const [picked, setPicked] = createSignal<string | undefined>()
   const [folder, setFolder] = createSignal("")
@@ -133,15 +70,7 @@ export function DriveView(props: { conversationId: number; projectId: string; pr
   const [dropping, setDropping] = createSignal(false)
   const action = createPaneAction()
 
-  const current = createMemo((): MountedScope | undefined => {
-    const all = settled(scopes) ?? []
-    return (
-      all.find((mounted) => mounted.root === picked()) ??
-      all.find((mounted) => mounted.scope.kind === "project" && mounted.scope.id === props.projectId) ??
-      all.find((mounted) => mounted.scope.kind === "project") ??
-      all[0]
-    )
-  })
+  const current = createMemo(() => pickScope(settled(scopes) ?? [], picked(), props.prefer))
   const listKey = createMemo(() => {
     const mounted = current()
     return mounted === undefined ? undefined : `${mounted.root}\n${folder()}\n${version()}`
@@ -170,14 +99,9 @@ export function DriveView(props: { conversationId: number; projectId: string; pr
     if (mounted === undefined) return
     const list = Array.from(picked)
     void action.run("upload", async () => {
-      await Promise.all(list.map((file) => putFile(file, `${mounted.root}${folder()}${file.name.replaceAll("/", "-")}`)))
+      await Promise.all(list.map((file) => putFile(file, uploadPath(mounted.root, folder(), file.name))))
       reload()
     })
-  }
-
-  const crumbs = (): readonly { name: string; path: string }[] => {
-    const parts = folder().split("/").filter((part) => part !== "")
-    return parts.map((name, index) => ({ name, path: `${parts.slice(0, index + 1).join("/")}/` }))
   }
 
   return (
@@ -235,9 +159,9 @@ export function DriveView(props: { conversationId: number; projectId: string; pr
                     setOpen(undefined)
                   }}
                 >
-                  {scopeTitle(mounted())}
+                  {scopeTitle(mounted().scope)}
                 </button>
-                <For each={crumbs()}>
+                <For each={crumbsOf(folder())}>
                   {(crumb) => (
                     <>
                       <ChevronRight size={12} stroke-width={1.5} class="shrink-0 text-icon" />
@@ -266,7 +190,7 @@ export function DriveView(props: { conversationId: number; projectId: string; pr
               when={open()}
               keyed
               fallback={
-                <Skullet loading={listing.loading && settled(listing) === undefined} sample={() => <PanelGhost rows={6} />} label="Loading Drive">
+                <Loading when={firstLoad(listing)} skeleton={<PaneSkeleton rows={6} />} label="Loading Drive">
                   <Show when={listing.error}>
                     <ResourceError what="this folder" error={listing.error} onRetry={() => void refetchListing()} />
                   </Show>
@@ -298,12 +222,7 @@ export function DriveView(props: { conversationId: number; projectId: string; pr
                           <button type="button" class={PANE_ROW} onClick={() => setOpen(row.entry.path)}>
                             <ReservedIcon reserved={reservedOf(row.entry.path)} class="mt-0.5 shrink-0 text-ink-3" />
                             <span class="min-w-0 flex-1">
-                              <span class="flex items-center gap-1.5">
-                                <span class="truncate text-sm text-ink">{row.name}</span>
-                                <Show when={settled(listing)?.shares[row.entry.path] !== undefined}>
-                                  <Link2 size={12} stroke-width={1.5} class="shrink-0 text-primary-ink" aria-label="Shared" />
-                                </Show>
-                              </span>
+                              <span class="block truncate text-sm text-ink">{row.name}</span>
                               <span class="block truncate text-xs text-ink-3">
                                 {reservedOf(row.entry.path)?.kind === "instructions"
                                   ? "Instructions · "
@@ -319,7 +238,7 @@ export function DriveView(props: { conversationId: number; projectId: string; pr
                       }
                     </For>
                   </div>
-                </Skullet>
+                </Loading>
               }
             >
               {(path) => (
@@ -328,13 +247,12 @@ export function DriveView(props: { conversationId: number; projectId: string; pr
                   scopes={settled(scopes) ?? []}
                   path={path}
                   entry={openEntry()}
-                  shareId={settled(listing)?.shares[path]}
                   onBack={() => setOpen(undefined)}
                   onChanged={reload}
                   onMoved={(to, root) => {
                     if (root !== mounted().root) return choose(root)
                     batch(() => {
-                      setFolder(to.includes("/") ? to.slice(0, to.lastIndexOf("/") + 1) : "")
+                      setFolder(folderOf(to))
                       setOpen(to)
                       reload()
                     })
@@ -349,8 +267,8 @@ export function DriveView(props: { conversationId: number; projectId: string; pr
           </>
         )}
       </Show>
-      <Show when={scopes.loading && settled(scopes) === undefined}>
-        <PanelGhost rows={6} />
+      <Show when={firstLoad(scopes)}>
+        <PaneSkeleton rows={6} />
       </Show>
     </div>
   )
@@ -365,8 +283,8 @@ function ScopeMenu(props: { scopes: readonly MountedScope[]; current: MountedSco
       onSelect={(details) => props.onChoose(details.value)}
     >
       <Menu.Trigger class="flex h-7 min-w-0 items-center gap-1.5 rounded-sm px-2 text-sm text-ink transition-colors duration-[var(--dur-color)] hover:bg-secondary data-[state=open]:bg-hover">
-        <span class="truncate">{scopeTitle(props.current)}</span>
-        <span class="truncate text-ink-3">{props.current.root}</span>
+        <span class="shrink-0">{scopeTitle(props.current.scope)}</span>
+        <span class="min-w-0 truncate text-ink-3">{props.current.root}</span>
         <ChevronsUpDown size={12} stroke-width={1.5} class="shrink-0 text-icon" />
       </Menu.Trigger>
       <Portal>
@@ -377,7 +295,7 @@ function ScopeMenu(props: { scopes: readonly MountedScope[]; current: MountedSco
               <For each={props.scopes}>
                 {(mounted) => (
                   <Menu.Item value={mounted.root} class={MENU_ITEM}>
-                    <span class="min-w-0 flex-1 truncate">{scopeTitle(mounted)}</span>
+                    <span class="min-w-0 flex-1 truncate">{scopeTitle(mounted.scope)}</span>
                     <span class="truncate font-mono text-2xs text-ink-3">{mounted.root}</span>
                     <span class="w-3.5 shrink-0 text-ink-2">
                       <Show when={mounted.root === props.current.root}>
@@ -402,7 +320,6 @@ function FilePanel(props: {
   scopes: readonly MountedScope[]
   path: string
   entry: DriveEntry | undefined
-  shareId: string | undefined
   onBack: () => void
   onChanged: () => void
   onMoved: (to: string, root: string) => void
@@ -429,18 +346,6 @@ function FilePanel(props: {
       setMode("read")
       props.onChanged()
     })
-  const share = (): void =>
-    void action.run("share", async () => {
-      const link = await drive.share(scope(), props.path)
-      await navigator.clipboard.writeText(new URL(link.url, location.origin).href).catch(() => undefined)
-      props.onChanged()
-    })
-  const unshare = (): void =>
-    void action.run("share", async () => {
-      await drive.unshare(scope(), props.path)
-      props.onChanged()
-    })
-
   const text = (): string | null => settled(file)?.text ?? null
   const isText = (): boolean => text() !== null
 
@@ -476,11 +381,6 @@ function FilePanel(props: {
         >
           <History {...SMALL} />
         </button>
-        <Show when={props.shareId === undefined}>
-          <button type="button" class={ICON_BUTTON} aria-label="Share a link" title="Share a link" disabled={action.busy() === "share"} onClick={share}>
-            <Link2 {...SMALL} />
-          </button>
-        </Show>
         <button type="button" class={ICON_BUTTON} aria-label="Move or rename" title="Move or rename" onClick={() => setMoving(true)}>
           <FolderInput {...SMALL} />
         </button>
@@ -490,19 +390,6 @@ function FilePanel(props: {
       </div>
 
       <Show when={reserved()}>{(kind) => <ReservedNote reserved={kind()} />}</Show>
-
-      <Show when={props.shareId}>
-        {(id) => (
-          <div class="mx-2 mb-2 flex items-center gap-2 rounded-sm border border-primary/30 bg-primary-soft py-1 pl-2.5 pr-1 text-xs">
-            <Link2 size={12} stroke-width={1.5} class="shrink-0 text-primary-ink" />
-            <span class="min-w-0 flex-1 truncate font-mono text-2xs text-ink-2">{shareUrl(id(), props.path)}</span>
-            <CopyLink url={shareUrl(id(), props.path)} />
-            <button type="button" class="link shrink-0 pr-1.5 text-xs" disabled={action.busy() === "share"} onClick={unshare}>
-              Stop sharing
-            </button>
-          </div>
-        )}
-      </Show>
 
       <Show when={action.failed()}>
         {(message) => <p class="mx-2 mb-2 font-mono text-2xs text-failed">{message()}</p>}
@@ -561,11 +448,11 @@ function FilePanel(props: {
       </Show>
 
       <Show when={mode() === "read"}>
-        <Skullet loading={file.loading} sample={() => <PanelGhost rows={3} />} label="Opening file">
+        <Loading when={firstLoad(file)} skeleton={<PaneSkeleton rows={3} />} label="Opening file">
           <Show when={settled(file)}>
             {(loaded) => <FileBody file={loaded()} />}
           </Show>
-        </Skullet>
+        </Loading>
       </Show>
 
       <MoveDialog
@@ -583,7 +470,6 @@ function FilePanel(props: {
         open={deleting()}
         scope={scope()}
         path={props.path}
-        shared={props.shareId !== undefined}
         onClose={() => setDeleting(false)}
         onDeleted={() => {
           setDeleting(false)
@@ -631,7 +517,7 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
       <Show when={history.error}>
         <ResourceError what="history" error={history.error} onRetry={() => void refetch()} />
       </Show>
-      <Skullet loading={history.loading} sample={() => <PanelGhost rows={3} />} label="Loading history">
+      <Loading when={firstLoad(history)} skeleton={<PaneSkeleton rows={3} />} label="Loading history">
         <Show when={settled(history)}>
           {(data) => (
             <>
@@ -663,7 +549,7 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
             </>
           )}
         </Show>
-      </Skullet>
+      </Loading>
       <Show when={viewing()}>
         {(sha256) => (
           <div class="mt-2 flex flex-col gap-2 rounded-md border border-line-2 p-2">
@@ -676,9 +562,9 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
             <Show when={action.failed()}>
               {(message) => <p class="font-mono text-2xs text-failed">{message()}</p>}
             </Show>
-            <Skullet loading={older.loading} sample={() => <PanelGhost rows={2} />} label="Opening version">
+            <Loading when={firstLoad(older)} skeleton={<PaneSkeleton rows={2} />} label="Opening version">
               <Show when={settled(older)}>{(loaded) => <FileBody file={loaded()} />}</Show>
-            </Skullet>
+            </Loading>
           </div>
         )}
       </Show>
@@ -705,13 +591,13 @@ function MoveDialog(props: {
     },
   )
   const target = (): MountedScope | undefined => props.scopes.find((mounted) => mounted.root === root())
-  const destination = (): string => to().trim().replace(/^\/+/u, "")
-  const unchanged = (): boolean => destination() === props.path && root() === props.mounted.root
+  const destination = (): string | undefined => moveTarget(to(), props.path, root() === props.mounted.root)
   const submit = (): void => {
     const scope = target()
-    if (scope === undefined || destination() === "" || unchanged()) return
+    const path = destination()
+    if (scope === undefined || path === undefined) return
     void action.run("move", async () => {
-      const entry = await drive.move(props.mounted.scope, props.path, destination(), scope.scope)
+      const entry = await drive.move(props.mounted.scope, props.path, path, scope.scope)
       props.onMoved(entry.path, scope.root)
     })
   }
@@ -732,7 +618,7 @@ function MoveDialog(props: {
           <Button size="sm" variant="quiet" onClick={props.onClose}>
             Cancel
           </Button>
-          <Button size="sm" variant="primary" type="submit" disabled={destination() === "" || unchanged() || action.busy() !== undefined}>
+          <Button size="sm" variant="primary" type="submit" disabled={destination() === undefined || action.busy() !== undefined}>
             Move
           </Button>
         </>
@@ -744,14 +630,14 @@ function MoveDialog(props: {
             <For each={props.scopes}>
               {(mounted) => (
                 <option value={mounted.root}>
-                  {scopeTitle(mounted)} · {mounted.root}
+                  {scopeTitle(mounted.scope)} · {mounted.root}
                 </option>
               )}
             </For>
           </select>
         </Field>
       </Show>
-      <Field label="Path" hint={`Inside ${target()?.root ?? props.mounted.root}. Earlier versions and the share link move with the file.`}>
+      <Field label="Path" hint={`Inside ${target()?.root ?? props.mounted.root}. Earlier versions move with the file.`}>
         <input class={`${FIELD_INPUT} h-[34px] font-mono text-sm`} value={to()} onInput={(event) => setTo(event.currentTarget.value)} autofocus />
       </Field>
     </Dialog>
@@ -762,7 +648,6 @@ function DeleteDialog(props: {
   open: boolean
   scope: DriveScope
   path: string
-  shared: boolean
   onClose: () => void
   onDeleted: () => void
 }): JSX.Element {
@@ -797,7 +682,6 @@ function DeleteDialog(props: {
     >
       <p class="text-sm leading-[1.5] text-ink-2">
         {`${props.path} and its earlier versions are removed for good.`}
-        {props.shared ? " Its share link stops working." : ""}
         {reservedOf(props.path)?.kind === "instructions" ? " Conversations in this scope lose these instructions." : ""}
         {reservedOf(props.path)?.kind === "skill" ? " The skill is uninstalled from this scope." : ""}
       </p>

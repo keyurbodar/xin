@@ -2,8 +2,8 @@ import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, 
 import { activeProjects } from "../../state/home.ts"
 import { navigate } from "../../lib/router.ts"
 import { openThreadTab } from "../../state/tabs.ts"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
-import type { VisualState } from "../../lib/status.ts"
+import { Signal } from "../ui/signal.tsx"
+import type { SignalState } from "../../lib/status.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
 
 type Kind = "thread" | "project" | "page" | "action"
@@ -13,14 +13,14 @@ type Item = {
   readonly kind: Kind
   readonly title: string
   readonly meta: string
-  readonly state?: VisualState
+  readonly state?: SignalState
   readonly icon?: IconName
   readonly open: () => void
 }
 
 const PAGES: readonly { title: string; meta: string; icon: IconName; path: string }[] = [
   { title: "Extensions", meta: "Page", icon: "grid", path: "/extensions" },
-  { title: "Schedules", meta: "Page", icon: "calendar", path: "/schedules" },
+  { title: "Automations", meta: "Page", icon: "calendar", path: "/automations" },
   { title: "Settings", meta: "Page", icon: "settings", path: "/settings/general" },
 ]
 
@@ -56,12 +56,12 @@ function items(): readonly Item[] {
       icon: "folder",
       open: () => navigate(`/p/${project.slug}`),
     })
-    const states: readonly [VisualState, readonly { id: number; title: string; statusLine?: string }[]][] = [
-      ["waiting", project.threads.waiting],
+    const states: readonly [SignalState, readonly { id: number; title: string; statusLine?: string }[]][] = [
+      ["needs", project.threads.waiting],
       ["failed", project.threads.failed],
       ["working", project.threads.working],
       ["done", project.threads.completed],
-      ["cancelled", project.threads.cancelled],
+      ["idle", project.threads.cancelled],
     ]
     for (const [state, list] of states) {
       for (const thread of list) {
@@ -220,7 +220,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
     <Show when={props.open}>
       <div class="fixed inset-0 z-50 flex justify-center bg-bg/80" onMouseDown={close}>
         <div
-          class="crosshair mt-[150px] h-fit w-[560px] overflow-hidden rounded-md border border-line-2 bg-panel shadow-[0_8px_12px_rgb(0_0_0/50%)]"
+          class="crosshair mt-[150px] h-fit w-[560px] overflow-hidden rounded-md bg-panel shadow-[var(--shadow-popover)]"
           onMouseDown={(event) => event.stopPropagation()}
           role="dialog"
           aria-modal="true"
@@ -281,7 +281,7 @@ export function CommandPalette(props: { open: boolean; onClose: () => void }): J
                               />
                             }
                           >
-                            <StatusGlyph state={item.state ?? "queued"} size={16} />
+                            <Signal state={item.state ?? "queued"} size={16} />
                           </Show>
                           <span class="min-w-0 flex-1 truncate">
                             <Marked text={item.title} query={query()} />

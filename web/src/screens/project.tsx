@@ -21,15 +21,16 @@ import {
   type ThinkingLevel,
 } from "../state/conversation.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
+import { spaceRequests } from "../lib/spaces.ts"
 import { recordOf, numOf } from "../lib/parse.ts"
 import { openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
 import { modelName, models, searchModels, type ModelInfo, type ModelRef } from "../state/settings.ts"
 import { presets as presetStore, prompts } from "../state/extensions.ts"
-import { Menu } from "lucide-solid"
+import { Archive, GitFork, Menu, Settings } from "lucide-solid"
 import {
   openThreadTab,
+  openThreadTabs,
   paneOpen,
-  projectTabs,
   pruneThreadTabs,
   sidebarHidden,
   toggleSidebar,
@@ -40,11 +41,14 @@ import { createPresence } from "../components/shell/presence.ts"
 import { expandSlash } from "../lib/slash.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { navigate, param } from "../lib/router.ts"
-import { Skullet } from "../components/ui/skeleton.tsx"
-import { Transcript, TranscriptSkeleton, type PendingMessage } from "../components/chat/transcript.tsx"
+import { Loading, ThreadSkeleton } from "../components/ui/skeleton.tsx"
+import { Transcript, type PendingMessage } from "../components/chat/transcript.tsx"
 import { Composer } from "../components/chat/composer.tsx"
 import { ThreadConversation } from "../components/chat/panel.tsx"
-import { ConversationTabs } from "../components/shell/conversation-tabs.tsx"
+import { ConversationTabs, type ConversationAction } from "../components/shell/conversation-tabs.tsx"
+import { SideThreadDialog } from "../components/shell/side-thread.tsx"
+import { openNewThread } from "../components/shell/new-thread.tsx"
+import { ProjectMark } from "../components/chat/project-glyph.tsx"
 import { configureConversation, selectPreset } from "../state/context.ts"
 import { forgetProjectFiles } from "../components/pane/bodies.tsx"
 import { ProjectPane } from "../components/pane/pane.tsx"
@@ -53,7 +57,7 @@ import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 
-function ProjectChat(props: {
+export function ProjectChat(props: {
   project: ProjectSummary
   snapshot: Snapshot | undefined
   active: boolean
@@ -65,8 +69,7 @@ function ProjectChat(props: {
   const [older, setOlder] = createSignal<readonly EntryView[]>([])
   const [olderBefore, setOlderBefore] = createSignal<number | undefined>(undefined)
   const [olderDone, setOlderDone] = createSignal(false)
-  const projectRequests = (): readonly RequestRow[] =>
-    openRequests().filter((request) => request.projectId === props.project.id)
+  const projectRequests = (): readonly RequestRow[] => spaceRequests(props.project, openRequests())
 
   const answer = async (request: RequestRow, text: string): Promise<void> => {
     await respondToQuestion(request, text)
@@ -167,7 +170,7 @@ function ProjectChat(props: {
 
   return (
     <div class="flex min-h-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
-      <Skullet loading={snapshot() === undefined} sample={() => <TranscriptSkeleton />} label="Loading conversation">
+      <Loading when={snapshot() === undefined} skeleton={<ThreadSkeleton />} label="Loading conversation">
         <Show when={snapshot()}>
           {(value) => (
             <Transcript
@@ -187,7 +190,7 @@ function ProjectChat(props: {
             />
           )}
         </Show>
-      </Skullet>
+      </Loading>
           <Composer
             project={props.project}
             active={props.active}
@@ -249,8 +252,14 @@ function busier(snapshot: { readonly docs: Readonly<Record<string, unknown>> }):
   return "run" in live && live.run !== undefined
 }
 
+const PROJECT_ACTIONS: readonly ConversationAction[] = [
+  { value: "settings", label: "Project settings", icon: Settings },
+  { value: "side", label: "Side thread…", icon: GitFork },
+  { value: "archive", label: "Archive project…", icon: Archive, separated: true },
+]
+
 /** The conversation's own spend: every model and tool bucket of its `pi.usage` ledger. */
-function costOf(snapshot: Snapshot | undefined): number | undefined {
+export function costOf(snapshot: Snapshot | undefined): number | undefined {
   const usage = recordOf(snapshot?.docs["pi.usage"])
   if (usage === undefined) return undefined
   const buckets = [...Object.values(recordOf(usage.models) ?? {}), ...Object.values(recordOf(usage.tools) ?? {})]
@@ -261,6 +270,7 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
   const streams = connect()
   const docked = mediaQuery("(min-width: 1280px)")
   const [settingsOpen, setSettingsOpen] = createSignal(false)
+  const [sideOpen, setSideOpen] = createSignal(false)
   const [expanded, setExpanded] = createSignal(false)
   const sheet = createPresence(() => paneOpen() && !docked() && !expanded(), 180)
   const threads = createMemo(() => new Map(projectThreads(props.project).map((thread) => [thread.id, thread])))
@@ -269,7 +279,7 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     return id === undefined ? undefined : threads().get(id)
   }
   const tabThreads = (): readonly ThreadSummary[] =>
-    projectTabs(props.project.id).threads.flatMap((id) => {
+    openThreadTabs(props.project.id).flatMap((id) => {
       const found = threads().get(id)
       return found === undefined ? [] : [found]
     })
@@ -327,10 +337,14 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
         <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-ring">
           <ConversationTabs
             project={props.project}
+            base={`/p/${props.project.slug}`}
+            mark={<ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={14} class="shrink-0" />}
             threads={tabThreads()}
             activeThreadId={thread()?.id}
             cost={costOf(snapshot())}
-            onSettings={() => setSettingsOpen(true)}
+            actions={PROJECT_ACTIONS}
+            onAction={(value) => (value === "side" ? setSideOpen(true) : setSettingsOpen(true))}
+            onNewThread={openNewThread}
           />
           <Show
             when={filePath()}
@@ -388,6 +402,13 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
         onClose={() => setSettingsOpen(false)}
         onArchived={() => navigate("/")}
       />
+      <SideThreadDialog
+        open={sideOpen()}
+        conv={props.project.coordinatorId}
+        name={props.project.name}
+        onClose={() => setSideOpen(false)}
+        onCreated={openThread}
+      />
     </div>
   )
 }
@@ -407,7 +428,7 @@ export function ProjectScreen(): JSX.Element {
               </button>
             </div>
           </Show>
-          <Skullet loading={!homeLoaded()} sample={() => <TranscriptSkeleton />} label="Loading project">
+          <Loading when={!homeLoaded()} skeleton={<ThreadSkeleton />} label="Loading project">
             <div class="pt-16">
               <Show
                 when={param(0) === "p"}
@@ -432,7 +453,7 @@ export function ProjectScreen(): JSX.Element {
                 />
               </Show>
             </div>
-          </Skullet>
+          </Loading>
         </section>
       }
     >

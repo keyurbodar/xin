@@ -76,10 +76,10 @@ export function ensureContext(conv: number): Promise<ContextReport> {
 /** A model or preset change alters the system prompt and tools, so the ring reads again once it lands. */
 export async function configureConversation(conv: number, args: Record<string, unknown>): Promise<void> {
   await cmd("conv.configure", { conv, ...args })
-  if ("model" in args) void refreshContext(conv)
+  if ("model" in args) await refreshContext(conv).catch(() => undefined)
 }
 
 export async function selectPreset(conv: number, preset: string): Promise<void> {
   await cmd("preset.select", { conversation: conv, preset })
-  void refreshContext(conv)
+  await refreshContext(conv).catch(() => undefined)
 }

@@ -3,6 +3,8 @@ import { Dynamic, Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
 import { Blocks, CalendarClock, Check, ChevronsUpDown, Flower2, HardDrive, Moon, PanelLeft, Plus, Search, Settings, SquarePen, Sun, X } from "lucide-solid"
 import { activeProjects, projectThreads, routeProject, routeThreadId, type ProjectSummary } from "../../state/home.ts"
+import { homeCaptains, routeCaptain } from "../../state/captains.ts"
+import type { CaptainRow } from "../../lib/captains.ts"
 import { owner, ownerName } from "../../state/settings.ts"
 import { navigate, route } from "../../lib/router.ts"
 import { ago } from "../../lib/format.ts"
@@ -11,8 +13,11 @@ import { visualState } from "../../lib/status.ts"
 import { setTheme, theme, themeOf } from "../../lib/theme.ts"
 import { openThreadTab, paneOpen, projectTabs, setSidebarDrawer, showPaneView } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
+import { BrandMark } from "../ui/brand-mark.tsx"
+import { Signal } from "../ui/signal.tsx"
 import { openNewThread } from "./new-thread.tsx"
+import { CaptainAvatar } from "../captain/avatar.tsx"
+import { openNewCaptain } from "../captain/captain-dialog.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL, MENU_SEPARATOR } from "./menu.ts"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
@@ -35,8 +40,7 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
   return (
     <aside class="flex h-full w-[var(--w-sidebar)] shrink-0 flex-col bg-bg">
       <div class="flex h-[var(--h-strip)] shrink-0 items-center gap-1 px-3">
-        <span class="grid h-6 w-6 place-items-center rounded-sm bg-inverse text-xs font-semibold text-on-inverse">I</span>
-        <span class="ml-1.5 text-sm font-medium text-ink">Ingle</span>
+        <BrandMark class="ml-1 h-5 w-5 text-ink" />
         <button type="button" class={`${ICON_BUTTON} ml-auto`} aria-label="Search (⌘K)" title="Search ⌘K" onClick={props.onSearch}>
           <Search {...ICON} />
         </button>
@@ -69,7 +73,7 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
         >
           <HardDrive {...ICON} />
         </NavRow>
-        <NavRow label="Schedules" active={first() === "schedules"} onClick={() => navigate("/schedules")}>
+        <NavRow label="Automations" active={first() === "automations"} onClick={() => navigate("/automations")}>
           <CalendarClock {...ICON} />
         </NavRow>
         <NavRow label="Extensions" active={first() === "extensions"} onClick={() => navigate("/extensions")}>
@@ -89,6 +93,17 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
         <div ref={projects} class="flex flex-col gap-px px-2">
           <For each={activeProjects()} fallback={<span class="px-2 py-1 text-sm text-ink-3">No projects yet</span>}>
             {(project) => <ProjectRow project={project} />}
+          </For>
+        </div>
+
+        <SectionHead label="Captains">
+          <button type="button" class={ICON_BUTTON} aria-label="New Captain" onClick={openNewCaptain}>
+            <Plus {...ICON} />
+          </button>
+        </SectionHead>
+        <div class="flex flex-col gap-px px-2">
+          <For each={homeCaptains()} fallback={<span class="px-2 py-1 text-sm text-ink-3">No Captains yet</span>}>
+            {(captain) => <CaptainRowButton captain={captain} />}
           </For>
         </div>
 
@@ -144,7 +159,43 @@ function ProjectRow(props: { project: ProjectSummary }): JSX.Element {
         <ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={13} />
       </span>
       <span class="min-w-0 flex-1 truncate">{props.project.name}</span>
-      <Show when={state()}>{(value) => <StatusGlyph state={value()} size={14} />}</Show>
+      <Show when={state()}>{(value) => <Signal state={value()} size={14} />}</Show>
+    </button>
+  )
+}
+
+function crewSummary(captain: CaptainRow): string {
+  const parts = [`${captain.crew.total} in crew`]
+  if (captain.crew.working > 0) parts.push(`${captain.crew.working} working`)
+  if (captain.crew.waiting > 0) parts.push(`${captain.crew.waiting} need you`)
+  if (captain.crew.failed > 0) parts.push(`${captain.crew.failed} failed`)
+  return parts.join(", ")
+}
+
+function CaptainRowButton(props: { captain: CaptainRow }): JSX.Element {
+  const current = (): boolean => routeCaptain()?.id === props.captain.id
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(`/c/${props.captain.alias}`)}
+      title={props.captain.description === "" ? crewSummary(props.captain) : `${props.captain.description}\n${crewSummary(props.captain)}`}
+      class={ROW}
+      classList={{ "bg-hover text-ink hover:bg-hover": current(), "text-ink-2": !current() }}
+    >
+      <CaptainAvatar name={props.captain.name} size={20} />
+      <span class="min-w-0 flex-1 truncate">{props.captain.name}</span>
+      <Show when={props.captain.crew.waiting > 0}>
+        <span
+          class="im-arrive grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-needs px-1 font-mono text-2xs font-medium text-on-accent"
+          aria-label={`${props.captain.crew.waiting} need you`}
+        >
+          {props.captain.crew.waiting}
+        </span>
+      </Show>
+      <Show when={props.captain.crew.working > 0}>
+        <Signal state="working" size={14} />
+      </Show>
+      <span class="w-4 shrink-0 text-right font-mono text-2xs tabular-nums text-ink-3">{props.captain.crew.total}</span>
     </button>
   )
 }
@@ -214,7 +265,7 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
                 class={ROW}
                 classList={{ "bg-hover text-ink": current(), "text-ink-2": !current() }}
               >
-                <StatusGlyph state={visualState(thread.status)} size={14} class="shrink-0" />
+                <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
                 <span class="min-w-0 flex-1 truncate">{thread.title}</span>
                 <span class="shrink-0 font-mono text-2xs text-ink-3">{ago(thread.beatAt)}</span>
               </button>

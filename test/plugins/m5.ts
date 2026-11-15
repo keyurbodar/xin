@@ -59,9 +59,13 @@ function sectionsText(messages: readonly { readonly role: string }[]): string {
     .join("\n")
 }
 
+/** The system sections of every request, in order, for tests that check what a conversation was told. */
+export const systems: string[] = []
+
 const step: FauxResponseStep = async (context, options) => {
   const messages = context.messages
   const system = sectionsText(messages)
+  systems.push(system)
   if (system.includes("You are a thread")) {
     const brief = lastOwnerText(messages)
     if (brief.includes("slow"))
