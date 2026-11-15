@@ -31,12 +31,21 @@ const PAGE_HTML = `<!doctype html>
   </body>
 </html>`
 
+const LONG_TEXT = "abcdefghij".repeat(2_341)
+
+const long = (args: Record<string, unknown>) =>
+  fauxAssistantMessage([fauxToolCall("web_fetch", { url: "https://example.com/long", ...args })], {
+    stopReason: "toolUse",
+  })
+const body = (text: string): string => text.slice(text.indexOf("\n\n") + 2)
+
 const fakeFetch = (async (input: Parameters<typeof fetch>[0]) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
   if (url.startsWith("https://html.duckduckgo.com/html/"))
     return new Response(SEARCH_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
   if (url === "https://example.com/page")
     return new Response(PAGE_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
+  if (url === "https://example.com/long") return new Response(LONG_TEXT, { headers: { "content-type": "text/plain" } })
   return new Response("not found", { status: 404 })
 }) as typeof fetch
 
@@ -131,6 +140,36 @@ describe("web tools", () => {
       const texts = await runInDurableObject(stub, (home: Home) => toolTexts(home, root))
       expect(texts.some((text) => text.includes("Example Page"))).toBe(true)
       expect(texts.some((text) => text.includes("One & two"))).toBe(true)
+    } finally {
+      globalThis.fetch = original
+    }
+  }, 20_000)
+
+  it("caps a long page at 8,000 characters and pages the rest with offset", async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = fakeFetch
+    try {
+      const stub = fresh()
+      await setRow(stub, "tool-web", true)
+      respond([
+        () => long({}),
+        () => long({ offset: 8_000 }),
+        () => long({ offset: 16_000 }),
+        () => long({ offset: 30_000 }),
+        () => fauxAssistantMessage("done"),
+      ])
+      await turn(stub, "web-paging", { text: "read the long page" })
+      const root = await runInDurableObject(stub, async (home: Home) => (await home.root()).id)
+      const texts = await runInDurableObject(stub, (home: Home) => toolTexts(home, root))
+      const [first, second, third, past] = texts.map(body)
+      expect(first).toBe(
+        `${LONG_TEXT.slice(0, 8_000)}\n\n[Showing characters 0–8000 of 23,410. Call web_fetch again with offset 8000 for more.]`,
+      )
+      expect(second).toBe(
+        `${LONG_TEXT.slice(8_000, 16_000)}\n\n[Showing characters 8000–16000 of 23,410. Call web_fetch again with offset 16000 for more.]`,
+      )
+      expect(third).toBe(LONG_TEXT.slice(16_000))
+      expect(past).toBe("[Offset 30000 is past the end: the page has 23,410 characters.]")
     } finally {
       globalThis.fetch = original
     }

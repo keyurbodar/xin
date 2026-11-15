@@ -77,23 +77,23 @@ export function ExtensionsScreen(): JSX.Element {
 
   return (
     <>
-      <header class="flex h-12 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-4">
+      <header class="flex h-12 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line-1 px-4">
         {TABS.map((tab) => (
           <button
             type="button"
             onClick={() => navigate(tab.to)}
-            class="flex h-7 shrink-0 items-center gap-1.5 rounded-[2px] px-2.5 text-[13px]"
+            class="flex h-7 shrink-0 items-center gap-1.5 rounded-sm px-2.5 text-base"
             classList={{
-              "bg-selected text-fg": view() === tab.id || (tab.id === "discover" && view() === "package"),
-              "text-fg-3 hover:text-fg-2": view() !== tab.id,
+              "bg-hover text-ink": view() === tab.id || (tab.id === "discover" && view() === "package"),
+              "text-ink-3 hover:text-ink-2": view() !== tab.id,
             }}
           >
             {tab.label}
             <Show when={tab.id === "installed" && installedCount() !== undefined}>
-              <span class="font-mono text-[10.5px] text-fg-4">{installedCount()}</span>
+              <span class="font-mono text-2xs text-icon">{installedCount()}</span>
             </Show>
             <Show when={tab.id === "updates" && updateCount() > 0}>
-              <span class="font-mono text-[10.5px] text-accent-text">{updateCount()}</span>
+              <span class="font-mono text-2xs text-primary-ink">{updateCount()}</span>
             </Show>
           </button>
         ))}
@@ -103,10 +103,10 @@ export function ExtensionsScreen(): JSX.Element {
             type="button"
             aria-label="Sources"
             onClick={() => navigate("/extensions/sources")}
-            class="flex h-7 items-center gap-1.5 rounded-[2px] border px-2 text-[12.5px] font-medium sm:px-2.5"
+            class="flex h-7 items-center gap-1.5 rounded-sm border px-2 text-sm font-medium sm:px-2.5"
             classList={{
-              "border-line bg-surface text-fg": view() === "sources",
-              "border-transparent text-fg-2 hover:text-fg": view() !== "sources",
+              "border-line-1 bg-panel text-ink": view() === "sources",
+              "border-transparent text-ink-2 hover:text-ink": view() !== "sources",
             }}
           >
             <Glyph name="git-branch" size={13} />
@@ -116,7 +116,7 @@ export function ExtensionsScreen(): JSX.Element {
             type="button"
             aria-label="Add from URL"
             onClick={() => setAddUrl(true)}
-            class="flex h-7 items-center gap-1.5 rounded-[2px] border border-line-inner bg-raised px-2 text-[12.5px] font-medium text-fg hover:border-line-strong hover:bg-hover sm:px-2.5"
+            class="flex h-7 items-center gap-1.5 rounded-sm border border-line-2 bg-card px-2 text-sm font-medium text-ink hover:border-line-3 hover:bg-secondary sm:px-2.5"
           >
             <Glyph name="upload" size={13} />
             <span class="hidden sm:inline">Add from URL</span>

@@ -60,7 +60,8 @@ export const CATALOG: Catalog = {
   compact: {
     plugin: p2,
     title: "Compaction",
-    description: "Manual conversation compaction for the owner.",
+    description:
+      "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
     manifest: { api: 1, requires: [] },
     local: true,
     source: "ingle-plugin-compact@0.1.0",
@@ -399,7 +400,11 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
     { id: "tool-orchestrator", name: "cordis:tool-orchestrator" },
   ],
   "ingle-plugin-presets": [
-    { id: "presets", name: "cordis:presets", config: { default: "full" } },
+    {
+      id: "presets",
+      name: "cordis:presets",
+      config: { default: "full", threadOmits: ["tool-schedules", "tool-goals"] },
+    },
     {
       id: "preset-full",
       name: "cordis:preset",

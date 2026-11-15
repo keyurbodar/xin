@@ -28,7 +28,7 @@ const EVENTS: readonly { readonly key: NotifyKind; readonly title: string; reado
 const MINUTES_IN_DAY = 24 * 60
 
 const TIME_FIELD =
-  "h-8 w-[68px] rounded-[2px] border border-line-inner bg-page px-2 text-center font-mono text-[12px] text-fg tabular-nums placeholder:text-fg-4 focus:border-line-strong focus:outline-none disabled:opacity-40"
+  "h-8 w-[68px] rounded-sm border border-line-2 bg-bg px-2 text-center font-mono text-sm text-ink tabular-nums placeholder:text-icon focus:border-line-3 focus:outline-none disabled:opacity-40"
 
 type Problem = { readonly message: string; readonly retry?: (() => void) | undefined }
 
@@ -72,7 +72,7 @@ function minutesOf(text: string): number | undefined {
 function Saving(props: { show: boolean }): JSX.Element {
   return (
     <Show when={props.show}>
-      <span class="text-[11.5px] text-fg-3">Saving</span>
+      <span class="text-xs text-ink-3">Saving</span>
     </Show>
   )
 }
@@ -85,9 +85,9 @@ function DeviceRow(props: {
   onRemove: () => void
 }): JSX.Element {
   return (
-    <div class="flex items-center gap-2.5 border-b border-line-inner px-3.5 py-2.5 last:border-0">
-      <Glyph name="monitor" size={14} class="shrink-0 text-fg-3" />
-      <span class="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-2" title={props.device.origin}>
+    <div class="flex items-center gap-2.5 border-b border-line-2 px-3.5 py-2.5 last:border-0">
+      <Glyph name="monitor" size={14} class="shrink-0 text-ink-3" />
+      <span class="min-w-0 flex-1 truncate font-mono text-xs text-ink-2" title={props.device.origin}>
         {originLabel(props.device.origin)}
       </span>
       <Show when={props.thisBrowser}>
@@ -278,18 +278,18 @@ export function Notifications(): JSX.Element {
               }
             >
               <Chip tone="ok">Subscribed</Chip>
-              <span class="font-mono text-[10.5px] text-fg-4">{endpoint()?.replace(/^https:\/\//u, "").slice(0, 42)}…</span>
+              <span class="font-mono text-2xs text-icon">{endpoint()?.replace(/^https:\/\//u, "").slice(0, 42)}…</span>
               <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void turnOff()}>Turn off</Button>
             </Show>
             <Show when={sent()}>
-              <span class="text-[11.5px] text-fg-3">Delivery is confirmed when a push watcher runs.</span>
+              <span class="text-xs text-ink-3">Delivery is confirmed when a push watcher runs.</span>
             </Show>
           </div>
         </Row>
         <Row title="Send test" detail="Delivers one notification to every subscribed browser">
           <div class="flex items-center gap-2">
             <Show when={tested()}>
-              {(result) => <span class="text-[12px] text-fg-3">{result()}</span>}
+              {(result) => <span class="text-sm text-ink-3">{result()}</span>}
             </Show>
             <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void sendTest()}>
               Send test
@@ -352,7 +352,7 @@ export function Notifications(): JSX.Element {
           <Show
             when={quiet()}
             fallback={
-              <span class="text-[12.5px] text-fg-3">
+              <span class="text-sm text-ink-3">
                 {quietHours.state().kind === "loading" ? "Reading quiet hours…" : "Not loaded"}
               </span>
             }
@@ -371,7 +371,7 @@ export function Notifications(): JSX.Element {
                   value={shownTime("start")}
                   onChange={(event) => void commitTime("start", event.currentTarget)}
                 />
-                <span class="text-[12px] text-fg-3">to</span>
+                <span class="text-sm text-ink-3">to</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -415,7 +415,7 @@ export function Notifications(): JSX.Element {
               {(list) => (
                 <Show
                   when={list().length > 0}
-                  fallback={<div class="px-3.5 py-3 text-[12.5px] text-fg-3">No device has a push subscription.</div>}
+                  fallback={<div class="px-3.5 py-3 text-sm text-ink-3">No device has a push subscription.</div>}
                 >
                   <For each={list()}>
                     {(device) => (

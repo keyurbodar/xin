@@ -1,0 +1,75 @@
+@keyframes composer-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes composer-pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.composer-pop {
+  transform-origin: var(--transform-origin);
+}
+
+.composer-pop[data-state="open"] {
+  animation: composer-pop-in var(--dur-fast) var(--ease-enter);
+}
+
+.composer-pop[data-state="closed"] {
+  animation: composer-pop-out var(--dur-exit-fast) var(--ease-exit);
+}
+
+.composer-press {
+  transition: transform var(--dur-release) var(--ease-enter), background-color var(--dur-color) var(--ease-color),
+    color var(--dur-color) var(--ease-color);
+}
+
+.composer-press:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: var(--dur-press);
+}
+
+.composer-send-icon {
+  transition: opacity var(--dur-fast) var(--ease-enter), filter var(--dur-fast) var(--ease-enter),
+    transform var(--dur-fast) var(--ease-enter);
+}
+
+.composer-send-icon[data-shown="false"] {
+  opacity: 0;
+  filter: blur(2px);
+  transform: scale(0.9);
+}
+
+.composer-bar {
+  transition: transform var(--dur-base) var(--ease-enter);
+  transform-origin: left;
+}
+
+@keyframes composer-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes composer-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-pop[data-state="open"] {
+    animation-name: composer-fade-in;
+  }
+  .composer-pop[data-state="closed"] {
+    animation-name: composer-fade-out;
+  }
+  .composer-press:active:not(:disabled) {
+    transform: none;
+  }
+}
