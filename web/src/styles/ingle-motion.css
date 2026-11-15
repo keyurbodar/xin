@@ -499,7 +499,7 @@
   .im-stagger > * { animation: im-fade-in var(--dur-reduce) var(--ease-out) both; animation-delay: 0ms; }
   .im-swap > * { filter: none; transform: none; }
   .im-reject { animation: none; }
-  .sig i, .im-shimmer, .im-caret, .im-dots i, .im-skeleton, .im-progress[data-indeterminate] { animation: none; }
+  .sig[data-state] i:nth-child(n), .im-shimmer, .im-caret, .im-dots i, .im-skeleton, .im-progress[data-indeterminate] { animation: none; }
   .im-shimmer { color: var(--color-ink-3); background: none; }
   .im-skeleton { opacity: 1; }
   .im-ring { transition-property: stroke; }
@@ -523,7 +523,7 @@
   .im-stagger > * { animation: im-fade-in var(--dur-reduce) var(--ease-out) both; animation-delay: 0ms; }
   .im-swap > * { filter: none; transform: none; }
   .im-reject { animation: none; }
-  .sig i, .im-shimmer, .im-caret, .im-dots i, .im-skeleton, .im-progress[data-indeterminate] { animation: none; }
+  .sig[data-state] i:nth-child(n), .im-shimmer, .im-caret, .im-dots i, .im-skeleton, .im-progress[data-indeterminate] { animation: none; }
   .im-shimmer { color: var(--color-ink-3); background: none; }
   .im-skeleton { opacity: 1; }
   .im-ring { transition-property: stroke; }
