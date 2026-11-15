@@ -37,6 +37,7 @@
       "version": "0.1.0",
       "permissions": [
         "conversations",
+        "owner",
         "routes",
         "storage"
       ],
