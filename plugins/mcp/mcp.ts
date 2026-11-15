@@ -483,7 +483,7 @@ export function create(ports: McpPorts): McpModule {
           return {
             output: capped,
             isError: result.isError === true,
-            ...(capped === output ? {} : { details: { content: JSON.parse(JSON.stringify(result.content ?? [])) } }),
+            ...(capped === output ? {} : { details: { content: JSON.parse(JSON.stringify(output)) } }),
           }
         },
       ),
