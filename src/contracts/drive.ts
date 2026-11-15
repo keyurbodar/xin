@@ -1,7 +1,7 @@
 import type { ConversationId } from "@earendil-works/pi-durable"
 import type { FileEntry } from "./files.ts"
 
-export const DRIVE_SCOPE_ID = "^[A-Za-z0-9_-]{1,100}$"
+export const DRIVE_SCOPE_ID = "^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,159}$"
 
 /** A Drive scope. A project is named by its id; a Captain or an automation by the id its own row gives it. */
 export type DriveScope =
