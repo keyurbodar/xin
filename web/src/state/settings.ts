@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { cmd } from "../lib/api.ts"
 import { errorMessage, isKnownOpError, isRecord, remote, type RemoteHandle } from "./extensions.ts"
 
@@ -15,15 +16,6 @@ export type ModelInfo = {
   readonly reasoning: boolean
   readonly keyed: boolean
   readonly cost: ModelPrice | undefined
-}
-
-/** V3: one mark per price band, from the catalog's own rate per million tokens, blended across input and output. */
-export function priceMarks(price: ModelPrice | undefined): string {
-  if (price === undefined) return ""
-  const perMillion = (price.input + price.output) / 2
-  if (perMillion <= 0) return ""
-  if (perMillion < 2) return "$"
-  return perMillion < 10 ? "$$" : "$$$"
 }
 
 export type ModelRef = { readonly provider: string; readonly modelId: string }
@@ -100,6 +92,33 @@ export function modelName(provider: string | undefined, modelId: string | undefi
     (model) => model.modelId === modelId && (provider === undefined || model.provider === provider),
   )
   return found?.name
+}
+
+const FAVORITES_KEY = "ingle.favoriteModels"
+
+const modelKey = (ref: ModelRef): string => `${ref.provider}/${ref.modelId}`
+
+function storedFavorites(): readonly string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]")
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []
+  } catch {
+    return []
+  }
+}
+
+const [favoriteKeys, setFavoriteKeys] = createSignal<readonly string[]>(storedFavorites())
+
+/** Favourite models live in this browser: no op writes `owner.favorites` yet. */
+export function isFavorite(ref: ModelRef): boolean {
+  return favoriteKeys().includes(modelKey(ref))
+}
+
+export function toggleFavorite(ref: ModelRef): void {
+  const key = modelKey(ref)
+  const next = isFavorite(ref) ? favoriteKeys().filter((entry) => entry !== key) : [...favoriteKeys(), key]
+  setFavoriteKeys(next)
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(next))
 }
 
 export function providers(value: ModelsList): readonly ProviderSummary[] {
