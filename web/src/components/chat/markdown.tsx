@@ -1,7 +1,7 @@
 import { createSignal, For, onCleanup, type JSX } from "solid-js"
 import { highlight } from "sugar-high"
 import { lang } from "sugar-high/lang"
-import { Glyph } from "../extensions/glyph.tsx"
+import { MorphIcon } from "../ui/morph-icon.tsx"
 import { Morph } from "../ui/morph.tsx"
 
 function fenceLabel(fence: string): string {
@@ -53,7 +53,7 @@ function CodeBlock(props: { code: string; fence: string }): JSX.Element {
             class="flex h-6 items-center gap-1.5 rounded-sm px-1.5 hover:text-ink"
             classList={{ "text-ink": copied() }}
           >
-            <Glyph name={copied() ? "check" : "copy"} size={13} />
+            <MorphIcon kind="copy" on={copied()} size={13} />
             <Morph value={copied() ? "Copied" : "Copy"} />
           </button>
         </span>

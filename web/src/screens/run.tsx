@@ -3,8 +3,8 @@ import { connect } from "../state/connection.ts"
 import { createConversationView } from "../state/conversation.ts"
 import type { ProjectSummary } from "../state/home.ts"
 import { navigate } from "../lib/router.ts"
-import { Transcript, TranscriptSkeleton } from "../components/chat/transcript.tsx"
-import { Skullet } from "../components/ui/skeleton.tsx"
+import { Transcript } from "../components/chat/transcript.tsx"
+import { Loading, ThreadSkeleton } from "../components/ui/skeleton.tsx"
 
 /** A schedule's delivered run, read-only: the transcript the timer produced. */
 export function RunScreen(props: { project: ProjectSummary; conversationId: number; label?: string | undefined }): JSX.Element {
@@ -23,7 +23,7 @@ export function RunScreen(props: { project: ProjectSummary; conversationId: numb
         </Show>
       </header>
       <div class="min-h-0 flex-1 overflow-y-auto">
-        <Skullet loading={snapshot() === undefined} sample={() => <TranscriptSkeleton />} label="Loading run">
+        <Loading when={snapshot() === undefined} skeleton={<ThreadSkeleton />} label="Loading run">
           <Show when={snapshot()}>
             {(value) => (
               <Transcript
@@ -41,7 +41,7 @@ export function RunScreen(props: { project: ProjectSummary; conversationId: numb
               />
             )}
           </Show>
-        </Skullet>
+        </Loading>
       </div>
     </div>
   )

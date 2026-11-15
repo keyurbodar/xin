@@ -1,11 +1,12 @@
 import { createEffect, createSignal, onCleanup, untrack, type Accessor } from "solid-js"
+import { keyStarted } from "../../lib/motion.ts"
 
 export type Presence = {
   readonly mounted: Accessor<boolean>
   readonly leaving: Accessor<boolean>
 }
 
-/** Keeps an overlay mounted through its exit animation, then removes it. */
+/** Keeps an overlay mounted through its exit animation, then removes it; a keyboard close removes it at once. */
 export function createPresence(open: Accessor<boolean>, exit: number): Presence {
   const [mounted, setMounted] = createSignal(open())
   const [leaving, setLeaving] = createSignal(false)
@@ -23,7 +24,7 @@ export function createPresence(open: Accessor<boolean>, exit: number): Presence 
     timer = setTimeout(() => {
       setMounted(false)
       setLeaving(false)
-    }, exit)
+    }, keyStarted() ? 0 : exit)
   })
 
   onCleanup(() => {
@@ -31,13 +32,4 @@ export function createPresence(open: Accessor<boolean>, exit: number): Presence 
   })
 
   return { mounted, leaving }
-}
-
-/** Escape closes an overlay, wherever focus sits inside its subtree. */
-export function escapeCloses(open: Accessor<boolean>, close: () => void): void {
-  const onKey = (event: KeyboardEvent): void => {
-    if (event.key === "Escape" && open()) close()
-  }
-  window.addEventListener("keydown", onKey)
-  onCleanup(() => window.removeEventListener("keydown", onKey))
 }

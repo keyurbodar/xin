@@ -28,6 +28,7 @@ export default {
     if (url.pathname === "/health") return new Response("ok")
     const shared = await serveShare(request, env)
     if (shared !== undefined) return shared
+    if (url.pathname.startsWith("/hooks/")) return home(env).fetch(request)
     const presented = bearer(request)
     if (presented === undefined || presented === "") return new Response("unauthorized", { status: 401 })
     if (isUpload(request, url)) {
