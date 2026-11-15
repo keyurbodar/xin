@@ -87,6 +87,8 @@ export function ModelPicker(props: {
       open={open()}
       onOpenChange={(details) => {
         setOpen(details.open)
+        navigating = false
+        setHighlighted(null)
         if (!details.open) return
         props.onSearch("")
         void missingFavorites(props.models).then(setExtra)
