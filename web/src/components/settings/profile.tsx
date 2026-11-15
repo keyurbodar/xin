@@ -154,7 +154,7 @@ export function Profile(): JSX.Element {
           margin: 1,
           width: 168,
           errorCorrectionLevel: "M",
-          color: { dark: "#fdfcfb", light: "#00000000" },
+          color: { dark: "#000000", light: "#ffffff" },
         }),
       )
     } catch (failure: unknown) {
@@ -331,7 +331,7 @@ export function Profile(): JSX.Element {
             <Show when={qr()}>
               {(svg) => (
                 <div class="flex items-start gap-3 rounded-sm border border-line-1 bg-bg p-3">
-                  <div class="shrink-0 rounded-sm bg-bg p-1" innerHTML={svg()} />
+                  <div class="shrink-0 rounded-sm bg-white p-1" innerHTML={svg()} />
                   <p class="text-xs leading-snug text-ink-3">
                     Scan from a phone. The code carries this token, so that phone is signed in with it and nothing else
                     changes.

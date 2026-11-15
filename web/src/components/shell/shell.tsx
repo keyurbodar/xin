@@ -70,7 +70,7 @@ export function Shell(): JSX.Element {
         </ErrorBoundary>
       </main>
       <NewProjectDialog open={first() === "new"} onClose={() => navigate("/")} />
-      <TabBar />
+      <TabBar onProjects={() => setPalette(true)} />
       <CommandPalette open={palette()} onClose={() => setPalette(false)} />
     </div>
   )
