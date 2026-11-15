@@ -1,6 +1,7 @@
 import { ArrowUp, Square, X } from "lucide-solid"
-import { Show, createSignal, onCleanup, onMount, type JSX } from "solid-js"
-import { takePendingDraft } from "../../lib/draft.ts"
+import { Show, createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js"
+import { pendingDraftFor, takePendingDraft } from "../../lib/draft.ts"
+import { handleAttachShortcut } from "../../lib/attach-shortcut.ts"
 import type { UploadedFile } from "../../lib/api.ts"
 import type { ThinkingLevel } from "../../state/conversation.ts"
 import type { PresetRow } from "../../state/extensions.ts"
@@ -161,8 +162,9 @@ export function Composer(props: {
   onSend: Send
   onStop: () => Promise<void>
   onAttach: Upload
+  active: boolean
 }): JSX.Element {
-  const [draft, setDraft] = createSignal(takePendingDraft() ?? "")
+  const [draft, setDraft] = createSignal("")
   const [error, setError] = createSignal<{ readonly message: string; readonly retry: "send" | "stop" | undefined }>()
   const [dragging, setDragging] = createSignal(false)
   const { sending, send } = useSender(props.onSend, () => false)
@@ -176,13 +178,18 @@ export function Composer(props: {
 
   const pickFiles = (): void => fileInput.click()
 
+  createEffect(() => {
+    if (!props.active || pendingDraftFor(props.project.coordinatorId) === undefined) return
+    const text = takePendingDraft(props.project.coordinatorId) ?? ""
+    setDraft((current) => (current.trim() === "" ? text : `${text}${current}`))
+    queueMicrotask(() => {
+      textarea.focus()
+      textarea.setSelectionRange(text.length, text.length)
+    })
+  })
+
   onMount(() => {
-    const shortcut = (event: KeyboardEvent): void => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "/") {
-        event.preventDefault()
-        pickFiles()
-      }
-    }
+    const shortcut = (event: KeyboardEvent): void => handleAttachShortcut(event, props.active, pickFiles)
     document.addEventListener("keydown", shortcut)
     onCleanup(() => document.removeEventListener("keydown", shortcut))
   })
