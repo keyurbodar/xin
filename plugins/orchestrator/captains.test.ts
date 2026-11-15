@@ -2,7 +2,7 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { LiveDoc, type ConversationId } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
-import { M5_MODEL } from "../../test/plugins/m5.ts"
+import { M5_MODEL, systems } from "../../test/plugins/m5.ts"
 import { addThreads, cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
@@ -172,6 +172,29 @@ describe("captains", () => {
     const prompt = await read(stub, (home) => captainPrompt(home.harness, captain.coordinatorId as ConversationId))
     expect(prompt).toContain("<captain-notes>\nShip small PRs.\n</captain-notes>")
   }, 20_000)
+
+  it("shows the Captain and its crew threads the Captain's Drive instructions", async () => {
+    const stub = fresh()
+    const { captain } = await setup(stub, "drive")
+    await ok(stub, "drive-agents", "drive.write", {
+      scope: { kind: "captain", id: captain.id },
+      path: "AGENTS.md",
+      text: "Cite the PR in every report.",
+    })
+    systems.length = 0
+    await send(stub, "drive-1", captain.coordinatorId, "delegate one")
+    await eventually(stub, async (home) => {
+      const workspace = await home.harness.snapshot(WorkspaceDoc, context)
+      return workspace?.spaces[captain.spaceId]?.threadIds.length === 1
+    })
+    await eventually(stub, async () => systems.some((text) => text.includes("You are a thread")))
+
+    const block = `<instructions scope="captain ${captain.id}" path="/captains/${captain.id}/AGENTS.md">\nCite the PR in every report.\n</instructions>`
+    const thread = systems.find((text) => text.includes("You are a thread"))
+    expect(thread).toContain(block)
+    expect(thread).toContain(`- captain ${captain.id}: /captains/${captain.id}/`)
+    expect(systems.find((text) => text.includes("You are Captain"))).toContain(block)
+  })
 
   it("puts threads a Captain starts in its crew and turns eight reports into one Captain turn", async () => {
     const stub = fresh()

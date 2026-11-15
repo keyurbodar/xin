@@ -89,6 +89,22 @@
       ]
     },
     {
+      "name": "drive",
+      "title": "Drive",
+      "description": "User, project, Captain and automation folders on the files index: AGENTS.md instructions and skills per scope, version history and checkout.",
+      "package": "ingle-plugin-drive",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations",
+        "files",
+        "runtime"
+      ],
+      "slots": [],
+      "rows": [
+        "drive"
+      ]
+    },
+    {
       "name": "failures",
       "title": "Failures",
       "description": "Run failures as visible entries.",
