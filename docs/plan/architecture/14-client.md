@@ -19,12 +19,10 @@ The values live in `tokens.css`; the `.sig` rules in `ingle-motion.css` pick eac
 | queued | `ink-3` | Queued | dim grid, still | anything not yet running |
 | working | `working` | Working | chasing ring, `--loop-chase` | `working` |
 | needs | `needs` | Needs you | plus, breathes `--loop-breathe` | `waiting` (a question to the owner) |
-| waiting | `ink-2` | Waiting | corners and centre, centre blinks `--loop-blink` | none yet |
 | done | `done` | Done | check, still | `completed` |
 | failed | `failed` | Failed | X, still | `failed` |
-| merged | `merged` | Merged | branch, still | none yet |
 
-Every status in the client is the **Signal** (v5 page 16.1): a 3×3 grid of round dots at 12, 14, 16 or 20px, `components/ui/signal.tsx` over the `.sig` rules. Shape reads before colour, settled states crossfade dot by dot in 200ms, and only working, needs and waiting loop. fTz's paused and cancelled have no Signal shape (design system §0.8), so a cancelled thread and a paused schedule show idle.
+Every status in the client is the **Signal** (v5 page 16.1): a 3×3 grid of round dots at 12, 14, 16 or 20px, `components/ui/signal.tsx` over the `.sig` rules. Shape reads before colour, settled states crossfade dot by dot in 200ms, and only working and needs loop. The motion file also draws waiting and merged, which no backend status produces, so the client does not use them. fTz's paused and cancelled have no Signal shape (design system §0.8), so a cancelled thread and a paused schedule show idle.
 
 ## Stack
 
@@ -120,9 +118,9 @@ Empty states use the pictograms from `I4`, in `components/ui/pictogram.tsx`, at 
 
 Indicators follow v5 page 16 and live in `components/ui/`:
 
-- `loaders.tsx`: `Spinner`, the arc (a faint ring and a quarter arc, one turn every .8s, 12/14/16/20/32, in the current colour, never the accent), which replaces a button's leading icon while it is busy. `BootLoader`, the construction trace (a pen draws a square, a circle and a triangle over dashed guides, 9s linear with a 1.8s hold), shown by `app.tsx` while the stored token is checked and faded in only after 400ms, so a fast boot never shows it. `Thinking`, three breathing dots before the first token; streaming and tool-running text uses `.im-shimmer`. `Progress`, determinate (`--p` scaleX) or indeterminate (`value` undefined). `ContextRing`, the 16px ring for the composer footer, which turns working at 85% and failed at 100%.
-- `skeleton.tsx`: `Loading` swaps a skeleton for its content, which fades in with `.im-content`; the skeleton itself fades in after `--skeleton-delay` (150ms) and pulses on `--loop-skeleton`. `ThreadSkeleton` stands in for a transcript, `RowSkeleton` for 46px two-line rows, `PaneSkeleton` for a right-pane section (28px header and rows), and `Bar` for anything else.
-- `morph-icon.tsx`: `MorphIcon` morphs a control's icon when it changes meaning, in 200ms out-quint: send→stop, copy→check (the check draws), chevron down→up, plus→×, eye→eye slashed (the slash draws) and pause→play. It plays once, at the change, and swaps with no motion under reduced motion.
+- `loaders.tsx`: `Spinner`, the arc (a faint ring and a quarter arc, one turn every .8s, 12/14/16/20/32, in the current colour, never the accent), which replaces a button's leading icon while it is busy. `BootLoader`, the construction trace (a pen draws a square, a circle and a triangle over dashed guides, 9s linear with a 1.8s hold), shown by `app.tsx` while the stored token is checked and faded in only after 400ms, so a fast boot never shows it. `Thinking`, three breathing dots before the first token; streaming and tool-running text uses `.im-shimmer`. Page 16.2's progress bar and context ring have no surface outside the composer yet, so none is built here.
+- `skeleton.tsx`: `Loading` swaps a skeleton for its content, which fades in with `.im-content`. For a resource it is driven by `firstLoad()` in `lib/loading.ts`, which is true only while the first value is pending, so a refetch after a mutation keeps the stale rows on screen instead of flashing the skeleton; the skeleton itself fades in after `--skeleton-delay` (150ms) and pulses on `--loop-skeleton`. `ThreadSkeleton` stands in for a transcript, `RowSkeleton` for 46px two-line rows, `PaneSkeleton` for a right-pane section (28px header and rows), and `Bar` for anything else.
+- `morph-icon.tsx`: `MorphIcon` morphs a control's icon when it changes meaning, in 200ms out-quint: copy→check (the check draws), chevron down→up, plus→×, eye→eye slashed (the slash draws) and pause→play. It plays once, at the change, and swaps with no motion under reduced motion.
 
 ## Motion
 
@@ -148,13 +146,13 @@ Motion is the handoff file `web/src/styles/ingle-motion.css` (design system §0.
 | Report card | `.im-event` | `chat/cards.tsx` |
 | Signal | `.sig` with `data-state` and `data-size`; state changes crossfade dot by dot | `ui/signal.tsx` |
 | Spinner, boot trace, morphing icons | `.im-spinner`, `.im-boot`, `.im-morph` from `indicators.css`, on the file's tokens, still under reduced motion and paused in a hidden tab | `ui/loaders.tsx`, `ui/morph-icon.tsx` |
-| Thinking, progress, context ring | `.im-dots`, `.im-progress`, `.im-ring` | `ui/loaders.tsx` |
+| Thinking | `.im-dots` | `ui/loaders.tsx` |
 | Skeletons | `.im-skeleton` fading in after `--skeleton-delay`; content enters with `.im-content` | `ui/skeleton.tsx` |
 | Working text, streaming caret | `.im-shimmer`, `.im-caret` | transcript, cards, pane rows |
 | Switches | `.im-switch` with an `<i>` knob | extensions `Toggle`, onboarding notifications |
 | Onboarding and sign-in pages | `.im-content` | onboarding steps, sign-in |
 
-No toasts exist yet, so `.im-toast` has no consumer. The composer lane owns the Send/Stop morph (`MorphIcon kind="send"`), upload progress and attachment chips, and mounts the shared `ContextRing`.
+No toasts exist yet, so `.im-toast` has no consumer. The composer lane owns the Send/Stop morph, upload progress, the context ring and attachment chips.
 
 ## Decisions taken from the review frame's open questions
 

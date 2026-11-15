@@ -1,8 +1,8 @@
 import { Match, Switch, type JSX } from "solid-js"
 
-export type MorphKind = "send" | "copy" | "chevron" | "plus" | "reveal" | "pause"
+export type MorphKind = "copy" | "chevron" | "plus" | "reveal" | "pause"
 
-/** `on` is the second state: stop, done, expanded, close, hidden, paused. */
+/** `on` is the second state: done, expanded, close, hidden, paused. */
 export function MorphIcon(props: { kind: MorphKind; on: boolean; size?: number; class?: string }): JSX.Element {
   return (
     <svg
@@ -20,10 +20,6 @@ export function MorphIcon(props: { kind: MorphKind; on: boolean; size?: number; 
       aria-hidden="true"
     >
       <Switch>
-        <Match when={props.kind === "send"}>
-          <path data-part="out" d="M12 19V5M5 12l7-7 7 7" />
-          <rect data-part="in" x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none" />
-        </Match>
         <Match when={props.kind === "copy"}>
           <g data-part="out">
             <rect x="8" y="8" width="13" height="13" rx="2" />

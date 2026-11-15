@@ -95,7 +95,7 @@ export function ThreadConversation(props: {
         <SteerComposer
           threadTitle={props.thread.title}
           busy={busy()}
-          waiting={state() === "waiting"}
+          waiting={state() === "needs"}
           onSend={async (text) => {
             await cmd("thread.send", { threadId: props.thread.id, text, mode: busy() ? "steer" : "queue" })
           }}

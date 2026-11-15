@@ -1,4 +1,5 @@
 import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { firstLoad } from "../lib/loading.ts"
 import { cmd, OpError } from "../lib/api.ts"
 import { TopBar, TopButton } from "../components/shell/topbar.tsx"
 import { Icon } from "../components/ui/icon.tsx"
@@ -55,7 +56,7 @@ export function SchedulesScreen(): JSX.Element {
         actions={<TopButton icon={<Icon name="plus" size={14} />} label="New schedule" onClick={() => setCreating(true)} />}
       />
       <div class="min-h-0 flex-1 overflow-y-auto px-10 pb-12 pt-7">
-        <Loading when={page.loading} skeleton={<RowSkeleton rows={3} />} label="Loading schedules">
+        <Loading when={firstLoad(page)} skeleton={<RowSkeleton rows={3} />} label="Loading schedules">
           <Show
             when={schedules().length > 0}
             fallback={

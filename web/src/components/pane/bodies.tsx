@@ -1,4 +1,5 @@
 import { createResource, For, Show, type JSX } from "solid-js"
+import { firstLoad } from "../../lib/loading.ts"
 import { Clock, File } from "lucide-solid"
 import { cmd } from "../../lib/api.ts"
 import { ago, bytes } from "../../lib/format.ts"
@@ -59,7 +60,7 @@ export function FilesView(props: { slug: string }): JSX.Element {
   }
 
   return (
-    <Loading when={files.loading} skeleton={<PaneSkeleton rows={5} />} label="Loading files">
+    <Loading when={firstLoad(files)} skeleton={<PaneSkeleton rows={5} />} label="Loading files">
       <Show when={files.error}>
         <ResourceError what="files" error={files.error} onRetry={() => void refetch()} />
       </Show>
@@ -122,7 +123,7 @@ function jobState(state: JobEntry["state"]): SignalState {
 export function JobsView(): JSX.Element {
   const [jobs, { refetch }] = createResource(() => cmd<{ readonly jobs: readonly JobEntry[] }>("job.list", {}))
   return (
-    <Loading when={jobs.loading} skeleton={<RowSkeleton rows={4} />} label="Loading jobs">
+    <Loading when={firstLoad(jobs)} skeleton={<RowSkeleton rows={4} />} label="Loading jobs">
       <Show when={jobs.error}>
         <ResourceError what="jobs" error={jobs.error} onRetry={() => void refetch()} />
       </Show>

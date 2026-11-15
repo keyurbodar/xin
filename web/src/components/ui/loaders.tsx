@@ -46,33 +46,3 @@ export function Thinking(props: { children: JSX.Element }): JSX.Element {
     </span>
   )
 }
-
-export function Progress(props: { value: number | undefined; label: string; class?: string }): JSX.Element {
-  return (
-    <span
-      class={`block overflow-hidden rounded-full bg-secondary ${props.class ?? "h-1"}`}
-      role="progressbar"
-      aria-label={props.label}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={props.value === undefined ? undefined : Math.round(props.value * 100)}
-    >
-      <span
-        class="im-progress block h-full rounded-full bg-accent"
-        style={{ "--p": props.value ?? 0 }}
-        data-indeterminate={props.value === undefined ? "" : undefined}
-      />
-    </span>
-  )
-}
-
-export function ContextRing(props: { percent: number }): JSX.Element {
-  const percent = (): number => Math.min(100, Math.max(0, Math.round(props.percent)))
-  const level = (): string | undefined => (percent() >= 100 ? "full" : percent() >= 85 ? "warn" : undefined)
-  return (
-    <svg viewBox="0 0 20 20" width={16} height={16} class="shrink-0 -rotate-90" role="img" aria-label={`${percent()}% of the context window used`}>
-      <circle cx="10" cy="10" r="8" fill="none" stroke="var(--color-line-2)" stroke-width="2" />
-      <circle cx="10" cy="10" r="8" pathLength="100" stroke-width="2" class="im-ring" data-level={level()} style={{ "--p": percent() }} />
-    </svg>
-  )
-}

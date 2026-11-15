@@ -71,8 +71,8 @@ export function ThreadRow(props: {
       class="flex w-full items-start gap-2.5 bg-card px-2.5 py-2 text-left hover:bg-secondary disabled:cursor-default"
       classList={{
         "border-b border-line-1 last:border-b-0": props.flush === true,
-        "border border-primary/40": props.flush !== true && state() === "waiting",
-        "border border-line-2": props.flush !== true && state() !== "waiting",
+        "border border-primary/40": props.flush !== true && state() === "needs",
+        "border border-line-2": props.flush !== true && state() !== "needs",
         "rounded-sm": props.flush !== true,
       }}
     >
@@ -236,11 +236,11 @@ export function QuestionInboundCard(props: {
     >
       <div
         class="flex items-center gap-2.5 border-b px-3.5 py-2.5"
-        classList={{ "border-primary/40 bg-primary-soft": state() === "waiting", "border-line-1": state() !== "waiting" }}
+        classList={{ "border-primary/40 bg-primary-soft": state() === "needs", "border-line-1": state() !== "needs" }}
       >
         <Signal state={state()} size={16} />
         <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.row.title}</span>
-        <span class="text-2xs" classList={{ "text-primary-ink": state() === "waiting", "text-ink-3": state() !== "waiting" }}>
+        <span class="text-2xs" classList={{ "text-primary-ink": state() === "needs", "text-ink-3": state() !== "needs" }}>
           {label()}
         </span>
       </div>
@@ -253,7 +253,7 @@ export function QuestionInboundCard(props: {
             </Button>
           )}
         </Show>
-        <Show when={state() === "waiting"}>
+        <Show when={state() === "needs"}>
           <span class="ml-auto mono-meta">Choices arrive on the thread card</span>
         </Show>
       </div>

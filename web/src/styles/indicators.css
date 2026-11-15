@@ -86,7 +86,6 @@
   filter: blur(var(--swap-blur));
   transform: scale(.7);
 }
-.im-morph[data-kind="send"][data-on] [data-part="out"] { transform: translateY(calc(var(--nudge) * -1)); }
 .im-morph[data-kind="copy"][data-on] [data-part="out"] { filter: none; transform: scale(.6); }
 .im-morph[data-kind="chevron"][data-on] [data-part="turn"] { transform: rotate(180deg); }
 .im-morph[data-kind="plus"][data-on] [data-part="turn"] { transform: rotate(45deg); }
@@ -96,12 +95,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .im-spinner, .im-boot-shape, .im-boot-orbit { animation: none; }
-  .im-boot-pen { display: none; }
+  .im-spinner, .im-boot-shape:nth-of-type(n), .im-boot-orbit, .im-boot svg .im-boot-pen { animation: none; }
+  .im-boot svg .im-boot-pen { display: none; }
   .im-morph [data-part], .im-morph [data-draw] { transition: none; }
 }
 :root[data-motion="reduce"] {
-  .im-spinner, .im-boot-shape, .im-boot-orbit { animation: none; }
-  .im-boot-pen { display: none; }
+  .im-spinner, .im-boot-shape:nth-of-type(n), .im-boot-orbit, .im-boot svg .im-boot-pen { animation: none; }
+  .im-boot svg .im-boot-pen { display: none; }
   .im-morph [data-part], .im-morph [data-draw] { transition: none; }
 }

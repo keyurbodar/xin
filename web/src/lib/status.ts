@@ -1,14 +1,12 @@
-export type SignalState = "idle" | "queued" | "working" | "needs" | "waiting" | "done" | "failed" | "merged"
+export type SignalState = "idle" | "queued" | "working" | "needs" | "done" | "failed"
 
 export const STATE_WORD: Readonly<Record<SignalState, string>> = {
   idle: "Stopped",
   queued: "Queued",
   working: "Working",
   needs: "Needs you",
-  waiting: "Waiting",
   done: "Done",
   failed: "Failed",
-  merged: "Merged",
 }
 
 /** Thread status words from the backend, mapped onto Signal's states. */

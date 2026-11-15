@@ -1,4 +1,5 @@
 import { For, Show, createResource, createSignal, type JSX } from "solid-js"
+import { firstLoad } from "../lib/loading.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
 import { setPendingDraft } from "../lib/draft.ts"
 import { ago, bytes } from "../lib/format.ts"
@@ -160,7 +161,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
         </Show>
 
         <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-          <Loading when={content.loading} skeleton={<div class="flex flex-col gap-2.5"><Bar width="66%" /><Bar width="88%" /><Bar width="52%" /></div>} label="Opening file">
+          <Loading when={firstLoad(content)} skeleton={<div class="flex flex-col gap-2.5"><Bar width="66%" /><Bar width="88%" /><Bar width="52%" /></div>} label="Opening file">
             <Show when={content()} fallback={<EmptyState pictogram="folder" title="File not found" detail="It may have been deleted." />}>
               {(entry) => (
                 <Show

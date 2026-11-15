@@ -1,4 +1,5 @@
 import { For, Show, createResource, type JSX } from "solid-js"
+import { firstLoad } from "../../lib/loading.ts"
 import { cmd } from "../../lib/api.ts"
 import { ago, describeRule } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
@@ -61,7 +62,7 @@ export function SchedulesTab(props: { slug: string }): JSX.Element {
     })
 
   return (
-    <Loading when={schedules.loading} skeleton={<RowSkeleton rows={4} />} label="Loading schedules">
+    <Loading when={firstLoad(schedules)} skeleton={<RowSkeleton rows={4} />} label="Loading schedules">
       <Show when={schedules.error} fallback={null}>
         <ResourceError what="schedules" error={schedules.error} onRetry={() => void refetch()} />
       </Show>

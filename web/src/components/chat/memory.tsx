@@ -1,4 +1,5 @@
 import { For, Show, createResource, createSignal, type JSX } from "solid-js"
+import { firstLoad } from "../../lib/loading.ts"
 import { cmd } from "../../lib/api.ts"
 import { ago } from "../../lib/format.ts"
 import { Icon } from "../ui/icon.tsx"
@@ -80,7 +81,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
     })
 
   return (
-    <Loading when={notes.loading} skeleton={<RowSkeleton rows={6} />} label="Loading memory">
+    <Loading when={firstLoad(notes)} skeleton={<RowSkeleton rows={6} />} label="Loading memory">
       <Show when={notes.error} fallback={null}>
         <ResourceError what="memory" error={notes.error} onRetry={() => void refetch()} />
       </Show>
