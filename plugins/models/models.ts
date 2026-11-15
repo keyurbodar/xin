@@ -229,7 +229,7 @@ async function readDailyAlert(db: SqliteExecutor): Promise<number> {
 }
 
 const spendNotice = (title: string, body: string): Notification => ({
-  threadTitle: "Xin",
+  threadTitle: "Ingle",
   title,
   body,
   tag: "spend",

@@ -68,7 +68,7 @@ export function Prompts(): JSX.Element {
             <div class="p-3">
               <Empty
                 title="No prompts yet."
-                detail="A prompt is a slash command. Type /name in a chat and Xin sends its text, followed by anything you type after the name."
+                detail="A prompt is a slash command. Type /name in a chat and Ingle sends its text, followed by anything you type after the name."
               />
             </div>
           </Show>

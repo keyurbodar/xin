@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config"
 const path = (relative: string) => join(import.meta.dirname, relative)
 const maxWorkers = Number(process.env.VITEST_MAX_WORKERS ?? 2)
 
-const LIVE_VARS = ["OPENCODE_API_KEY", "XIN_LIVE_MODELS"] as const
+const LIVE_VARS = ["OPENCODE_API_KEY", "INGLE_LIVE_MODELS"] as const
 
 function unquote(value: string): string {
   const quote = value[0]
@@ -27,19 +27,19 @@ function parseDevVars(text: string): Record<string, string> {
 
 function liveBindings(): Record<string, string> {
   const file = path("./.dev.vars")
-  if (!existsSync(file)) throw new Error(`XIN_LIVE=1 needs ${file}`)
+  if (!existsSync(file)) throw new Error(`INGLE_LIVE=1 needs ${file}`)
   const dev = parseDevVars(readFileSync(file, "utf8"))
-  const bindings: Record<string, string> = { XIN_LIVE: "1" }
+  const bindings: Record<string, string> = { INGLE_LIVE: "1" }
   for (const name of LIVE_VARS) {
     const value = dev[name]
-    if (value === undefined) throw new Error(`XIN_LIVE=1 needs ${name} in .dev.vars`)
+    if (value === undefined) throw new Error(`INGLE_LIVE=1 needs ${name} in .dev.vars`)
     bindings[name] = value
   }
   return bindings
 }
 
-const live = process.env.XIN_LIVE === "1"
-const load = process.env.XIN_LOAD === "1"
+const live = process.env.INGLE_LIVE === "1"
+const load = process.env.INGLE_LOAD === "1"
 
 export default defineConfig({
   plugins: [

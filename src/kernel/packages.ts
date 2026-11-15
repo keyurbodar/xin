@@ -16,7 +16,7 @@ import {
 } from "./bundles.ts"
 import type { Catalog } from "./loader.ts"
 
-declare const XIN_BUILD: string | undefined
+declare const INGLE_BUILD: string | undefined
 
 export type PackageSpec =
   | { readonly kind: "registry"; readonly name: string; readonly range?: string }
@@ -81,7 +81,7 @@ const storedCheck = compile(StoredSchema)
 const SpecArg = str({ minLength: 1, maxLength: MAX_SPEC })
 const PackageArg = str({ minLength: 1, maxLength: MAX_PACKAGE_NAME })
 
-export const buildId = (): string => (typeof XIN_BUILD === "string" ? XIN_BUILD : "dev")
+export const buildId = (): string => (typeof INGLE_BUILD === "string" ? INGLE_BUILD : "dev")
 
 export function parseSpec(text: string): PackageSpec | undefined {
   if (text.length === 0 || text.length > MAX_SPEC) return undefined

@@ -14,17 +14,17 @@ No model ids in code. The catalog comes from pi-ai at run time, filtered to prov
 
 Settings: paste a provider key. The composer picker lists models. "use X for this" in chat switches through `set_model`.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 $S call POST /v1/cmd '{"id":"m3-1","op":"credential.set","args":{"provider":"openrouter","key":"sk-verify-not-real"}}'
 $S call POST /v1/cmd '{"id":"m3-2","op":"models.list","args":{"query":"openrouter"}}'        # catalog entries for that provider
 $S call POST /v1/cmd '{"id":"m3-3","op":"conv.configure","args":{"model":{"provider":"openrouter","modelId":"does-not-exist"}}}'   # bad_args
 $S call POST /v1/cmd '{"id":"m3-4","op":"credential.delete","args":{"provider":"openrouter"}}'
 ```
 
-The mid-run switch, the compaction after a switch to a smaller window and the sealed row are proven in `plugins/models/models.test.ts`. A real model answering needs a real key: the live run (`XIN_LIVE=1`).
+The mid-run switch, the compaction after a switch to a smaller window and the sealed row are proven in `plugins/models/models.test.ts`. A real model answering needs a real key: the live run (`INGLE_LIVE=1`).
 
 ## Gotchas
 

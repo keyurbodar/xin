@@ -1,11 +1,11 @@
 # 15 · Web: search and page fetch
 
-This section decides that Xin can search the public web and read a page as text, through two built-in tools and one normal feature row. It does not add a browser, JavaScript rendering, authenticated pages or code execution.
+This section decides that Ingle can search the public web and read a page as text, through two built-in tools and one normal feature row. It does not add a browser, JavaScript rendering, authenticated pages or code execution.
 
 Read with: [06 Orchestration](./06-orchestration.md) for the job wrapper, [08 Files](./08-files.md) for the separate file scope, [09 Plugins](./09-plugins.md) for rows and presets.
 
 ```text
-tool-web row (bundle xin-plugin-web, row id tool-web)
+tool-web row (bundle ingle-plugin-web, row id tool-web)
   installs the tool-web extension with two tools
   web_search(query, maxResults?)  -> titles, URLs, snippets
   web_fetch(url, maxChars?, offset?) -> title, content type, one window of readable text
@@ -38,7 +38,7 @@ The model sees one window of that text per call, 8,000 characters by default, be
 
 ## Row and scoping
 
-The feature is a native Cordis package, `plugins/web`, with one row, `tool-web`, in the `xin-plugin-web` bundle. The row injects `pi` and `jobs` and installs the `tool-web` extension. The bundle declares the row `disabled: true` (`plugins/web/package.json`, carried into `src/catalog.gen.ts`), the way `xin-plugin-git` does: web and git access are optional plugins and off by default, as the scope rule requires, but the row is in the tree so `plugin.list` shows it and `plugin.enable` mounts it without a rebuild. `xin.profile.json` names the bundle and carries no row state; the disabled flag lives on the row. A preset can then hide it for one scope.
+The feature is a native Cordis package, `plugins/web`, with one row, `tool-web`, in the `ingle-plugin-web` bundle. The row injects `pi` and `jobs` and installs the `tool-web` extension. The bundle declares the row `disabled: true` (`plugins/web/package.json`, carried into `src/catalog.gen.ts`), the way `ingle-plugin-git` does: web and git access are optional plugins and off by default, as the scope rule requires, but the row is in the tree so `plugin.list` shows it and `plugin.enable` mounts it without a rebuild. `ingle.profile.json` names the bundle and carries no row state; the disabled flag lives on the row. A preset can then hide it for one scope.
 
 The tools follow the same scoping rules as the rest of the agent:
 

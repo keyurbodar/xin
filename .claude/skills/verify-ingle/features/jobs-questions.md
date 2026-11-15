@@ -14,7 +14,7 @@ Slow tools become jobs. A tool that finishes within 8 s returns inline. A slower
 
 The Overview's "Waiting on you" lists open questions. A push arrives if no tab is open. The owner answers from the coordinator chat or the Overview.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 Needs a real model (see threads.md for the credential and project setup).
 

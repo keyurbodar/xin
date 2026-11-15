@@ -112,7 +112,7 @@ const stored = (stub: Stub, name: string): Promise<{ value: string } | undefined
 
 async function install(stub: Stub, id: string, config: Record<string, unknown>): Promise<unknown> {
   const ack = await cmd(stub, `install-${id}-${crypto.randomUUID()}`, "bundle.put", {
-    package: `xin-plugin-${id}`,
+    package: `ingle-plugin-${id}`,
     rows: [{ id, plugin: "mcp-server", config }],
   })
   return ack.result

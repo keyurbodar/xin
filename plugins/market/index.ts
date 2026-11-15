@@ -21,7 +21,7 @@ function builtinIndex(catalog: readonly { readonly [key: string]: unknown }[]): 
     const pluginName = typeof entry["name"] === "string" ? entry["name"] : undefined
     const source = typeof entry["source"] === "string" ? entry["source"] : undefined
     if (pluginName === undefined || source === undefined) continue
-    if (source === "xin") continue
+    if (source === "ingle") continue
     const pkg = sourcePackage(source)
     const group = groups.get(pkg)
     if (group !== undefined) {
@@ -37,7 +37,7 @@ function builtinIndex(catalog: readonly { readonly [key: string]: unknown }[]): 
   }
   return {
     format: 1,
-    title: "Xin",
+    title: "Ingle",
     description: "Plugins compiled into this build.",
     metadata: { categories: { "first-party": { title: "First party" } }, labels: {}, sortKeys: {} },
     plugins: [...groups].map(([pkg, group]) => ({

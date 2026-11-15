@@ -5,7 +5,7 @@ import { satisfies } from "../semver.ts"
 export const PLUGIN_API = 1
 
 /**
- * What a plugin declares about itself in `package.json` under `xin.plugins.<name>`.
+ * What a plugin declares about itself in `package.json` under `ingle.plugins.<name>`.
  * Everything is optional: a plugin that declares nothing runs.
  */
 export type Manifest = {

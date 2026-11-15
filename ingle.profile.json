@@ -1,0 +1,37 @@
+{
+  "bundles": [
+    "ingle-base",
+    "ingle-plugin-artifacts",
+    "ingle-plugin-compact",
+    "ingle-plugin-deploy-hook",
+    "ingle-plugin-failures",
+    "ingle-plugin-files",
+    "ingle-plugin-git",
+    "ingle-plugin-goals",
+    "ingle-plugin-guard",
+    "ingle-plugin-hello",
+    "ingle-plugin-intake",
+    "ingle-plugin-jobs",
+    "ingle-plugin-market",
+    "ingle-plugin-mcp",
+    "ingle-plugin-memory",
+    "ingle-plugin-models",
+    "ingle-plugin-orchestrator",
+    "ingle-plugin-presets",
+    "ingle-plugin-push",
+    "ingle-plugin-questions",
+    "ingle-plugin-schedules",
+    "ingle-plugin-skills",
+    "ingle-plugin-time",
+    "ingle-plugin-watchdog",
+    "ingle-plugin-web",
+    "ingle-plugin-workspace",
+    "ingle-plugin-git-native"
+  ],
+  "patch": [
+    {
+      "id": "hello",
+      "disabled": true
+    }
+  ]
+}

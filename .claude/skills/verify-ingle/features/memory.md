@@ -12,10 +12,10 @@ Notes live in the `notes` table with FTS5 search, and a curated `profile_md` is 
 
 The project panel's Memory tab lists the coordinator's facts with where each came from. Hovering a row shows pin, edit and forget; Add appends a note by hand. A Suggested card offers Remember, Edit and Dismiss for a rule the owner just stated in chat. The settings view shows the profile and lets the owner forget by query. The agent remembers during chat.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 $S call POST /v1/cmd '{"id":"l1","op":"memory.list","args":{}}'          # {notes:[...]}
 $S call POST /v1/cmd '{"id":"a1","op":"memory.add","args":{"text":"Use British spelling"}}'
 $S call POST /v1/cmd '{"id":"pn1","op":"memory.pin","args":{"id":3,"pinned":true}}'

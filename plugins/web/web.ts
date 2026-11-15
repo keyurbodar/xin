@@ -5,7 +5,7 @@ import { messageOf } from "../../src/errors.ts"
 import { textResult } from "../../src/kernel/index.ts"
 
 const SEARCH_URL = "https://html.duckduckgo.com/html/"
-const USER_AGENT = "Mozilla/5.0 (compatible; Xin/0.1; +https://github.com/keyurbodar/xin)"
+const USER_AGENT = "Mozilla/5.0 (compatible; Ingle/0.1; +https://github.com/keyurbodar/xin)"
 const TIMEOUT_MS = 15_000
 const SEARCH_BYTES = 1_000_000
 const PAGE_BYTES = 2 * 1024 * 1024

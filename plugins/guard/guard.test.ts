@@ -70,8 +70,8 @@ async function load(config: GuardConfig): Promise<string> {
 
 describe("row", () => {
   it("declares one guard row and one bundle row pointing at it, with its defaults", () => {
-    expect(manifest.xin.plugins.guard).toMatchObject({ module: "./index.ts" })
-    expect(manifest.xin.bundle).toEqual([{ id: "guard", plugin: "guard" }])
+    expect(manifest.ingle.plugins.guard).toMatchObject({ module: "./index.ts" })
+    expect(manifest.ingle.bundle).toEqual([{ id: "guard", plugin: "guard" }])
     expect(guard.Config({})).toMatchObject({ thresholds: [3, 5, 8], include: [], exclude: [] })
     expect(guard.Config({})).toMatchObject({ argumentsPreviewChars: 500 })
   })

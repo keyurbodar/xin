@@ -402,7 +402,7 @@ describe("mcp servers", () => {
     fake.holdList = true
     fake.during = async () => {
       await home.fetch(
-        new Request("https://xin.test/v1/cmd", {
+        new Request("https://ingle.test/v1/cmd", {
           method: "POST",
           body: JSON.stringify({ id: "mcp-remove-2", op: "mcp.remove", args: { name: "demo" } }),
         }),

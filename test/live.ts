@@ -8,10 +8,10 @@ export type LiveModel = {
   readonly modelId: string
 }
 
-export const liveEnabled = (): boolean => process.env.XIN_LIVE === "1"
+export const liveEnabled = (): boolean => process.env.INGLE_LIVE === "1"
 
 export function liveModels(): readonly string[] {
-  return (process.env.XIN_LIVE_MODELS ?? "")
+  return (process.env.INGLE_LIVE_MODELS ?? "")
     .split(",")
     .map((id) => id.trim())
     .filter((id) => id.length > 0)
@@ -40,6 +40,6 @@ export async function answeringModels(ids: readonly string[]): Promise<readonly 
       failures.push(`${modelId}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  if (answering.length === 0) throw new Error(`no XIN_LIVE_MODELS answered a probe: ${failures.join("; ")}`)
+  if (answering.length === 0) throw new Error(`no INGLE_LIVE_MODELS answered a probe: ${failures.join("; ")}`)
   return answering
 }

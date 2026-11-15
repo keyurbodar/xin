@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "xin",
+      "name": "ingle",
       "dependencies": {
         "@deepseek-ai/cordis": "4.1.0",
         "@deepseek-ai/cordis-plugin-loader": "1.1.0",
