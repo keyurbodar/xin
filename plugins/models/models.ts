@@ -892,6 +892,7 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const contextOp = defineOp({
     name: "conv.context",
+    read: true,
     args: obj({ conv: opt(int({ minimum: 0 })) }),
     actors: ["owner", "agent"],
     run: async (api, args) => {
@@ -949,6 +950,7 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const list = defineOp({
     name: "models.list",
+    read: true,
     args: obj({ query: opt(str()), includeUnkeyed: opt(bool()) }),
     actors: ["owner", "agent"],
     run: async (api, { query, includeUnkeyed }) => {
@@ -1133,6 +1135,7 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const readCapOp = defineOp({
     name: "usage.cap",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => ({ usd: await readCap(db) }),
@@ -1152,6 +1155,7 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const alertOp = defineOp({
     name: "usage.alert",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => ({ usd: await readDailyAlert(db) }),
@@ -1169,6 +1173,7 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const summary = defineOp({
     name: "usage.summary",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => {
