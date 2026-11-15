@@ -11,6 +11,10 @@ import {
   issueScope,
   LINK_LABEL,
   linkArgs,
+  nextCommandId,
+  threadPlace,
+  type ThreadHome,
+  type ThreadPlace,
   titleEdit,
   withHead,
   withOlder,
@@ -40,7 +44,8 @@ import type { CaptainRow } from "../../lib/captains.ts"
 import { homeCaptains } from "../../state/captains.ts"
 import { homeProjects, projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { commentOnIssue, issueDetail, issueScreen, issuesRev, linkIssue, updateIssue } from "../../state/issues.ts"
-import { showPaneView } from "../../state/tabs.ts"
+import { navigate } from "../../lib/router.ts"
+import { openThreadTab, showPaneView } from "../../state/tabs.ts"
 import { createPaneAction, ResourceError } from "../chat/ui.tsx"
 import { Button } from "../ui/button.tsx"
 import { PaneSkeleton, Loading } from "../ui/skeleton.tsx"
@@ -48,7 +53,7 @@ import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM } from "../shell/menu.ts"
 import { PANE_ROW } from "./bodies.tsx"
 import { AddLink, AssigneesField, createFieldAction, DescriptionField, DueField, FieldError, TitleField } from "./issue-edit.tsx"
 import { PriorityMark, StateMark } from "./issue-marks.tsx"
-import { issueNames, IssueRow, issueView } from "./issues.tsx"
+import { issueNames, IssueRow, issueView, mintCommandId } from "./issues.tsx"
 import type { PaneContext } from "./overview.tsx"
 
 const PICKER =
@@ -237,14 +242,38 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
                   Threads <span class="font-mono text-2xs text-icon">{issue().threads.length}</span>
                 </span>
                 <For each={issue().threads}>
-                  {(thread, index) => (
-                    <button type="button" class={PANE_ROW} onClick={() => props.onOpenThread(thread)}>
-                      <span class="min-w-0 flex-1 truncate text-sm text-ink">{names().thread(thread) ?? `Thread ${thread}`}</span>
+                  {(thread, index) => {
+                    const place = () => threadPlace(thread, threadHome(props.project), homeProjects().map(threadHome))
+                    const owner = (): JSX.Element => (
                       <Show when={index() === 0}>
                         <span class="shrink-0 text-xs text-ink-3">Owner</span>
                       </Show>
-                    </button>
-                  )}
+                    )
+                    return (
+                      <Show
+                        when={place().kind !== "unknown"}
+                        fallback={
+                          <div class="flex items-start gap-2.5 px-2 py-1.5" title="This thread isn’t in your home, so it can’t open here">
+                            <span class="min-w-0 flex-1">
+                              <span class="block truncate text-sm text-ink-3">Thread {thread}</span>
+                              <span class="block truncate text-xs text-icon">Not in your home</span>
+                            </span>
+                            {owner()}
+                          </div>
+                        }
+                      >
+                        <button type="button" class={PANE_ROW} onClick={() => openLinkedThread(thread, place(), props.onOpenThread)}>
+                          <span class="min-w-0 flex-1">
+                            <span class="block truncate text-sm text-ink">{placeTitle(place(), thread)}</span>
+                            <Show when={placeProject(place())}>
+                              {(slug) => <span class="block truncate text-xs text-ink-3">In {slug()}</span>}
+                            </Show>
+                          </span>
+                          {owner()}
+                        </button>
+                      </Show>
+                    )
+                  }}
                 </For>
               </Show>
 
@@ -282,6 +311,38 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
       </Show>
     </Loading>
   )
+}
+
+function threadHome(project: ProjectSummary): ThreadHome {
+  const spaces = project.spaces.flatMap((space) => Object.values(space.threads).flat())
+  return { id: project.id, slug: project.slug, threads: [...projectThreads(project), ...spaces] }
+}
+
+function placeTitle(place: ThreadPlace, thread: number): string {
+  return place.kind === "unknown" ? `Thread ${thread}` : place.title
+}
+
+function placeProject(place: ThreadPlace): string | undefined {
+  return place.kind === "elsewhere" ? place.slug : undefined
+}
+
+/** A thread in this pane opens as its tab here; one from another project opens under that project's own address. */
+function openLinkedThread(thread: number, place: ThreadPlace, openHere: (id: number) => void): void {
+  switch (place.kind) {
+    case "here":
+      openHere(thread)
+      return
+    case "elsewhere":
+      openThreadTab(place.projectId, thread)
+      navigate(`/p/${place.slug}/t/${thread}`)
+      return
+    case "unknown":
+      return
+    default: {
+      const _exhaustive: never = place
+      return _exhaustive
+    }
+  }
 }
 
 /** Everyone the owner can assign: themself, this pane's threads, every Captain, and each project's own coordinator. */
@@ -436,11 +497,18 @@ function Comment(props: { event: IssueEvent; who: string }): JSX.Element {
 function CommentBox(props: { id: number }): JSX.Element {
   const [body, setBody] = createSignal("")
   const action = createPaneAction()
+  const [commandId, setCommandId] = createSignal(mintCommandId())
   const submit = (): void => {
     const text = body().trim()
     if (text === "" || action.busy() !== undefined) return
     void action.run("comment", async () => {
-      await commentOnIssue(props.id, text)
+      try {
+        await commentOnIssue(props.id, text, commandId())
+      } catch (problem) {
+        setCommandId(nextCommandId(commandId(), problem, mintCommandId))
+        throw problem
+      }
+      setCommandId(nextCommandId(commandId(), undefined, mintCommandId))
       setBody("")
     })
   }

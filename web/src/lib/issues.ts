@@ -1,3 +1,4 @@
+import { isDefinitive } from "./api.ts"
 import { isRecord, listOf, numOf, recordOf, strOf, stringsOf } from "./parse.ts"
 
 export const PRIORITIES = ["urgent", "high", "normal", "low"] as const
@@ -503,4 +504,30 @@ export function withOlder(pages: TimelinePages, older: IssueDetail): TimelinePag
 /** Issues are scoped by project; a Captain's pane carries its space as the project, so it reads its project's issues. */
 export function issueScope(pane: { readonly id: string }, captain: { readonly projectId: string } | undefined): string {
   return captain?.projectId ?? pane.id
+}
+
+/**
+ * The command id for a draft's next send. The host dedupes on it, so a send that failed in the network keeps its id and
+ * a replay lands once; a success or a definite rejection (the host replays a rejected id) gets a fresh one.
+ */
+export function nextCommandId(current: string, problem: unknown, mint: () => string): string {
+  return problem === undefined || isDefinitive(problem) ? mint() : current
+}
+
+export type ThreadHome = { readonly id: string; readonly slug: string; readonly threads: readonly { readonly id: number; readonly title: string }[] }
+
+export type ThreadPlace =
+  | { readonly kind: "here"; readonly title: string }
+  | { readonly kind: "elsewhere"; readonly title: string; readonly projectId: string; readonly slug: string }
+  | { readonly kind: "unknown" }
+
+/** Where a linked thread opens: in this pane's project, under the project the home lists it in, or nowhere when the home does not list it. */
+export function threadPlace(thread: number, pane: ThreadHome, projects: readonly ThreadHome[]): ThreadPlace {
+  const here = pane.threads.find((entry) => entry.id === thread)
+  if (here !== undefined) return { kind: "here", title: here.title }
+  for (const project of projects) {
+    const found = project.threads.find((entry) => entry.id === thread)
+    if (found !== undefined) return { kind: "elsewhere", title: found.title, projectId: project.id, slug: project.slug }
+  }
+  return { kind: "unknown" }
 }

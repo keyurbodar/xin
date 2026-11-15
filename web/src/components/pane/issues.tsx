@@ -9,6 +9,7 @@ import {
   dueLabel,
   localDay,
   newIssueArgs,
+  nextCommandId,
   openGroups,
   PRIORITIES,
   PRIORITY_LABEL,
@@ -29,6 +30,8 @@ import { ICON_BUTTON, MENU_CONTENT } from "../shell/menu.ts"
 import { PANE_ROW } from "./bodies.tsx"
 import { AssigneeChip, PriorityMark, StateMark } from "./issue-marks.tsx"
 import { Section, type PaneContext } from "./overview.tsx"
+
+export const mintCommandId = (): string => crypto.randomUUID()
 
 export function issueView(id: number): string {
   return `issue:${id}`
@@ -205,11 +208,18 @@ function NewIssue(props: { project: ProjectSummary; projectId: string; states: r
     setPriority(undefined)
     setState(undefined)
   }
+  const [commandId, setCommandId] = createSignal(mintCommandId())
   const submit = (): void => {
     const body = args()
     if (body === undefined || action.busy() !== undefined) return
     void action.run("create", async () => {
-      await createIssue(body)
+      try {
+        await createIssue(body, commandId())
+      } catch (problem) {
+        setCommandId(nextCommandId(commandId(), problem, mintCommandId))
+        throw problem
+      }
+      setCommandId(nextCommandId(commandId(), undefined, mintCommandId))
       reset()
       setOpen(false)
     })
@@ -218,7 +228,10 @@ function NewIssue(props: { project: ProjectSummary; projectId: string; states: r
   return (
     <Popover.Root
       open={open()}
-      onOpenChange={(details) => setOpen(details.open)}
+      onOpenChange={(details) => {
+        if (details.open) setCommandId(mintCommandId())
+        setOpen(details.open)
+      }}
       lazyMount
       unmountOnExit
       positioning={{ placement: "bottom-end", gutter: 6 }}

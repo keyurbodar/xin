@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { OpError } from "./api.ts"
 import {
   actorName,
   assigneeCandidates,
@@ -17,6 +18,8 @@ import {
   eventLine,
   initials,
   issueScope,
+  nextCommandId,
+  threadPlace,
   localDay,
   newIssueArgs,
   openGroups,
@@ -296,4 +299,21 @@ test("older pages prepend and take the older cursor; a head re-read merges witho
 test("a project pane lists its own issues, and a Captain pane lists its project's", () => {
   expect(issueScope({ id: "prj_1" }, undefined)).toBe("prj_1")
   expect(issueScope({ id: "spc_9" }, { projectId: "prj_1" })).toBe("prj_1")
+})
+
+test("a draft keeps its command id across a network failure and gets a new one after a success or a rejection", () => {
+  let minted = 0
+  const mint = (): string => `id-${(minted += 1)}`
+  expect(nextCommandId("id-0", new TypeError("Failed to fetch"), mint)).toBe("id-0")
+  expect(nextCommandId("id-0", new OpError("http", "issue.comment: HTTP 502"), mint)).toBe("id-0")
+  expect(nextCommandId("id-0", new OpError("bad_args", "a comment needs text"), mint)).toBe("id-1")
+  expect(nextCommandId("id-1", undefined, mint)).toBe("id-2")
+})
+
+test("a linked thread opens in this pane, under its own project, or not at all when the home does not list it", () => {
+  const pane = { id: "prj_a", slug: "alpha", threads: [{ id: 7, title: "Fix the build" }] }
+  const other = { id: "prj_b", slug: "beta", threads: [{ id: 9, title: "Draft copy" }] }
+  expect(threadPlace(7, pane, [pane, other])).toEqual({ kind: "here", title: "Fix the build" })
+  expect(threadPlace(9, pane, [pane, other])).toEqual({ kind: "elsewhere", title: "Draft copy", projectId: "prj_b", slug: "beta" })
+  expect(threadPlace(42, pane, [pane, other])).toEqual({ kind: "unknown" })
 })

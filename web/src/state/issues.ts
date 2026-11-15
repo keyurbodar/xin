@@ -63,16 +63,17 @@ async function issueOf(result: Promise<unknown>): Promise<Issue> {
   return issue
 }
 
-export function createIssue(args: Record<string, unknown>): Promise<Issue> {
-  return issueOf(cmd<unknown>("issue.create", args))
+/** The caller owns the command id, so a retry after a lost ack replays one create instead of making a second issue. */
+export function createIssue(args: Record<string, unknown>, commandId: string): Promise<Issue> {
+  return issueOf(cmd<unknown>("issue.create", args, { id: commandId }))
 }
 
 export function updateIssue(id: number, fields: Record<string, unknown>): Promise<Issue> {
   return issueOf(cmd<unknown>("issue.update", { id, ...fields }))
 }
 
-export async function commentOnIssue(id: number, body: string): Promise<void> {
-  await cmd<unknown>("issue.comment", { id, body })
+export async function commentOnIssue(id: number, body: string, commandId: string): Promise<void> {
+  await cmd<unknown>("issue.comment", { id, body }, { id: commandId })
 }
 
 export function linkIssue(args: Record<string, unknown>, on: boolean): Promise<Issue> {
