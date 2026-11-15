@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
+import { invalidateReads } from "./api.ts"
 import {
   captainModel,
   ensureCaptain,
@@ -16,7 +17,9 @@ type Sent = { readonly id: string; readonly op: string; readonly args: Record<st
 const sent: Sent[] = []
 const realFetch = globalThis.fetch
 
+/** A home in a new state, which a real tab hears of through a `changed` frame that drops its cached reads. */
 function serve(results: Record<string, (args: Record<string, unknown>) => unknown>): void {
+  invalidateReads()
   globalThis.fetch = (async (_url: string, init: RequestInit) => {
     const body: unknown = JSON.parse(String(init.body))
     const frames = (Array.isArray(body) ? body : [body]) as Sent[]

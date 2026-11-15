@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js"
-import { cached, cmd, live } from "../lib/api.ts"
+import { cmd } from "../lib/api.ts"
 import { errorMessage, isKnownOpError, isRecord, remote, type RemoteHandle } from "./extensions.ts"
 
 
@@ -75,7 +75,7 @@ const parseModels = (value: unknown): ModelsList => {
   }
 }
 
-export const models: RemoteHandle<ModelsList> = remote(() => cached("models.list"), parseModels)
+export const models: RemoteHandle<ModelsList> = remote(() => cmd("models.list"), parseModels)
 
 /** The composer's picker: the catalog with unkeyed models included; the server filters and ranks a non-empty query. */
 export async function searchModels(query: string): Promise<ModelsList> {
@@ -283,7 +283,7 @@ const parseUsage = (value: unknown): UsageSummary => {
 
 export const usage: RemoteHandle<UsageSummary> = remote(async () => {
   try {
-    return await live("usage.summary")
+    return await cmd("usage.summary")
   } catch (error: unknown) {
     if (isKnownOpError(error)) return { recorded: false }
     throw error
@@ -326,7 +326,7 @@ const parseSystemVersion = (value: unknown): SystemVersion => {
   }
 }
 
-export const systemVersion: RemoteHandle<SystemVersion> = remote(() => cached("system.version"), parseSystemVersion)
+export const systemVersion: RemoteHandle<SystemVersion> = remote(() => cmd("system.version"), parseSystemVersion)
 
 export type UpdateOutcome = { readonly application: "deploying" | "failed"; readonly detail: string }
 
@@ -365,7 +365,7 @@ const parseSystemMetrics = (value: unknown): SystemMetrics => {
   }
 }
 
-export const systemMetrics: RemoteHandle<SystemMetrics> = remote(() => live("system.metrics"), parseSystemMetrics)
+export const systemMetrics: RemoteHandle<SystemMetrics> = remote(() => cmd("system.metrics"), parseSystemMetrics)
 
 export type LogEntry = { readonly at: number; readonly level: "warn" | "error"; readonly text: string }
 
@@ -395,7 +395,7 @@ const parseSessions = (value: unknown): readonly Session[] =>
     return [{ id, since: typeof since === "number" ? since : 0, origin: typeof origin === "string" ? origin : "" }]
   })
 
-export const sessions: RemoteHandle<readonly Session[]> = remote(() => live("session.list"), parseSessions)
+export const sessions: RemoteHandle<readonly Session[]> = remote(() => cmd("session.list"), parseSessions)
 
 /** Closes one live socket, or all of them when no id is given; returns how many closed. */
 export async function closeSessions(id?: string): Promise<number> {
@@ -449,7 +449,7 @@ const parseNotifyPrefs = (value: unknown): NotifyPrefs => {
   }
 }
 
-export const notifyPrefs: RemoteHandle<NotifyPrefs> = remote(() => cached("notify.prefs"), parseNotifyPrefs)
+export const notifyPrefs: RemoteHandle<NotifyPrefs> = remote(() => cmd("notify.prefs"), parseNotifyPrefs)
 
 const DEFAULT_NOTIFY: NotifyPrefs = { waiting: true, finished: true, failed: true, spend: true, schedule: false }
 
@@ -476,7 +476,7 @@ const parseOwner = (value: unknown): OwnerSettings => {
   }
 }
 
-export const owner: RemoteHandle<OwnerSettings> = remote(() => cached("owner.read"), parseOwner)
+export const owner: RemoteHandle<OwnerSettings> = remote(() => cmd("owner.read"), parseOwner)
 
 export async function setOwner(patch: { name?: string; instructions?: string }): Promise<OwnerSettings> {
   const next = parseOwner(await cmd("owner.set", patch))
@@ -506,7 +506,7 @@ const parseQuiet = (value: unknown): QuietHours => {
   }
 }
 
-export const quietHours: RemoteHandle<QuietHours> = remote(() => cached("notify.quiet"), parseQuiet)
+export const quietHours: RemoteHandle<QuietHours> = remote(() => cmd("notify.quiet"), parseQuiet)
 
 export async function setQuietHours(patch: Partial<QuietHours>): Promise<void> {
   await cmd("notify.quiet.set", patch)
@@ -523,7 +523,7 @@ const parsePushDevices = (value: unknown): readonly PushDevice[] =>
     return typeof endpoint === "string" && typeof origin === "string" ? [{ endpoint, origin }] : []
   })
 
-export const pushDevices: RemoteHandle<readonly PushDevice[]> = remote(() => cached("push.list"), parsePushDevices)
+export const pushDevices: RemoteHandle<readonly PushDevice[]> = remote(() => cmd("push.list"), parsePushDevices)
 
 export async function removePushDevice(endpoint: string): Promise<void> {
   await cmd("push.unsubscribe", { endpoint })

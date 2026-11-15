@@ -95,10 +95,62 @@ export function noteHomeRev(rev: string): void {
 }
 
 /**
- * A command that may change state. Cached reads are dropped once it settles, whatever its outcome: a rejected or
- * failed batch may still have committed.
+ * The ops that change nothing, in one place. A `cached` read is served from the cache, because only a command changes
+ * it, and the TTL covers the rest. A `live` read changes without a command (sessions, metrics, logs, an agent's files)
+ * and is never cached. Neither one drops the cache, and both carry `read`, so the home does not bump its revision for
+ * them. Any other op may write.
+ */
+const READS: Readonly<Record<string, "cached" | "live">> = {
+  "automation.list": "cached",
+  "market.entry": "cached",
+  "market.policy": "cached",
+  "market.search": "cached",
+  "market.skipped": "cached",
+  "mcp.list": "cached",
+  "mcp.tools": "cached",
+  "memory.list": "cached",
+  "memory.profile": "cached",
+  "models.list": "cached",
+  "notify.prefs": "cached",
+  "notify.quiet": "cached",
+  "owner.read": "cached",
+  "plugin.catalog": "cached",
+  "plugin.list": "cached",
+  "plugin.packages": "cached",
+  "preset.list": "cached",
+  "prompt.list": "cached",
+  "push.key": "cached",
+  "push.list": "cached",
+  "skill.list": "cached",
+  "skill.read": "cached",
+  "system.version": "cached",
+  "workspace.read": "cached",
+  "captain.get": "live",
+  "captain.list": "live",
+  "conv.context": "live",
+  "file.list": "live",
+  "file.read": "live",
+  "file.revision": "live",
+  "file.revisions": "live",
+  "history.page": "live",
+  "job.list": "live",
+  "memory.suggested": "live",
+  "request.list": "live",
+  "session.list": "live",
+  "system.logs": "live",
+  "system.metrics": "live",
+  "usage.summary": "live",
+}
+
+/**
+ * Sends one op, batched with every other op issued in the same task. An op listed in `READS` is served or sent the
+ * way the table says. Any other op may change state, so the cached reads are dropped once it settles, whatever the
+ * outcome, because a rejected or failed batch may still have committed.
  */
 export async function cmd<T>(op: string, args: Record<string, unknown> = {}, options: CmdOptions = {}): Promise<T> {
+  const read = READS[op]
+  if (read === "cached") return cached<T>(op, args)
+  if (read === "live") return send<T>(op, args, { read: true })
   try {
     return await send<T>(op, args, options)
   } finally {
@@ -106,16 +158,8 @@ export async function cmd<T>(op: string, args: Record<string, unknown> = {}, opt
   }
 }
 
-/** A read whose answer changes without a command (sessions, metrics, usage): batched, never cached, clears nothing. */
-export function live<T>(op: string, args: Record<string, unknown> = {}): Promise<T> {
-  return send<T>(op, args, { read: true })
-}
-
-/**
- * A read that changes nothing, answered from the cache while nothing has dropped it and it is under a minute old.
- * Concurrent callers share one request, so screens that open together fire each read once.
- */
-export function cached<T>(op: string, args: Record<string, unknown> = {}): Promise<T> {
+/** Served from the cache while nothing has dropped it and it is under a minute old, and concurrent callers share one request. */
+function cached<T>(op: string, args: Record<string, unknown>): Promise<T> {
   const key = `${op}\u0000${JSON.stringify(args)}`
   const hit = reads.get(key)
   if (hit !== undefined && Date.now() - hit.at < READ_TTL_MS) return hit.value as Promise<T>

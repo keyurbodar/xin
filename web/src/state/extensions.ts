@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js"
-import { cached, cmd, OpError } from "../lib/api.ts"
+import { cmd, OpError } from "../lib/api.ts"
 import { isRecord, listOf, numOf, stringsOf, strOf } from "../lib/parse.ts"
 
 export { isRecord }
@@ -433,20 +433,20 @@ const parseServers = (value: unknown): readonly McpServer[] =>
   })
 
 
-export const rows = remote(() => cached("plugin.list"), parseRows)
-export const catalog = remote(() => cached("plugin.catalog"), parseCatalog)
-export const packages = remote(() => cached("plugin.packages"), parsePackages)
-export const market = remote(() => cached("market.search", {}), parseMarket)
-export const skills = remote(() => cached("skill.list"), parseSkills)
-export const presets = remote(() => cached("preset.list"), parsePresets)
-export const servers = remote(() => cached("mcp.list"), parseServers)
+export const rows = remote(() => cmd("plugin.list"), parseRows)
+export const catalog = remote(() => cmd("plugin.catalog"), parseCatalog)
+export const packages = remote(() => cmd("plugin.packages"), parsePackages)
+export const market = remote(() => cmd("market.search", {}), parseMarket)
+export const skills = remote(() => cmd("skill.list"), parseSkills)
+export const presets = remote(() => cmd("preset.list"), parsePresets)
+export const servers = remote(() => cmd("mcp.list"), parseServers)
 
 const details = new Map<string, RemoteHandle<MarketDetail | undefined>>()
 
 export function marketDetail(name: string): RemoteHandle<MarketDetail | undefined> {
   const existing = details.get(name)
   if (existing !== undefined) return existing
-  const created = remote(() => cached("market.entry", { name }), parseMarketDetail)
+  const created = remote(() => cmd("market.entry", { name }), parseMarketDetail)
   details.set(name, created)
   return created
 }
@@ -542,7 +542,7 @@ const parsePrompts = (value: unknown): readonly Prompt[] =>
     return [{ name, description: strOf(entry["description"]), text }]
   })
 
-export const prompts: RemoteHandle<readonly Prompt[]> = remote(() => cached("prompt.list"), parsePrompts)
+export const prompts: RemoteHandle<readonly Prompt[]> = remote(() => cmd("prompt.list"), parsePrompts)
 
 export async function putPrompt(name: string, text: string, description?: string): Promise<void> {
   await cmd("prompt.put", description === undefined ? { name, text } : { name, text, description })
@@ -591,7 +591,7 @@ export async function unskipMarketVersion(name: string): Promise<void> {
 export type SkippedVersion = { readonly name: string; readonly version: string | undefined }
 
 export const skippedMarket: RemoteHandle<readonly SkippedVersion[]> = remote(
-  () => cached("market.skipped"),
+  () => cmd("market.skipped"),
   (value) =>
     records(value).flatMap((item) => {
       const name = strOf(item["name"])
@@ -610,7 +610,7 @@ export async function rollbackPackage(name: string): Promise<RollbackResult> {
 
 export type MarketPolicy = { readonly autoUpdate: boolean }
 
-export const marketPolicy: RemoteHandle<MarketPolicy> = remote(() => cached("market.policy"), (value) => ({
+export const marketPolicy: RemoteHandle<MarketPolicy> = remote(() => cmd("market.policy"), (value) => ({
   autoUpdate: isRecord(value) && value["autoUpdate"] === true,
 }))
 
