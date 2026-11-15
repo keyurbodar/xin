@@ -216,6 +216,7 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const list = defineOp({
     name: "drive.list",
+    read: true,
     args: obj({ scope: ScopeSchema, prefix: opt(str({ maxLength: 1_000 })) }),
     actors: ["owner", "plugin"],
     run: async (_api, { scope, prefix }) => {
@@ -233,6 +234,7 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const read = defineOp({
     name: "drive.read",
+    read: true,
     args: obj({ scope: ScopeSchema, path: Path, sha256: opt(Sha) }),
     actors: ["owner", "plugin"],
     run: async (_api, { scope, path, sha256 }) => {
@@ -299,6 +301,7 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const history = defineOp({
     name: "drive.history",
+    read: true,
     args: obj({ scope: ScopeSchema, path: Path }),
     actors: ["owner", "plugin"],
     run: async (_api, { scope, path }) => {
@@ -348,6 +351,7 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const scopes = defineOp({
     name: "drive.scopes",
+    read: true,
     args: obj({ conversationId: opt(int({ minimum: 0 })) }),
     actors: ["owner", "plugin"],
     run: async (api, { conversationId }) => {
