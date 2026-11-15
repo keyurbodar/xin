@@ -11,7 +11,9 @@ import {
   issueScope,
   LINK_LABEL,
   linkArgs,
-  nextCommandId,
+  createCommandIds,
+  assignableCandidates,
+  outsideProject,
   threadPlace,
   type ThreadHome,
   type ThreadPlace,
@@ -41,7 +43,6 @@ import {
 } from "../../lib/issues.ts"
 import { ago } from "../../lib/format.ts"
 import { firstLoad } from "../../lib/loading.ts"
-import type { CaptainRow } from "../../lib/captains.ts"
 import { homeCaptains } from "../../state/captains.ts"
 import { homeProjects, projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { commentOnIssue, issueDetail, issueScreen, issuesRev, linkIssue, statesRev, updateIssue } from "../../state/issues.ts"
@@ -74,7 +75,11 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
     if (head !== undefined) setPages((current) => withHead(untrack(() => current), head))
   })
   const names = createMemo(() => issueNames(props.project))
-  const candidates = createMemo(() => assignableCandidates(props.project, homeProjects(), homeCaptains()))
+  const candidates = createMemo(() => {
+    const scope = issueScope(props.project, props.captain)
+    const project = homeProjects().find((entry) => entry.id === scope) ?? props.project
+    return assignableCandidates(project, projectThreads(project), homeCaptains())
+  })
   const action = createFieldAction()
   const stateOf = (id: string): IssueState | undefined => data.latest?.states.find((state) => state.id === id)
   const stateName = (id: string): string => stateOf(id)?.name ?? id
@@ -94,7 +99,11 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
     if (!on) return action.run("links", async () => keep(await linkIssue({ id: props.id, kind, other }, false)))
     const args = linkArgs(props.id, kind, other, detail.links)
     if (args.kind === "invalid") return action.send("links", args, write)
-    return action.run("links", async () => keep(await linkIssue(args.args, true)))
+    return action.run("links", async () => {
+      const outside = outsideProject((await issueDetail(other)).issue, issueScope(props.project, props.captain))
+      if (outside !== undefined) throw new Error(outside)
+      keep(await linkIssue(args.args, true))
+    })
   }
   const loadOlder = (): void => {
     const current = pages()
@@ -234,6 +243,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
                 project={issueScope(props.project, props.captain)}
                 detail={detail()}
                 busy={action.busy() === "links"}
+                error={action.error("links")}
                 onLink={(kind, other) => link(kind, other, true)}
               />
               <span class="px-1">
@@ -349,19 +359,6 @@ function openLinkedThread(thread: number, place: ThreadPlace, openHere: (id: num
 }
 
 /** Everyone the owner can assign: themself, this pane's threads, every Captain, and each project's own coordinator. */
-function assignableCandidates(project: ProjectSummary, projects: readonly ProjectSummary[], captains: readonly CaptainRow[]): readonly Candidate[] {
-  const live = captains.filter((captain) => !captain.archived)
-  const named = new Set(live.map((captain) => captain.coordinatorId))
-  return [
-    { assignee: { kind: "person", id: "owner" }, name: "You", detail: "Person" },
-    ...projectThreads(project).map((thread): Candidate => ({ assignee: { kind: "thread", id: thread.id }, name: thread.title, detail: "Thread" })),
-    ...live.map((captain): Candidate => ({ assignee: { kind: "captain", id: captain.coordinatorId }, name: captain.name, detail: "Captain" })),
-    ...projects
-      .filter((entry) => !entry.archived && !named.has(entry.coordinatorId))
-      .map((entry): Candidate => ({ assignee: { kind: "captain", id: entry.coordinatorId }, name: entry.name, detail: "Project lead" })),
-  ]
-}
-
 type Option = { readonly value: string; readonly label: string; readonly mark: JSX.Element }
 
 function Picker(props: {
@@ -500,18 +497,18 @@ function Comment(props: { event: IssueEvent; who: string }): JSX.Element {
 function CommentBox(props: { id: number }): JSX.Element {
   const [body, setBody] = createSignal("")
   const action = createPaneAction()
-  const [commandId, setCommandId] = createSignal(mintCommandId())
+  const ids = createCommandIds(mintCommandId)
   const submit = (): void => {
     const text = body().trim()
     if (text === "" || action.busy() !== undefined) return
     void action.run("comment", async () => {
       try {
-        await commentOnIssue(props.id, text, commandId())
+        await commentOnIssue(props.id, text, ids.idFor(text))
       } catch (problem) {
-        setCommandId(nextCommandId(commandId(), problem, mintCommandId))
+        ids.settle(problem)
         throw problem
       }
-      setCommandId(nextCommandId(commandId(), undefined, mintCommandId))
+      ids.settle(undefined)
       setBody("")
     })
   }

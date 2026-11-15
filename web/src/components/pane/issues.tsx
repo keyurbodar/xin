@@ -9,7 +9,7 @@ import {
   dueLabel,
   localDay,
   newIssueArgs,
-  nextCommandId,
+  createCommandIds,
   openGroups,
   PRIORITIES,
   PRIORITY_LABEL,
@@ -202,18 +202,18 @@ function NewIssue(props: { project: ProjectSummary; projectId: string; states: r
     setPriority(undefined)
     setState(undefined)
   }
-  const [commandId, setCommandId] = createSignal(mintCommandId())
+  const ids = createCommandIds(mintCommandId)
   const submit = (): void => {
     const body = args()
     if (body === undefined || action.busy() !== undefined) return
     void action.run("create", async () => {
       try {
-        await createIssue(body, commandId())
+        await createIssue(body, ids.idFor(body))
       } catch (problem) {
-        setCommandId(nextCommandId(commandId(), problem, mintCommandId))
+        ids.settle(problem)
         throw problem
       }
-      setCommandId(nextCommandId(commandId(), undefined, mintCommandId))
+      ids.settle(undefined)
       reset()
       setOpen(false)
     })
@@ -222,10 +222,7 @@ function NewIssue(props: { project: ProjectSummary; projectId: string; states: r
   return (
     <Popover.Root
       open={open()}
-      onOpenChange={(details) => {
-        if (details.open) setCommandId(mintCommandId())
-        setOpen(details.open)
-      }}
+      onOpenChange={(details) => setOpen(details.open)}
       lazyMount
       unmountOnExit
       positioning={{ placement: "bottom-end", gutter: 6 }}

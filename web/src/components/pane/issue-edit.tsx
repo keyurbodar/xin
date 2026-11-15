@@ -7,13 +7,17 @@ import {
   issueIdOf,
   LINK_KINDS,
   LINK_LABEL,
+  LINK_QUERY_MAX,
   linkedIds,
+  linkQuery,
+  outsideProject,
   type Assignee,
   type Candidate,
   type Edit,
   type IssueDetail,
   type LinkKind,
 } from "../../lib/issues.ts"
+import { createFocusReturn, type EditorExit } from "../../lib/focus.ts"
 import { searchIssues } from "../../state/issues.ts"
 import { Button } from "../ui/button.tsx"
 import { ICON_BUTTON, MENU_CONTENT } from "../shell/menu.ts"
@@ -88,14 +92,20 @@ const INPUT =
 
 export function TitleField(props: { value: string; busy: boolean; onSave: (draft: string) => Promise<boolean> }): JSX.Element {
   const [editing, setEditing] = createSignal(false)
-  const save = async (draft: string): Promise<void> => {
-    if (await props.onSave(draft)) setEditing(false)
+  const focus = createFocusReturn()
+  const close = (how: EditorExit): void => {
+    setEditing(false)
+    focus.exit(how)
+  }
+  const save = async (draft: string, how: EditorExit): Promise<void> => {
+    if (await props.onSave(draft)) close(how)
   }
   return (
     <Show
       when={editing()}
       fallback={
         <button
+          ref={focus.trigger}
           type="button"
           class="im-hover -mx-1 rounded-sm px-1 text-left text-lg font-medium text-ink"
           title="Edit the title"
@@ -113,10 +123,15 @@ export function TitleField(props: { value: string; busy: boolean; onSave: (draft
         disabled={props.busy}
         class={`${INPUT} h-8 text-lg font-medium`}
         onKeyDown={(event) => {
-          if (event.key === "Enter") void save(event.currentTarget.value)
-          if (event.key === "Escape") setEditing(false)
+          if (event.key === "Enter") {
+            event.preventDefault()
+            void save(event.currentTarget.value, "key")
+          }
+          if (event.key === "Escape") close("key")
         }}
-        onBlur={(event) => void save(event.currentTarget.value)}
+        onBlur={(event) => {
+          if (editing()) void save(event.currentTarget.value, "blur")
+        }}
       />
     </Show>
   )
@@ -124,15 +139,21 @@ export function TitleField(props: { value: string; busy: boolean; onSave: (draft
 
 export function DescriptionField(props: { value: string; busy: boolean; onSave: (draft: string) => Promise<boolean> }): JSX.Element {
   const [draft, setDraft] = createSignal<string>()
-  const save = async (): Promise<void> => {
+  const focus = createFocusReturn()
+  const close = (how: EditorExit): void => {
+    setDraft(undefined)
+    focus.exit(how)
+  }
+  const save = async (how: EditorExit): Promise<void> => {
     const text = draft()
-    if (text !== undefined && (await props.onSave(text))) setDraft(undefined)
+    if (text !== undefined && (await props.onSave(text))) close(how)
   }
   return (
     <Show
       when={draft() !== undefined}
       fallback={
         <button
+          ref={focus.trigger}
           type="button"
           title="Edit the description"
           class="im-hover mx-1 whitespace-pre-wrap break-words rounded-sm px-1 py-0.5 text-left text-sm leading-[1.55] text-ink-2"
@@ -155,16 +176,16 @@ export function DescriptionField(props: { value: string; busy: boolean; onSave: 
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
               event.preventDefault()
-              void save()
+              void save("key")
             }
-            if (event.key === "Escape") setDraft(undefined)
+            if (event.key === "Escape") close("key")
           }}
         />
         <div class="flex justify-end gap-1.5">
-          <Button variant="quiet" size="sm" onClick={() => setDraft(undefined)}>
+          <Button variant="quiet" size="sm" onClick={() => close("button")}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" disabled={props.busy} onClick={() => void save()}>
+          <Button variant="primary" size="sm" disabled={props.busy} onClick={() => void save("button")}>
             {props.busy ? "Saving" : "Save"}
           </Button>
         </div>
@@ -297,6 +318,7 @@ export function AddLink(props: {
   project: string
   detail: IssueDetail
   busy: boolean
+  error: string | undefined
   onLink: (kind: LinkKind, other: number) => Promise<boolean>
 }): JSX.Element {
   const [open, setOpen] = createSignal(false)
@@ -308,7 +330,7 @@ export function AddLink(props: {
   const typed = (text: string): void => {
     setQuery(text)
     clearTimeout(timer)
-    timer = setTimeout(() => setSettled(text.trim()), SEARCH_DELAY_MS)
+    timer = setTimeout(() => setSettled(linkQuery(text)), SEARCH_DELAY_MS)
   }
   const [found] = createResource(
     () => {
@@ -318,7 +340,10 @@ export function AddLink(props: {
     (text) => searchIssues(props.project, text),
   )
   const taken = () => linkedIds(props.detail.links)
-  const results = () => (found.latest ?? []).filter((issue) => issue.id !== props.detail.issue.id && !taken().has(issue.id))
+  const results = () =>
+    ((found.error === undefined ? found.latest : undefined) ?? []).filter(
+      (issue) => outsideProject(issue, props.project) === undefined && issue.id !== props.detail.issue.id && !taken().has(issue.id),
+    )
   const direct = () => issueIdOf(query())
   const searchNote = (): string | undefined => {
     if (settled().length < 2) return "Type at least two letters, or an issue id"
@@ -375,6 +400,7 @@ export function AddLink(props: {
                   const id = direct() ?? results()[0]?.id
                   if (event.key === "Enter" && id !== undefined) void pick(id)
                 }}
+                maxLength={LINK_QUERY_MAX}
                 placeholder="Search issues or type #id"
                 aria-label="Find an issue to link"
                 class="h-6 w-full bg-transparent text-sm text-ink outline-none placeholder:text-placeholder"
@@ -406,6 +432,9 @@ export function AddLink(props: {
               <Show when={direct() === undefined ? searchNote() : undefined}>
                 {(note) => <span class="px-2 py-1.5 text-xs text-ink-3">{note()}</span>}
               </Show>
+            </div>
+            <div class="px-2 pb-1.5">
+              <FieldError message={props.error} />
             </div>
           </Popover.Content>
         </Popover.Positioner>

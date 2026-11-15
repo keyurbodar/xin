@@ -32,6 +32,7 @@ export type IssueSummary = {
   readonly threads: readonly number[]
   readonly prs: readonly string[]
   readonly updatedAt: number
+  readonly project: string | null
 }
 
 export type Issue = IssueSummary & { readonly description: string }
@@ -131,6 +132,7 @@ function summaryOf(value: unknown): IssueSummary | undefined {
     threads: idsOf(record.threads),
     prs: stringsOf(record.prs),
     updatedAt: numOf(record.updatedAt) ?? 0,
+    project: strOf(record.project) ?? null,
   }
 }
 
@@ -511,12 +513,60 @@ export function issueScope(pane: { readonly id: string }, captain: { readonly pr
   return captain?.projectId ?? pane.id
 }
 
+export type CommandIds = {
+  readonly idFor: (payload: unknown) => string
+  readonly settle: (problem: unknown) => void
+}
+
 /**
- * The command id for a draft's next send. The host dedupes on it, so a send that failed in the network keeps its id and
- * a replay lands once; a success or a definite rejection (the host replays a rejected id) gets a fresh one.
+ * Command ids for one draft. The host dedupes on the id, so a resend of the same payload after a network failure keeps
+ * its id and lands once; an edited payload gets a fresh id, so its change is never deduped away; a success or a
+ * definite rejection (the host replays a rejected id) forgets the id.
  */
-export function nextCommandId(current: string, problem: unknown, mint: () => string): string {
-  return problem === undefined || isDefinitive(problem) ? mint() : current
+export function createCommandIds(mint: () => string): CommandIds {
+  let current: { readonly key: string; readonly id: string } | undefined
+  return {
+    idFor: (payload) => {
+      const key = JSON.stringify(payload)
+      if (current?.key !== key) current = { key, id: mint() }
+      return current.id
+    },
+    settle: (problem) => {
+      if (problem === undefined || isDefinitive(problem)) current = undefined
+    },
+  }
+}
+
+type AssignableProject = { readonly id: string; readonly name: string; readonly coordinatorId: number }
+type AssignableCaptain = { readonly projectId: string; readonly coordinatorId: number; readonly name: string; readonly archived: boolean }
+
+/** Who an issue can be assigned to from its pane: the owner, then its own project's threads, live Captains and lead. */
+export function assignableCandidates(
+  project: AssignableProject,
+  threads: readonly { readonly id: number; readonly title: string }[],
+  captains: readonly AssignableCaptain[],
+): readonly Candidate[] {
+  const own = captains.filter((captain) => !captain.archived && captain.projectId === project.id)
+  return [
+    { assignee: { kind: "person", id: "owner" }, name: "You", detail: "Person" },
+    ...threads.map((thread): Candidate => ({ assignee: { kind: "thread", id: thread.id }, name: thread.title, detail: "Thread" })),
+    ...own.map((captain): Candidate => ({ assignee: { kind: "captain", id: captain.coordinatorId }, name: captain.name, detail: "Captain" })),
+    ...(own.some((captain) => captain.coordinatorId === project.coordinatorId)
+      ? []
+      : [{ assignee: { kind: "captain", id: project.coordinatorId }, name: project.name, detail: "Project lead" } satisfies Candidate]),
+  ]
+}
+
+/** Why an issue cannot be linked from a pane scoped to `project`, or undefined when it can. */
+export function outsideProject(issue: { readonly id: number; readonly project: string | null }, project: string): string | undefined {
+  return issue.project === project ? undefined : `#${issue.id} is in another project`
+}
+
+export const LINK_QUERY_MAX = 200
+
+/** The link picker's search text as `issue.list` takes it: trimmed and within the contract's 200-character `q`. */
+export function linkQuery(text: string): string {
+  return text.trim().slice(0, LINK_QUERY_MAX)
 }
 
 export type ThreadHome = { readonly id: string; readonly slug: string; readonly threads: readonly { readonly id: number; readonly title: string }[] }

@@ -19,7 +19,10 @@ import {
   initials,
   latestIssue,
   issueScope,
-  nextCommandId,
+  createCommandIds,
+  assignableCandidates,
+  outsideProject,
+  linkQuery,
   threadPlace,
   localDay,
   newIssueArgs,
@@ -47,7 +50,7 @@ const STATES = parseStates({
 })
 
 function issue(id: number, state: string, priority: IssueSummary["priority"] = "normal"): IssueSummary {
-  return { id, title: `Issue ${id}`, state, priority, due: null, parent: null, assignees: [], threads: [], prs: [], updatedAt: 0 }
+  return { id, title: `Issue ${id}`, state, priority, due: null, parent: null, assignees: [], threads: [], prs: [], updatedAt: 0, project: "prj_1" }
 }
 
 const NAMES: Names = {
@@ -97,6 +100,7 @@ test("the issue page parses the contract's summary and defaults what is missing"
         threads: [7, "8"],
         prs: ["https://example.com/pr/1"],
         updatedAt: 5,
+        project: "prj_1",
       },
       { id: "bad" },
     ],
@@ -116,6 +120,7 @@ test("the issue page parses the contract's summary and defaults what is missing"
     threads: [7],
     prs: ["https://example.com/pr/1"],
     updatedAt: 5,
+    project: "prj_1",
   })
 })
 
@@ -310,11 +315,51 @@ test("a project pane lists its own issues, and a Captain pane lists its project'
 
 test("a draft keeps its command id across a network failure and gets a new one after a success or a rejection", () => {
   let minted = 0
-  const mint = (): string => `id-${(minted += 1)}`
-  expect(nextCommandId("id-0", new TypeError("Failed to fetch"), mint)).toBe("id-0")
-  expect(nextCommandId("id-0", new OpError("http", "issue.comment: HTTP 502"), mint)).toBe("id-0")
-  expect(nextCommandId("id-0", new OpError("bad_args", "a comment needs text"), mint)).toBe("id-1")
-  expect(nextCommandId("id-1", undefined, mint)).toBe("id-2")
+  const ids = createCommandIds(() => `id-${(minted += 1)}`)
+  expect(ids.idFor("hello")).toBe("id-1")
+  ids.settle(new TypeError("Failed to fetch"))
+  expect(ids.idFor("hello")).toBe("id-1")
+  ids.settle(new OpError("http", "issue.comment: HTTP 502"))
+  expect(ids.idFor("hello")).toBe("id-1")
+  ids.settle(new OpError("bad_args", "a comment needs text"))
+  expect(ids.idFor("hello")).toBe("id-2")
+  ids.settle(undefined)
+  expect(ids.idFor("hello")).toBe("id-3")
+})
+
+test("an edited draft gets a fresh command id, so a retry with new text or args is never deduped away", () => {
+  let minted = 0
+  const ids = createCommandIds(() => `id-${(minted += 1)}`)
+  expect(ids.idFor("Looks good")).toBe("id-1")
+  ids.settle(new TypeError("Failed to fetch"))
+  expect(ids.idFor("Looks good, ship it")).toBe("id-2")
+  expect(ids.idFor({ title: "Rotate", priority: "high" })).toBe("id-3")
+  expect(ids.idFor({ title: "Rotate", priority: "high" })).toBe("id-3")
+  expect(ids.idFor({ title: "Rotate", priority: "low" })).toBe("id-4")
+})
+
+test("assignees come from the issue's own project: its threads, its live Captains and its lead", () => {
+  const alpha = { id: "prj_a", name: "Alpha", coordinatorId: 3 }
+  const captains = [
+    { projectId: "prj_a", coordinatorId: 40, name: "Bosun", archived: false },
+    { projectId: "prj_a", coordinatorId: 41, name: "Retired", archived: true },
+    { projectId: "prj_b", coordinatorId: 50, name: "Other Captain", archived: false },
+  ]
+  const names = assignableCandidates(alpha, [{ id: 11, title: "Fix the build" }], captains).map((entry) => `${entry.detail}:${entry.name}`)
+  expect(names).toEqual(["Person:You", "Thread:Fix the build", "Captain:Bosun", "Project lead:Alpha"])
+  const led = assignableCandidates(alpha, [], [{ projectId: "prj_a", coordinatorId: 3, name: "Alpha lead", archived: false }])
+  expect(led.map((entry) => entry.name)).toEqual(["You", "Alpha lead"])
+})
+
+test("an issue from another project cannot be linked, whether typed as #id or found by search", () => {
+  expect(outsideProject({ id: 4, project: "prj_a" }, "prj_a")).toBeUndefined()
+  expect(outsideProject({ id: 9, project: "prj_b" }, "prj_a")).toBe("#9 is in another project")
+  expect(outsideProject({ id: 9, project: null }, "prj_a")).toBe("#9 is in another project")
+})
+
+test("the link search text is trimmed and capped at the contract's 200 characters", () => {
+  expect(linkQuery("  deploy  ")).toBe("deploy")
+  expect(linkQuery(`${"x".repeat(250)}`)).toHaveLength(200)
 })
 
 test("a linked thread opens in this pane, under its own project, or not at all when the home does not list it", () => {
