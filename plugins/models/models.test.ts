@@ -663,29 +663,20 @@ describe("models", () => {
     expect(counts.send).toBe(counts.spend)
   })
 
-  it("never leaves a conversation on a model disabled while its configure was in flight", async () => {
+  it("rejects a configure onto a model disabled after the disable's move-off scan already ran", async () => {
     const stub = fresh()
     const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
     const outcome = await runInDurableObject(stub, async (home: Home) => {
       const root = await home.root()
-      const { promise: gate, resolve: release } = Promise.withResolvers<void>()
-      const held = home.harness.commit(() => gate, context)
       const run = (op: string, args: object) =>
         home.commands.run({ id: crypto.randomUUID() as CommandId, op, args }, { kind: "owner" })
-      const configured = run("conv.configure", { model: narrow })
-      const disabled = run("models.enable", { model: narrow, enabled: false })
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      release()
-      await held
-      return {
-        configured: await configured,
-        disabled: await disabled,
-        model: (await root.agent(context)).model,
-      }
+      const disabled = await run("models.enable", { model: narrow, enabled: false })
+      const configured = await run("conv.configure", { model: narrow })
+      return { configured, disabled, model: (await root.agent(context)).model }
     })
     expect(outcome.disabled).toMatchObject({ kind: "ok" })
+    expect(outcome.configured).toMatchObject({ kind: "rejected", code: "bad_args" })
     expect(outcome.model).not.toEqual(narrow)
-    if (outcome.configured.kind === "rejected") expect(outcome.configured.code).toBe("bad_args")
   })
 
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {

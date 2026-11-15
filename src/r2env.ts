@@ -119,6 +119,18 @@ export type FileWrite = {
   readonly size: number
   readonly type: string
   readonly sha256: string
+  /** The sha the writer last saw; the write is refused when the file has moved on, or is gone. */
+  readonly base?: string
+}
+
+/** A write whose `base` no longer names the file's current version. */
+export class StaleWrite extends Error {
+  constructor(
+    readonly path: string,
+    readonly current: string | undefined,
+  ) {
+    super(`${path} changed since it was opened`)
+  }
 }
 
 /** The least string greater than every string that starts with `prefix`, so a prefix scan is a primary-key range. */
@@ -166,6 +178,7 @@ export class FileIndex {
 
   async upsert(entry: FileWrite): Promise<FileRow> {
     const previous = await this.row(entry.path)
+    if (entry.base !== undefined && previous?.sha256 !== entry.base) throw new StaleWrite(entry.path, previous?.sha256)
     const row = await this.db.get<FileRow>(
       `INSERT INTO files (path, r2_key, size, type, sha256, project, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET r2_key = excluded.r2_key, size = excluded.size, type = excluded.type, sha256 = excluded.sha256, project = excluded.project, updated_at = excluded.updated_at RETURNING ${ROW_COLUMNS}`,
       entry.path,
@@ -240,7 +253,7 @@ export class FileIndex {
 export async function putFile(
   bucket: R2Bucket,
   index: FileIndex,
-  write: { readonly path: string; readonly content: string | Uint8Array },
+  write: { readonly path: string; readonly content: string | Uint8Array; readonly base?: string | undefined },
 ): Promise<FileRow> {
   const bytes = typeof write.content === "string" ? encoder.encode(write.content) : write.content
   const digest = await sha256(bytes)
@@ -251,6 +264,7 @@ export async function putFile(
     size: bytes.byteLength,
     type: typeOf(write.path),
     sha256: digest,
+    ...(write.base === undefined ? {} : { base: write.base }),
   })
 }
 

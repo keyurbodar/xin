@@ -257,4 +257,41 @@ describe("load", () => {
     within("cold boot reads", report.coldBoot.reads, 360)
     within("journal rows at a cold start", report.coldJournalRows, 300)
   }, 900_000)
+
+  it("reads one usage_month row per pair for the owner's feature breakdown, on a full month of 8 features x 15 models", async () => {
+    const stub = fresh()
+    const models = Array.from({ length: 15 }, (_, index) => `faux/m${index}`)
+    await runInDurableObject(stub, async (home: Home) => {
+      await home.root()
+      const month = new Date().toISOString().slice(0, 7)
+      for (const feature of FEATURES)
+        for (const model of models) {
+          for (let day = 1; day <= 31; day++)
+            await home.db.run(
+              "INSERT OR IGNORE INTO usage_feature (day, feature, model, spend, tokens) VALUES (?, ?, ?, 0.01, 10)",
+              `${month}-${String(day).padStart(2, "0")}`,
+              feature,
+              model,
+            )
+          await home.db.run(
+            "INSERT OR IGNORE INTO usage_month (month, feature, model, spend, tokens) VALUES (?, ?, ?, 0.31, 310)",
+            month,
+            feature,
+            model,
+          )
+        }
+    })
+    const before = await meter(stub)
+    const read = await cmd(stub, "breakdown-read", "usage.features", {})
+    const after = await meter(stub)
+    expect(read.ok, JSON.stringify(read)).toBe(true)
+    const pairs = FEATURES.length * models.length
+    expect((read.result as { byModel: unknown[] }).byModel).toHaveLength(pairs)
+    const reads = (table: string): number =>
+      Object.entries(after.statements)
+        .filter(([sql]) => sql.includes(table))
+        .reduce((sum, [sql, counts]) => sum + counts.reads - (before.statements[sql]?.reads ?? 0), 0)
+    expect(reads("usage_feature")).toBe(0)
+    expect(reads("usage_month")).toBeLessThanOrEqual(pairs + 1)
+  }, 120_000)
 })

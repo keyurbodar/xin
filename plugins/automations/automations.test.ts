@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { ConversationId } from "@earendil-works/pi-durable"
+import { type ConversationId, UsageDoc } from "@earendil-works/pi-durable"
 import type { CommandId } from "../../src/ids.ts"
 import type { Actor } from "../../src/ops.ts"
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
@@ -288,6 +288,54 @@ describe("automations", () => {
     const second = await op<RunView>(stub, "c4", "automation.trigger", { id: created.id })
     expect(second).toMatchObject({ status: "failed", threadId: null })
     expect(second.error).toContain("automation cap")
+  }, 30_000)
+
+  it("books an old fresh-run thread's spend as automation after an eviction", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "aged")
+    const created = await op<AutomationView>(stub, "aged-1", "automation.create", {
+      title: "Digest",
+      prompt: "Write the digest",
+      project: project.id,
+      target: { kind: "fresh" },
+      triggers: [],
+    })
+    const run = await op<RunView>(stub, "aged-2", "automation.trigger", { id: created.id })
+    await eventually(
+      stub,
+      async (home: Home) => (await home.loader.ctx.automations.store.run(run.id))?.status === "completed",
+    )
+    await op(stub, "aged-seed", "usage.features", {})
+    await runInDurableObject(stub, async (home: Home) => {
+      for (let index = 0; index < 120; index++)
+        await home.db.run(
+          "INSERT INTO automation_runs (id, automation_id, source, status, inputs, created_at) VALUES (?, ?, 'manual', 'completed', 0, ?)",
+          `aged-${index}`,
+          created.id,
+          Date.now() + index,
+        )
+    })
+    await evictDurableObject(stub)
+    await runInDurableObject(stub, (home: Home) =>
+      home.harness.commit(async (tx) => {
+        const models = (await tx.doc(UsageDoc, run.threadId as ConversationId)).models
+        models["faux/aged"] = {
+          input: 50,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 50,
+          cost: { input: 0.5, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.5 },
+        }
+      }, context),
+    )
+    const found = await op<{ byModel: { feature: string; modelId: string; tokens: number }[] }>(
+      stub,
+      "aged-read",
+      "usage.features",
+      {},
+    )
+    expect(found.byModel.find((row) => row.modelId === "aged")).toMatchObject({ feature: "automation", tokens: 50 })
   }, 30_000)
 
   it("fails a same-target run into a chat whose chat cap is reached", async () => {

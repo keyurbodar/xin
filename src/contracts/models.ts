@@ -1,5 +1,5 @@
 import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai"
-import type { ConversationId, ModelRef } from "@earendil-works/pi-durable"
+import { type ConversationId, defineDoc, type ModelRef } from "@earendil-works/pi-durable"
 import { MODEL_THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema"
 import { obj, oneOf, str } from "@earendil-works/pi-schema"
 import type { Outcome } from "../ops.ts"
@@ -32,6 +32,17 @@ export const ThinkingSchema = oneOf(MODEL_THINKING_LEVELS)
 export const FEATURES = ["chat", "thread", "captain", "automation", "dreamer", "goal", "compaction", "other"] as const
 export type Feature = (typeof FEATURES)[number]
 export const FeatureSchema = oneOf(FEATURES)
+
+/** The feature a conversation's spend is booked under, set by the plugin that created it for that feature. */
+export const FeatureDoc = defineDoc<{ feature: Feature | null }>({
+  kind: "xin.feature",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ feature: null }),
+  checkpointWhen: () => false,
+})
 
 export const capReason = (admission: Admission & { readonly kind: "capped" }): string =>
   `the ${admission.period === "day" ? "daily" : "monthly"} ${admission.feature} cap of ${admission.cap.toFixed(2)} USD is reached; raise it in Usage first`

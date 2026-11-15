@@ -10,7 +10,7 @@ import {
   type UsageState,
 } from "@earendil-works/pi-durable"
 import { compile, map, num, obj, opt, str, tuple } from "@earendil-works/pi-schema"
-import { FEATURES, type Admission, type Feature, type FeatureTracker } from "../../src/contracts/models.ts"
+import { FEATURES, FeatureDoc, type Admission, type Feature, type FeatureTracker } from "../../src/contracts/models.ts"
 import type { GoalsService } from "../../src/contracts/goals.ts"
 import { PuckDoc } from "../../src/contracts/puck.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
@@ -29,6 +29,13 @@ export const FEATURE_MIGRATIONS = [
       "CREATE TABLE usage_feature (day TEXT NOT NULL, feature TEXT NOT NULL, model TEXT NOT NULL, spend REAL NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, feature, model)) WITHOUT ROWID",
     ],
   },
+  {
+    version: 2,
+    statements: [
+      "CREATE TABLE usage_month (month TEXT NOT NULL, feature TEXT NOT NULL, model TEXT NOT NULL, spend REAL NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (month, feature, model)) WITHOUT ROWID",
+      "INSERT INTO usage_month (month, feature, model, spend, tokens) SELECT substr(day, 1, 7), feature, model, SUM(spend), SUM(tokens) FROM usage_feature GROUP BY substr(day, 1, 7), feature, model",
+    ],
+  },
 ]
 
 type Amount = { spend: number; tokens: number }
@@ -40,8 +47,6 @@ const CapSchema = obj({ day: opt(num({ minimum: 0 })), month: opt(num({ minimum:
 const capsCheck = compile(map(CapSchema))
 const Pair = tuple([num(), num()])
 const ledgerCheck = compile(obj({ marks: map(map(Pair)), day: str(), totals: map(obj({ today: Pair, month: Pair })) }))
-/** Rows the owner's model breakdown reads at most; the month's feature totals come from memory. */
-const BREAKDOWN_ROWS = 100
 
 const zero = (): Amount => ({ spend: 0, tokens: 0 })
 
@@ -130,6 +135,8 @@ export function createBudget(port: BudgetPort) {
    * the features sum to the session ledger. Only a chat or a thread pays the goal lookup's row.
    */
   async function classify(conversation: ConversationId): Promise<Feature> {
+    const tagged = (await harness.snapshot(FeatureDoc, conversation, context))?.feature
+    if (tagged !== undefined && tagged !== null) return tagged
     for (const tracker of trackers) if ((await tracker.conversations()).includes(conversation)) return tracker.feature
     const base =
       (await harness.snapshot(ThreadDoc, conversation, context)) !== undefined
@@ -194,7 +201,7 @@ export function createBudget(port: BudgetPort) {
     return { next, deltas }
   }
 
-  /** Books the growth since the last pass: 1 kv row plus 1 row per changed (feature, model), and nothing when idle. */
+  /** Books the growth since the last pass: 1 kv row plus 2 rows per changed (feature, model) (day and month), and nothing when idle. */
   let recording: Promise<boolean> = Promise.resolve(false)
   /** Passes run one at a time, so two flushes never book the same growth against the same marks. */
   function record(): Promise<boolean> {
@@ -216,7 +223,7 @@ export function createBudget(port: BudgetPort) {
     }
     try {
       await db.transaction(async (tx) => {
-        for (const delta of deltas.values())
+        for (const delta of deltas.values()) {
           await tx.run(
             "INSERT INTO usage_feature (day, feature, model, spend, tokens) VALUES (?, ?, ?, ?, ?) ON CONFLICT (day, feature, model) DO UPDATE SET spend = spend + excluded.spend, tokens = tokens + excluded.tokens",
             today,
@@ -225,6 +232,15 @@ export function createBudget(port: BudgetPort) {
             delta.spend,
             delta.tokens,
           )
+          await tx.run(
+            "INSERT INTO usage_month (month, feature, model, spend, tokens) VALUES (?, ?, ?, ?, ?) ON CONFLICT (month, feature, model) DO UPDATE SET spend = spend + excluded.spend, tokens = tokens + excluded.tokens",
+            today.slice(0, 7),
+            delta.feature,
+            delta.model,
+            delta.spend,
+            delta.tokens,
+          )
+        }
         if (marks === undefined || deltas.size > 0)
           await writeJson(tx, MARKS, { marks: next, day: today, totals: totals() })
       })
@@ -325,15 +341,16 @@ export function createBudget(port: BudgetPort) {
     })
   }
 
-  /** `features()` plus this month's spend by (feature, model), the `BREAKDOWN_ROWS` largest. */
+  /** `features()` plus this month's spend by (feature, model): one `usage_month` row per pair. */
   async function breakdown(): Promise<{ features: JsonValue[]; byModel: JsonValue[] }> {
+    roll()
     const rows = await db.all<{ feature: string; model: string; spend: number; tokens: number }>(
-      "SELECT feature, model, SUM(spend) AS spend, SUM(tokens) AS tokens FROM usage_feature WHERE day >= ? GROUP BY feature, model ORDER BY spend DESC, model LIMIT ?",
-      `${today.slice(0, 7)}-01`,
-      BREAKDOWN_ROWS,
+      "SELECT feature, model, spend, tokens FROM usage_month WHERE month = ?",
+      today.slice(0, 7),
     )
     const byModel = rows
       .flatMap((row) => (isFeature(row.feature) ? [row] : []))
+      .toSorted((left, right) => right.spend - left.spend || left.model.localeCompare(right.model))
       .map((row) => {
         const slash = row.model.indexOf("/")
         return {
