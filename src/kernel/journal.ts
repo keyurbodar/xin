@@ -15,11 +15,14 @@ import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/stora
 const FLUSH_BYTES = 1_000_000
 /** One journal row holds at most this many bytes of JSON, since a Durable Object caps a row at 2 MB. */
 const PART_BYTES = 1_500_000
-/** Journal rows between checkpoints: a cold start replays at most this many, and truncating costs one row each. */
+/** Flushes between checkpoints: a cold start replays at most this many journal slots. */
 const CHECKPOINT_ROWS = 256
+/** The ring's slots: a checkpoint's worth plus the flushes a failed checkpoint may still store before it is retried. */
+const SLOTS = CHECKPOINT_ROWS + 32
 const PAGE = 500
-/** xi's tables from before the journal, imported once and then dropped. */
+/** Tables from before the journal (xi's, imported once) and before its ring (`pi_journal`, replayed once), then dropped. */
 const LEGACY_TABLES = [
+  "pi_journal",
   "pi_durable_schema",
   "pi_durable_metadata",
   "pi_record_ids",
@@ -37,11 +40,12 @@ const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false })
 type Commit = { readonly seq: Seq; readonly writes: readonly StorageWrite[] }
 type Batch = { readonly seq: Seq; readonly commits: readonly Commit[] }
 type JournalRow = {
+  readonly slot: number
   readonly seq: number
   readonly part: number
   readonly parts: number
   readonly bytes: number
-  readonly data: ArrayBuffer
+  readonly data: ArrayBuffer | null
 }
 
 const bytesOf = (value: unknown): Uint8Array => encoder.encode(JSON.stringify(value))
@@ -53,10 +57,18 @@ const bytesOf = (value: unknown): Uint8Array => encoder.encode(JSON.stringify(va
  * turn instead of a task row, a document revision and a row per index. A flush happens at a boundary — the turn's
  * answer or a settled submission — so the journal holds at most the turn in flight, or `FLUSH_BYTES` of it.
  *
- * The journal alone would replay forever, so at every `CHECKPOINT_ROWS` commits it flushes the state as one commit of
- * plain `StorageWrite`s, stores it in one row, and deletes the journal rows it covers. A cold start reads the checkpoint
- * and at most one checkpoint's worth of journal rows. An eviction loses the commits since the last flush, which the turn
- * re-runs: the harness retries an interrupted attempt, and a submission is deduplicated by its request id.
+ * The journal alone would replay forever, so at every `CHECKPOINT_ROWS` flushes it stores the state as one commit of
+ * plain `StorageWrite`s. The journal is a ring of `SLOTS` slots that flushes overwrite in turn, so a checkpoint deletes
+ * nothing: it only moves the sequence below which a cold start ignores a slot. Every part of a slot carries its flush's
+ * sequence, so a stale part a shorter flush left behind is never read as the current one, and a slot is overwritten in
+ * one transaction, so a crash leaves either the old flush or the new one.
+ *
+ * A slot may be overwritten only once a checkpoint covers it. Without a failure a checkpoint runs at every
+ * `CHECKPOINT_ROWS` flushes, so at most `CHECKPOINT_ROWS` slots are uncovered and the ring, which is larger, never
+ * reaches one. A failed checkpoint restarts the count, so the uncovered slots can grow past it; when all `SLOTS` are
+ * uncovered, a flush keeps its commits in memory and the commit retries the checkpoint, which covers them, instead of
+ * overwriting a slot. An eviction loses the commits since the last flush, which the turn re-runs: the harness retries an
+ * interrupted attempt, and a submission is deduplicated by its request id.
  */
 export class JournalStorage extends MemoryStorage {
   readonly #store: DurableObjectStorage
@@ -65,6 +77,10 @@ export class JournalStorage extends MemoryStorage {
   #pending: Commit[] = []
   #pendingBytes = 0
   #journalled = 0
+  /** Flushes no checkpoint covers yet: a flush may overwrite a slot only while this is below `SLOTS`. */
+  #uncovered = 0
+  /** The ring slot the next flush overwrites. */
+  #slot = 0
   /** The last commit sequence applied, which the checkpoint and an import continue from. */
   #lastSeq = 0
   #live = false
@@ -81,8 +97,10 @@ export class JournalStorage extends MemoryStorage {
   static async open(store: DurableObjectStorage, context: Context): Promise<JournalStorage> {
     const journal = new JournalStorage(store)
     journal.#migrate()
-    const restored = await journal.#restore()
-    if (!restored && journal.#hasLegacy()) await journal.#import(context)
+    const legacyJournal = journal.#hasTable("pi_journal")
+    const restored = await journal.#restore(legacyJournal)
+    if (!restored && journal.#hasTable("pi_conversations")) await journal.#import(context)
+    else if (legacyJournal) await journal.checkpoint(context)
     journal.#dropLegacy()
     journal.#live = true
     return journal
@@ -127,9 +145,10 @@ export class JournalStorage extends MemoryStorage {
     // answer and waits for the turn's boundary, or a long reply would write a row per second of streaming.
     if (boundary || config || this.#pendingBytes >= FLUSH_BYTES) {
       this.#flush()
-      if (this.#journalled >= CHECKPOINT_ROWS) {
+      if (this.#journalled >= CHECKPOINT_ROWS || this.#pending.length > 0) {
         // The rows are already durable, so the count restarts before the attempt: a checkpoint that throws must not
-        // make every later commit try it again, which would fail each one.
+        // make every later commit try it again, which would fail each one. Only a full ring, whose flush stayed in
+        // memory, retries at every flush, since nothing else can make those commits durable.
         this.#journalled = 0
         await this.checkpoint(context)
       }
@@ -145,7 +164,7 @@ export class JournalStorage extends MemoryStorage {
     await super.close(context)
   }
 
-  /** Store the state and drop the journal prefix it covers, so a cold start replays at most one checkpoint's worth. */
+  /** Store the state and cover the journal slots before it, so a cold start replays at most one checkpoint's worth. */
   checkpoint(context: Context): Promise<void> {
     return (this.#checkpointing ??= this.#writeCheckpoint(context).finally(() => {
       this.#checkpointing = undefined
@@ -162,30 +181,36 @@ export class JournalStorage extends MemoryStorage {
       const writes = await snapshot(this, context)
       const seq = Math.max(this.#lastSeq, 1) as Seq
       const parts = split(bytesOf({ seq, writes }))
-      // One transaction: a crash between the delete and the insert must leave the previous checkpoint and its journal
-      // intact, or the home reopens with neither.
+      // One transaction: a crash midway must leave the previous checkpoint whole, since its parts are overwritten in
+      // place and a part past the new count is left behind for the stored count to ignore.
       this.#store.transactionSync(() => {
-        this.#write("DELETE FROM pi_checkpoint_part", [])
-        this.#write("DELETE FROM pi_checkpoint", [])
-        this.#write("INSERT INTO pi_checkpoint (singleton, seq, parts, bytes) VALUES (1, ?, ?, ?)", [
-          seq,
-          parts.length,
-          parts.reduce((total, part) => total + part.length, 0),
-        ])
+        this.#write(
+          "INSERT INTO pi_checkpoint (singleton, seq, parts, bytes) VALUES (1, ?, ?, ?) ON CONFLICT (singleton) DO UPDATE SET seq = excluded.seq, parts = excluded.parts, bytes = excluded.bytes",
+          [seq, parts.length, parts.reduce((total, part) => total + part.length, 0)],
+        )
         for (const [index, part] of parts.entries())
-          this.#write("INSERT INTO pi_checkpoint_part (part, data) VALUES (?, ?)", [index, part.buffer as ArrayBuffer])
-        this.#write("DELETE FROM pi_journal WHERE seq <= ?", [seq])
+          this.#write(
+            "INSERT INTO pi_checkpoint_part (part, data) VALUES (?, ?) ON CONFLICT (part) DO UPDATE SET data = excluded.data",
+            [index, part.buffer as ArrayBuffer],
+          )
       })
       this.#journalled = 0
+      this.#uncovered = 0
+      this.#pending = []
+      this.#pendingBytes = 0
     } finally {
       gate.resolve()
     }
   }
 
-  /** The journal owns its three tables, as pi's own storage owns its tables; the host migration list is for host data. */
+  /**
+   * The journal owns its tables, as pi's own storage owns its tables; the host migration list is for host data. A home
+   * from before the ring still has `pi_journal`, which `open` replays, checkpoints and then drops, so a crash before the
+   * drop replays rows the checkpoint covers and skips them.
+   */
   #migrate(): void {
     this.#write(
-      "CREATE TABLE IF NOT EXISTS pi_journal (seq INTEGER NOT NULL, part INTEGER NOT NULL, parts INTEGER NOT NULL, bytes INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (seq, part)) WITHOUT ROWID, STRICT",
+      "CREATE TABLE IF NOT EXISTS pi_journal_ring (slot INTEGER NOT NULL, part INTEGER NOT NULL, seq INTEGER NOT NULL, parts INTEGER NOT NULL, bytes INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (slot, part)) WITHOUT ROWID, STRICT",
       [],
     )
     this.#write(
@@ -198,13 +223,16 @@ export class JournalStorage extends MemoryStorage {
     )
   }
 
-  async #restore(): Promise<boolean> {
+  async #restore(legacyJournal: boolean): Promise<boolean> {
     const checkpoint = this.#read<{ seq: number; parts: number; bytes: number }>(
       "SELECT seq, parts, bytes FROM pi_checkpoint WHERE singleton = 1",
       [],
     )[0]
     if (checkpoint !== undefined) {
-      const stored = this.#read<{ data: ArrayBuffer }>("SELECT data FROM pi_checkpoint_part ORDER BY part", [])
+      const stored = this.#read<{ data: ArrayBuffer }>(
+        "SELECT data FROM pi_checkpoint_part WHERE part < ? ORDER BY part",
+        [checkpoint.parts],
+      )
       const envelope = parse<{ seq: Seq; writes: StorageWrite[] }>(
         join(
           stored.map((row) => row.data),
@@ -215,20 +243,35 @@ export class JournalStorage extends MemoryStorage {
       this.#learn(envelope.writes)
       this.#lastSeq = Math.max(this.#lastSeq, envelope.seq)
     }
-    // A crash after the checkpoint but before its journal delete leaves rows the checkpoint now covers; replaying them
-    // would repeat a commit sequence, which MemoryStorage refuses. A commit the checkpoint already holds is skipped,
-    // never replayed.
+    // Slots the checkpoint covers stay in the ring until a flush overwrites them; replaying one would repeat a commit
+    // sequence, which MemoryStorage refuses. Their data is not read, only their sequence, which places the next slot.
+    // A commit the checkpoint already holds is skipped, never replayed.
     const covered = checkpoint?.seq ?? 0
-    const rows = this.#read<JournalRow>(
-      "SELECT seq, part, parts, bytes, data FROM pi_journal WHERE seq > ? ORDER BY seq, part",
+    const ring = this.#read<JournalRow>(
+      "SELECT slot, seq, part, parts, bytes, CASE WHEN seq > ? THEN data END AS data FROM pi_journal_ring",
       [covered],
+    )
+    const last = ring.reduce<JournalRow | undefined>(
+      (newest, row) => (newest === undefined || row.seq > newest.seq ? row : newest),
+      undefined,
+    )
+    if (last !== undefined) this.#slot = (last.slot + 1) % SLOTS
+    const legacy = legacyJournal
+      ? this.#read<JournalRow>(
+          "SELECT -1 AS slot, seq, part, parts, bytes, data FROM pi_journal WHERE seq > ? ORDER BY seq, part",
+          [covered],
+        )
+      : []
+    const rows = [...legacy, ...ring.filter((row) => row.seq > covered)].toSorted(
+      (left, right) => left.seq - right.seq || left.part - right.part,
     )
     for (const group of groups(rows)) {
       const first = group[0]
       if (first === undefined) continue
+      // A slot's parts past its flush's count belong to an older, covered flush, which the filter above dropped.
       const envelope = parse<Batch>(
         join(
-          group.map((row) => row.data),
+          group.map((row) => row.data ?? new ArrayBuffer(0)),
           first.bytes,
         ),
       )
@@ -239,14 +282,13 @@ export class JournalStorage extends MemoryStorage {
         this.#lastSeq = Math.max(this.#lastSeq, commit.seq)
       }
       this.#journalled += 1
+      if (first.slot >= 0) this.#uncovered += 1
     }
     return checkpoint !== undefined || rows.length > 0
   }
 
-  #hasLegacy(): boolean {
-    return (
-      this.#read("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'pi_conversations'", []).length > 0
-    )
+  #hasTable(name: "pi_journal" | "pi_conversations"): boolean {
+    return this.#read(`PRAGMA table_list('${name}')`, []).length > 0
   }
 
   /** One-time move of a home's pi tables into the journal, so an upgrade keeps its conversations. */
@@ -270,21 +312,28 @@ export class JournalStorage extends MemoryStorage {
   #flush(): void {
     const commits = this.#pending
     const last = commits[commits.length - 1]
-    if (last === undefined) return
+    if (last === undefined || this.#uncovered >= SLOTS) return
     this.#pending = []
     this.#pendingBytes = 0
     const parts = split(bytesOf({ seq: last.seq, commits } satisfies Batch))
     const seq: number = last.seq
+    const slot = this.#slot
     this.#store.transactionSync(() => {
       for (const [index, part] of parts.entries())
-        this.#write("INSERT INTO pi_journal (seq, part, parts, bytes, data) VALUES (?, ?, ?, ?, ?)", [
-          seq,
-          index,
-          parts.length,
-          parts.reduce((total, chunk) => total + chunk.length, 0),
-          part.buffer as ArrayBuffer,
-        ])
+        this.#write(
+          "INSERT INTO pi_journal_ring (slot, part, seq, parts, bytes, data) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (slot, part) DO UPDATE SET seq = excluded.seq, parts = excluded.parts, bytes = excluded.bytes, data = excluded.data",
+          [
+            slot,
+            index,
+            seq,
+            parts.length,
+            parts.reduce((total, chunk) => total + chunk.length, 0),
+            part.buffer as ArrayBuffer,
+          ],
+        )
     })
+    this.#slot = (slot + 1) % SLOTS
+    this.#uncovered += 1
     this.#journalled += 1
   }
 
