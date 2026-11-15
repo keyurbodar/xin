@@ -226,8 +226,8 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
             </Show>
           </Skullet>
           <Composer
-            projectName={props.project.name}
-            modelLabel={modelLabel()}
+            project={props.project}
+            modelLabel={currentInfo()?.name ?? modelLabel()}
             model={chosenModel()}
             models={choices()}
             omitted={pickerModels.latest?.omitted ?? 0}
@@ -249,7 +249,9 @@ function ProjectChat(props: { project: ProjectSummary }): JSX.Element {
             onPickEffort={async (thinking: ThinkingLevel) => {
               await cmd("conv.configure", { conv: props.project.coordinatorId, thinking })
             }}
-            onAttach={(file, onProgress) => uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress)}
+            onAttach={(file, onProgress, signal) =>
+              uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress, signal)
+            }
             onSend={async (text, key, attachments) => {
               const loaded = prompts.state()
               const expanded = expandSlash(text, loaded.kind === "ready" ? loaded.value : [])
