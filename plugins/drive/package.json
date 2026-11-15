@@ -1,0 +1,16 @@
+{
+  "name": "ingle-plugin-drive",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scoped, versioned files that persist across conversations, with AGENTS.md and skills injected per scope.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "drive": {
+        "module": "./index.ts",
+        "title": "Drive",
+        "description": "User, project, Captain and automation folders on the files index: AGENTS.md instructions and skills per scope, version history and checkout."
+      }
+    }
+  }
+}

@@ -50,6 +50,15 @@ async function revision(value: JsonObject): Promise<string> {
   return [...new Uint8Array(digest).slice(0, 12)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
 }
 
+/** What a resubscribing client already holds: a conversation's entry ids from `start` up to `from`, or a home revision. */
+type Resume = { readonly start: number; readonly from: number } | { readonly rev: string }
+
+/** A short digest of a home snapshot, so a client that reconnects with the same one is told nothing changed. */
+async function revision(value: JsonObject): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)))
+  return [...new Uint8Array(digest).slice(0, 12)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
+}
+
 type Attachment = {
   readonly subs: readonly string[]
   readonly id: string

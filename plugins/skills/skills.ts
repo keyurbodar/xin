@@ -1,6 +1,8 @@
 import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
 import { obj, str } from "@earendil-works/pi-schema"
 import { createContributions } from "../../src/contributions.ts"
+import type { ConversationId } from "@earendil-works/pi-durable"
+import type { DriveService } from "../../src/contracts/drive.ts"
 import { SKILL_NAME_PATTERN, type Skill, type SkillEntry, type SkillsService } from "../../src/contracts/skills.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
 
@@ -8,7 +10,10 @@ const BUNDLED_SKILLS: readonly string[] = []
 
 const NAME = new RegExp(SKILL_NAME_PATTERN)
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/
-const SKILL_KEY = "skill:"
+/** Skills `skill.put` stored in `kv` before they lived in the user's Drive; `moveToDrive` moves them once. */
+const LEGACY_FROM = "skill:"
+const LEGACY_TO = "skill;"
+const skillPath = (name: string): string => `skills/${name}/SKILL.md`
 
 const unquote = (value: string): string =>
   value.length >= 2 &&
@@ -65,14 +70,16 @@ const byName = (left: Skill, right: Skill): number => (left.name < right.name ? 
 const toMarkdown = (skill: Skill): string =>
   `---\nname: ${skill.name}\ndescription: ${skill.description}\n---\n${skill.body}\n`
 
-async function ownerSkills(db: SqliteDatabase): Promise<readonly Skill[]> {
-  const rows = await db.all<{ value: string }>("SELECT value FROM kv WHERE key LIKE 'skill:%'")
-  return rows.map((row) => skillOf(row.value))
-}
-
-async function storedMarkdown(db: SqliteDatabase, name: string): Promise<string | undefined> {
-  const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = ?", `${SKILL_KEY}${name}`)
-  return row?.value
+export async function moveToDrive(db: SqliteDatabase, drive: DriveService): Promise<void> {
+  const rows = await db.all<{ key: string; value: string }>(
+    "SELECT key, value FROM kv WHERE key >= ? AND key < ?",
+    LEGACY_FROM,
+    LEGACY_TO,
+  )
+  for (const row of rows) {
+    await drive.write({ kind: "user" }, skillPath(row.key.slice(LEGACY_FROM.length)), row.value)
+    await db.run("DELETE FROM kv WHERE key = ?", row.key)
+  }
 }
 
 export type SkillsModule = {
@@ -80,23 +87,29 @@ export type SkillsModule = {
   readonly ops: readonly Op[]
 }
 
-export function createSkills(db: SqliteDatabase): SkillsModule {
+/** Bundled and row skills, plus the `skills/<name>/SKILL.md` files the Drive installs per scope. */
+export function createSkills(drive: DriveService): SkillsModule {
   const bundled = skillsFrom(BUNDLED_SKILLS)
   const contributed = createContributions<Skill>({
     key: (skill) => skill.name,
     label: (name) => `skill "${name}"`,
   })
 
-  const loadSkills = async (): Promise<ReadonlyMap<string, SkillEntry>> => {
+  const loadSkills = async (conversationId?: ConversationId): Promise<ReadonlyMap<string, SkillEntry>> => {
     const merged = new Map<string, SkillEntry>()
     for (const skill of bundled) merged.set(skill.name, { ...skill, source: { kind: "bundled" } })
     for (const { key, value, source } of contributed.entries())
       merged.set(key, { ...value, source: { kind: "row", row: source } })
-    for (const skill of await ownerSkills(db)) merged.set(skill.name, { ...skill, source: { kind: "stored" } })
+    for (const file of await drive.skills(conversationId)) {
+      const parsed = parseSkill(file.markdown)
+      if (!parsed.ok || parsed.skill.name !== file.name) continue
+      merged.set(file.name, { ...parsed.skill, source: { kind: "drive", scope: file.scope }, markdown: file.markdown })
+    }
     return merged
   }
 
-  const listSkills = async (): Promise<readonly SkillEntry[]> => [...(await loadSkills()).values()].toSorted(byName)
+  const listSkills = async (conversationId?: ConversationId): Promise<readonly SkillEntry[]> =>
+    [...(await loadSkills(conversationId)).values()].toSorted(byName)
 
   const contribute = (skill: Skill, source: string): (() => void) => contributed.add(source, skill)
 
@@ -108,11 +121,7 @@ export function createSkills(db: SqliteDatabase): SkillsModule {
       const skill = parsePut(markdown)
       if (skill.name !== name)
         throw new OpRejected("bad_args", `skill frontmatter name "${skill.name}" does not match the put name "${name}"`)
-      await db.run(
-        "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-        `${SKILL_KEY}${name}`,
-        markdown,
-      )
+      await drive.write({ kind: "user" }, skillPath(name), markdown)
       return { name: skill.name, description: skill.description }
     },
   })
@@ -122,7 +131,7 @@ export function createSkills(db: SqliteDatabase): SkillsModule {
     args: obj({ name: str({ pattern: SKILL_NAME_PATTERN }) }),
     actors: ["owner"],
     run: async (_api, { name }) => {
-      await db.run("DELETE FROM kv WHERE key = ?", `${SKILL_KEY}${name}`)
+      await drive.remove({ kind: "user" }, skillPath(name))
       return { name }
     },
   })
@@ -141,8 +150,7 @@ export function createSkills(db: SqliteDatabase): SkillsModule {
     run: async (_api, { name }) => {
       const entry = (await loadSkills()).get(name)
       if (entry === undefined) throw new OpRejected("bad_args", `no skill ${name}`)
-      const markdown = entry.source.kind === "stored" ? await storedMarkdown(db, name) : undefined
-      return { name: entry.name, description: entry.description, markdown: markdown ?? toMarkdown(entry) }
+      return { name: entry.name, description: entry.description, markdown: entry.markdown ?? toMarkdown(entry) }
     },
   })
 
