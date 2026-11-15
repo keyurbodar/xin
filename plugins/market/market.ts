@@ -23,6 +23,7 @@ import {
 import { defineOp, OpRejected, type Op } from "../../src/ops.ts"
 import { compareVersions } from "../../src/semver.ts"
 import {
+  COMMIT,
   isSemver,
   marketInstallTarget,
   MarketIndexError,
@@ -554,6 +555,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     version: MarketVersion,
     consent: Consent,
   ): Promise<JsonValue> => {
+    if ((await installedFacts()).get(name)?.kind === "provided") bad(`${name} is provided by this build`)
     const target = marketInstallTarget(name, version)
     if (version.source.type === "git") {
       requireConsent(target.spec, new Map([["runtime", [UNREAD_CODE]]]), consent)
@@ -634,6 +636,8 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     const spec = parseSpec(text)
     if (spec === undefined) bad(`${text} is not a supported package spec`)
     if (spec.kind === "git") {
+      if (spec.ref === undefined || !COMMIT.test(spec.ref))
+        bad(`${text}: name a commit, such as ${spec.url}#<40-hex commit>, so the build installs what you consent to`)
       requireConsent(text, new Map([["runtime", [UNREAD_CODE]]]), { grant, held: [] })
       ports.packages.install(text)
       return toJson({ application: "pending", spec: text, kind: "code", rows: [] })

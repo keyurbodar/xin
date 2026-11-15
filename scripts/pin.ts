@@ -1,13 +1,55 @@
+const GIT = /^(?:git\+|github:)/
+const COMMIT = /^[0-9a-f]{40}$/
+
+const parseLock = (lock: string): unknown => JSON.parse(lock.replace(/,(\s*[}\]])/g, "$1"))
+
+const at = (value: unknown, key: string): unknown =>
+  typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
+
+const lockedEntry = (parsed: unknown, name: string): unknown => at(at(parsed, "packages"), name)
+
 /** The SRI `bun.lock` records for a package it resolves from a registry, if any. */
 export function lockedIntegrity(lock: string, name: string): string | undefined {
-  const parsed: unknown = JSON.parse(lock.replace(/,(\s*[}\]])/g, "$1"))
-  const packages = typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "packages") : undefined
-  const entry: unknown = typeof packages === "object" && packages !== null ? Reflect.get(packages, name) : undefined
+  const entry = lockedEntry(parseLock(lock), name)
   const sri: unknown = Array.isArray(entry) ? entry[3] : undefined
   return typeof sri === "string" ? sri : undefined
 }
 
 export const nameOf = (spec: string): string => spec.replace(/@[^@/]+$/, "")
+
+const commitOf = (spec: string): string => spec.split("#")[1]?.split("&")[0] ?? ""
+
+export const isGitSpec = (spec: string): boolean => GIT.test(spec)
+
+/** Why sync may not build a spec, checked before anything is fetched: a git spec must pin a commit, and a registry name must not be one the build ships. */
+export function specProblem(spec: string, shipped: ReadonlySet<string>): string | undefined {
+  if (isGitSpec(spec))
+    return COMMIT.test(commitOf(spec))
+      ? undefined
+      : `${spec}: name a 40-hex commit, not a branch or tag, so the build installs what the owner consented to`
+  return shipped.has(nameOf(spec))
+    ? `${spec}: ${nameOf(spec)} ships with this build, so a market package may not replace it`
+    : undefined
+}
+
+/** Why a built git spec may not stand: it named a package the build ships, or bun built another commit than the pin. */
+export function gitProblem(spec: string, lock: string, shipped: ReadonlySet<string>): string | undefined {
+  const parsed = parseLock(lock)
+  const dependencies = at(at(at(parsed, "workspaces"), ""), "dependencies")
+  const name = Object.entries(typeof dependencies === "object" && dependencies !== null ? dependencies : {}).find(
+    ([, value]) => value === spec,
+  )?.[0]
+  if (name === undefined) return `${spec}: the lockfile has no dependency for it`
+  if (shipped.has(name))
+    return `${spec} builds ${name}, which ships with this build, so a market package may not replace it`
+  const entry = lockedEntry(parsed, name)
+  const id: unknown = Array.isArray(entry) ? entry[0] : undefined
+  const built = typeof id === "string" && id.includes("#") ? id.slice(id.lastIndexOf("#") + 1) : ""
+  const commit = commitOf(spec)
+  return built.length >= 7 && commit.startsWith(built)
+    ? undefined
+    : `${spec}: the build resolved ${built === "" ? "no commit" : built}, the owner pinned ${commit}`
+}
 
 /** Why the lockfile may not stand for `spec`: it resolves the package to bytes other than the ones the owner consented to. */
 export function integrityProblem(spec: string, expected: string, lock: string): string | undefined {

@@ -26,6 +26,7 @@ const REQUIRER = "@lahn/ingle-requirer"
 const LIAR = "@lahn/ingle-liar"
 const SHA256 = "@lahn/ingle-sha256"
 const WEB = "ingle-plugin-web"
+const FIRST_PARTY = "ingle-plugin-git"
 const COMMIT = "a".repeat(40)
 const GIT_PATH = "packages/tools"
 const GIT_SPEC = `git+https://github.com/lahn/ingle-tools.git#${COMMIT}&path:/${GIT_PATH}`
@@ -175,6 +176,7 @@ const SEEDS: readonly Seed[] = [
   { name: KERNEL_PATCHER, versions: [{ version: "1.0.0", ingle: KERNEL_PATCHER_1 }] },
   { name: REQUIRER, versions: [{ version: "1.0.0", ingle: REQUIRER_1 }] },
   { name: LIAR, versions: [{ version: "1.0.0", ingle: CODE_INGLE, tarballIngle: GUARDED_INGLE }] },
+  { name: FIRST_PARTY, versions: [{ version: "9.9.9", ingle: GUARDED_INGLE }] },
   { name: SHA256, versions: [{ version: "1.0.0", ingle: NOTES_1_0, integrity: `sha256-${"A".repeat(43)}=` }] },
   {
     name: WEB,
@@ -654,10 +656,6 @@ describe("market", () => {
       ok: false,
       error: { code: "bad_args", message: expect.stringContaining("exact version") },
     })
-    expect(await op(stub, "market.add", { spec: "github:lahn/ingle-tools#main" })).toMatchObject({
-      ok: false,
-      error: { code: "consent_required", details: { permissions: [{ id: "runtime" }] } },
-    })
     expect(await pending(stub)).toEqual({ add: [], remove: [] })
     expect(await op(stub, "market.add", { spec: `${GUARDED}@1.1.0`, grant: ["network", "secrets"] })).toMatchObject({
       ok: true,
@@ -669,6 +667,35 @@ describe("market", () => {
         [`${GUARDED}@1.1.0`]: { integrity: expect.stringMatching(/^sha512-/), permissions: ["network", "secrets"] },
       },
     })
+  })
+
+  it("adds a git spec only at a 40-hex commit", async () => {
+    const stub = fresh()
+    for (const spec of ["github:lahn/ingle-tools", "github:lahn/ingle-tools#main"])
+      expect(await op(stub, "market.add", { spec })).toMatchObject({
+        ok: false,
+        error: { code: "bad_args", message: expect.stringContaining("name a commit") },
+      })
+    expect(await op(stub, "market.add", { spec: `github:lahn/ingle-tools#${COMMIT}` })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { permissions: [{ id: "runtime" }] } },
+    })
+    expect(
+      await op(stub, "market.add", { spec: `github:lahn/ingle-tools#${COMMIT}`, grant: ["runtime"] }),
+    ).toMatchObject({ ok: true, result: { application: "pending" } })
+    expect(await pending(stub)).toMatchObject({ add: [`github:lahn/ingle-tools#${COMMIT}`] })
+  })
+
+  it("refuses a typed spec that would replace a package this build ships, whatever it asks for", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    for (const grant of [[], ["network", "secrets"]])
+      expect(await op(stub, "market.add", { spec: `${FIRST_PARTY}@9.9.9`, grant })).toMatchObject({
+        ok: false,
+        error: { code: "bad_args", message: expect.stringContaining("provided by this build") },
+      })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
   })
 
   it("holds a built package's permissions, so a same-permission update and auto-update ask nothing", async () => {
