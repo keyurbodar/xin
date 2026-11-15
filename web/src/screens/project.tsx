@@ -44,6 +44,7 @@ import { Transcript, TranscriptSkeleton, type PendingMessage } from "../componen
 import { Composer } from "../components/chat/composer.tsx"
 import { ThreadConversation } from "../components/chat/panel.tsx"
 import { ConversationTabs } from "../components/shell/conversation-tabs.tsx"
+import { forgetProjectFiles } from "../components/pane/bodies.tsx"
 import { ProjectPane } from "../components/pane/pane.tsx"
 import { ProjectSettings } from "../components/project/settings.tsx"
 import { FileScreen } from "./file.tsx"
@@ -204,7 +205,11 @@ function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | unde
             onPickEffort={async (thinking: ThinkingLevel) => {
               await cmd("conv.configure", { conv: props.project.coordinatorId, thinking })
             }}
-            onAttach={(file, onProgress) => uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress)}
+            onAttach={async (file, onProgress) => {
+              const uploaded = await uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress)
+              forgetProjectFiles(props.project.slug)
+              return uploaded
+            }}
             onSend={async (text, key, attachments) => {
               const loaded = prompts.state()
               const expanded = expandSlash(text, loaded.kind === "ready" ? loaded.value : [])

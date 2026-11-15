@@ -9,6 +9,7 @@ import { Markdown } from "../components/chat/markdown.tsx"
 import { Skullet } from "../components/ui/skeleton.tsx"
 import { Icon } from "../components/ui/icon.tsx"
 import { EmptyState } from "../components/chat/ui.tsx"
+import { forgetProjectFiles } from "../components/pane/bodies.tsx"
 
 export type FileEntry = {
   readonly path: string
@@ -86,6 +87,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
   const upload = async (dropped: FileList): Promise<void> => {
     const list = Array.from(dropped)
     await Promise.all(list.map((file) => uploadFile(file, root().replace(/\/$/u, ""))))
+    forgetProjectFiles(props.project.slug)
     setVersion((value) => value + 1)
     await refetchFiles()
   }
