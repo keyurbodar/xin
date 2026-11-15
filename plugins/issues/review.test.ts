@@ -264,10 +264,12 @@ describe("issue wake rules", () => {
     seen.push((await revs()).statesRev)
     await ok(stub, "issue.state.update", { id: "triage", position: 0 })
     seen.push((await revs()).statesRev)
+    await ok(stub, "issue.state.update", { id: "triage", name: "Triage queue", position: 0 })
+    seen.push((await revs()).statesRev)
     await ok(stub, "issue.state.delete", { id: "triage", moveTo: "todo" })
     const end = await revs()
     seen.push(end.statesRev)
-    expect(seen).toEqual([0, 1, 2, 3, 4])
+    expect(seen).toEqual([0, 1, 2, 3, 3, 4])
     expect(end.rev).toBe(start.rev)
   })
 
@@ -337,6 +339,18 @@ describe("issue reads stay bounded", () => {
     expect(seen.size).toBe(151)
     const open = await ok<IssuePage>(stub, "issue.list", { q: "needle", states: ["todo"], project: near.id })
     expect(open.issues.map((issue) => issue.title)).toEqual(["needle near"])
+  })
+
+  it("matches a scoped search on the exact project, not a project id it prefixes", async () => {
+    const stub = fresh()
+    const near = await project(stub, "near")
+    await ok(stub, "issue.create", { title: "needle lookalike", project: `${near.id}-2` })
+    await ok(stub, "issue.create", { title: "needle lookalike spaced", project: `${near.id} 2` })
+    await ok(stub, "issue.create", { title: "needle near", threads: [near.coordinatorId] })
+    const scoped = await withIssues(stub, (issues) => issues.list(thread(near.coordinatorId), { q: "needle" }))
+    expect(scoped.issues.map((issue) => issue.title)).toEqual(["needle near"])
+    const owner = await ok<IssuePage>(stub, "issue.list", { q: "needle", project: near.id })
+    expect(owner.issues.map((issue) => issue.title)).toEqual(["needle near"])
   })
 
   it("holds every write path to the op size limits", async () => {
