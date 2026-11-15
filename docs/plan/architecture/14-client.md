@@ -6,7 +6,7 @@ This section decides how the first-party web client is built and what it talks t
 
 **Design source.** The design system is the Ingle v4 handoff (Doop canvas `elsVZejERK`, tokens in `web/src/styles/tokens.css`), with the owner's reference screenshots as the final word where they disagree. Dark is the default, `[data-theme="light"]` is its matched counterpart and `[data-theme="rose"]` is a dark variant with a rose accent; the action colour is `--color-accent`, which `primary` follows; the choice is per device (`localStorage` key `ingle.theme`, applied before first paint by `index.html`). Type is Inter for the interface and Geist Mono for ids, costs and code, both self-hosted from `@fontsource-variable`; there is no serif anywhere. Every colour, radius, size, shadow and motion curve is a token, and components reference tokens, never hex.
 
-- **Blue (`primary`) is the one action colour.** Needs-you uses the same family and is told apart by the Signal's shape.
+- **The accent (`--color-accent`, which `primary` follows) is the one action colour.** It is blue in dark and light and rose in the rose theme. Needs-you stays blue and is told apart by the Signal's shape.
 - Status colours never follow the accent: working amber, done green, failed red, merged violet; waiting is ink-3.
 
 ## Status palette
@@ -106,7 +106,7 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 | `#/signin` | O1 | owner token |
 | `#/welcome` | O2–O5 | first provider key, first project, first message, notifications |
 
-Layout follows the breakpoint table in `DDL0wyMU8c`. At 1280 and up the sidebar is 264 wide with labels and the panel is docked: 400 wide, 440 from 1440. From 1024 to 1279 the sidebar collapses to the 56px rail and the panel is a non-modal drawer, 400 wide with an elevation shadow and no scrim, so the chat stays readable at the left edge. Below 1024 the sidebar becomes the bottom tab bar and the panel becomes a bottom sheet at 76% height, on a 64% scrim, with a grab handle that drags it down to dismiss. An opened thread takes the docked panel to 520 (`V3-a`). The chat column never exceeds 720, and the composer and top bar align to it.
+Layout metrics are tokens in `tokens.css`: sidebar `--w-sidebar` (240), right pane `--w-pane` (432), chat column `--w-column` (720), tab bar `--h-topbar` (44) with 28px tabs. The shell that reads them lands with the shell layer; until then the old layout below 1280px collapses the sidebar to a rail and below 1024px uses a bottom tab bar, and the right panel docks at 1280 and up.
 
 ## Identity
 
