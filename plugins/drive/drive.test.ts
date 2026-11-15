@@ -1,5 +1,5 @@
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
-import { env } from "cloudflare:workers"
+import { env, exports } from "cloudflare:workers"
 import { fauxAssistantMessage, getCurrentSystemPrompt } from "@earendil-works/pi-ai"
 import { describe, expect, it } from "vitest"
 import type { CommandId } from "../../src/ids.ts"
@@ -34,6 +34,9 @@ const reads = (stub: Stub): Promise<number> =>
     const meter = home.meter()
     return meter.sql.reads + meter.kv.reads
   })
+
+const get = (path: string, headers?: Record<string, string>) =>
+  exports.default.fetch(new Request(`https://ingle.test${path}`, headers === undefined ? {} : { headers }))
 
 const skillMarkdown = (name: string, body: string) =>
   `---\nname: ${name}\ndescription: The ${name} skill.\n---\n${body}`
@@ -204,5 +207,101 @@ describe("drive", () => {
     } finally {
       captainOf.delete(thread.id)
     }
+  })
+
+  it("serves a share link from R2 without auth, follows writes and moves, and stops on unshare or delete", async () => {
+    const stub = fresh()
+    const user = { kind: "user" }
+    await ok(stub, "w1", "drive.write", { scope: user, path: "pages/report.html", text: "<p>v1</p>" })
+    const link = await ok(stub, "sh1", "drive.share", { scope: user, path: "pages/report.html" })
+    const url = field(link, "url")
+    if (typeof url !== "string") throw new Error("no url")
+    expect(url).toMatch(/^\/s\/[0-9a-f]{32}\/report\.html$/)
+    expect(await ok(stub, "sh2", "drive.share", { scope: user, path: "pages/report.html" })).toEqual(link)
+
+    const first = await get(url)
+    expect(first.status).toBe(200)
+    expect(first.headers.get("content-type")).toBe("text/html")
+    expect(first.headers.get("content-security-policy")).toBe("sandbox")
+    expect(await first.text()).toBe("<p>v1</p>")
+
+    await ok(stub, "w2", "drive.write", { scope: user, path: "pages/report.html", text: "<p>v2</p>" })
+    expect(await (await get(url)).text()).toBe("<p>v2</p>")
+
+    await ok(stub, "m1", "drive.move", { scope: user, from: "pages/report.html", to: "report.html" })
+    expect(await (await get(url)).text()).toBe("<p>v2</p>")
+    expect(await ok(stub, "l1", "drive.list", { scope: user })).toMatchObject({
+      shares: { "report.html": field(link, "id") },
+    })
+
+    expect(await ok(stub, "u1", "drive.unshare", { scope: user, path: "report.html" })).toEqual({ revoked: true })
+    expect((await get(url)).status).toBe(404)
+
+    const again = field(await ok(stub, "sh3", "drive.share", { scope: user, path: "report.html" }), "url")
+    if (typeof again !== "string") throw new Error("no url")
+    expect(again).not.toBe(url)
+    await ok(stub, "d1", "drive.delete", { scope: user, path: "report.html" })
+    expect((await get(again)).status).toBe(404)
+    expect((await get("/s/not-an-id")).status).toBe(401)
+  })
+
+  it("answers a share link's conditional and ranged reads with 304, 412, 206 and 416, and honours If-Range", async () => {
+    const stub = fresh()
+    const user = { kind: "user" }
+    await ok(stub, "w1", "drive.write", { scope: user, path: "digits.txt", text: "0123456789" })
+    const url = field(await ok(stub, "sh1", "drive.share", { scope: user, path: "digits.txt" }), "url")
+    if (typeof url !== "string") throw new Error("no url")
+
+    const whole = await get(url)
+    expect(whole.headers.get("accept-ranges")).toBe("bytes")
+    const etag = whole.headers.get("etag")
+    if (etag === null) throw new Error("no etag")
+    await whole.arrayBuffer()
+
+    const cached = await get(url, { "if-none-match": etag })
+    expect(cached.status).toBe(304)
+    expect(await cached.text()).toBe("")
+    expect((await get(url, { "if-none-match": '"other"' })).status).toBe(200)
+
+    const middle = await get(url, { range: "bytes=2-4" })
+    expect(middle.status).toBe(206)
+    expect(middle.headers.get("content-range")).toBe("bytes 2-4/10")
+    expect(middle.headers.get("content-length")).toBe("3")
+    expect(await middle.text()).toBe("234")
+
+    const tail = await get(url, { range: "bytes=-3" })
+    expect(tail.status).toBe(206)
+    expect(tail.headers.get("content-range")).toBe("bytes 7-9/10")
+    expect(await tail.text()).toBe("789")
+
+    const open = await get(url, { range: "bytes=8-" })
+    expect(open.headers.get("content-range")).toBe("bytes 8-9/10")
+    expect(await open.text()).toBe("89")
+
+    const current = await get(url, { range: "bytes=2-4", "if-range": etag })
+    expect(current.status).toBe(206)
+    expect(await current.text()).toBe("234")
+    const staleTag = await get(url, { range: "bytes=2-4", "if-range": '"old"' })
+    expect(staleTag.status).toBe(200)
+    expect(staleTag.headers.get("content-range")).toBeNull()
+    expect(await staleTag.text()).toBe("0123456789")
+    const staleDate = await get(url, { range: "bytes=2-4", "if-range": "Thu, 01 Jan 1970 00:00:00 GMT" })
+    expect(staleDate.status).toBe(200)
+    expect(await staleDate.text()).toBe("0123456789")
+
+    const mismatch = await get(url, { "if-match": '"old"' })
+    expect(mismatch.status).toBe(412)
+    await mismatch.arrayBuffer()
+    const changed = await get(url, { "if-unmodified-since": "Thu, 01 Jan 1970 00:00:00 GMT" })
+    expect(changed.status).toBe(412)
+    await changed.arrayBuffer()
+    const held = await get(url, { "if-match": etag })
+    expect(held.status).toBe(200)
+    expect(await held.text()).toBe("0123456789")
+
+    const beyond = await get(url, { range: "bytes=20-30" })
+    expect(beyond.status).toBe(416)
+    expect(beyond.headers.get("content-range")).toBe("bytes */10")
+    await beyond.arrayBuffer()
   })
 })

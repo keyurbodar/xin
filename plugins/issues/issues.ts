@@ -104,6 +104,8 @@ export type Wake = {
 
 export type Change = { readonly issue: Issue; readonly events: IssueEvent[]; readonly wakes: Wake[] }
 
+type Revs = { readonly rev: number; readonly statesRev: number }
+
 export interface IssuesService {
   states(): Promise<IssueState[]>
   createState(input: { readonly name: string; readonly closed: boolean }): Promise<IssueState>
@@ -132,8 +134,7 @@ export interface IssuesService {
   ): Promise<Change>
   pending(): Promise<Wake[]>
   delivered(commandId: string): Promise<void>
-  rev(): Promise<number>
-  statesRev(): Promise<number>
+  revs(): Promise<Revs>
 }
 
 declare module "@deepseek-ai/cordis" {
@@ -549,6 +550,15 @@ const normalize = async (
 
 export function createIssues(port: IssuesPort): IssuesService {
   const { db } = port
+  let revs: Revs | undefined
+
+  const write = async <T>(work: (tx: SqliteExecutor) => Promise<T>): Promise<T> => {
+    try {
+      return await db.transaction(work)
+    } finally {
+      revs = undefined
+    }
+  }
 
   const scopeOf = async (actor: IssueActor): Promise<Scope> => {
     if (actor.kind === "person") return undefined
@@ -603,7 +613,7 @@ export function createIssues(port: IssuesPort): IssuesService {
     createState: async (input) => {
       const name = input.name.trim()
       if (name.length === 0) fail("a state needs a name")
-      return db.transaction(async (tx) => {
+      return write(async (tx) => {
         const rows = await stateRows(tx)
         const base = slugOf(name)
         let id = base
@@ -624,7 +634,7 @@ export function createIssues(port: IssuesPort): IssuesService {
     updateState: async (input) => {
       const name = input.name?.trim()
       if (name !== undefined && name.length === 0) fail("a state needs a name")
-      return db.transaction(async (tx) => {
+      return write(async (tx) => {
         const state = await stateById(tx, input.id)
         if (name !== undefined) await tx.run("UPDATE issue_states SET name = ? WHERE id = ?", name, state.id)
         if (input.position !== undefined) {
@@ -642,7 +652,7 @@ export function createIssues(port: IssuesPort): IssuesService {
 
     deleteState: async (actor, input) => {
       const at = port.now()
-      return db.transaction(async (tx) => {
+      return write(async (tx) => {
         const state = await stateById(tx, input.id)
         if (state.is_default === 1) fail(`${state.name} is a default state; make another state the default first`)
         if (input.moveTo === state.id) fail("move its issues to a different state")
@@ -678,7 +688,7 @@ export function createIssues(port: IssuesPort): IssuesService {
         scope?.project ?? input.project ?? (owner === undefined ? undefined : await port.projectOf(owner)) ?? null
       await checkConversations(input, project, scope)
       const at = port.now()
-      return db.transaction(async (tx) => {
+      return write(async (tx) => {
         const fields = await normalize(tx, input, undefined, project, scope)
         const state =
           fields.state === undefined
@@ -802,7 +812,7 @@ export function createIssues(port: IssuesPort): IssuesService {
       const project = await projectOfIssue(id)
       await checkConversations(input, project, scope)
       const at = port.now()
-      return db.transaction(async (tx) => {
+      return write(async (tx) => {
         const before = issueOf(await visible(tx, id, scope))
         const fields = await normalize(tx, input, id, before.project, scope)
         const events: IssueEvent[] = []
@@ -868,7 +878,7 @@ export function createIssues(port: IssuesPort): IssuesService {
             ? [other, id, "blocks"]
             : [Math.min(id, other), Math.max(id, other), "related"]
       const at = port.now()
-      return db.transaction(async (tx) => {
+      return write(async (tx) => {
         const [mine, theirs] = [await visible(tx, id, scope), await visible(tx, other, scope)]
         if (apart(mine.project, theirs.project)) fail(`#${other} is in another project`)
         const changed = on
@@ -906,7 +916,7 @@ export function createIssues(port: IssuesPort): IssuesService {
       const scope = await scopeOf(actor)
       await conversations(mentions, "mention", await projectOfIssue(id), scope)
       const at = port.now()
-      return db.transaction(async (tx) => {
+      return write(async (tx) => {
         await visible(tx, id, scope)
         if (input.replyTo !== undefined) {
           const parent = await tx.get<{ issue_id: number; kind: string; reply_to: number | null }>(
@@ -930,9 +940,13 @@ export function createIssues(port: IssuesPort): IssuesService {
       await db.run("DELETE FROM issue_wakes WHERE command_id = ?", commandId)
     },
 
-    statesRev: async () =>
-      (await db.get<{ value: number }>("SELECT value FROM issue_meta WHERE key = 'states_rev'"))?.value ?? 0,
-
-    rev: async () => (await db.get<{ rev: number | null }>("SELECT max(id) AS rev FROM issue_events"))?.rev ?? 0,
+    revs: async () => {
+      if (revs !== undefined) return revs
+      const current = await db.get<{ rev: number | null; statesRev: number | null }>(
+        "SELECT (SELECT max(id) FROM issue_events) AS rev, (SELECT value FROM issue_meta WHERE key = 'states_rev') AS statesRev",
+      )
+      revs = { rev: current?.rev ?? 0, statesRev: current?.statesRev ?? 0 }
+      return revs
+    },
   }
 }
