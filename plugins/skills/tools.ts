@@ -21,7 +21,7 @@ export function apply(ctx: Context): void {
   /** Skills the conversation's preset keeps: a stored or bundled skill always, a row's skill only when its plugin is named. */
   const visible = async (conversationId: ConversationId): Promise<readonly SkillEntry[]> => {
     const preset = ctx.get("presets")?.presetOf(conversationId)
-    return (await ctx.skills.list()).filter(
+    return (await ctx.skills.list(conversationId)).filter(
       (entry) => entry.source.kind !== "row" || presetAllows(preset, ctx.kernel.pluginOfRow(entry.source.row)),
     )
   }

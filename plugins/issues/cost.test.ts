@@ -7,7 +7,7 @@ const CREATE_WRITE_BOUND = 12
 const COMMENT_WRITE_BOUND = 9
 const LIST_READ_BOUND = 24
 const GET_READ_BOUND = 9
-const SEARCH_READ_BOUND = 320
+const SEARCH_READ_BOUND = 180
 const SEARCH_ISSUES = 300
 
 const billed = (stub: Stub) =>
