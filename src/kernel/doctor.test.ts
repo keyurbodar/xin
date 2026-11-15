@@ -81,6 +81,10 @@ describe("plugin doctor", () => {
   it("refuses every route a row has past its permissions to a guarded service or the owner's authority", async () => {
     const stub = fresh()
     await cmd(stub, "k-reach-secret", "secret.set", { ref: "k-reach-probe", value: "s3cret-value" })
+    await cmd(stub, "k-reach-bundle", "bundle.put", {
+      package: "k-reach-bundle",
+      rows: [{ id: "k-reach-hello", plugin: "hello", config: { headers: { authorization: "Bearer s3cret-bundle" } } }],
+    })
     const reply = await cmd(stub, "k-reach-1", "k.reach")
     expect(reply.result).toMatchObject({
       secret: expect.stringContaining("without declaring the secrets permission"),
@@ -96,7 +100,7 @@ describe("plugin doctor", () => {
       rootSecret: expect.stringContaining("without declaring the secrets permission"),
       rootHost: expect.stringContaining("without declaring the runtime permission"),
       rootOwner: expect.stringContaining("may run ops only as an agent"),
-      frame: expect.stringContaining("may not deliver socket frames"),
+      frame: "no message",
       parentHost: expect.stringContaining("not reachable from outside a row that declares runtime"),
       parentGet: expect.stringContaining("not reachable from outside a row that declares runtime"),
       parentSecret: expect.stringContaining("not reachable from outside a row that declares secrets"),
@@ -112,7 +116,29 @@ describe("plugin doctor", () => {
       rootOriginal: "no original",
       ctxOriginal: "no original",
       harness: expect.stringContaining("without declaring the conversations permission"),
-      before: JSON.stringify({ ref: "k-reach-probe", value: "[redacted]" }),
+      internalGet: expect.stringContaining("may not listen to internal/get"),
+      internalListener: expect.stringContaining("may not listen to internal/listener"),
+      piAuth: expect.stringContaining("without declaring the models permission"),
+      piInstalled: "no installed",
+      piModelSources: "no modelSources",
+      piRegister: "no install",
+      clockTimers: "no timers",
+      before: {
+        "secret.set": JSON.stringify({ ref: "k-reach-probe", value: "[redacted]" }),
+        "bundle.put": JSON.stringify({
+          package: "k-reach-bundle",
+          rows: [{ id: "k-reach-hello", plugin: "hello", config: "[redacted]" }],
+        }),
+      },
+    })
+  })
+
+  it("keeps the owner actor and provider keys from a row that holds runtime and models", async () => {
+    const reply = await cmd(fresh(), "k-reach-wide-1", "k.reach-wide")
+    expect(reply.result).toEqual({
+      owner: expect.stringContaining("may run ops only as an agent, not as owner"),
+      auth: "no getAuth",
+      models: "reached",
     })
   })
 

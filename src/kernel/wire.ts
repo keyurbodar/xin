@@ -25,15 +25,6 @@ const state = hidden<Wire, State>()
 
 const socketsOf = (wire: Wire): Sockets | undefined => state.get(wire).sockets
 
-/** A batch that may have written moved the home on: announce it to every home subscriber and answer the new rev. */
-function bump(wire: Wire): string {
-  const held = state.get(wire)
-  held.changes += 1
-  const rev = `${held.epoch}.${held.changes}`
-  held.sockets?.publishChanged(rev)
-  return rev
-}
-
 export class Wire extends Service {
   static readonly inject = ["host", "ops", "http", "clock", "db"]
 
@@ -57,7 +48,7 @@ export class Wire extends Service {
           acks.push({ t: "ack", id: command.id, ok: false, error: { code: "not_run", message: broken } })
           continue
         }
-        if (!command.read) wrote = true
+        if (!ctx.ops.reads(command.op)) wrote = true
         try {
           acks.push(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
         } catch (error) {
@@ -65,7 +56,7 @@ export class Wire extends Service {
           acks.push({ t: "ack", id: command.id, ok: false, error: { code: "failed", message: messageOf(error) } })
         }
       }
-      const headers = wrote ? { "x-ingle-rev": bump(this) } : undefined
+      const headers = wrote ? { "x-ingle-rev": this.announce() } : undefined
       return Response.json(batch ? acks : acks[0], headers === undefined ? {} : { headers })
     })
     ctx.http.route("POST /v1/auth", async () => new Response(null, { status: 204 }))
@@ -76,7 +67,13 @@ export class Wire extends Service {
       return sockets.accept(request.headers.get("x-ingle-protocol") ?? undefined, request.headers.get("origin") ?? "")
     })
     ctx.ops.define(
-      defineOp({ name: "session.list", args: obj({}), actors: OWNER, run: async () => socketsOf(this)?.list() ?? [] }),
+      defineOp({
+        name: "session.list",
+        read: true,
+        args: obj({}),
+        actors: OWNER,
+        run: async () => socketsOf(this)?.list() ?? [],
+      }),
     )
     ctx.ops.define(
       defineOp({
@@ -115,6 +112,15 @@ export class Wire extends Service {
       })
       await sockets.rehydrate()
     })
+  }
+
+  /** Owner state changed (a batch that ran a non-read op, or an agent's write): tells every home subscriber, so tabs drop their cached reads, and returns the new revision. */
+  announce(): string {
+    const held = state.get(this)
+    held.changes += 1
+    const rev = `${held.epoch}.${held.changes}`
+    held.sockets?.publishChanged(rev)
+    return rev
   }
 
   home(part: string, read: HomePart): () => void {

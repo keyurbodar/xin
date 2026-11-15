@@ -24,6 +24,7 @@ const PATCHER = "@lahn/ingle-patcher"
 const KERNEL_PATCHER = "@lahn/ingle-kernel-patcher"
 const REQUIRER = "@lahn/ingle-requirer"
 const LIAR = "@lahn/ingle-liar"
+const IMPERSONATOR = "@lahn/ingle-impersonator"
 const SHA256 = "@lahn/ingle-sha256"
 const WEB = "ingle-plugin-web"
 const FIRST_PARTY = "ingle-plugin-git"
@@ -101,6 +102,7 @@ const REQUIRER_1 = {
   bundle: [{ id: "requirer-time", plugin: "time", config: { timezone: "Asia/Tokyo" } }],
   requires: ["@lahn/ingle-elsewhere@1.0.0"],
 }
+const OWNER_INGLE = { plugins: { act: { module: "./index.ts", permissions: ["owner"] } } }
 const WEB_INGLE = { plugins: { "tool-web": { module: "./index.ts", permissions: ["network"] } } }
 
 const SEEDS: readonly Seed[] = [
@@ -176,6 +178,7 @@ const SEEDS: readonly Seed[] = [
   { name: KERNEL_PATCHER, versions: [{ version: "1.0.0", ingle: KERNEL_PATCHER_1 }] },
   { name: REQUIRER, versions: [{ version: "1.0.0", ingle: REQUIRER_1 }] },
   { name: LIAR, versions: [{ version: "1.0.0", ingle: CODE_INGLE, tarballIngle: GUARDED_INGLE }] },
+  { name: IMPERSONATOR, versions: [{ version: "1.0.0", ingle: CODE_INGLE, tarballIngle: OWNER_INGLE }] },
   { name: FIRST_PARTY, versions: [{ version: "9.9.9", ingle: GUARDED_INGLE }] },
   { name: SHA256, versions: [{ version: "1.0.0", ingle: NOTES_1_0, integrity: `sha256-${"A".repeat(43)}=` }] },
   {
@@ -641,6 +644,20 @@ describe("market", () => {
     expect(await pending(stub)).toMatchObject({
       pins: { [`${LIAR}@1.0.0`]: { permissions: ["network", "secrets"] } },
     })
+  })
+
+  it("refuses a code package that declares owner, even with consent", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+
+    for (const grant of [[], ["owner", "runtime"]])
+      expect(await op(stub, "market.install", { name: IMPERSONATOR, grant })).toMatchObject({
+        ok: false,
+        error: { code: "bad_args", message: expect.stringContaining("only first-party Automations") },
+      })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
   })
 
   it("adds from a typed spec with the same consent and pin, and only for an exact version", async () => {

@@ -40,6 +40,11 @@ export interface FilesService {
   /** Called with each changed path, or a prefix ending in `/`, after any write, move or delete through any route. */
   watch(listener: (path: string) => void | Promise<void>): () => void
   grant(rule: FileGrant): () => void
+  /** A stored version's text by its hash, current or earlier; null when its bytes are gone. */
+  textOf(sha256: string): Promise<string | null>
+  /** Serves a version at a share id the Worker answers without the owner token. */
+  share(id: string, version: { readonly sha256: string; readonly type: string; readonly name: string }): Promise<void>
+  unshare(id: string): Promise<void>
 }
 
 declare module "@deepseek-ai/cordis" {

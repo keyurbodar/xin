@@ -151,7 +151,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "files", "runtime", "storage"],
+      permissions: ["conversations", "files", "storage"],
       contributes: {
         tools: [],
         ops: [
@@ -463,6 +463,9 @@ export const CATALOG: Catalog = {
           "conv.context",
           "credential.delete",
           "credential.set",
+          "models.catalog",
+          "models.enable",
+          "models.favorite",
           "models.list",
           "owner.defaults",
           "usage.alert",
@@ -708,7 +711,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "runtime"],
+      permissions: ["conversations", "models", "runtime"],
       contributes: {
         tools: [],
         ops: [

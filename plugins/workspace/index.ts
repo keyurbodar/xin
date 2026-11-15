@@ -3,13 +3,14 @@ import type { Context } from "../../src/kernel/index.ts"
 import { create } from "./workspace.ts"
 
 export const name = "workspace"
-export const inject = ["harness", "wire", "ops", "pi", "host"]
+export const inject = ["harness", "wire", "ops", "pi", "host", "models"]
 
 export async function apply(ctx: Context): Promise<void> {
   const workspace = create({
     harness: ctx.harness,
     kv: ctx.host.state.storage.kv,
     publishHome: () => ctx.wire.publishHome(),
+    disabled: (ref) => ctx.models.disabled(ref),
   })
   for (const op of workspace.ops) ctx.ops.define(op)
   ctx.pi.install(

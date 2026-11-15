@@ -2,6 +2,7 @@ import { applyImmutable, assertValidOp, type Op } from "@earendil-works/chord/de
 import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js"
 import type { Streams } from "../lib/api.ts"
 import { listOf, numOf, recordOf, strOf, stringsOf } from "../lib/parse.ts"
+import { isThinkingLevel, type ThinkingLevel } from "../lib/thinking.ts"
 
 /** The watch's ops are decoded already, but they still crossed a socket: validate before applying. */
 function parseOps(events: readonly unknown[]): readonly Op[] {
@@ -302,13 +303,6 @@ export function agentModelOf(snapshot: Snapshot | undefined): ModelRefView | und
   const modelId = strOf(model?.modelId)
   return provider === undefined || modelId === undefined ? undefined : { provider, modelId }
 }
-
-export type ThinkingLevel = "off" | "low" | "medium" | "high"
-
-export const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "low", "medium", "high"]
-
-const isThinkingLevel = (value: string): value is ThinkingLevel =>
-  THINKING_LEVELS.some((level) => level === value)
 
 /** The thinking level the conversation's agent runs at, or undefined when it uses the model's own default. */
 export function agentThinkingOf(snapshot: Snapshot | undefined): ThinkingLevel | undefined {

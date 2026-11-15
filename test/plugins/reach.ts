@@ -60,9 +60,10 @@ const reach = {
   name: "k-reach",
   inject: ["ops", "wire", "pi", "clock"],
   apply(ctx: Context) {
-    let before = "no secret.set seen"
+    const before: Record<string, string> = {}
     ctx.on("ops/before", async (seen, next) => {
-      if (seen.command.op === "secret.set") before = JSON.stringify(seen.command.args)
+      if (seen.command.op === "secret.set" || seen.command.op === "bundle.put")
+        before[seen.command.op] = JSON.stringify(seen.command.args)
       return next()
     })
     ctx.ops.define(
@@ -90,7 +91,7 @@ const reach = {
             rootSecret: await attempt(() => ctx.root.secrets.get("probe")),
             rootHost: await attempt(() => field(ctx.root.host, "env", "KEK")),
             rootOwner: await attempt(() => ctx.root.ops.run(command("k-reach-root", "plugin.list"), OWNER)),
-            frame: await attempt(() => ctx.wire.message(fakeSocket, JSON.stringify({ t: "cmd" }))),
+            frame: await attempt(() => call(ctx.wire, "message", fakeSocket, JSON.stringify({ t: "cmd" }))),
             parentHost: await attempt(() => field(ctx.fiber.parent, "host", "env", "KEK")),
             parentGet: await attempt(() => field(ctx.fiber.parent.get("host"), "env", "KEK")),
             parentSecret: await attempt(() => call(ctx.fiber.parent.reflect.get("secrets"), "get", "probe")),
@@ -108,9 +109,35 @@ const reach = {
             rootOriginal: await attempt(() => original(ctx.root.ops, "ctx", "host")),
             ctxOriginal: await attempt(() => original(ctx, "host", "env", "KEK")),
             harness: await attempt(() => field(api.harness, "root")),
+            internalGet: await attempt(() => ctx.on("internal/get", (_target, _name, _error, next) => next())),
+            internalListener: await attempt(() => ctx.on("internal/listener", () => undefined)),
+            piAuth: await attempt(() => call(ctx.pi.currentModels(), "getAuth", "anthropic")),
+            piInstalled: await attempt(() => field(ctx.pi, "installed")),
+            piModelSources: await attempt(() => field(ctx.pi, "modelSources")),
+            piRegister: await attempt(() => field(ctx.pi, "registry", "install")),
+            clockTimers: await attempt(() => field(ctx.clock, "timers")),
             before,
           }
         },
+      }),
+    )
+  },
+}
+
+const wide = {
+  name: "k-reach-wide",
+  inject: ["ops", "pi", "host"],
+  apply(ctx: Context) {
+    ctx.ops.define(
+      defineOp({
+        name: "k.reach-wide",
+        args: obj({}),
+        actors: ["owner"],
+        run: async () => ({
+          owner: await attempt(() => ctx.ops.run(command("k-reach-wide-owner", "plugin.list"), OWNER)),
+          auth: await attempt(() => call(ctx.pi.currentModels(), "getAuth", "anthropic")),
+          models: await attempt(() => call(ctx.pi.currentModels(), "getAvailable")),
+        }),
       }),
     )
   },
@@ -131,6 +158,20 @@ export const catalog: Catalog = {
     manifest: { ...DEFAULT_MANIFEST, contributes: { tools: [], ops: ["k.reach"] } },
     source: "test",
   },
+  "k-reach-wide": {
+    plugin: wide,
+    title: "k-reach-wide",
+    description: "test plugin that holds runtime and models, and so neither owner nor provider keys",
+    manifest: {
+      ...DEFAULT_MANIFEST,
+      permissions: ["models", "runtime"],
+      contributes: { tools: [], ops: ["k.reach-wide"] },
+    },
+    source: "test",
+  },
 }
 
-export const rows: readonly Row[] = [{ id: "k-reach", name: "cordis:k-reach" }]
+export const rows: readonly Row[] = [
+  { id: "k-reach", name: "cordis:k-reach" },
+  { id: "k-reach-wide", name: "cordis:k-reach-wide" },
+]

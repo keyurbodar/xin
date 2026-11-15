@@ -12,6 +12,7 @@ const CommandFrame = obj({
   id: str({ minLength: 1, maxLength: 128 }),
   op: str({ minLength: 1 }),
   args: opt(unknown()),
+  // Tabs loaded before the home declared its own reads still send this; it is accepted and ignored.
   read: opt(bool()),
 })
 const ClientFrame = union([
@@ -70,10 +71,9 @@ function streamName(stream: Stream): string {
   return stream.kind === "home" ? "home" : `conv:${stream.id}`
 }
 
-/** `read` is the client's word that the command changes nothing, so it does not announce a home change. */
-export function decodeCommand(body: unknown): { id: CommandId; op: string; args: unknown; read: boolean } | undefined {
+export function decodeCommand(body: unknown): { id: CommandId; op: string; args: unknown } | undefined {
   if (!parseCommand.check(body)) return undefined
-  return { id: body.id as CommandId, op: body.op, args: body.args ?? {}, read: body.read === true }
+  return { id: body.id as CommandId, op: body.op, args: body.args ?? {} }
 }
 
 export function ack(id: string, outcome: Outcome): ServerFrame {
