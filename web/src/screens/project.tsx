@@ -22,7 +22,7 @@ import {
 } from "../state/conversation.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
 import { recordOf, numOf } from "../lib/parse.ts"
-import { loadRequests, openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
+import { openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
 import { modelName, models, searchModels, type ModelInfo, type ModelRef } from "../state/settings.ts"
 import { presets as presetStore, prompts } from "../state/extensions.ts"
 import { Menu } from "lucide-solid"
@@ -58,16 +58,6 @@ function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | unde
   const [older, setOlder] = createSignal<readonly EntryView[]>([])
   const [olderBefore, setOlderBefore] = createSignal<number | undefined>(undefined)
   const [olderDone, setOlderDone] = createSignal(false)
-  onMount(() => {
-    loadRequests()
-    void prompts.reload()
-    void presetStore.reload()
-  })
-  createEffect(() => {
-    void props.project.openRequests
-    void refreshRequests()
-  })
-
   const projectRequests = (): readonly RequestRow[] =>
     openRequests().filter((request) => request.projectId === props.project.id)
 
@@ -278,11 +268,25 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     if (current !== undefined) openThreadTab(props.project.id, current.id)
   })
   createEffect(() => pruneThreadTabs(props.project.id, new Set(threads().keys())))
+  onMount(() => {
+    void prompts.reload()
+    void presetStore.reload()
+  })
+  createEffect(() => {
+    void props.project.openRequests
+    void refreshRequests()
+  })
 
   const openThread = (id: number): void => {
     openThreadTab(props.project.id, id)
     navigate(`/p/${props.project.slug}/t/${id}`)
   }
+  const paneShown = createMemo(() => paneOpen() || sheet.mounted())
+  const pane = createMemo(() =>
+    paneShown() ? (
+      <ProjectPane project={props.project} expanded={expanded()} onExpand={setExpanded} onOpenThread={openThread} />
+    ) : undefined,
+  )
   const filePath = (): string | undefined => {
     if (param(2) !== "files" || param(3) === undefined) return undefined
     try {
@@ -296,9 +300,6 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     const parsed = Number(param(3))
     return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined
   }
-  const pane = (): JSX.Element => (
-    <ProjectPane project={props.project} expanded={expanded()} onExpand={setExpanded} onOpenThread={openThread} />
-  )
 
   return (
     <div class="relative flex min-h-0 flex-1 gap-2">
