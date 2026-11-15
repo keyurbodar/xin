@@ -18,7 +18,7 @@ Two harnesses, used together:
 .claude/skills/verify-ingle/ingle.sh launch     # prints "ready http://127.0.0.1:8799 pid N"
 ```
 
-It starts `bunx wrangler dev` on `INGLE_PORT` (default 8799) with state in `.verify/state`, a throwaway `OWNER_TOKEN` (`verify-owner-token`) and a throwaway `KEK`, passed with `--var`. It never reads `.dev.vars` secrets for the token. It is ready when `GET /health` returns `ok`, and it refuses to start if that port already answers. To run two instances, set a different `INGLE_PORT` and `INGLE_RUN` for each.
+It starts `bunx wrangler dev` on `INGLE_PORT` (default 8799) with state in `.verify/state`, a throwaway `OWNER_TOKEN` (`verify-owner-token`) and a throwaway `KEK`, passed with `--var`. It never reads `.dev.vars` secrets for the token. It is ready when `GET /health` returns `ok`, and it refuses to start if that port already answers. To run two instances, set a different `INGLE_PORT` and `INGLE_RUN` for each. `INGLE_RUN` is a name, never a path: its state always lands in `.verify/<name>`, which git ignores.
 
 ## Doctor
 

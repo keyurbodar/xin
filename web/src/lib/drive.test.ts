@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test"
 import { OpError } from "./api.ts"
 import {
+  copyLink,
+  createRetryIds,
   crumbsOf,
+  failureText,
   folderOf,
   isStale,
   moveTarget,
@@ -10,6 +13,7 @@ import {
   resolveConflict,
   rowsOf,
   saveBlock,
+  shareUrl,
   splitUploads,
   uploadPath,
   uploadSummary,
@@ -80,11 +84,37 @@ test("an upload lands in the open folder under its own name", () => {
   expect(uploadPath("/me/", "", "a/b.txt")).toBe("/me/a-b.txt")
 })
 
+test("a share link is the id and the file's own name on the app's origin", () => {
+  expect(shareUrl("https://ingle.example", "ab12", "notes/launch plan.md")).toBe("https://ingle.example/s/ab12/launch%20plan.md")
+  expect(shareUrl("http://127.0.0.1:5243", "ab12", "budget.json")).toBe("http://127.0.0.1:5243/s/ab12/budget.json")
+})
+
+test("a rejection reads in the host's words; a lost answer says a retry is safe", () => {
+  expect(failureText(new OpError("bad_args", "cannot move a: it is missing or b exists"))).toBe("cannot move a: it is missing or b exists")
+  expect(failureText(new OpError("http", "drive.share: HTTP 502"))).toBe("drive.share: HTTP 502. Try again; a retry lands once.")
+})
+
+test("a command id is reused only while the args are unchanged and no ack came back", () => {
+  let n = 0
+  const ids = createRetryIds(() => `id${++n}`)
+  const args = { scope: { kind: "user" }, path: "a.md", text: "x" }
+  expect(ids.idFor("drive.write", args)).toBe("id1")
+  ids.settle("drive.write", new OpError("http", "drive.write: HTTP 502"))
+  expect(ids.idFor("drive.write", { ...args })).toBe("id1")
+  expect(ids.idFor("drive.write", { ...args, text: "y" })).toBe("id2")
+  ids.settle("drive.write", new OpError("bad_args", "no"))
+  expect(ids.idFor("drive.write", { ...args, text: "y" })).toBe("id3")
+  ids.settle("drive.write")
+  expect(ids.idFor("drive.write", { ...args, text: "y" })).toBe("id4")
+  expect(ids.idFor("drive.share", { scope: { kind: "user" }, path: "a.md" })).toBe("id5")
+})
+
 test("only a stale-base rejection counts as a conflict", () => {
   expect(isStale(new OpError("bad_args", "stale base: plan.md changed since a (now b)"))).toBe(true)
   expect(isStale(new OpError("bad_args", "no file plan.md"))).toBe(false)
   expect(isStale(new OpError("http", "stale base: x"))).toBe(false)
   expect(isStale(new Error("stale base: x"))).toBe(false)
+  expect(isStale(new Error("stale base: x", { cause: new OpError("bad_args", "stale base: x") }))).toBe(true)
 })
 
 test("Save sends the sha the file was opened at as base, and Overwrite sends the sha now current", () => {
@@ -113,4 +143,14 @@ test("files over the limit stay in the browser and are named with any that faile
   expect(split.tooBig.map((file) => file.name)).toEqual(["big.bin"])
   expect(uploadSummary([], [])).toBeUndefined()
   expect(uploadSummary(["big.bin"], ["c.txt"], 50 * 1024 * 1024)).toBe("Over 50.0 MB, not sent: big.bin. Failed to upload: c.txt.")
+})
+
+test("a share link is copied when the clipboard takes it, and left to copy by hand when it is missing or refused", async () => {
+  const written: string[] = []
+  expect(await copyLink("https://ingle.example/s/ab12/a.md", async (text) => void written.push(text))).toBe("copied")
+  expect(written).toEqual(["https://ingle.example/s/ab12/a.md"])
+  expect(await copyLink("https://ingle.example/s/ab12/a.md", undefined)).toBe("manual")
+  expect(
+    await copyLink("https://ingle.example/s/ab12/a.md", () => Promise.reject(new DOMException("denied", "NotAllowedError"))),
+  ).toBe("manual")
 })
