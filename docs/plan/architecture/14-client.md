@@ -11,19 +11,18 @@ This section decides how the first-party web client is built and what it talks t
 
 ## Status palette
 
-The values live in `tokens.css`; `web/src/lib/status.ts` maps each state to its token.
+The values live in `tokens.css`; the `.sig` rules in `ingle-motion.css` pick each state's token, and `web/src/lib/status.ts` maps backend statuses onto the states and names them.
 
-| State | Token | Word |
-| --- | --- | --- |
-| queued | `ink-3` | Queued |
-| working | `working` | Working |
-| waiting | `needs` | Waiting on you |
-| done | `done` | Done |
-| failed | `failed` | Failed |
-| paused | `working` | Paused |
-| cancelled | `icon` | Cancelled |
+| State | Token | Word | Shape | Backend status |
+| --- | --- | --- | --- | --- |
+| idle | `ink-3` | Stopped | centre dot, still | `cancelled`; a paused schedule |
+| queued | `ink-3` | Queued | dim grid, still | anything not yet running |
+| working | `working` | Working | chasing ring, `--loop-chase` | `working` |
+| needs | `needs` | Needs you | plus, breathes `--loop-breathe` | `waiting` (a question to the owner) |
+| done | `done` | Done | check, still | `completed` |
+| failed | `failed` | Failed | X, still | `failed` |
 
-Rows, chips and the sidebar use the **D Grid** family from `I2`: a 3×3 grid of square cells where every state is its own pattern, at 12, 16, 20 or 24px. Chat chips use the **Capsule** family, which pairs the glyph with the state's word.
+Every status in the client is the **Signal** (v5 page 16.1): a 3×3 grid of round dots at 12, 14, 16 or 20px, `components/ui/signal.tsx` over the `.sig` rules. Shape reads before colour, settled states crossfade dot by dot in 200ms, and only working and needs loop. The motion file also draws waiting and merged, which no backend status produces, so the client does not use them. fTz's paused and cancelled have no Signal shape (design system §0.8), so a cancelled thread and a paused schedule show idle.
 
 ## Stack
 
@@ -34,12 +33,12 @@ Rows, chips and the sidebar use the **D Grid** family from `I2`: a 3×3 grid of 
 | router | a 40-line hash router in `web/src/lib/router.ts` | six routes, no dependency, works on any static host |
 | icons | `lucide-solid` | the design names Lucide; imports are per icon, so the bundle carries only the icons used |
 | deltas | `@earendil-works/chord/delta` `applyImmutable` | the server sends the watch's decoded ops, so the client applies them with the library that defines them instead of a copy |
-| loading | `skullet` (measured skeletons), `torph` (text morph) | the owner's picks; a skeleton the size of the real content stops the layout shifting |
+| loading | `torph` (text morph); skeletons are plain `.im-skeleton` blocks | the owner's pick for text; v5 page 16.3 draws fixed skeletons at the real rows' measure, so skullet's measured ghosts were dropped |
 | syntax | `sugar-high`, the highlighter kiko ships | C12 tints fenced code; it is a few KB, has no dependencies, and escapes the code it marks up |
 | primitives | `@ark-ui/solid` | headless menus, popovers, selects and dialogs with real focus management, and `--transform-origin` so a popover scales from its trigger |
 | fonts | `@fontsource-variable/inter`, `@fontsource-variable/geist-mono` | self-hosted variable fonts, so no third-party font request |
 
-**What came from kiko, and what did not.** kiko's `apps/web-solid` is the reference for this stack, and Ingle takes its versions as they are: Solid 1.9, Vite 8, Tailwind 4.3, skullet for measured skeletons, torph for text morphs, and now sugar-high for code. The rest of kiko's list is declined until a frame asks for it: Kobalte and cmdk-solid (the palette is a plain list with its own keyboard handling, and no surface needs a focus-trapping primitive yet), TipTap and CodeMirror (every editor here is a plain textarea over markdown, not rich text), `@corvu/calendar` and `@corvu/resizable` (no date picker or split panes in the frames), virtua, mermaid, jszip, pdfjs-dist and `@pierre/trees` (no virtualised lists, diagrams, archives, PDFs or file trees), and Phosphor icons (the design names Lucide). The comparison is `docs/log/decisions.tsv` under P14.
+**What came from kiko, and what did not.** kiko's `apps/web-solid` is the reference for this stack, and Ingle takes its versions as they are: Solid 1.9, Vite 8, Tailwind 4.3, torph for text morphs (skullet was taken too and later dropped for page 16.3's skeletons), and now sugar-high for code. The rest of kiko's list is declined until a frame asks for it: Kobalte and cmdk-solid (the palette is a plain list with its own keyboard handling, and no surface needs a focus-trapping primitive yet), TipTap and CodeMirror (every editor here is a plain textarea over markdown, not rich text), `@corvu/calendar` and `@corvu/resizable` (no date picker or split panes in the frames), virtua, mermaid, jszip, pdfjs-dist and `@pierre/trees` (no virtualised lists, diagrams, archives, PDFs or file trees), and Phosphor icons (the design names Lucide). The comparison is `docs/log/decisions.tsv` under P14.
 
 ## Data
 
@@ -100,34 +99,38 @@ The Notifications pane is the S4 left pane: the browser's subscription and Send 
 | --- | --- | --- |
 | `#/` | D1 | the first active project's chat; with no project, an empty state that opens New project |
 | `#/p/:slug`, `#/p/:slug/t/<threadId>` | D1, D2, D5, D6 | the project workspace: a centre panel with a tab bar of open conversations (the coordinator first, then every thread the person opened; the address names the active one) and a right pane. Thread tabs open from the sidebar, the palette, Overview, the view menu and transcript cards, close with × or a middle click, reorder by drag (pointer capture, 1.02 lift, neighbours slide), and persist per project in `localStorage["ingle.tabs"]` (`state/tabs.ts`); tabs of threads the home no longer lists are dropped. Right of the tabs: the active conversation's spend (the sum of `cost.total` over every bucket of its `docs["pi.usage"]`), a more menu (Project settings, Archive project, both opening the settings dialog with `project.update` and `project.archive`), and a show-pane button when the pane is hidden. A thread tab renders the thread's transcript with the same `Transcript` and the steer composer (`thread.send`, `thread.stop`). New thread (sidebar and the tab bar's +) opens a dialog that calls `thread.create` with a title and a task |
-| right pane | D2 | `components/pane/views.tsx` holds the one registry: `PANE_VIEWS` (`{id, label, icon, render}`: Overview, Files, Memory, Schedules, Jobs, All threads) drives the pane tabs, the + view menu and the bodies, and `OVERVIEW_SECTIONS` (same shape without an icon) drives Overview. The + menu is a searchable Popover + Listbox: the views, then a Crew group of the project's threads (each opens a centre tab) and All threads with its count. Overview: Needs you (the home snapshot's `requests`, shown when `openRequests` > 0), In progress (working and waiting threads with their status line), Threads, and Drive (`file.list` count and the newest four files). Sections are collapsible 28px rows on secondary. Ingle has no issues or pull requests, so the pane has no PR section. Memory reads `memory.list` and `memory.suggested`; Schedules lists with `outcomes: true` |
-| `#/p/:slug/files/<path>` | D5 | the file reader: breadcrumb, size and age, Copy and Download, the document, and the project's file list beside it |
-| `#/p/:slug/run/<conversationId>` | D6 | one schedule's delivered run, read-only: the transcript the timer produced, with a breadcrumb back to the project |
-| `#/schedules` | D6 | every schedule with pause, resume and delete, and a New schedule form whose When field is plain words parsed by `schedule.parse` with the next three runs shown before saving |
+| right pane | D2 | `components/pane/views.tsx` holds the one registry: `PANE_VIEWS` (`{id, label, icon, render}`: Overview, Files, Memory, Automations (the project's automations from `automation.list`, pause and resume, last run as a dot), Jobs, All threads) drives the pane tabs, the + view menu and the bodies, and `OVERVIEW_SECTIONS` (same shape without an icon) drives Overview. The + menu is a searchable Popover + Listbox: the views, then a Crew group of the project's threads (each opens a centre tab) and All threads with its count. Overview: Needs you (the home snapshot's `requests`, shown when `openRequests` > 0), In progress (working and waiting threads with their status line), Threads, and Drive (`file.list` count and the newest four files). Sections are collapsible 28px rows on secondary. Ingle has no issues or pull requests, so the pane has no PR section. Memory reads `memory.list` and `memory.suggested`; Schedules lists with `outcomes: true` |
+| `#/p/:slug/files/<path>` | D5 | the file reader: breadcrumb, size and age, Copy and Download, the document, and the project's file list beside it once the reader itself is at least 800 wide (a container query, so the docked pane and sidebar count) |
+| `#/p/:slug/run/<conversationId>` | D6 | one automation's delivered run, read-only: the transcript the timer produced, with a breadcrumb back to the project |
+| `#/automations` | D6 | every automation with pause, resume (`automation.update`) and delete (`automation.delete`), and a New automation form: title, prompt, a cron read in the browser's time zone, a project and a target, saved with `automation.create`. A minimal port of the old Schedules screen; XIN-21 redesigns it |
 | `#/extensions` | E1–E7 | Discover, package page, install review, installed, sources, customize |
 | `#/settings/:tab` | S1–S4, 08.x | General, Models + providers, Usage + cost, Notifications, Plugins, Members, Profile + token, System: a flat 200 sub-nav, then the page title and one-line description in a centred 800 column |
-| `#/signin` | O1 | owner token |
-| `#/welcome` | O2–O5 | first provider key, first project, first message, notifications |
+| `#/signin` | 18.1 | step 1 of 4: the owner token, checked with `GET /v1/status`; a wrong token keeps the text, reddens the field, shakes it once (`.im-reject`) and says it doesn't match this instance. A form sign-in opens `#/welcome` only while the instance has no live Captain; a stored token that still works skips both |
+| `#/welcome` | 18.2–18.5 | the rest of setup. Progress is read from the instance on every visit (`lib/onboarding.ts` `readProgress`: `models.list` for a keyed provider, `captain.list` for the oldest live Captain, `captain.get` for a completed crew thread), and the first open step shows; setup counts as finished once a live Captain exists, because no owner op records it. 18.2 Model key: Anthropic, OpenAI, OpenRouter or Other (catalog id, optional base URL and API), `credential.set`, then the provider's models; Skip for now. 18.3 First Captain: three examples, name, model (a keyed model, the first by default, because a Captain's conversation has no fallback to the owner default), goal (`description`, 200 characters) and an optional repository (`rules` as `Repository: owner/repo`); Skip for now leaves for the shell while no Captain exists (`skipTarget`; the key step's Skip moves to the next step). Creating reuses a live Captain with the same alias, takes the first live project from `workspace.read` or creates one under the command id `onboarding-<slug>` with the first slug no project holds (`bosun-2` when an archived `bosun` exists, and the next one if a replay comes back archived), and keeps one `captain.create` command id per set of inputs. 18.4 First thread: the Captain's `conv:<coordinatorId>` stream rendered with `itemsOf` (owner messages, delegated threads as event lines, reports, questions, failures), suggestion cards and a message field that call `message.send` with one command id per draft until it is acknowledged, and a five-row checklist. 18.5 Notifications: a modal dialog that opens when the first completed report lands (or from the checklist), takes focus, keeps Tab inside, returns focus on close, and turns on browser push |
 
-Layout (v4 shell, render 12.1): the sidebar (240, on bg) holds the app mark, search (⌘K) and collapse (⌘B), the nav rows New thread, Schedules, Extensions and Settings, a Projects section with each project's state glyph and +, the current project's Threads (all statuses, newest first, with a filter toggle), and the owner menu (Settings; Theme: Dark, Light, Rose). The centre and the pane are panels inset 8 from the window with radius 12 and an 8 gutter; the pane is 432 and docked from 1280. Below 1280 the pane overlays the centre from the right; below 1024 the sidebar is a drawer opened from the menu button in the tab bar, closed by the scrim, its × or any navigation. Expand widens the pane over the centre. The chat column never exceeds 720. There is no rail and no bottom tab bar.
+Layout (v4 shell, render 12.1): the sidebar (240, on bg) holds the app mark, search (⌘K) and collapse (⌘B), the nav rows New thread, Automations, Extensions and Settings, a Projects section with each project's state glyph and +, the current project's Threads (all statuses, newest first, with a filter toggle), and the owner menu (Settings; Theme: Dark, Light, Rose). The centre and the pane are panels inset 8 from the window with radius 12 and an 8 gutter; the pane is 432 and docked from 1280. Below 1280 the pane overlays the centre from the right; below 1024 the sidebar is a drawer opened from the menu button in the tab bar, closed by the scrim, its × or any navigation. Expand widens the pane over the centre. The chat column never exceeds 720. There is no rail and no bottom tab bar.
 
 ## Identity
 
 The app mark is the Ingle avatar from the brand handoff. `components/ui/brand-mark.tsx` paints `public/brand/ingle-mark-20.svg` as a CSS mask over `currentColor`, so it takes the surrounding ink and follows `data-theme` (dark, light, rose) without per-theme files. It sits alone at 20px in the sidebar header and beside the word Ingle in the onboarding and sign-in top bar. `index.html` links `favicon.ico`, `favicon.svg` (which follows `prefers-color-scheme`, since a tab icon cannot read `data-theme`) and `apple-touch-icon.png`. There is no web manifest, so the 192 and 512 icons are not shipped.
 
-Status uses the D Grid family from `I2`. A 3 by 3 grid of cells gives every state its own pattern and its own loop, so shape reads before colour, even at 12px and in greyscale. `components/ui/status-glyph.tsx` draws it wherever a thread, a report or a job shows state.
+Status is the Signal (see Status palette). `components/ui/signal.tsx` draws it wherever a thread, a project, a report, a schedule or a job shows state, with the state's word as its accessible name.
 
-A project's mark is one of the 24 glyphs from `I3`, in `lib/project-glyphs.ts`. It is chosen from the project's own words, first match wins, and by slug when nothing matches. Picking or shuffling the glyph from New project would need a stored field on the project, which the schema does not have, so the mark stays derived. `components/chat/project-glyph.tsx` draws it on a 24-unit grid with a 1.5 stroke and at most one solid part, and puts the project's state on the tile's corner: a breathing white square while work runs, a pulsing orange square when someone waits on the owner, a red square after a failure. The glyph itself never changes.
+A project's mark is one of the 24 glyphs from `I3`, in `lib/project-glyphs.ts`. It is chosen from the project's own words, first match wins, and by slug when nothing matches. Picking or shuffling the glyph from New project would need a stored field on the project, which the schema does not have, so the mark stays derived. `components/chat/project-glyph.tsx` draws it on a 24-unit grid with a 1.5 stroke and at most one solid part. The glyph itself never changes, and the tile carries no status: the project's state is a Signal at the end of its sidebar row (fTz I3's corner square is dropped, per the v5 inventory).
 
 Empty states use the pictograms from `I4`, in `components/ui/pictogram.tsx`, at 88px. A 64 grid, a 1.5px stroke that stays 1.5px at any size, one orange detail, and one small loop per drawing. They never sit inside a control.
 
-Small loads use the arc from `I1`: a faint ring with a quarter arc turning once every 0.8s, in the current colour. The construction trace from the same frame is for a cold boot of the whole client. This client paints its shell at once and shows layout-matched skeletons (C11) while data lands, so the trace is never drawn.
+Indicators follow v5 page 16 and live in `components/ui/`:
+
+- `loaders.tsx`: `Spinner`, the arc (a faint ring and a quarter arc, one turn every .8s, 12/14/16/20/32, in the current colour, never the accent), which replaces a button's leading icon while it is busy. `BootLoader`, the construction trace (a pen draws a square, a circle and a triangle over dashed guides, 9s linear with a 1.8s hold), shown by `app.tsx` while the stored token is checked and faded in only after 400ms, so a fast boot never shows it. `Thinking`, three breathing dots before the first token; streaming and tool-running text uses `.im-shimmer`. Page 16.2's progress bar and context ring have no surface outside the composer yet, so none is built here.
+- `skeleton.tsx`: `Loading` swaps a skeleton for its content, which fades in with `.im-content`. For a resource it is driven by `firstLoad()` in `lib/loading.ts`, which is true only while the first value is pending, so a refetch after a mutation keeps the stale rows on screen instead of flashing the skeleton; the skeleton itself fades in after `--skeleton-delay` (150ms) and pulses on `--loop-skeleton`. `ThreadSkeleton` stands in for a transcript, `RowSkeleton` for 46px two-line rows, `PaneSkeleton` for a right-pane section (28px header and rows), and `Bar` for anything else.
+- `morph-icon.tsx`: `MorphIcon` morphs a control's icon when it changes meaning, in 200ms out-quint: copy→check (the check draws), chevron down→up, plus→×, eye→eye slashed (the slash draws) and pause→play. It plays once, at the change, and swaps with no motion under reduced motion.
 
 ## Motion
 
 Motion is the handoff file `web/src/styles/ingle-motion.css` (design system §0.8, canvas page 17), vendored verbatim and imported after `tokens.css`; it owns the motion tokens (`--ease-*`, `--dur-*`, `--loop-*`, the scales) and the `.im-*` and `.sig` primitives. Other lanes build on its class names, so the path stays. Ark overlays animate with keyframes on `data-state` because Ark's presence waits for `animationend`; app-driven UI uses transitions and `@starting-style` so it can be interrupted.
 
-`web/src/styles/motion.css` holds only what the file leaves to the app: Tailwind's `hover` variant gated to `(hover: hover) and (pointer: fine)`, the combined transition for an element that is both `.im-press` and `.im-hover` (each sets `transition` on its own), the left-edge variant of `.im-sheet` (`data-side="left"`) for the sidebar drawer, the pane tab pill (`.im-pill`, translate and width over `--dur-flip` in-out), and the composer's `menu-in` and `shake` and the project corner's `breath` and `pulse` on the file's keyframes. Each has the same reduce rule both ways the file has them.
+`web/src/styles/motion.css` holds only what the file leaves to the app: Tailwind's `hover` variant gated to `(hover: hover) and (pointer: fine)`, the combined transition for an element that is both `.im-press` and `.im-hover` (each sets `transition` on its own), the left-edge variant of `.im-sheet` (`data-side="left"`) for the sidebar drawer, the pane tab pill (`.im-pill`, translate and width over `--dur-flip` in-out), and the composer's `menu-in` and `shake` on the file's keyframes. Each has the same reduce rule both ways the file has them.
 
 `web/src/lib/motion.ts` sets `:root[data-visibility]` from `visibilitychange`, so loops pause in a hidden tab, and tracks whether the last input was a key. A keyboard-started action takes no time: components that render the moving element put `data-instant` on it at that moment (pane view, pane pill, overview sections), a MutationObserver puts it on any `.im-*` overlay that mounts or changes `data-state` after a keypress (menus, popovers, dialogs, sheets), and `createPresence` unmounts at once. `stagger()` adds `.im-stagger` and each row's `--i` on a list's first load only. Nothing sets `:root[data-motion="reduce"]` yet because Appearance has no such setting; the file and the glue already honour it.
 
@@ -136,7 +139,7 @@ Motion is the handoff file `web/src/styles/ingle-motion.css` (design system §0.
 | Icon buttons | `.im-press .im-hover` | `shell/menu.ts` `ICON_BUTTON` |
 | Rows and tabs | `.im-hover` | sidebar rows, pane rows, inactive conversation and pane tabs |
 | Menus and popovers (Ark) | `.im-pop` | `MENU_CONTENT` |
-| Dialogs | `.im-dialog` + sibling `.im-scrim`, `data-state` from `createPresence` | `ui/dialog.tsx`, add-from-URL, new schedule |
+| Dialogs | `.im-dialog` + sibling `.im-scrim`, `data-state` from `createPresence` | `ui/dialog.tsx`, add-from-URL, new automation |
 | Right sheet | `.im-sheet` + `.im-scrim` | install review, undocked project pane |
 | Sidebar drawer | `.im-sheet[data-side="left"]` + `.im-scrim` | `shell/shell.tsx` |
 | Pane view swap | `.im-pane` | `pane/pane.tsx` |
@@ -145,12 +148,15 @@ Motion is the handoff file `web/src/styles/ingle-motion.css` (design system §0.
 | Overview sections | `.im-grow` + `.im-chevron` | `pane/overview.tsx` |
 | First-load lists | `.im-stagger` via `stagger()` | sidebar projects and threads, overview sections, thread fan-out |
 | Report card | `.im-event` | `chat/cards.tsx` |
-| Signal | `.sig` with `data-state` (waiting maps to `needs`, paused to `waiting`, cancelled to `idle`) | `ui/status-glyph.tsx` |
+| Signal | `.sig` with `data-state` and `data-size`; state changes crossfade dot by dot | `ui/signal.tsx` |
+| Spinner, boot trace, morphing icons | `.im-spinner`, `.im-boot`, `.im-morph` from `indicators.css`, on the file's tokens, still under reduced motion and paused in a hidden tab | `ui/loaders.tsx`, `ui/morph-icon.tsx` |
+| Thinking | `.im-dots` | `ui/loaders.tsx` |
+| Skeletons | `.im-skeleton` fading in after `--skeleton-delay`; content enters with `.im-content` | `ui/skeleton.tsx` |
 | Working text, streaming caret | `.im-shimmer`, `.im-caret` | transcript, cards, pane rows |
 | Switches | `.im-switch` with an `<i>` knob | extensions `Toggle`, onboarding notifications |
 | Onboarding and sign-in pages | `.im-content` | onboarding steps, sign-in |
 
-Skeletons stay on Skullet (layout-matched, held back 150ms) with its `pulse` animation rather than `.im-skeleton`. No toasts exist yet, so `.im-toast` has no consumer; the Send/Stop morph, upload progress, context ring and attachment chips belong to the composer lane.
+No toasts exist yet, so `.im-toast` has no consumer. The composer lane owns the Send/Stop morph, upload progress, the context ring and attachment chips.
 
 ## Decisions taken from the review frame's open questions
 

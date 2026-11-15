@@ -4,7 +4,9 @@ import { connect, connectionState, reauthorize } from "./state/connection.ts"
 import { subscribeHome } from "./state/home.ts"
 import { navigate, route } from "./lib/router.ts"
 import { Shell } from "./components/shell/shell.tsx"
+import { BootLoader } from "./components/ui/loaders.tsx"
 import { SignIn } from "./screens/signin.tsx"
+import { readProgress } from "./lib/onboarding.ts"
 import { WelcomeScreen } from "./screens/welcome.tsx"
 import { BootFailedScreen } from "./screens/boot-failed.tsx"
 import { cutOff, OfflineScreen } from "./screens/offline.tsx"
@@ -65,9 +67,15 @@ export function App(): JSX.Element {
   onMount(() => void start())
 
   return (
-    <Switch fallback={<div class="grid h-full place-items-center" />}>
+    <Switch fallback={<div class="grid h-full place-items-center"><BootLoader label="Starting Ingle" /></div>}>
       <Match when={gate().kind === "signin"}>
-        <SignIn onSignedIn={() => void start()} />
+        <SignIn
+          onSignedIn={async () => {
+            await start()
+            const progress = await readProgress().catch(() => undefined)
+            if (progress?.captain === undefined) navigate("/welcome")
+          }}
+        />
       </Match>
       <Match when={bootFailure()}>
         {(failure) => <BootFailedScreen failure={failure()} onRecovered={() => void start()} onSignedOut={signOut} />}
