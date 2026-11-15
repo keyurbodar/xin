@@ -48,12 +48,16 @@ Reads take the same path, so the Inbox, the transcript and the Usage pane see ex
 
 An op declared with `receipts: false` skips steps 1 and 4 entirely: its own state answers a resend, so no receipt is read, written or swept. Only `message.send` does this, because its intake item carries the command id (02). Every other op keeps a receipt.
 
-Receipts store `ok` and deterministic rejections (`unknown_op`, `bad_args`, `forbidden`). A `failed` outcome (the op threw) stores none, so a retry runs it again. The op's effect and its receipt are separate writes, so every op must also be idempotent through its derived key. The same command layer is reachable over HTTP as `POST /v1/cmd {id, op, args?}`, and an omitted `args` means `{}`. Concurrent duplicates inside one object share one in-flight run.
+Receipts store `ok` and deterministic rejections (`unknown_op`, `bad_args`, `forbidden`). A `failed` outcome (the op threw) stores none, so a retry runs it again. The op's effect and its receipt are separate writes, so every op must also be idempotent through its derived key. The same command layer is reachable over HTTP as `POST /v1/cmd {id, op, args?}`, and an omitted `args` means `{}`. Concurrent duplicates inside one object share one in-flight run. The body may also be an array of 1 to 32 such frames: they run in order, each with its own receipt, and the answer is the array of acks in the same order, so one Worker request and one home request carry them all. An empty, oversized or malformed batch is refused with 400 before any of it runs. A frame that throws outside its op's own outcome (an `ops/before` hook, a receipt write, the sweep) gets its own `failed` ack and stores no receipt; every later frame in that batch is answered `{ok:false, error:{code:"not_run"}}` and never runs, while frames before it keep their acks.
+
+A frame may carry `read: true`, the client's statement that the op changes nothing. The home keeps a revision in memory: a per-instance random epoch plus a counter, so an eviction never repeats a value. Every batch holding a frame without `read` bumps it, returns it in the `x-ingle-rev` response header, and pushes `{t:"changed", stream:"home", rev}` to every home subscriber. That costs 0 rows and 0 requests, and one frame of under 80 B per mutating batch per open home socket. The socket `cmd` frame does not bump it, since the web client does not send commands over the socket.
+
+The web client batches every op issued in the same task and classifies the reads in one table in `web/src/lib/api.ts`. A `cached` read (lists and settings that only a command changes) is answered from a per-op, per-args cache for at most 60 s; concurrent callers share one request. A `live` read (sessions, metrics, usage, logs, files, Drive entries, history, requests, jobs) is batched but never cached. Neither drops the cache. Any other op does, once it settles with any outcome, since a failed batch may still have committed. The cache is also dropped by a home `snap`, by a `changed` frame whose revision this tab has not seen (its own `x-ingle-rev` marks its own change as seen), and whenever a socket opens, because `changed` frames sent while it was down never arrived. The 60 s TTL is the backstop for changes no command announces, such as an agent's tool writes or a market auto-update.
 
 ## 4 · Web wire protocol (one socket per tab, hibernation-safe)
 
 ```text
-client → {t:"cmd",  id, op, args}                    id = client UUID, retried verbatim on reconnect
+client → {t:"cmd",  id, op, args, read?}             id = client UUID, retried verbatim on reconnect; read: the op changes nothing
 client → {t:"sub",  stream:"home"|"conv:<id>"}       stream subscription
 client → {t:"typing", conv, on}                       not stored; extends debounce (§5)
 client → {"_tag":"Ping"}                              auto-answered by the runtime: idle tabs never wake the DO
@@ -63,6 +67,7 @@ server → {t:"ack",  id, ok, result|error}
 server → {t:"snap", stream, value, rev?}              bounded: last 60 entries + live state; older via cmd history.page; home carries rev
 server → {t:"resume", stream, value?, start?}         answer to a sub with resume: what the client lacks (below)
 server → {t:"ev",   stream, events[]}                 pi watchEvents deltas: text appends, tool output, status
+server → {t:"changed", stream:"home", rev}          a mutating /v1/cmd batch committed somewhere: drop cached reads (§3)
 ```
 
 - `hello` is what lets a client recognise its own row in `session.list` without guessing from the origin; a browser behind one host otherwise looks like every other browser on it.
