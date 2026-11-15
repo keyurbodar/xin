@@ -129,7 +129,24 @@ export const CATALOG: Catalog = {
     title: "Drive",
     description:
       "User, project, Captain and automation folders on the files index: AGENTS.md instructions and skills per scope, version history and checkout.",
-    manifest: { api: 1, requires: [] },
+    manifest: {
+      api: 1,
+      requires: [],
+      permissions: ["conversations", "files", "runtime"],
+      contributes: {
+        tools: [],
+        ops: [
+          "drive.checkout",
+          "drive.delete",
+          "drive.history",
+          "drive.list",
+          "drive.move",
+          "drive.read",
+          "drive.scopes",
+          "drive.write",
+        ],
+      },
+    },
     local: true,
     source: "ingle-plugin-drive@0.1.0",
   },
