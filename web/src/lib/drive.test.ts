@@ -13,6 +13,7 @@ import {
   splitUploads,
   uploadPath,
   uploadSummary,
+  writeArgs,
   type DriveEntry,
   type MountedScope,
 } from "./drive.ts"
@@ -86,9 +87,16 @@ test("only a stale-base rejection counts as a conflict", () => {
   expect(isStale(new Error("stale base: x"))).toBe(false)
 })
 
-test("Reload drops the edits; Overwrite writes them over the version now current", () => {
-  expect(resolveConflict("reload", "mine", { sha256: "b" })).toEqual({ kind: "reload" })
-  expect(resolveConflict("overwrite", "mine", { sha256: "b" })).toEqual({ kind: "write", text: "mine", base: "b" })
+test("Save sends the sha the file was opened at as base, and Overwrite sends the sha now current", () => {
+  const scope = { kind: "project", id: "acme" } as const
+  const save = writeArgs(scope, "plan.md", "mine", { sha256: "opened" })
+  expect(save).toEqual({ scope, path: "plan.md", text: "mine", base: "opened" })
+  expect(writeArgs(scope, "new.md", "mine", undefined)).toEqual({ scope, path: "new.md", text: "mine" })
+  expect(resolveConflict("reload", save, { sha256: "current" })).toEqual({ kind: "reload" })
+  expect(resolveConflict("overwrite", save, { sha256: "current" })).toEqual({
+    kind: "write",
+    write: { scope, path: "plan.md", text: "mine", base: "current" },
+  })
 })
 
 test("AGENTS.md over the cap cannot be saved; other files and a short AGENTS.md can", () => {

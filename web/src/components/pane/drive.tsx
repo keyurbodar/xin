@@ -21,11 +21,13 @@ import {
   splitUploads,
   uploadPath,
   uploadSummary,
+  writeArgs,
   type ConflictChoice,
   type DriveEntry,
   type DriveFile,
   type DriveListing,
   type DriveScope,
+  type DriveWrite,
   type MountedScope,
   type Reserved,
 } from "../../lib/drive.ts"
@@ -356,10 +358,10 @@ function FilePanel(props: {
     setMode("edit")
   }
   const blocked = (): string | undefined => saveBlock(props.path, draft())
-  const write = async (text: string, base: string | undefined): Promise<void> => {
+  const write = async (args: DriveWrite): Promise<void> => {
     try {
-      const entry = await drive.write(scope(), props.path, text, base)
-      mutate({ ...entry, text })
+      const entry = await drive.write(args)
+      mutate({ ...entry, text: args.text })
       setConflict(false)
       setMode("read")
       props.onChanged()
@@ -370,19 +372,19 @@ function FilePanel(props: {
   }
   const save = (): void => {
     if (blocked() !== undefined) return
-    void action.run("save", () => write(draft(), settled(file)?.sha256))
+    void action.run("save", () => write(writeArgs(scope(), props.path, draft(), settled(file))))
   }
   const settle = (choice: ConflictChoice): void =>
     void action.run("save", async () => {
       const current = await drive.read(scope(), props.path)
-      const next = resolveConflict(choice, draft(), current)
+      const next = resolveConflict(choice, writeArgs(scope(), props.path, draft(), settled(file)), current)
       if (next.kind === "reload") {
         mutate(current)
         setConflict(false)
         setMode("read")
         return
       }
-      await write(next.text, next.base)
+      await write(next.write)
     })
   const text = (): string | null => settled(file)?.text ?? null
   const isText = (): boolean => text() !== null
