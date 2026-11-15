@@ -170,8 +170,8 @@ export function create(deps: FilesPort): FilesPlugin {
       const row = await index.row(rootedPath(path))
       return row === undefined ? undefined : entryOf(row)
     },
-    write: async (path, text) =>
-      entryOf(await putFile(deps.env.FILES, index, { path: rootedPath(path), content: text })),
+    write: async (path, text, base) =>
+      entryOf(await putFile(deps.env.FILES, index, { path: rootedPath(path), content: text, base })),
     remove: async (path) => {
       const target = rootedPath(path)
       const row = await index.row(target)

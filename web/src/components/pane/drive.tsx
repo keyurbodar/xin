@@ -9,13 +9,19 @@ import {
   folderOf,
   INSTRUCTIONS_CAP,
   INSTRUCTIONS_FILE,
+  isStale,
   moveTarget,
   pickScope,
   reservedOf,
+  resolveConflict,
   rowsOf,
+  saveBlock,
   scopeTitle,
   SKILLS_FOLDER,
+  splitUploads,
   uploadPath,
+  uploadSummary,
+  type ConflictChoice,
   type DriveEntry,
   type DriveFile,
   type DriveListing,
@@ -97,10 +103,16 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
   const upload = (picked: FileList): void => {
     const mounted = current()
     if (mounted === undefined) return
-    const list = Array.from(picked)
+    const { send, tooBig } = splitUploads(Array.from(picked))
     void action.run("upload", async () => {
-      await Promise.all(list.map((file) => putFile(file, uploadPath(mounted.root, folder(), file.name))))
-      reload()
+      const results = await Promise.allSettled(send.map((file) => putFile(file, uploadPath(mounted.root, folder(), file.name))))
+      if (send.length > 0) reload()
+      const failed = send.filter((_, index) => results[index]?.status === "rejected").map((file) => file.name)
+      const summary = uploadSummary(
+        tooBig.map((file) => file.name),
+        failed,
+      )
+      if (summary !== undefined) throw new Error(summary)
     })
   }
 
@@ -330,21 +342,44 @@ function FilePanel(props: {
   const [mode, setMode] = createSignal<Mode>("read")
   const [file, { mutate, refetch }] = createResource(() => props.path, (path) => drive.read(scope(), path))
   const [draft, setDraft] = createSignal("")
+  const [conflict, setConflict] = createSignal(false)
   const [moving, setMoving] = createSignal(false)
   const [deleting, setDeleting] = createSignal(false)
   const action = createPaneAction()
 
   const edit = (): void => {
     setDraft(settled(file)?.text ?? "")
+    setConflict(false)
     setMode("edit")
   }
-  const save = (): void =>
-    void action.run("save", async () => {
-      const text = draft()
-      const entry = await drive.write(scope(), props.path, text)
+  const blocked = (): string | undefined => saveBlock(props.path, draft())
+  const write = async (text: string, base: string | undefined): Promise<void> => {
+    try {
+      const entry = await drive.write(scope(), props.path, text, base)
       mutate({ ...entry, text })
+      setConflict(false)
       setMode("read")
       props.onChanged()
+    } catch (problem) {
+      if (!isStale(problem)) throw problem
+      setConflict(true)
+    }
+  }
+  const save = (): void => {
+    if (blocked() !== undefined) return
+    void action.run("save", () => write(draft(), settled(file)?.sha256))
+  }
+  const settle = (choice: ConflictChoice): void =>
+    void action.run("save", async () => {
+      const current = await drive.read(scope(), props.path)
+      const next = resolveConflict(choice, draft(), current)
+      if (next.kind === "reload") {
+        mutate(current)
+        setConflict(false)
+        setMode("read")
+        return
+      }
+      await write(next.text, next.base)
     })
   const text = (): string | null => settled(file)?.text ?? null
   const isText = (): boolean => text() !== null
@@ -427,6 +462,18 @@ function FilePanel(props: {
             }}
             class={`${FIELD_INPUT} min-h-[320px] flex-1 resize-none py-2 font-mono text-sm leading-[1.6]`}
           />
+          <Show when={conflict()}>
+            <div class="flex items-center gap-2 rounded-sm border border-needs/40 bg-secondary px-2.5 py-2 text-xs text-ink-2" role="alert">
+              <span class="min-w-0 flex-1">This file changed since you opened it, in another tab or by an agent.</span>
+              <Button size="sm" variant="quiet" disabled={action.busy() === "save"} onClick={() => settle("reload")}>
+                Reload
+              </Button>
+              <Button size="sm" variant="ghost" disabled={action.busy() === "save"} onClick={() => settle("overwrite")}>
+                Overwrite
+              </Button>
+            </div>
+          </Show>
+          <Show when={blocked()}>{(message) => <p class="text-xs text-failed">{message()}</p>}</Show>
           <div class="flex items-center gap-2">
             <Show when={reserved()?.kind === "instructions"}>
               <span
@@ -440,7 +487,12 @@ function FilePanel(props: {
             <Button size="sm" variant="quiet" onClick={() => setMode("read")}>
               Cancel
             </Button>
-            <Button size="sm" variant="primary" disabled={action.busy() === "save" || draft() === text()} onClick={save}>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={action.busy() === "save" || draft() === text() || conflict() || blocked() !== undefined}
+              onClick={save}
+            >
               {action.busy() === "save" ? "Saving" : "Save"}
             </Button>
           </div>

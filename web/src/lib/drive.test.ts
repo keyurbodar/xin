@@ -1,5 +1,21 @@
 import { expect, test } from "bun:test"
-import { crumbsOf, folderOf, moveTarget, pickScope, reservedOf, rowsOf, uploadPath, type DriveEntry, type MountedScope } from "./drive.ts"
+import { OpError } from "./api.ts"
+import {
+  crumbsOf,
+  folderOf,
+  isStale,
+  moveTarget,
+  pickScope,
+  reservedOf,
+  resolveConflict,
+  rowsOf,
+  saveBlock,
+  splitUploads,
+  uploadPath,
+  uploadSummary,
+  type DriveEntry,
+  type MountedScope,
+} from "./drive.ts"
 
 const entry = (path: string): DriveEntry => ({ path, size: 1, type: "text/plain", sha256: "0".repeat(64), updated_at: 1 })
 
@@ -61,4 +77,32 @@ test("a move needs a file path that differs from the source", () => {
 test("an upload lands in the open folder under its own name", () => {
   expect(uploadPath("/projects/atlas/", "notes/", "upload me.txt")).toBe("/projects/atlas/notes/upload me.txt")
   expect(uploadPath("/me/", "", "a/b.txt")).toBe("/me/a-b.txt")
+})
+
+test("only a stale-base rejection counts as a conflict", () => {
+  expect(isStale(new OpError("bad_args", "stale base: plan.md changed since a (now b)"))).toBe(true)
+  expect(isStale(new OpError("bad_args", "no file plan.md"))).toBe(false)
+  expect(isStale(new OpError("http", "stale base: x"))).toBe(false)
+  expect(isStale(new Error("stale base: x"))).toBe(false)
+})
+
+test("Reload drops the edits; Overwrite writes them over the version now current", () => {
+  expect(resolveConflict("reload", "mine", { sha256: "b" })).toEqual({ kind: "reload" })
+  expect(resolveConflict("overwrite", "mine", { sha256: "b" })).toEqual({ kind: "write", text: "mine", base: "b" })
+})
+
+test("AGENTS.md over the cap cannot be saved; other files and a short AGENTS.md can", () => {
+  expect(saveBlock("AGENTS.md", "x".repeat(20_000))).toBeUndefined()
+  expect(saveBlock("AGENTS.md", "x".repeat(20_001))).toContain("20,001 characters")
+  expect(saveBlock("notes/AGENTS.md", "x".repeat(30_000))).toBeUndefined()
+  expect(saveBlock("plan.md", "x".repeat(30_000))).toBeUndefined()
+})
+
+test("files over the limit stay in the browser and are named with any that failed", () => {
+  const files = [{ name: "a.txt", size: 10 }, { name: "big.bin", size: 11 }, { name: "c.txt", size: 10 }]
+  const split = splitUploads(files, 10)
+  expect(split.send.map((file) => file.name)).toEqual(["a.txt", "c.txt"])
+  expect(split.tooBig.map((file) => file.name)).toEqual(["big.bin"])
+  expect(uploadSummary([], [])).toBeUndefined()
+  expect(uploadSummary(["big.bin"], ["c.txt"], 50 * 1024 * 1024)).toBe("Over 50.0 MB, not sent: big.bin. Failed to upload: c.txt.")
 })
