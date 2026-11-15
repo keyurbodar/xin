@@ -15,6 +15,7 @@ import {
   type BundleRow,
   type BundleSource,
   type Permission,
+  type Pin,
   type RuntimeBundle,
   isPermission,
   PERMISSIONS,
@@ -68,7 +69,7 @@ export type PackagesPort = {
   list(): InstalledList
   bundles(): Promise<readonly { readonly package: string; readonly source: BundleSource }[]>
   put(bundle: RuntimeBundle): Promise<BundleApplication>
-  install(spec: string, integrity?: string): void
+  install(spec: string, pin?: Pin): void
 }
 
 export type MarketPorts = {
@@ -83,7 +84,9 @@ export type MarketPorts = {
   readonly declaration: (pkg: string) => Declaration | undefined
   /** The permissions a compiled plugin declares, or undefined when this build does not have it. */
   readonly permissions: (plugin: string) => readonly Permission[] | undefined
-  /** The permissions the owner already holds for an installed package: those its mounted rows declare. */
+  /** A row in this tree: its plugin, and the permissions that plugin declares (undefined for a kernel row). */
+  readonly row: (id: string) => { readonly plugin: string; readonly permissions?: readonly Permission[] } | undefined
+  /** The permissions the owner already holds for an installed package: those its compiled plugins or mounted rows declare. */
   readonly held: (pkg: string) => Promise<readonly Permission[]>
 }
 
@@ -134,6 +137,7 @@ const UpdateArgs = obj({
   grant: Grant,
 })
 const RollbackArgs = obj({ name: str({ minLength: 1, maxLength: 200 }), grant: Grant })
+const AddArgs = obj({ spec: str({ minLength: 1, maxLength: 300 }), grant: Grant })
 const PolicySchema = obj({
   autoUpdate: bool({ description: "Install newer versions without being asked." }),
 })
@@ -163,6 +167,7 @@ type Needs = ReadonlyMap<Permission, readonly string[]>
 type Consent = { readonly grant: readonly string[]; readonly held: readonly Permission[] }
 
 const UNREAD_CODE = "its code arrives with the next build, so its permissions cannot be read before you consent"
+const SHA512 = /^sha512-[A-Za-z0-9+/]{86}==$/
 
 function codeNeeds(ingle: unknown, label: string): Needs {
   const needs = new Map<Permission, string[]>()
@@ -305,10 +310,23 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       Date.now(),
     )
 
+  /** Packages the market installed: once built, they are compiled in, and the market still owns their updates. */
+  const marketed = async (): Promise<ReadonlySet<string>> =>
+    new Set(
+      (await db.all<{ readonly package: string }>("SELECT DISTINCT package FROM market_history")).map(
+        (row) => row.package,
+      ),
+    )
+
   const installedFacts = async (): Promise<ReadonlyMap<string, InstalledFact>> => {
     const facts = new Map<string, InstalledFact>()
     const listed = ports.packages.list()
-    for (const entry of listed.installed) facts.set(entry.package, { kind: "provided" })
+    const fromMarket = await marketed()
+    for (const entry of listed.installed)
+      facts.set(
+        entry.package,
+        fromMarket.has(entry.package) ? { kind: "installed", version: entry.version } : { kind: "provided" },
+      )
     for (const bundle of await ports.packages.bundles()) {
       if (facts.has(bundle.package)) continue
       facts.set(bundle.package, {
@@ -351,9 +369,11 @@ export function createMarket(ports: MarketPorts): MarketFeature {
   const load = async (budget: Budget, refresh: boolean): Promise<Loaded> => {
     const now = Date.now()
     const fetched = countingFetch(ports.fetch, budget)
+    const fromMarket = await marketed()
+    const builtin = ports.builtin().plugins
     const results = await Promise.all([
       Promise.resolve<{ plugins?: readonly MarketPlugin[]; summary?: IndexSummary }>({
-        plugins: ports.builtin().plugins,
+        plugins: builtin.filter((plugin) => !fromMarket.has(plugin.name)),
       }),
       ...config.indexes.map(async (url): Promise<{ plugins?: readonly MarketPlugin[]; summary?: IndexSummary }> => {
         if (!refresh) {
@@ -377,6 +397,9 @@ export function createMarket(ports: MarketPorts): MarketFeature {
           if (error instanceof MarketIndexError) return { summary: { url, error: `${error.path} ${error.reason}` } }
           throw error
         }
+      }),
+      Promise.resolve<{ plugins?: readonly MarketPlugin[]; summary?: IndexSummary }>({
+        plugins: builtin.filter((plugin) => fromMarket.has(plugin.name)),
       }),
     ])
     const seen = new Set<string>()
@@ -478,12 +501,51 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     return found.ok ? found.value : undefined
   }
 
-  const bundleNeeds = (declaration: Declaration): Needs => {
+  const bundleNeeds = (label: string, declaration: Declaration): Needs => {
     const needs = new Map<Permission, string[]>()
-    for (const row of declaration.rows)
-      for (const permission of ports.permissions(row.plugin) ?? [])
-        needs.set(permission, [...(needs.get(permission) ?? []), `row ${row.id} mounts ${row.plugin}`])
+    const add = (permissions: readonly Permission[], why: string): void => {
+      for (const permission of permissions) needs.set(permission, [...(needs.get(permission) ?? []), why])
+    }
+    for (const row of declaration.rows) add(ports.permissions(row.plugin) ?? [], `row ${row.id} mounts ${row.plugin}`)
+    for (const patch of declaration.patch) {
+      if (patch.config === undefined && patch.disabled !== false) continue
+      const row = ports.row(patch.id)
+      if (row === undefined) bad(`${label} patches row ${patch.id}, which is not in this build`)
+      if (row.permissions === undefined) bad(`${label} patches the kernel row ${patch.id}; a market bundle may not`)
+      add(row.permissions, `its patch ${patch.disabled === false ? "enables" : "reconfigures"} ${patch.id}`)
+    }
+    const installed = new Set(ports.packages.list().installed.map((listed) => listed.package))
+    for (const spec of declaration.requires) {
+      const parsed = parseSpec(spec)
+      if (parsed === undefined || !installed.has(specId(parsed)))
+        bad(`${label} requires ${spec}, which this build does not have; install it from the market first`)
+    }
     return needs
+  }
+
+  /** A registry install: the verified tarball's own package.json says what it is and what it needs. */
+  const registryInstall = async (budget: Budget, spec: string, document: VersionDocument, consent: Consent) => {
+    const integrity = document.dist.integrity
+    if (integrity === undefined) bad(`${spec} has no dist.integrity`)
+    if (!SHA512.test(integrity)) bad(`${spec}: dist.integrity must be a sha512 SRI`)
+    const fetched = await fetchTarball(countingFetch(ports.fetch, budget), document.dist.tarball)
+    if (!fetched.ok) throw new Error(`${spec}: ${fetched.error.message}`)
+    const extracted = await extractBundle({ bytes: fetched.value, integrity })
+    if (!extracted.ok) throw new Error(`${spec}: ${extracted.error.message}`)
+    const kind = kindOf(extracted.value.ingle)
+    if (kind === undefined) bad(`${spec} is not a Ingle plugin`)
+    const claimed = kindOf(document.ingle)
+    if (claimed !== undefined && claimed !== kind)
+      bad(`${spec}: the tarball declares a ${kind} package, the registry says ${claimed}`)
+    if (kind === "bundle") return { kind, integrity, ingle: extracted.value.ingle }
+    const needs = codeNeeds(extracted.value.ingle, spec)
+    requireConsent(spec, needs, consent)
+    ports.packages.install(spec, {
+      integrity,
+      tarball: document.dist.tarball,
+      permissions: [...needs.keys()].toSorted(),
+    })
+    return { kind, integrity, ingle: extracted.value.ingle }
   }
 
   const installVersion = async (
@@ -509,25 +571,15 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       if (document.error.kind === "input") bad(document.error.message)
       throw new Error(`${target.spec}: ${failureText(document.error)}`)
     }
-    const kind = kindOf(document.value.ingle)
-    if (kind === undefined) bad(`${target.spec} is not a Ingle plugin`)
-    const integrity = document.value.dist.integrity
-    if (integrity === undefined) bad(`${target.spec} has no dist.integrity`)
-    if (kind === "code") {
-      requireConsent(target.spec, codeNeeds(document.value.ingle, target.spec), consent)
-      ports.packages.install(target.spec, integrity)
+    const installed = await registryInstall(budget, target.spec, document.value, consent)
+    if (installed.kind === "code") {
       await record(name, version.version)
-      return { application: "pending", package: name, version: version.version, kind, rows: [] }
+      return { application: "pending", package: name, version: version.version, kind: installed.kind, rows: [] }
     }
-    const fetched = await fetchTarball(countingFetch(ports.fetch, budget), document.value.dist.tarball)
-    if (!fetched.ok) throw new Error(`${target.spec}: ${fetched.error.message}`)
-    const extracted = await extractBundle({ bytes: fetched.value, integrity })
-    if (!extracted.ok) throw new Error(`${target.spec}: ${extracted.error.message}`)
-    const tarballKind = kindOf(extracted.value.ingle)
-    if (tarballKind !== kind)
-      bad(`${target.spec}: the tarball declares ${tarballKind ?? "no"} Ingle plugin, the index says ${kind}`)
-    const declaration = declarationOf(extracted.value.ingle, target.spec)
-    requireConsent(target.spec, bundleNeeds(declaration), consent)
+    const integrity = installed.integrity
+    const kind = installed.kind
+    const declaration = declarationOf(installed.ingle, target.spec)
+    requireConsent(target.spec, bundleNeeds(target.spec, declaration), consent)
     const application = await ports.packages.put({
       package: name,
       source: { kind: "registry", version: version.version, integrity },
@@ -575,6 +627,21 @@ export function createMarket(ports: MarketPorts): MarketFeature {
         bad(`${name}@${target.version} is not newer than the installed ${fact.version}`)
     }
     return installVersion(budget, name, target, { grant, held: mode === "update" ? await ports.held(name) : [] })
+  }
+
+  /** Add from a spec the owner typed: the same consent and pin as an index entry, for one exact version or a git commit. */
+  const add = async (text: string, grant: readonly string[]): Promise<JsonValue> => {
+    const spec = parseSpec(text)
+    if (spec === undefined) bad(`${text} is not a supported package spec`)
+    if (spec.kind === "git") {
+      requireConsent(text, new Map([["runtime", [UNREAD_CODE]]]), { grant, held: [] })
+      ports.packages.install(text)
+      return toJson({ application: "pending", spec: text, kind: "code", rows: [] })
+    }
+    if (spec.range === undefined || !isSemver(spec.range))
+      bad(`${text}: name one exact version, such as ${spec.name}@1.2.0, so the build installs what you consent to`)
+    const version: MarketVersion = { version: spec.range, publishTimestamp: 0, source: { type: "npm" }, engines: {} }
+    return installVersion({ left: MAX_REQUESTS }, spec.name, version, { grant, held: await ports.held(spec.name) })
   }
 
   const skip = async (name: string, requested: string | undefined): Promise<JsonValue> => {
@@ -733,6 +800,12 @@ export function createMarket(ports: MarketPorts): MarketFeature {
             .map(([name, version]) => ({ name, version }))
             .toSorted((left, right) => left.name.localeCompare(right.name)),
         ),
+    }),
+    defineOp({
+      name: "market.add",
+      args: AddArgs,
+      actors: OWNER,
+      run: async (_api, args) => add(args.spec, args.grant ?? []),
     }),
     defineOp({
       name: "market.rollback",

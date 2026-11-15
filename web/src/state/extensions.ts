@@ -636,9 +636,9 @@ export async function setMarketPolicy(autoUpdate: boolean): Promise<void> {
   await marketPolicy.reload()
 }
 
-export async function installSpec(spec: string): Promise<void> {
-  await cmd("plugin.install", { spec })
-  await packages.reload()
+export async function addSpec(spec: string, grant: readonly string[]): Promise<void> {
+  await cmd("market.add", { spec, grant })
+  await Promise.all([packages.reload(), rows.reload()])
 }
 
 export async function uninstallPackage(name: string): Promise<void> {

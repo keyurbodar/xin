@@ -15,6 +15,7 @@ import {
   type RuntimeBundle,
 } from "./bundles.ts"
 import type { Catalog } from "./loader.ts"
+import { isPermission, type Permission } from "./manifest.ts"
 
 declare const INGLE_BUILD: string | undefined
 
@@ -22,11 +23,21 @@ export type PackageSpec =
   | { readonly kind: "registry"; readonly name: string; readonly range?: string }
   | { readonly kind: "git"; readonly url: string; readonly ref?: string; readonly path?: string }
 
+/**
+ * What the owner consented to for one registry install: the tarball's sha512 SRI and URL, and the permissions read
+ * from that verified tarball. The build checks the bytes before `bun add` and the permissions after it.
+ */
+export type Pin = {
+  readonly integrity: string
+  readonly tarball: string
+  readonly permissions: readonly Permission[]
+}
+
 export type PendingPackages = {
   readonly add: readonly string[]
   readonly remove: readonly string[]
-  /** The SRI the build must find in its lockfile for each added spec that has one. */
-  readonly integrity?: Readonly<Record<string, string>>
+  /** The pin the build must hold each added spec to, for the specs that have one. */
+  readonly pins?: Readonly<Record<string, Pin>>
 }
 
 export type InstalledPackage = { readonly package: string; readonly version: string }
@@ -43,19 +54,19 @@ export type PackagesService = {
   readonly local: readonly string[]
   list(): Packages
   pending(): PendingPackages
-  install(spec: string, integrity?: string): PendingPackages
+  install(spec: string, pin?: Pin): PendingPackages
   cancel(name: string): PendingPackages
   bundles(): Promise<readonly BundleView[]>
   put(bundle: RuntimeBundle): Promise<BundleApplication>
   remove(name: string): Promise<{ readonly application: "applied"; readonly package: string }>
 }
 
-/** A pending add. `integrity` is the registry's SRI for the exact version the owner consented to; the build refuses a lockfile that resolves it to other bytes. */
+/** A pending add, with the pin of the exact version the owner consented to when it came through the market. */
 export type AddEntry = {
   readonly spec: PackageSpec
   readonly build: string
   readonly name?: string
-  readonly integrity?: string
+  readonly pin?: Pin
 }
 
 export type RemoveEntry = { readonly name: string; readonly build: string }
@@ -73,6 +84,8 @@ const GIT_SEGMENT = /^[A-Za-z0-9._@+-]+$/
 const PATH_PARAM = "&path:/"
 const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/
 const MAX_SPEC = MAX_PACKAGE_NAME + 64
+const SHA512 = /^sha512-[A-Za-z0-9+/]{86}==$/
+const PermissionArg = str({ minLength: 1, maxLength: 40 })
 
 const SpecSchema = union([
   obj({ kind: lit("registry"), name: str({ minLength: 1 }), range: opt(str({ minLength: 1 })) }),
@@ -84,7 +97,14 @@ const SpecSchema = union([
   }),
 ])
 const StoredSchema = obj({
-  add: arr(obj({ spec: SpecSchema, build: str(), name: opt(str()), integrity: opt(str()) })),
+  add: arr(
+    obj({
+      spec: SpecSchema,
+      build: str(),
+      name: opt(str()),
+      pin: opt(obj({ integrity: str(), tarball: str(), permissions: arr(PermissionArg) })),
+    }),
+  ),
   remove: arr(obj({ name: str(), build: str() })),
 })
 const storedCheck = compile(StoredSchema)
@@ -196,7 +216,13 @@ export function localPackages(catalog: Catalog): readonly string[] {
 
 export function readPending(storage: DurableObjectStorage): StoredPending {
   const value: unknown = storage.kv.get(PENDING_KEY)
-  return storedCheck.check(value) ? value : { add: [], remove: [] }
+  if (!storedCheck.check(value)) return { add: [], remove: [] }
+  return {
+    add: value.add.map(({ pin, ...entry }) =>
+      pin === undefined ? entry : { ...entry, pin: { ...pin, permissions: pin.permissions.filter(isPermission) } },
+    ),
+    remove: value.remove,
+  }
 }
 
 export function writePending(storage: DurableObjectStorage, pending: StoredPending): void {
@@ -205,13 +231,13 @@ export function writePending(storage: DurableObjectStorage, pending: StoredPendi
 }
 
 export function pendingWire(pending: StoredPending): PendingPackages {
-  const integrity = pending.add.flatMap((entry) =>
-    entry.integrity === undefined ? [] : [[specText(entry.spec), entry.integrity] as const],
+  const pins = pending.add.flatMap((entry) =>
+    entry.pin === undefined ? [] : [[specText(entry.spec), entry.pin] as const],
   )
   return {
     add: pending.add.map((entry) => specText(entry.spec)),
     remove: pending.remove.map((entry) => entry.name),
-    ...(integrity.length === 0 ? {} : { integrity: Object.fromEntries(integrity) }),
+    ...(pins.length === 0 ? {} : { pins: Object.fromEntries(pins) }),
   }
 }
 
@@ -233,10 +259,12 @@ function keepAdd(entry: AddEntry, versions: ReadonlyMap<string, string>, build: 
   return entry.name !== undefined && !versions.has(entry.name)
 }
 
-function addPending(storage: DurableObjectStorage, spec: PackageSpec, integrity?: string): StoredPending {
+function addPending(storage: DurableObjectStorage, spec: PackageSpec, pin?: Pin): StoredPending {
+  if (pin !== undefined && (spec.kind !== "registry" || !SHA512.test(pin.integrity)))
+    throw new OpRejected("bad_args", `${specText(spec)}: a pin needs a registry spec and a sha512 integrity`)
   const pending = readPending(storage)
   const id = specId(spec)
-  const entry: AddEntry = { spec, build: buildId(), ...(integrity === undefined ? {} : { integrity }) }
+  const entry: AddEntry = { spec, build: buildId(), ...(pin === undefined ? {} : { pin }) }
   const add = pending.add.some((candidate) => specId(candidate.spec) === id)
     ? pending.add.map((candidate) => (specId(candidate.spec) === id ? entry : candidate))
     : [...pending.add, entry]
@@ -335,10 +363,10 @@ export function apply(ctx: Context): void {
     local: localPackages(catalog),
     list: view,
     pending: () => view().pending,
-    install: (spec, integrity) => {
+    install: (spec, pin) => {
       const parsed = parseSpec(spec)
       if (parsed === undefined) throw new OpRejected("bad_args", `${spec} is not a supported package spec`)
-      return pendingWire(addPending(storage, parsed, integrity))
+      return pendingWire(addPending(storage, parsed, pin))
     },
     cancel: (pkg) => pendingWire(cancelPending(storage, pkg)),
     bundles: () => bundles.list(),
