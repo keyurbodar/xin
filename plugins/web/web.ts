@@ -10,7 +10,7 @@ const TIMEOUT_MS = 15_000
 const SEARCH_BYTES = 1_000_000
 const PAGE_BYTES = 2 * 1024 * 1024
 const DEFAULT_RESULTS = 5
-const DEFAULT_FETCH_CHARS = 20_000
+const DEFAULT_FETCH_CHARS = 8_000
 const MAX_FETCH_CHARS = 100_000
 const MAX_URL = 2_048
 
@@ -26,6 +26,9 @@ export type FetchedPage = {
   readonly contentType: string
   readonly text: string | null
   readonly truncated: boolean
+  readonly offset: number
+  readonly nextOffset: number | null
+  readonly totalChars: number | null
 }
 
 const SearchArgs = obj({
@@ -41,9 +44,10 @@ const FetchArgs = obj({
     int({
       minimum: 1_000,
       maximum: MAX_FETCH_CHARS,
-      description: `How many characters of readable text to return, ${DEFAULT_FETCH_CHARS} by default.`,
+      description: `Characters to return, ${DEFAULT_FETCH_CHARS} by default.`,
     }),
   ),
+  offset: opt(int({ minimum: 0, description: "First character to return, 0 by default." })),
 })
 
 const searchCheck = compile(SearchArgs)
@@ -304,7 +308,27 @@ async function searchWeb(query: string, maxResults: number, signal: AbortSignal)
   return results
 }
 
-async function fetchPage(raw: string, maxChars: number, signal: AbortSignal): Promise<FetchedPage> {
+/** The window `[offset, offset + maxChars)` of the readable text, with where the next window starts. */
+function pageOf(
+  head: Pick<FetchedPage, "url" | "title" | "contentType">,
+  text: string,
+  offset: number,
+  maxChars: number,
+  bodyTruncated: boolean,
+): FetchedPage {
+  const end = offset + maxChars
+  const nextOffset = end < text.length ? end : null
+  return {
+    ...head,
+    text: text.slice(offset, end),
+    truncated: bodyTruncated || nextOffset !== null,
+    offset,
+    nextOffset,
+    totalChars: text.length,
+  }
+}
+
+async function fetchPage(raw: string, maxChars: number, offset: number, signal: AbortSignal): Promise<FetchedPage> {
   const url = publicUrl(raw)
   const response = await request(
     url.toString(),
@@ -317,24 +341,10 @@ async function fetchPage(raw: string, maxChars: number, signal: AbortSignal): Pr
   const isHtml = /html/i.test(contentType) || (contentType === "" && /<html|<body|<p\b/i.test(rawText))
   if (isHtml) {
     const page = extractHtml(rawText)
-    const text = page.text.length > maxChars ? `${page.text.slice(0, maxChars)}…` : page.text
-    return {
-      url: url.toString(),
-      title: page.title,
-      contentType,
-      text,
-      truncated: body.truncated || text.length < page.text.length,
-    }
+    return pageOf({ url: url.toString(), title: page.title, contentType }, page.text, offset, maxChars, body.truncated)
   }
   if (/^text\/|json|xml/i.test(contentType) || contentType === "") {
-    const text = rawText.length > maxChars ? `${rawText.slice(0, maxChars)}…` : rawText
-    return {
-      url: url.toString(),
-      title: "",
-      contentType,
-      text,
-      truncated: body.truncated || text.length < rawText.length,
-    }
+    return pageOf({ url: url.toString(), title: "", contentType }, rawText, offset, maxChars, body.truncated)
   }
   return {
     url: url.toString(),
@@ -342,6 +352,9 @@ async function fetchPage(raw: string, maxChars: number, signal: AbortSignal): Pr
     contentType,
     text: null,
     truncated: body.truncated,
+    offset: 0,
+    nextOffset: null,
+    totalChars: null,
   }
 }
 
@@ -359,7 +372,18 @@ function fetchText(page: FetchedPage): string {
     `Type: ${page.contentType || "(unknown)"}`,
   ]
   if (page.text === null) return [...header, "", "The response is not text; only its metadata is returned."].join("\n")
-  return [...header, "", page.text].join("\n")
+  const total = (page.totalChars ?? 0).toLocaleString("en-US")
+  if (page.offset > 0 && page.text === "")
+    return [...header, "", `[Offset ${page.offset} is past the end: the page has ${total} characters.]`].join("\n")
+  if (page.nextOffset === null) return [...header, "", page.text].join("\n")
+  const shown = `Showing characters ${page.offset}–${page.nextOffset} of ${total}`
+  return [
+    ...header,
+    "",
+    page.text,
+    "",
+    `[${shown}. Call web_fetch again with offset ${page.nextOffset} for more.]`,
+  ].join("\n")
 }
 
 function failure(action: string, error: unknown): ToolExecutionResult {
@@ -390,19 +414,22 @@ export function createTools(jobs: JobsService): readonly ToolRegistration[] {
     {
       name: "web_fetch",
       description:
-        "Fetch a public http or https page and return its readable text. HTML is reduced to text; non-text responses return metadata only.",
+        "Fetch a public http or https page as readable text. Long pages are paged with offset. Non-text responses return metadata only.",
       parameters: FetchArgs,
     },
     async (args, run) => {
       if (!fetchCheck.check(args)) return textResult("web_fetch needs a URL", { isError: true })
       try {
-        const page = await fetchPage(args.url, args.maxChars ?? DEFAULT_FETCH_CHARS, run.signal)
+        const page = await fetchPage(args.url, args.maxChars ?? DEFAULT_FETCH_CHARS, args.offset ?? 0, run.signal)
         return textResult(fetchText(page), {
           details: {
             url: page.url,
             title: page.title,
             contentType: page.contentType,
             truncated: page.truncated,
+            offset: page.offset,
+            nextOffset: page.nextOffset,
+            totalChars: page.totalChars,
           },
         })
       } catch (error) {
