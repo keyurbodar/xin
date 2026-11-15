@@ -168,11 +168,16 @@ export function uploadFile(
   signal?: AbortSignal,
 ): Promise<UploadedFile> {
   const safe = file.name.replace(/[^\w.\-]+/gu, "-").slice(-80)
-  return putFile(file, `${folder.replace(/\/+$/gu, "")}/${Date.now().toString(36)}-${safe}`, onProgress)
+  return putFile(file, `${folder.replace(/\/+$/gu, "")}/${Date.now().toString(36)}-${safe}`, onProgress, signal)
 }
 
 /** Stores a file at exactly `path`, an absolute path in the files tree; a file already there gains a version. */
-export function putFile(file: File, path: string, onProgress?: (fraction: number) => void): Promise<UploadedFile> {
+export function putFile(
+  file: File,
+  path: string,
+  onProgress?: (fraction: number) => void,
+  signal?: AbortSignal,
+): Promise<UploadedFile> {
   const type = file.type === "" ? "application/octet-stream" : file.type
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest()
