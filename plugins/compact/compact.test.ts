@@ -11,6 +11,7 @@ import {
   defineTool,
   type EntryRecord,
   type TaskId,
+  UsageDoc,
 } from "@earendil-works/pi-durable"
 import { obj } from "@earendil-works/pi-schema"
 import { runInDurableObject } from "cloudflare:test"
@@ -137,6 +138,10 @@ describe("compact", () => {
     expect(promptText(utilityRequests[0]!.messages)).toContain(SUMMARY_ASK)
     expect(promptText(utilityRequests[0]!.messages)).toContain(TAIL)
     expect(summary).toContain("utility summary")
+    const usage = await runInDurableObject(stub, async (home: Home) =>
+      home.harness.snapshot(UsageDoc, (await home.root()).id, context),
+    )
+    expect(usage?.models[`${DREAM_MODEL.provider}/${DREAM_MODEL.modelId}`]?.totalTokens).toBeGreaterThan(0)
   }, 60_000)
 
   it("leaves the summary to pi on the conversation's model without a utility default", async () => {

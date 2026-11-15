@@ -12,7 +12,7 @@ import { type Context, defineOp, OpRejected } from "../../src/kernel/index.ts"
 import { beforeCompact } from "./summary.ts"
 
 export const name = "compact"
-export const inject = ["ops", "pi", "models"]
+export const inject = ["ops", "pi", "models", "harness"]
 
 const context = BACKGROUND_CONTEXT
 const INSTRUCTIONS_LIMIT = 2000
@@ -45,7 +45,11 @@ export function apply(ctx: Context): void {
   ctx.pi.install(
     defineExtension({
       name: "xin.compact",
-      hooks: [hook(CompactionTask, { beforeCompact: beforeCompact(() => ctx.models.ownerDefaults()) })],
+      hooks: [
+        hook(CompactionTask, {
+          beforeCompact: beforeCompact({ ownerDefaults: () => ctx.models.ownerDefaults(), harness: ctx.harness }),
+        }),
+      ],
     }),
   )
 }
