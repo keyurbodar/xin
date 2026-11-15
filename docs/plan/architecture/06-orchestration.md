@@ -66,6 +66,14 @@ stateDiagram-v2
 
 You steering a thread directly in the UI = `op thread.send(steer)`. Same path the coordinator's `thread_send` uses.
 
+### Captains, crews and side threads
+
+- **A Captain is a named coordinator with a space of its own.** `captain.create` makes, in one commit, an ownerless conversation, a space in the chosen project whose coordinator it is, and a record in the session document `xin.captains` (name, alias, avatar seed, description, standing files `notes`, `rules`, `crewRules`). Because the Captain is that space's coordinator, `delegate_task`, scoping, the watchdog, questions and intake batching need no Captain-specific code; the space's threads are its **crew**, and threads it starts join the crew at birth.
+- **Its model is its conversation's model.** `captain.create`/`captain.update` take `model` and `configure` the conversation; nothing stores a second copy.
+- **Prompt.** The orchestrator's `captain` section renders the Captain's profile, rules and notes for its own conversation, and the crew rules for a thread in a Captain's space. `captain_notes` is a deferred tool loaded into a Captain's `modelTools` at creation, so no other conversation is offered it; threads remove it like the other coordinator tools.
+- **Crew membership moves the thread.** `captain.crew.add` moves a thread's id into the Captain's space and sets its `spaceId` and `parentId`; `captain.crew.remove` moves it back to the project's first non-Captain space. The Reporter reads the thread's current `parentId` when it enqueues, so a run in flight when the thread moves reports to its new coordinator.
+- **Side threads.** `thread.side {conv, title, task}` creates a thread whose conversation is `tx.forkConversation(conv, latestEntry)`, task-owned by an Anchor like any thread. It inherits the context and model at the fork and reports to `conv`. Only a space coordinator (Captain included) can be forked.
+
 ## 10 · Jobs: one code path, two latencies
 
 Any tool declared `latency:"maybe-slow"` (web research, a large fetch, an MCP call) is wrapped once with `wrapTool`:
