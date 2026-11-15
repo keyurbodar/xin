@@ -1,4 +1,4 @@
-import { cmd } from "./api.ts"
+import { cmd, isDefinitive, OpError } from "./api.ts"
 
 export type DriveScope =
   | { readonly kind: "user" }
@@ -16,7 +16,11 @@ export type DriveEntry = {
   readonly updated_at: number
 }
 
-export type DriveListing = { readonly root: string; readonly files: readonly DriveEntry[] }
+export type DriveListing = {
+  readonly root: string
+  readonly files: readonly DriveEntry[]
+  readonly shares: Readonly<Record<string, string>>
+}
 
 export type DriveFile = DriveEntry & { readonly text: string | null }
 
@@ -114,16 +118,66 @@ export function uploadPath(root: string, folder: string, name: string): string {
   return `${root}${folder}${name.replaceAll("/", "-")}`
 }
 
+/** A share link as the Worker serves it: `/s/<id>/<file name>` on the app's origin. */
+export function shareUrl(origin: string, id: string, path: string): string {
+  return `${origin}/s/${id}/${encodeURIComponent(path.slice(path.lastIndexOf("/") + 1))}`
+}
+
+/** What a failed Drive op says inline: the host's own words for a rejection, a retry hint when the Worker never answered. */
+export function failureText(problem: unknown): string {
+  if (problem instanceof OpError && problem.code === "http") return `${problem.message}. Try again; a retry lands once.`
+  return problem instanceof Error ? problem.message : String(problem)
+}
+
+/**
+ * One command id per op while its args stay the same and no ack has come back, so a retry after a lost answer lands once.
+ * Any ack, success or rejection, retires the id: the host would replay it to a later attempt instead of running it.
+ */
+export function createRetryIds(mint: () => string = () => crypto.randomUUID()): {
+  readonly idFor: (op: string, args: Record<string, unknown>) => string
+  readonly settle: (op: string, problem?: unknown) => void
+} {
+  const pending = new Map<string, { readonly fingerprint: string; readonly id: string }>()
+  return {
+    idFor: (op, args) => {
+      const fingerprint = JSON.stringify(args)
+      const held = pending.get(op)
+      if (held?.fingerprint === fingerprint) return held.id
+      const id = mint()
+      pending.set(op, { fingerprint, id })
+      return id
+    },
+    settle: (op, problem) => {
+      if (problem === undefined || isDefinitive(problem)) pending.delete(op)
+    },
+  }
+}
+
+const retry = createRetryIds()
+
+async function change<T>(op: string, args: Record<string, unknown>): Promise<T> {
+  try {
+    const result = await cmd<T>(op, args, { id: retry.idFor(op, args) })
+    retry.settle(op)
+    return result
+  } catch (problem) {
+    retry.settle(op, problem)
+    throw new Error(failureText(problem), { cause: problem })
+  }
+}
+
 export const drive = {
   scopes: (conversationId: number) => cmd<readonly MountedScope[]>("drive.scopes", { conversationId }),
   list: (scope: DriveScope, prefix: string) =>
     cmd<DriveListing>("drive.list", prefix === "" ? { scope } : { scope, prefix }),
   read: (scope: DriveScope, path: string, sha256?: string) =>
     cmd<DriveFile>("drive.read", sha256 === undefined ? { scope, path } : { scope, path, sha256 }),
-  write: (scope: DriveScope, path: string, text: string) => cmd<DriveEntry>("drive.write", { scope, path, text }),
+  write: (scope: DriveScope, path: string, text: string) => change<DriveEntry>("drive.write", { scope, path, text }),
   move: (scope: DriveScope, from: string, to: string, toScope: DriveScope) =>
-    cmd<DriveEntry>("drive.move", { scope, from, to, toScope }),
-  remove: (scope: DriveScope, path: string) => cmd<{ readonly deleted: boolean }>("drive.delete", { scope, path }),
+    change<DriveEntry>("drive.move", { scope, from, to, toScope }),
+  remove: (scope: DriveScope, path: string) => change<{ readonly deleted: boolean }>("drive.delete", { scope, path }),
   history: (scope: DriveScope, path: string) => cmd<DriveHistory>("drive.history", { scope, path }),
-  checkout: (scope: DriveScope, path: string, sha256: string) => cmd<DriveEntry>("drive.checkout", { scope, path, sha256 }),
+  checkout: (scope: DriveScope, path: string, sha256: string) => change<DriveEntry>("drive.checkout", { scope, path, sha256 }),
+  share: (scope: DriveScope, path: string) => change<{ readonly id: string; readonly url: string }>("drive.share", { scope, path }),
+  unshare: (scope: DriveScope, path: string) => change<{ readonly revoked: boolean }>("drive.unshare", { scope, path }),
 }

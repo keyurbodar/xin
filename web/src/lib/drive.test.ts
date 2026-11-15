@@ -1,5 +1,19 @@
 import { expect, test } from "bun:test"
-import { crumbsOf, folderOf, moveTarget, pickScope, reservedOf, rowsOf, uploadPath, type DriveEntry, type MountedScope } from "./drive.ts"
+import { OpError } from "./api.ts"
+import {
+  createRetryIds,
+  crumbsOf,
+  failureText,
+  folderOf,
+  moveTarget,
+  pickScope,
+  reservedOf,
+  rowsOf,
+  shareUrl,
+  uploadPath,
+  type DriveEntry,
+  type MountedScope,
+} from "./drive.ts"
 
 const entry = (path: string): DriveEntry => ({ path, size: 1, type: "text/plain", sha256: "0".repeat(64), updated_at: 1 })
 
@@ -61,4 +75,29 @@ test("a move needs a file path that differs from the source", () => {
 test("an upload lands in the open folder under its own name", () => {
   expect(uploadPath("/projects/atlas/", "notes/", "upload me.txt")).toBe("/projects/atlas/notes/upload me.txt")
   expect(uploadPath("/me/", "", "a/b.txt")).toBe("/me/a-b.txt")
+})
+
+test("a share link is the id and the file's own name on the app's origin", () => {
+  expect(shareUrl("https://ingle.example", "ab12", "notes/launch plan.md")).toBe("https://ingle.example/s/ab12/launch%20plan.md")
+  expect(shareUrl("http://127.0.0.1:5243", "ab12", "budget.json")).toBe("http://127.0.0.1:5243/s/ab12/budget.json")
+})
+
+test("a rejection reads in the host's words; a lost answer says a retry is safe", () => {
+  expect(failureText(new OpError("bad_args", "cannot move a: it is missing or b exists"))).toBe("cannot move a: it is missing or b exists")
+  expect(failureText(new OpError("http", "drive.share: HTTP 502"))).toBe("drive.share: HTTP 502. Try again; a retry lands once.")
+})
+
+test("a command id is reused only while the args are unchanged and no ack came back", () => {
+  let n = 0
+  const ids = createRetryIds(() => `id${++n}`)
+  const args = { scope: { kind: "user" }, path: "a.md", text: "x" }
+  expect(ids.idFor("drive.write", args)).toBe("id1")
+  ids.settle("drive.write", new OpError("http", "drive.write: HTTP 502"))
+  expect(ids.idFor("drive.write", { ...args })).toBe("id1")
+  expect(ids.idFor("drive.write", { ...args, text: "y" })).toBe("id2")
+  ids.settle("drive.write", new OpError("bad_args", "no"))
+  expect(ids.idFor("drive.write", { ...args, text: "y" })).toBe("id3")
+  ids.settle("drive.write")
+  expect(ids.idFor("drive.write", { ...args, text: "y" })).toBe("id4")
+  expect(ids.idFor("drive.share", { scope: { kind: "user" }, path: "a.md" })).toBe("id5")
 })
