@@ -24,6 +24,7 @@ type Choice = ViewChoice | ThreadChoice
 
 export function ProjectPane(props: {
   project: ProjectSummary
+  conversationId: number
   expanded: boolean
   onExpand: (expanded: boolean) => void
   onOpenThread: (id: number) => void
@@ -91,7 +92,7 @@ export function ProjectPane(props: {
       <Show when={view()} keyed>
         {(current) => (
           <div class="pane-swap min-h-0 flex-1 overflow-y-auto p-2">
-            {current.render({ project: props.project, onOpenThread: props.onOpenThread })}
+            {current.render({ project: props.project, conversationId: props.conversationId, onOpenThread: props.onOpenThread })}
           </div>
         )}
       </Show>

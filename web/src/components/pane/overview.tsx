@@ -5,7 +5,8 @@ import { ago } from "../../lib/format.ts"
 import { homeRequests, projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { ICON_BUTTON } from "../shell/menu.ts"
-import { fileName, openFile, PANE_ROW, projectFiles, ThreadLine } from "./bodies.tsx"
+import { drive } from "../../lib/drive.ts"
+import { fileName, openFile, PANE_ROW, ThreadLine } from "./bodies.tsx"
 
 const DRIVE_ROWS = 4
 
@@ -29,7 +30,11 @@ export function Section(props: { label: string; count: number; action?: JSX.Elem
   )
 }
 
-export type PaneContext = { readonly project: ProjectSummary; readonly onOpenThread: (id: number) => void }
+export type PaneContext = {
+  readonly project: ProjectSummary
+  readonly conversationId: number
+  readonly onOpenThread: (id: number) => void
+}
 
 export function NeedsYouSection(props: PaneContext & { label: string }): JSX.Element {
   const requests = () => homeRequests().filter((request) => request.projectId === props.project.id)
@@ -87,23 +92,27 @@ export function ThreadsSection(props: PaneContext & { label: string }): JSX.Elem
 }
 
 export function DriveSection(props: PaneContext & { label: string }): JSX.Element {
-  const [files] = createResource(() => props.project.slug, projectFiles)
+  const [listing] = createResource(
+    () => props.project.id,
+    (id) => drive.list({ kind: "project", id }, ""),
+  )
+  const files = () => listing()?.files.toSorted((left, right) => right.updated_at - left.updated_at)
   return (
     <Section
       label={props.label}
       count={files()?.length ?? 0}
       action={
-        <button type="button" class={ICON_BUTTON} aria-label="Open Files" onClick={() => showPaneView(props.project.id, "files")}>
+        <button type="button" class={ICON_BUTTON} aria-label="Open Drive" onClick={() => showPaneView(props.project.id, "files")}>
           <ArrowUpRight size={14} stroke-width={1.5} />
         </button>
       }
     >
       <For
         each={(files() ?? []).slice(0, DRIVE_ROWS)}
-        fallback={<span class="px-2 py-1.5 text-sm text-ink-3">{files.loading ? "Loading files" : "No files yet"}</span>}
+        fallback={<span class="px-2 py-1.5 text-sm text-ink-3">{listing.loading ? "Loading files" : "No files yet"}</span>}
       >
         {(entry) => (
-          <button type="button" onClick={() => openFile(props.project.slug, entry.path)} class={PANE_ROW}>
+          <button type="button" onClick={() => openFile(props.project.slug, `${listing()?.root ?? ""}${entry.path}`)} class={PANE_ROW}>
             <File size={16} stroke-width={1.5} class="mt-0.5 shrink-0 text-ink-3" />
             <span class="min-w-0 flex-1 truncate text-sm text-ink">{fileName(entry.path)}</span>
             <span class="shrink-0 font-mono text-2xs text-ink-3">{ago(entry.updated_at)}</span>

@@ -295,7 +295,13 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined
   }
   const pane = (): JSX.Element => (
-    <ProjectPane project={props.project} expanded={expanded()} onExpand={setExpanded} onOpenThread={openThread} />
+    <ProjectPane
+      project={props.project}
+      conversationId={thread()?.id ?? props.project.coordinatorId}
+      expanded={expanded()}
+      onExpand={setExpanded}
+      onOpenThread={openThread}
+    />
   )
 
   return (

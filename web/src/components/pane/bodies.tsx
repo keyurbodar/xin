@@ -1,26 +1,13 @@
 import { createResource, For, Show, type JSX } from "solid-js"
-import { Clock, File } from "lucide-solid"
+import { Clock } from "lucide-solid"
 import { cmd } from "../../lib/api.ts"
-import { ago, bytes } from "../../lib/format.ts"
+import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import { STATE_WORD, visualState, type VisualState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { StatusGlyph } from "../ui/status-glyph.tsx"
 import { Skullet } from "../ui/skeleton.tsx"
 import { EmptyState, PanelGhost, ResourceError } from "../chat/ui.tsx"
-
-export type FileEntry = {
-  readonly path: string
-  readonly size: number
-  readonly type: string
-  readonly sha256: string
-  readonly updated_at: number
-}
-
-export async function projectFiles(slug: string): Promise<readonly FileEntry[]> {
-  const rows = await cmd<readonly FileEntry[]>("file.list", { prefix: `/projects/${slug}` })
-  return rows.toSorted((left, right) => right.updated_at - left.updated_at)
-}
 
 export function fileName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1)
@@ -32,51 +19,6 @@ export function openFile(slug: string, path: string): void {
 
 export const PANE_ROW =
   "flex w-full items-start gap-2.5 rounded-sm px-2 py-1.5 text-left transition-colors duration-[var(--dur-color)] hover:bg-secondary"
-
-export function FilesView(props: { slug: string }): JSX.Element {
-  const [files, { refetch }] = createResource(() => props.slug, projectFiles)
-  const root = (): string => `/projects/${props.slug}/`
-  const folder = (path: string): string => {
-    const relative = path.startsWith(root()) ? path.slice(root().length) : path
-    const cut = relative.lastIndexOf("/")
-    return cut === -1 ? "project root" : relative.slice(0, cut)
-  }
-
-  return (
-    <Skullet loading={files.loading} sample={() => <PanelGhost rows={7} />} label="Loading files">
-      <Show when={files.error}>
-        <ResourceError what="files" error={files.error} onRetry={() => void refetch()} />
-      </Show>
-      <Show when={files()}>
-        {(rows) => (
-          <Show
-            when={rows().length > 0}
-            fallback={<EmptyState pictogram="folder" title="No files yet" detail="Files a thread writes land here under the project folder." />}
-          >
-            <div class="flex items-center gap-2 px-2 pb-1">
-              <span class="flex-1 text-xs text-ink-3">{rows().length} files</span>
-              <span class="truncate font-mono text-2xs text-icon">{root()}</span>
-            </div>
-            <For each={rows()}>
-              {(entry) => (
-                <button type="button" onClick={() => openFile(props.slug, entry.path)} class={PANE_ROW}>
-                  <File size={16} stroke-width={1.5} class="mt-0.5 shrink-0 text-ink-3" />
-                  <span class="min-w-0 flex-1">
-                    <span class="block truncate text-sm text-ink">{fileName(entry.path)}</span>
-                    <span class="block truncate text-xs text-ink-3">
-                      {folder(entry.path)} · {ago(entry.updated_at)}
-                    </span>
-                  </span>
-                  <span class="shrink-0 font-mono text-2xs text-ink-3">{bytes(entry.size)}</span>
-                </button>
-              )}
-            </For>
-          </Show>
-        )}
-      </Show>
-    </Skullet>
-  )
-}
 
 type JobEntry = {
   readonly id: number

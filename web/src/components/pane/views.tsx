@@ -1,8 +1,9 @@
 import { For, type JSX } from "solid-js"
-import { Brain, CalendarClock, Folder, LayoutList, ListTree, Timer, type LucideProps } from "lucide-solid"
+import { Brain, CalendarClock, HardDrive, LayoutList, ListTree, Timer, type LucideProps } from "lucide-solid"
 import { MemoryTab } from "../chat/memory.tsx"
 import { SchedulesTab } from "../chat/schedules.tsx"
-import { FilesView, JobsView, ThreadsView } from "./bodies.tsx"
+import { JobsView, ThreadsView } from "./bodies.tsx"
+import { DriveView } from "./drive.tsx"
 import { DriveSection, InProgressSection, NeedsYouSection, ThreadsSection, type PaneContext } from "./overview.tsx"
 
 export type { PaneContext }
@@ -46,7 +47,12 @@ const OVERVIEW_VIEW: PaneEntry = {
 /** Every view the right pane can show: its tabs, the + menu, and the body each one renders. */
 export const PANE_VIEWS: readonly PaneEntry[] = [
   OVERVIEW_VIEW,
-  { id: "files", label: "Files", icon: Folder, render: (context) => <FilesView slug={context.project.slug} /> },
+  {
+    id: "files",
+    label: "Drive",
+    icon: HardDrive,
+    render: (context) => <DriveView conversationId={context.conversationId} projectId={context.project.id} />,
+  },
   {
     id: "memory",
     label: "Memory",
