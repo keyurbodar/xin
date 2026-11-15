@@ -423,11 +423,13 @@ export async function saveCredential(provider: string, key: string, custom?: { b
   if (key !== "") args["key"] = key
   if (custom !== undefined) args["custom"] = { baseUrl: custom.baseUrl, key, api: custom.api }
   await cmd("credential.set", args)
+  favoriteLookups.clear()
   await models.reload()
 }
 
 export async function deleteCredential(provider: string): Promise<void> {
   await cmd("credential.delete", { provider })
+  favoriteLookups.clear()
   await models.reload()
 }
 
