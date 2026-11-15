@@ -8,7 +8,7 @@ import { ConnectionBanner } from "./connection-banner.tsx"
 import { CommandPalette } from "./palette.tsx"
 import { NewThreadDialog } from "./new-thread.tsx"
 import { ICON_BUTTON } from "./menu.ts"
-import { Toasts } from "../../plugins/slots.tsx"
+import { Toasts as PluginToasts } from "../../plugins/slots.tsx"
 import { ProjectScreen } from "../../screens/project.tsx"
 import { ExtensionsScreen } from "../../screens/extensions.tsx"
 import { SettingsScreen } from "../../screens/settings.tsx"
@@ -131,6 +131,7 @@ export function Shell(): JSX.Element {
       <NewCaptainDialog />
       <CommandPalette open={palette()} onClose={() => setPalette(false)} />
       <Toasts />
+      <PluginToasts />
     </div>
   )
 }
