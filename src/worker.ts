@@ -25,6 +25,7 @@ export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === "/health") return new Response("ok")
+    if (url.pathname.startsWith("/hooks/")) return home(env).fetch(request)
     const presented = bearer(request)
     if (presented === undefined || presented === "") return new Response("unauthorized", { status: 401 })
     if (isUpload(request, url)) {
