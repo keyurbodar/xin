@@ -9,6 +9,8 @@ import { GROUP_LABEL, ITEM, SURFACE, TOOL } from "./styles.ts"
 
 const FAVORITES = "favorites"
 
+const FAVORITE_KEY = /Mac|iPhone|iPad/u.test(navigator.userAgent) ? "⌘D" : "Ctrl+D"
+
 type Entry = { readonly value: string; readonly group: string; readonly model: ModelInfo }
 
 const refKey = (ref: ModelRef): string => `${ref.provider}/${ref.modelId}`
@@ -51,7 +53,6 @@ export function ModelPicker(props: {
   const [open, setOpen] = createSignal(false)
   const [extra, setExtra] = createSignal<readonly ModelInfo[]>([])
   const [highlighted, setHighlighted] = createSignal<string | null>(null)
-  let navigating = false
   let list: HTMLDivElement | undefined
 
   const providerIds = createMemo(() => [...new Set(props.models.map((model) => model.provider))])
@@ -87,7 +88,6 @@ export function ModelPicker(props: {
       open={open()}
       onOpenChange={(details) => {
         setOpen(details.open)
-        navigating = false
         setHighlighted(null)
         if (!details.open) return
         props.onSearch("")
@@ -119,13 +119,9 @@ export function ModelPicker(props: {
             >
               <Listbox.Input
                 value={props.query}
-                onInput={(event) => {
-                  navigating = false
-                  props.onSearch(event.currentTarget.value)
-                }}
+                onInput={(event) => props.onSearch(event.currentTarget.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "ArrowDown" || event.key === "ArrowUp") navigating = true
-                  if (event.key !== "f" || !navigating || event.metaKey || event.ctrlKey || event.altKey) return
+                  if (event.key.toLowerCase() !== "d" || !(event.metaKey || event.ctrlKey) || event.altKey) return
                   const value = highlighted()
                   const entry = value === null ? null : collection().find(value)
                   if (entry === null) return
@@ -199,7 +195,7 @@ function ModelRow(props: { entry: Entry }): JSX.Element {
   const model = (): ModelInfo => props.entry.model
   const favorite = (): boolean => isFavorite(model())
   return (
-    <Listbox.Item item={props.entry} aria-keyshortcuts="f" class={`${ITEM} group/model pr-1`}>
+    <Listbox.Item item={props.entry} aria-keyshortcuts="Meta+D Control+D" class={`${ITEM} group/model pr-1`}>
       <ProviderMark provider={model().provider} />
       <Listbox.ItemText class="min-w-0 flex-1 truncate" classList={{ "text-ink-3": !model().keyed }}>
         {model().name}
@@ -209,7 +205,8 @@ function ModelRow(props: { entry: Entry }): JSX.Element {
       </Show>
       <button
         type="button"
-        aria-label={favorite() ? `Remove ${model().name} from favourites` : `Add ${model().name} to favourites`}
+        aria-label={`${favorite() ? `Remove ${model().name} from favourites` : `Add ${model().name} to favourites`} (${FAVORITE_KEY})`}
+        title={`${favorite() ? "Remove from favourites" : "Add to favourites"} · ${FAVORITE_KEY}`}
         aria-pressed={favorite()}
         tabIndex={-1}
         onPointerDown={(event) => event.stopPropagation()}
