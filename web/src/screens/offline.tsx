@@ -1,27 +1,33 @@
 import { createEffect, createSignal, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 import { probe, token } from "../lib/auth.ts"
 import { ago } from "../lib/format.ts"
-import { connectionState, dialNow, disconnectedSince, lastConnected, networkOnline, nextRetry } from "../state/connection.ts"
+import { cutOffIn } from "../lib/cutoff.ts"
+import {
+  connectionHeld,
+  connectionState,
+  dialNow,
+  disconnectedSince,
+  lastConnected,
+  networkOnline,
+  nextRetry,
+} from "../state/connection.ts"
 import { trapTab } from "../lib/focus.ts"
 import { Button } from "../components/ui/button.tsx"
 import { Pictogram } from "../components/ui/pictogram.tsx"
 import { Glyph } from "../components/extensions/glyph.tsx"
 
-const CUT_OFF_MS = 10_000
-
-/** The banner covers a short drop; past ten seconds without a socket, or with no network at all, the app is cut off. */
 export function cutOff(): Accessor<boolean> {
   const [late, setLate] = createSignal(false)
   let timer: ReturnType<typeof setTimeout> | undefined
   createEffect(() => {
     clearTimeout(timer)
-    const since = disconnectedSince()
-    setLate(false)
-    if (since === undefined) return
-    timer = setTimeout(() => setLate(true), Math.max(0, since + CUT_OFF_MS - Date.now()))
+    const wait = cutOffIn({ online: networkOnline(), held: connectionHeld(), since: disconnectedSince() }, Date.now())
+    setLate(wait === 0)
+    if (wait === undefined || wait === 0) return
+    timer = setTimeout(() => setLate(true), wait)
   })
   onCleanup(() => clearTimeout(timer))
-  return () => !networkOnline() || late()
+  return late
 }
 
 export function OfflineScreen(props: { onBootFailed: (failure: string) => void; onSignedOut: () => void }): JSX.Element {
