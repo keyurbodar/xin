@@ -4,7 +4,7 @@ Ingle's plugin layer is the one deepseek-harness (dsh) uses: Cordis contexts, se
 
 This section adds the one thing dsh leaves implicit and Ingle makes a first-class word: **a plugin is mounted at a scope**. A plugin can apply to the whole Home, to one project, or to one thread, and the composition of a scope is resolved by inheritance. That is what makes a personal agent feel configurable without a settings maze: the same plugin can be on everywhere and off in one project, with no second mechanism.
 
-A plugin is **trusted code that runs in the Home's isolate**, so a manifest cannot confine it. What the manifest does is make it honest: a plugin declares the **permissions** it needs and the **tools and ops it contributes**, and the kernel refuses to mount a row whose code reaches past either declaration (see [Permissions and contributions](#permissions-and-contributions)). There are still no per-call approvals and no sandbox.
+A plugin is **trusted code that runs in the Home's isolate**, so a manifest cannot confine it. What the manifest does is make it honest: a plugin declares the **permissions** it needs and the **tools and ops it contributes**, and the kernel refuses a row whose code reaches past either declaration, at mount, at the service access, or at build (see [Permissions and contributions](#permissions-and-contributions)). The checks keep honest code to its declaration; they cannot confine hostile code, because there is no sandbox. There are still no per-call approvals.
 
 Read with: [01 Host](./01-host.md) for the alarm loop the `clock` service owns, [03 Commands and wire](./03-commands-and-wire.md) for the `ops` and `wire` services, [05 Models](./05-models.md) for the `models` seam, [12 Market](./12-market.md) for installs.
 
@@ -135,8 +135,6 @@ A package declares its plugins in `package.json`. Everything is optional; a plug
 | `requires` | `[]` | other plugins it needs, `name` or `name@range` |
 | `permissions` | `[]` | what it may ask the owner for, from the closed set below |
 | `contributes` | unchecked | `{ tools, ops }` it registers; a trailing `*` covers a prefix |
-| `client` | none | a web module (`client.tsx`) compiled into the web build |
-| `slots` | `[]` | the client slots that module fills; required with `client` |
 
 ### Permissions and contributions
 
@@ -150,11 +148,16 @@ A package declares its plugins in `package.json`. Everything is optional; a plug
 | `conversations` | `harness` | Read and write your conversations |
 | `plugins` | `kernel`, `packages`, `plugins` | Install, enable and configure plugins |
 | `network` | none (no sandbox to enforce it) | Connect to the internet |
+| `runtime` | `host` (raw Durable Object storage, environment and bindings) | Full access to your Home: raw storage, keys and the file bucket |
 
-- **Mount check.** A plugin whose `inject` lists a guarded service without its permission is not mounted; the row reports `failed` and `plugin.doctor` carries `{ kind: "permission", permission, service }`. Kernel rows (`source: "ingle"`) are exempt.
+`runtime` implies every other permission, since `host` reaches the raw SQLite, `KEK` and the R2 bucket. Eleven shipped plugins inject `host` today and declare it; narrowing them to guarded `kv` and bucket services is the way to shrink that list.
+
+- **Mount check.** A plugin whose `inject` lists a guarded service without its permission is not mounted; the row reports `failed` and `plugin.doctor` carries `{ kind: "permission", permission, service }`. Kernel rows (no manifest) are exempt from every check here.
+- **Access check.** An `internal/get` hook on the loader refuses any other service read from code running in a plugin row (a nested `ctx.inject`, a child `ctx.plugin`) that its permissions do not cover. `secrets.get` checks its caller the same way, so `ctx.get("secrets")` cannot read a credential, and `ops.run` refuses a plugin row that acts as the owner or as a plugin: a row runs ops only for an agent.
+- **Build check.** `scripts/boundaries.ts` (in `lint`) refuses, in a plugin package, an `inject` list or `ctx.get("name")` of a guarded service its `package.json` does not permit, a `ctx.get` with a computed name, and a `cloudflare:workers` import without `runtime`. These are the reads the access check cannot see, because `ctx.get` and module imports bypass Cordis's hooks.
 - **Registration check.** When a manifest declares `contributes`, `ops.define` and `pi.install` refuse a name it leaves out, so the row fails at mount with the name in the error. Every shipped plugin declares it.
 - **Inventory.** `plugin.doctor` rows carry `registered: { tools, ops }`, read from the live services.
-- **Cost.** All three run at mount, in memory: 0 rows and 0 requests per user action.
+- **Cost.** All of these run in memory: 0 rows and 0 requests per user action. The access check is one fiber walk per guarded service read.
 
 `bun scripts/ingle.ts plugin generate` parses and validates every manifest and writes it into `src/catalog.gen.ts`. A bad manifest fails the build, not boot. The running Worker never reads `package.json`; the catalog is the single source at run time.
 
@@ -164,8 +167,6 @@ The two fields earn their place:
 - `requires` catches the common failure of a plugin that calls a service another plugin provides.
 
 `scopes` joins the manifest with per-scope host mounting (slice 4). The agent surface is scoped today by presets, which need no declaration from the plugin.
-
-There is deliberately no `permissions` field. A plugin is trusted code; asking a person to tick capabilities before it can work was ceremony with no enforcement behind it, so it is gone.
 
 ## Discovery
 
@@ -236,7 +237,7 @@ The same rule covers plugin-contributed prompts and skills. A contributed prompt
 
 **Trust tiers.** `core` rows are required and cannot be removed. `build` rows come from packages in `ingle.profile.json`; installing the build is the trust decision. `runtime` rows come from a bundle or an owner patch at run time. Third-party *code* always arrives through a build; a bundle can mount only plugins that are already compiled.
 
-**What is not there.** No permission grants, no capability declarations, no per-call approval, no sandbox, no capability list to click through. A plugin runs with the same JavaScript access as the kernel, because it is the same isolate. This is dsh's model and the honest one for a personal agent: the boundary is what you install, not what you tick.
+**What is not there.** No per-call approval and no sandbox. A plugin runs in the same isolate as the kernel, so its permissions are checked declarations, not confinement: the boundary is still what you install.
 
 **What a person sees.** A plugin is on or off, with a title, a one-line description and the tools it adds. Turning it on is one action. There is nothing to approve before it works.
 
@@ -292,7 +293,7 @@ Nothing is granted, approved or configured before a plugin works.
 - Defaults that need no decision: one Home, one bundle per package, api 1, home scope, working config.
 - A hard API contract instead of version exemptions: a plugin either fits this build or it does not.
 - No platform declarations and no per-client plugin lists until there is a second client.
-- No permissions, approvals or sandbox until a concrete use case demands one.
+- No approvals or sandbox until a concrete use case demands one.
 
 **What we deliberately do not expose:** profiles (one Home), layer precedence, isolate realms, version exemptions, HMR toggles, platform gates, permission grants.
 
@@ -309,7 +310,7 @@ Designed, then cut because each added a concept or a click without buying a real
 | **A `provides` registry** | `inject` already resolves services and fails a row that cannot get one |
 | **A config wizard at install** | `Config` defaults make a plugin work with no setup; settings remain optional |
 
-The `net` permission check named in M8 belonged to the pre-P5 host adapter, which no longer exists; there is no permission check in the plugin layer today.
+The `net` permission check named in M8 belonged to the pre-P5 host adapter, which no longer exists; `network` is declared and shown but not enforced.
 
 ## Rows, bundles and layers (engine)
 

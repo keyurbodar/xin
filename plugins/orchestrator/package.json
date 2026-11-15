@@ -27,6 +27,9 @@
         "module": "./tools.ts",
         "title": "Orchestrator tools",
         "description": "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running.",
+        "permissions": [
+          "plugins"
+        ],
         "contributes": {
           "tools": [
             "capabilities",

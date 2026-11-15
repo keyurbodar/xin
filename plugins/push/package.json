@@ -12,6 +12,7 @@
         "description": "Encrypted pushes when no tab is open.",
         "permissions": [
           "network",
+          "runtime",
           "storage"
         ],
         "contributes": {

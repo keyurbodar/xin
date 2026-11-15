@@ -11,7 +11,8 @@
         "title": "Workspace",
         "description": "Projects and thread documents.",
         "permissions": [
-          "conversations"
+          "conversations",
+          "runtime"
         ],
         "contributes": {
           "ops": [

@@ -16,6 +16,7 @@ import * as m9 from "./plugins/m9.ts"
 import * as mcp from "./plugins/mcp.ts"
 import * as p6 from "./plugins/p6.ts"
 import * as piext from "./plugins/piext.ts"
+import * as reach from "./plugins/reach.ts"
 import * as secretsTest from "./plugins/secrets.ts"
 import * as settled from "./plugins/settled.ts"
 import * as skills from "./plugins/skills.ts"
@@ -113,6 +114,7 @@ const TEST_CATALOG: Catalog = {
   ...mcp.catalog,
   ...piext.catalog,
   ...secretsTest.catalog,
+  ...reach.catalog,
   ...settled.catalog,
   ...contrib.catalog,
 }
@@ -137,6 +139,7 @@ const TEST_ROWS = [
   ...piext.rows,
   ...intakebatch.rows,
   ...secretsTest.rows,
+  ...reach.rows,
   ...settled.rows,
 ]
 

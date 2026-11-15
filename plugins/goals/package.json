@@ -15,7 +15,10 @@
             "goal.get",
             "goal.set"
           ]
-        }
+        },
+        "permissions": [
+          "runtime"
+        ]
       },
       "tool-goals": {
         "module": "./tools.ts",
@@ -34,7 +37,8 @@
         "title": "Goal rounds",
         "description": "Continues an active goal with one automatic round each time a run ends.",
         "permissions": [
-          "conversations"
+          "conversations",
+          "runtime"
         ],
         "contributes": {}
       }

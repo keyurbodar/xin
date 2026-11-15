@@ -12,6 +12,7 @@
         "description": "R2-backed read, write and edit for pi's file tools.",
         "permissions": [
           "routes",
+          "runtime",
           "storage"
         ],
         "contributes": {

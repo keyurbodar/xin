@@ -5,9 +5,12 @@ import { satisfies } from "../semver.ts"
 export const PLUGIN_API = 1
 
 /**
- * What a plugin may ask the owner for. A permission guards kernel services: a plugin that injects one
- * of them without declaring the permission fails at mount. `network` guards no service, because the
- * Home has no sandbox, so it is shown to the owner but cannot be enforced.
+ * What a plugin may ask the owner for. A permission guards kernel services: a row whose code reaches one
+ * without declaring the permission fails at mount (its `inject`) or at the access (any other service read,
+ * see `IngleLoader.refusal`), and `scripts/boundaries.ts` refuses the reads the runtime cannot see. `runtime`
+ * guards `host`, the raw Durable Object storage, environment and bindings, so it implies every other
+ * permission. `network` guards no service and is shown to the owner but not enforced. Rows run in the Home's
+ * own isolate with no sandbox: the checks keep honest code to its declaration, they do not confine hostile code.
  */
 export const PERMISSIONS = {
   secrets: { title: "Read your stored credentials", services: ["secrets"] },
@@ -18,26 +21,12 @@ export const PERMISSIONS = {
   conversations: { title: "Read and write your conversations", services: ["harness"] },
   plugins: { title: "Install, enable and configure plugins", services: ["kernel", "packages", "plugins"] },
   network: { title: "Connect to the internet", services: [] },
+  runtime: { title: "Full access to your Home: raw storage, keys and the file bucket", services: ["host"] },
 } as const satisfies Readonly<Record<string, { readonly title: string; readonly services: readonly string[] }>>
 
 export type Permission = keyof typeof PERMISSIONS
 
 export const isPermission = (value: string): value is Permission => Object.hasOwn(PERMISSIONS, value)
-
-/** The client slots a plugin's web module may fill (`web/src/plugins/sdk.ts`). */
-export const SLOTS = [
-  "sidebar.section",
-  "pane.tab",
-  "composer.action",
-  "message.renderer",
-  "palette.command",
-  "settings.page",
-  "theme",
-] as const
-
-export type Slot = (typeof SLOTS)[number]
-
-const isSlot = (value: string): value is Slot => (SLOTS as readonly string[]).includes(value)
 
 /** What a row registers. A name ending in `*` covers every name with that prefix. */
 export type Contributes = { readonly tools: readonly string[]; readonly ops: readonly string[] }
@@ -51,14 +40,12 @@ export type Manifest = {
   readonly requires: readonly string[]
   readonly permissions: readonly Permission[]
   readonly contributes?: Contributes
-  readonly slots: readonly Slot[]
 }
 
 export const DEFAULT_MANIFEST: Manifest = {
   api: PLUGIN_API,
   requires: [],
   permissions: [],
-  slots: [],
 }
 
 export type ManifestProblem =
@@ -73,7 +60,6 @@ const ManifestSchema = obj({
   requires: opt(arr(Name)),
   permissions: opt(arr(Name)),
   contributes: opt(obj({ tools: opt(arr(Name)), ops: opt(arr(Name)) })),
-  slots: opt(arr(Name)),
 })
 
 const manifestCheck = compile(ManifestSchema)
@@ -100,10 +86,6 @@ export function readManifest(value: unknown, where: string): Manifest {
       throw new Error(`${where}: permission ${permission} is not one of ${Object.keys(PERMISSIONS).join(", ")}`)
     return permission
   })
-  const slots = (value.slots ?? []).map((slot) => {
-    if (!isSlot(slot)) throw new Error(`${where}: slot ${slot} is not one of ${SLOTS.join(", ")}`)
-    return slot
-  })
   const contributes = value.contributes
   return {
     api: value.api ?? DEFAULT_MANIFEST.api,
@@ -112,7 +94,6 @@ export function readManifest(value: unknown, where: string): Manifest {
     ...(contributes === undefined
       ? {}
       : { contributes: { tools: [...(contributes.tools ?? [])], ops: [...(contributes.ops ?? [])] } }),
-    slots,
   }
 }
 

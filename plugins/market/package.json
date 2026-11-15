@@ -13,6 +13,7 @@
         "permissions": [
           "network",
           "plugins",
+          "runtime",
           "storage"
         ],
         "contributes": {

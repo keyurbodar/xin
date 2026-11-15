@@ -13,6 +13,7 @@
         "permissions": [
           "conversations",
           "models",
+          "runtime",
           "storage"
         ],
         "contributes": {
