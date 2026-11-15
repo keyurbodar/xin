@@ -43,6 +43,7 @@ import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
   FeatureSchema,
   ModelRefSchema,
+  resolveModel,
   ThinkingSchema,
   type ModelDefaults,
   type ModelMatch,
@@ -743,6 +744,54 @@ function catalogEntry(model: Model<Api>, keyed: boolean, settings: Settings): Js
   }
 }
 
+function defaultRole(defaults: ModelDefaults, ref: ModelRef): Role | undefined {
+  return (["chat", "thread", "utility"] as const).find((role) => {
+    const chosen = defaults[role]
+    return chosen !== undefined && same(chosen, ref)
+  })
+}
+
+/**
+ * Every conversation on a model the owner just disabled moves to the default its role resolves to, from its next
+ * request on; one with no default left has its model cleared, so its next turn asks for one. One commit per moved
+ * conversation, none for the rest.
+ */
+async function moveOff(harness: Harness, models: Models, ref: ModelRef, owner: ModelDefaults): Promise<number[]> {
+  const workspace = await harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
+  const targets: { conv: ConversationId; role: Role; project?: ModelDefaults }[] = [
+    { conv: ROOT_CONVERSATION_ID, role: "chat" },
+  ]
+  if (workspace !== undefined && parseWorkspace.check(workspace))
+    for (const space of Object.values(workspace.spaces)) {
+      const project = workspace.projects[space.projectId]?.settings.models
+      const scoped = project === undefined ? {} : { project }
+      targets.push({ conv: space.coordinatorId as ConversationId, role: "chat", ...scoped })
+      for (const threadId of space.threadIds) {
+        const thread = await harness.snapshot(ThreadDoc, threadId as ConversationId, BACKGROUND_CONTEXT)
+        targets.push({ conv: threadId as ConversationId, role: thread?.role ?? "thread", ...scoped })
+      }
+    }
+  const moved: number[] = []
+  for (const target of targets) {
+    const conversation = await harness.conversation(target.conv, BACKGROUND_CONTEXT)
+    const agent = conversation === undefined ? undefined : await conversation.agent(BACKGROUND_CONTEXT)
+    if (conversation === undefined || agent?.model === undefined || !same(agent.model, ref)) continue
+    const resolved = resolveModel({
+      role: target.role,
+      ...(target.project === undefined ? {} : { project: target.project }),
+      owner,
+    })
+    const next = resolved.kind === "model" ? resolved.model : null
+    const found = next === null ? undefined : models.getModel(next.provider, next.modelId)
+    await conversation.configure(
+      { model: next, ...(found?.reasoning === true ? {} : { thinkingLevel: null }) },
+      BACKGROUND_CONTEXT,
+    )
+    moved.push(target.conv)
+  }
+  return moved
+}
+
 const toggled = (refs: readonly ModelRef[], model: ModelRef, on: boolean): ModelRef[] => [
   ...refs.filter((entry) => !same(entry, model)),
   ...(on ? [model] : []),
@@ -991,18 +1040,33 @@ export function create(deps: ModelsPort): ModelsParts {
     name: "models.enable",
     args: obj({ model: ModelRefSchema, enabled: bool() }),
     actors: ["owner"],
-    run: async (_api, { model, enabled }) => {
+    run: async (api, { model, enabled }) => {
       const ref = { provider: model.provider, modelId: model.modelId }
-      await updateSettings(db, async (settings) => {
-        const role = (Object.keys(settings.defaults) as Role[]).find((key) => {
-          const chosen = settings.defaults[key]
-          return chosen !== undefined && same(chosen, ref)
-        })
-        if (!enabled && role !== undefined)
-          throw new OpRejected("bad_args", `${ref.provider}/${ref.modelId} is the ${role} default; pick another first`)
+      const workspace = await api.harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
+      const projects = workspace !== undefined && parseWorkspace.check(workspace) ? workspace.projects : {}
+      const owner = await updateSettings(db, async (settings) => {
+        if (!enabled) {
+          const role = defaultRole(settings.defaults, ref)
+          if (role !== undefined)
+            throw new OpRejected(
+              "bad_args",
+              `${ref.provider}/${ref.modelId} is the ${role} default; pick another first`,
+            )
+          for (const project of Object.values(projects)) {
+            const projectRole =
+              project.settings.models === undefined ? undefined : defaultRole(project.settings.models, ref)
+            if (projectRole !== undefined)
+              throw new OpRejected(
+                "bad_args",
+                `${ref.provider}/${ref.modelId} is the ${projectRole} default of project ${project.name}; pick another first`,
+              )
+          }
+        }
         await writeKv(db, "owner.disabled", toggled(settings.disabled, ref, !enabled))
+        return settings.defaults
       })
-      return { model: ref, enabled }
+      const moved = enabled ? [] : await moveOff(api.harness, registry.models, ref, owner)
+      return { model: ref, enabled, moved }
     },
   })
 

@@ -495,6 +495,56 @@ describe("models", () => {
     expect(outcome).toMatchObject({ kind: "no_model" })
   })
 
+  it("moves conversations off a model the owner disables and keeps it out of Captains and project defaults", async () => {
+    const stub = fresh()
+    const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+    const created = await call(stub, "move-project", "project.create", { slug: "move", name: "Move" })
+    const project = created.result as { id: string; coordinatorId: number }
+    const [thread] = await addThreads(stub, project.id, ["mover"])
+    if (thread === undefined) throw new Error("no thread")
+    await call(stub, "move-default", "owner.defaults", { role: "chat", model: WIDE_MODEL })
+    await call(stub, "move-coord", "conv.configure", { conv: project.coordinatorId, model: narrow })
+    await call(stub, "move-thread", "conv.configure", { conv: thread.id, model: narrow })
+
+    await call(stub, "move-project-default", "project.update", {
+      id: project.id,
+      settings: { models: { thread: narrow } },
+    })
+    expect(await call(stub, "move-refused", "models.enable", { model: narrow, enabled: false })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    await call(stub, "move-project-clear", "project.update", {
+      id: project.id,
+      settings: { models: { thread: WIDE_MODEL } },
+    })
+
+    const disabled = await call(stub, "move-off", "models.enable", { model: narrow, enabled: false })
+    expect(disabled).toMatchObject({ ok: true })
+    expect((disabled.result as { moved: number[] }).moved.toSorted()).toEqual(
+      [project.coordinatorId, thread.id].toSorted(),
+    )
+    const models = await runInDurableObject(stub, async (home: Home) =>
+      Promise.all(
+        [project.coordinatorId, thread.id].map(async (id) => {
+          const conversation = await home.harness.conversation(id as ConversationId, context)
+          return conversation === undefined ? undefined : (await conversation.agent(context)).model
+        }),
+      ),
+    )
+    expect(models).toEqual([WIDE_MODEL, WIDE_MODEL])
+
+    expect(
+      await call(stub, "move-project-off", "project.update", {
+        id: project.id,
+        settings: { models: { chat: narrow } },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "bad_args" } })
+    expect(
+      await call(stub, "move-captain", "captain.create", { projectId: project.id, name: "Off Captain", model: narrow }),
+    ).toMatchObject({ ok: false, error: { code: "bad_args" } })
+  }, 30_000)
+
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {
     const original = globalThis.fetch
     globalThis.fetch = async () =>

@@ -31,6 +31,7 @@ export function apply(ctx: Context): void {
     watchdog: ctx.watchdog,
     models: ctx.models,
     currentModels: () => ctx.pi.currentModels(),
+    disabled: (ref) => ctx.models.disabled(ref),
     registry: ctx.pi.registry,
     threadRemovals: (parent) => ctx.get("presets")?.threadRemovals(parent) ?? [],
     settled: (event) => emitSettled(ctx, event),
