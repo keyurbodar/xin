@@ -37,6 +37,7 @@ import {
 } from "@earendil-works/pi-durable"
 import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
 import { conversationCost, createBudget, untag } from "./budget.ts"
+import { FastDoc, modesOf } from "./fast.ts"
 import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
   FeatureSchema,
@@ -714,6 +715,7 @@ function describe(model: Model<Api>, keyed: boolean): JsonValue {
     vision: model.input.includes("image"),
     reasoning: model.reasoning,
     thinking: getSupportedThinkingLevels(model),
+    modes: modesOf(model),
     cost: { input: model.cost.input, output: model.cost.output },
     keyed,
   }
@@ -730,6 +732,7 @@ function catalogEntry(model: Model<Api>, keyed: boolean, settings: Settings): Js
     vision: model.input.includes("image"),
     reasoning: model.reasoning,
     thinking: getSupportedThinkingLevels(model),
+    modes: modesOf(model),
     cost: {
       input: model.cost.input,
       output: model.cost.output,
@@ -853,10 +856,15 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const configure = defineOp({
     name: "conv.configure",
-    args: obj({ conv: opt(int({ minimum: 0 })), model: opt(ModelRefSchema), thinking: opt(ThinkingSchema) }),
+    args: obj({
+      conv: opt(int({ minimum: 0 })),
+      model: opt(ModelRefSchema),
+      thinking: opt(ThinkingSchema),
+      fast: opt(bool()),
+    }),
     actors: ["owner", "agent"],
     run: async (api, args) => {
-      if (args.model === undefined && args.thinking === undefined)
+      if (args.model === undefined && args.thinking === undefined && args.fast === undefined)
         throw new OpRejected("bad_args", "nothing to configure")
       const conversation =
         args.conv === undefined
@@ -882,11 +890,21 @@ export function create(deps: ModelsPort): ModelsParts {
           change.thinkingLevel = args.thinking
         }
       }
+      const target = args.model ?? (await conversation.agent(BACKGROUND_CONTEXT)).model
+      const found = target === undefined ? undefined : registry.models.getModel(target.provider, target.modelId)
+      const fastable = found !== undefined && modesOf(found).includes("fast")
+      if (args.fast === true && !fastable)
+        throw new OpRejected(
+          "bad_args",
+          `${target === undefined ? "this conversation's model" : `${target.provider}/${target.modelId}`} has no fast mode`,
+        )
+      const fast = args.fast ?? (args.model !== undefined && !fastable ? false : undefined)
       await api.harness.commit(async (tx) => {
         const chosen = change.model
         if (chosen !== undefined && chosen !== null && isOff(chosen))
           throw new OpRejected("bad_args", `model ${chosen.provider}/${chosen.modelId} is disabled`)
-        await configureAgent(tx, conversation.id, change satisfies AgentChange)
+        if (Object.keys(change).length > 0) await configureAgent(tx, conversation.id, change satisfies AgentChange)
+        if (fast !== undefined) (await tx.doc(FastDoc, conversation.id)).on = fast
       }, BACKGROUND_CONTEXT)
       if (change.model !== undefined && change.model !== null) await remember(db, change.model)
       const agent = await conversation.agent(BACKGROUND_CONTEXT)
@@ -894,6 +912,7 @@ export function create(deps: ModelsPort): ModelsParts {
         conversation: conversation.id,
         model: agent.model ?? null,
         thinking: agent.thinkingLevel,
+        fast: fastable && (await api.harness.snapshot(FastDoc, conversation.id, BACKGROUND_CONTEXT))?.on === true,
         effectiveFrom: "next request",
       }
     },

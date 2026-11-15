@@ -1,5 +1,7 @@
+import { defineExtension } from "@earendil-works/pi-durable"
 import type { Context } from "../../src/kernel/index.ts"
 import { FEATURE_MIGRATIONS } from "./budget.ts"
+import { fastRequests } from "./fast.ts"
 import { create } from "./models.ts"
 
 export const name = "models"
@@ -21,6 +23,7 @@ export async function apply(ctx: Context): Promise<void> {
   })
   ctx.provide("models", parts.service)
   ctx.pi.models(parts.models)
+  ctx.pi.install(defineExtension({ name: "fast-mode", hooks: [fastRequests] }))
   ctx.wire.home("spend", async () => parts.home())
   for (const op of parts.ops) ctx.ops.define(op)
   ctx.clock.timer({
