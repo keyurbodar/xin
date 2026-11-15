@@ -16,3 +16,8 @@ export function trapTab(container: HTMLElement, event: KeyboardEvent): void {
   event.preventDefault()
   if (next !== undefined) stops[next]?.focus()
 }
+
+/** Where focus goes back when a dialog closes: the first candidate still in the document, latest first. */
+export function returnTarget<T extends { readonly isConnected: boolean }>(candidates: readonly (T | null | undefined)[]): T | undefined {
+  return candidates.find((candidate): candidate is T => candidate !== null && candidate !== undefined && candidate.isConnected)
+}

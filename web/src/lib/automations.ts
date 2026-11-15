@@ -1,3 +1,4 @@
+import { CronError, nextCron, parseCron } from "../../../plugins/automations/cron.ts"
 import { isRecord, listOf, numOf, recordOf, stringsOf, strOf } from "./parse.ts"
 import type { SignalState } from "./status.ts"
 
@@ -221,18 +222,21 @@ export function cronInWords(cron: string): string {
   if (fields.length !== 5 || minute === undefined || hour === undefined || dom === undefined || month === undefined || dow === undefined) {
     return cron
   }
-  const step = (field: string): number | undefined => (field.startsWith("*/") ? whole(field.slice(2)) : undefined)
+  const step = (field: string, span: number): number | undefined => {
+    const value = field.startsWith("*/") ? whole(field.slice(2)) : undefined
+    return value !== undefined && value > 0 && span % value === 0 ? value : undefined
+  }
   const everyDay = dom === "*" && month === "*"
   if (everyDay && dow === "*" && hour === "*") {
     if (minute === "*") return "Every minute"
-    const minutes = step(minute)
+    const minutes = step(minute, 60)
     if (minutes !== undefined) return minutes === 1 ? "Every minute" : `Every ${minutes} minutes`
   }
   const atMinute = whole(minute)
   if (atMinute === undefined || atMinute > 59) return cron
   if (everyDay && dow === "*") {
     if (hour === "*") return `Every hour at :${pad(atMinute)}`
-    const hours = step(hour)
+    const hours = step(hour, 24)
     if (hours !== undefined) return `Every ${hours} hours at :${pad(atMinute)}`
   }
   const hours = hour.split(",").map(whole)
@@ -245,6 +249,19 @@ export function cronInWords(cron: string): string {
   const day = whole(dom)
   if (day !== undefined && day >= 1 && day <= 31 && month === "*" && dow === "*") return `Monthly on the ${ordinal(day)} at ${times}`
   return cron
+}
+
+/**
+ * Why the server would refuse this cron, in its own words: the dialog runs the backend's parser, so it blocks
+ * exactly what `automation.create` would answer `bad_args` for. Undefined when the cron is fine.
+ */
+export function cronProblem(cron: string, tz: string, now = Date.now()): string | undefined {
+  try {
+    return nextCron(parseCron(cron), tz, now) === undefined ? `"${cron.trim()}" never fires` : undefined
+  } catch (problem) {
+    if (problem instanceof CronError) return problem.message
+    throw problem
+  }
 }
 
 export function triggerSummary(trigger: AutomationTrigger): string {
@@ -422,7 +439,7 @@ export function rotated(trigger: TriggerDraft): TriggerDraft {
 function triggerReady(trigger: TriggerDraft): boolean {
   switch (trigger.kind) {
     case "schedule":
-      return trigger.cron.trim() !== ""
+      return cronProblem(trigger.cron, trigger.tz) === undefined
     case "once":
       return !Number.isNaN(Date.parse(trigger.at))
     case "webhook":

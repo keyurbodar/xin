@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js"
 import type { Streams } from "../lib/api.ts"
 import { automationsRevisionOf } from "../lib/automations.ts"
+import { trailing } from "../lib/trailing.ts"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
 import { route } from "../lib/router.ts"
 import { threadsOf } from "../lib/threads.ts"
@@ -49,6 +50,18 @@ const [projects, setProjects] = createSignal<readonly ProjectSummary[]>([])
 const [requests, setRequests] = createSignal<readonly RequestRow[]>([])
 const [loaded, setLoaded] = createSignal(false)
 const [automationsRevision, setAutomationsRevision] = createSignal<number>()
+
+/** Home frames re-send the same revision for unrelated changes; only a new value arms the reload, and a burst of them coalesces. */
+let latestRevision: number | undefined
+const settleRevision = trailing(() => setAutomationsRevision(latestRevision), { wait: 275, maxWait: 1000 })
+
+function receiveRevision(next: number | undefined): void {
+  if (next === latestRevision) return
+  const first = latestRevision === undefined
+  latestRevision = next
+  if (first) setAutomationsRevision(next)
+  else settleRevision.poke()
+}
 
 export const homeProjects = projects
 export const homeLoaded = loaded
@@ -110,7 +123,7 @@ export function subscribeHome(streams: Streams): () => void {
     value: (value) => {
       setProjects(parse(value))
       setRequests(parseRequestList(value))
-      setAutomationsRevision(automationsRevisionOf(value))
+      receiveRevision(automationsRevisionOf(value))
       setLoaded(true)
     },
     delta: () => undefined,

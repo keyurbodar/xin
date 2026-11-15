@@ -4,6 +4,7 @@ import {
   batchGroupLabel,
   createArgs,
   cronInWords,
+  cronProblem,
   describeTriggers,
   draftOf,
   draftReady,
@@ -77,6 +78,9 @@ test.each([
   ["0 8 1 1 *", "0 8 1 1 *"],
   ["0 25 * * *", "0 25 * * *"],
   ["0 9 * *", "0 9 * *"],
+  ["*/45 * * * *", "*/45 * * * *"],
+  ["0 */5 * * *", "0 */5 * * *"],
+  ["*/0 * * * *", "*/0 * * * *"],
 ])("cron %s reads as %s", (cron, words) => {
   expect(cronInWords(cron)).toBe(words)
 })
@@ -128,6 +132,7 @@ test("the dialog creates its triggers trimmed, a schedule in its zone and a new 
   expect(draftReady({ ...draft, project: "" })).toBe(false)
   expect(draftReady({ ...draft, triggers: [newTrigger("schedule", "c", "UTC")] })).toBe(false)
   expect(draftReady({ ...draft, triggers: [newTrigger("once", "d", "UTC")] })).toBe(false)
+  expect(draftReady({ ...draft, triggers: [{ key: "e", kind: "schedule", cron: "*/60 * * * *", tz: "UTC" }] })).toBe(false)
   expect(createArgs(draft)).toEqual({
     title: "Digest",
     prompt: "Summarise",
@@ -212,4 +217,16 @@ test("a batch group reads as its values, and anything else as it came", () => {
   expect(batchGroupLabel('[null,3]')).toBe("null · 3")
   expect(batchGroupLabel("")).toBe("")
   expect(batchGroupLabel("not json")).toBe("not json")
+})
+
+test("the dialog refuses exactly the crons the server's parser refuses, in its words", () => {
+  for (const bad of ["* * * *", "60 * * * *", "* 24 * * *", "5-1 * * * *", "*/0 * * * *", "x * * * *"]) {
+    expect(cronProblem(bad, "UTC")).toBeString()
+  }
+  expect(cronProblem("*/0 * * * *", "UTC")).toBe("0 is outside 1-59")
+  expect(cronProblem("*/60 * * * *", "UTC")).toBe("60 is outside 1-59")
+  expect(cronProblem("0 */24 * * *", "UTC")).toBe("24 is outside 1-23")
+  expect(cronProblem("0 0 31 2 *", "UTC")).toBe('"0 0 31 2 *" never fires')
+  expect(cronProblem("*/45 * * * *", "UTC")).toBeUndefined()
+  expect(cronProblem("0 9 * * MON-FRI", "UTC")).toBeUndefined()
 })

@@ -1,7 +1,7 @@
 import { createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { CalendarClock, Check, Copy, Plus, RefreshCw, Timer, Webhook, X } from "lucide-solid"
 import { count } from "../../lib/format.ts"
-import { cronInWords, newTrigger, rotated, webhookUrl, type TriggerDraft } from "../../lib/automations.ts"
+import { cronInWords, cronProblem, newTrigger, rotated, webhookUrl, type TriggerDraft } from "../../lib/automations.ts"
 import { FIELD_INPUT } from "../ui/dialog.tsx"
 
 const ICON = { size: 14, "stroke-width": 1.5 } as const
@@ -78,10 +78,12 @@ export function WebhookUrl(props: { path: string }): JSX.Element {
 }
 
 function ScheduleFields(props: { trigger: Extract<TriggerDraft, { kind: "schedule" }>; busy: boolean; onChange: (next: TriggerDraft) => void }): JSX.Element {
+  const problem = (): string | undefined =>
+    props.trigger.cron.trim() === "" ? undefined : cronProblem(props.trigger.cron, props.trigger.tz)
   const words = (): string | undefined => {
     const cron = props.trigger.cron.trim()
     const said = cronInWords(cron)
-    return cron === "" || said === cron ? undefined : said
+    return cron === "" || problem() !== undefined || said === cron ? undefined : said
   }
   return (
     <div class="flex flex-col gap-1.5">
@@ -91,6 +93,7 @@ function ScheduleFields(props: { trigger: Extract<TriggerDraft, { kind: "schedul
         disabled={props.busy}
         placeholder="0 9 * * 1-5"
         aria-label="Cron"
+        aria-invalid={problem() !== undefined}
         spellcheck={false}
         onInput={(event) => props.onChange({ ...props.trigger, cron: event.currentTarget.value })}
       />
@@ -109,7 +112,8 @@ function ScheduleFields(props: { trigger: Extract<TriggerDraft, { kind: "schedul
           )}
         </For>
         <span class="ml-auto truncate text-xs text-ink-3">
-          <Show when={words()} fallback={<>5-field cron · {props.trigger.tz}</>}>
+          <Show when={problem()}>{(text) => <span class="text-failed">{text()}</span>}</Show>
+          <Show when={problem() === undefined && words()} fallback={problem() === undefined ? <>5-field cron · {props.trigger.tz}</> : null}>
             {(said) => (
               <>
                 <span class="text-ink-2">{said()}</span> · {props.trigger.tz}

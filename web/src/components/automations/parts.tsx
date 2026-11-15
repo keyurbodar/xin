@@ -302,6 +302,7 @@ export function DeleteAutomationDialog(props: {
           <span class="mr-auto" />
           <button
             type="button"
+            autofocus
             disabled={busy()}
             onClick={props.onClose}
             class="im-press h-8 rounded-sm px-3 text-sm text-ink-2 hover:text-ink disabled:opacity-50"
@@ -310,7 +311,6 @@ export function DeleteAutomationDialog(props: {
           </button>
           <button
             type="submit"
-            autofocus
             disabled={busy()}
             class="im-press h-8 rounded-sm border border-failed/40 bg-failed-soft px-3 text-sm font-medium text-failed hover:border-failed disabled:opacity-50"
           >
