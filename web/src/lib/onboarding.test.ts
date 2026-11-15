@@ -18,11 +18,15 @@ const realFetch = globalThis.fetch
 
 function serve(results: Record<string, (args: Record<string, unknown>) => unknown>): void {
   globalThis.fetch = (async (_url: string, init: RequestInit) => {
-    const body = JSON.parse(String(init.body)) as Sent
-    sent.push(body)
-    const handler = results[body.op]
-    if (handler === undefined) throw new Error(`unexpected op ${body.op}`)
-    return new Response(JSON.stringify({ t: "ack", id: body.id, ok: true, result: handler(body.args) }))
+    const body: unknown = JSON.parse(String(init.body))
+    const frames = (Array.isArray(body) ? body : [body]) as Sent[]
+    const acks = frames.map((frame) => {
+      sent.push(frame)
+      const handler = results[frame.op]
+      if (handler === undefined) throw new Error(`unexpected op ${frame.op}`)
+      return { t: "ack", id: frame.id, ok: true, result: handler(frame.args) }
+    })
+    return new Response(JSON.stringify(Array.isArray(body) ? acks : acks[0]))
   }) as typeof fetch
 }
 
