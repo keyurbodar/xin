@@ -1,14 +1,27 @@
 import { expect, test } from "bun:test"
 import {
   automationsRevisionOf,
+  batchGroupLabel,
   createArgs,
   cronInWords,
   describeTriggers,
+  draftOf,
   draftReady,
+  localInput,
+  mergeRuns,
+  newTrigger,
   nextLabel,
+  parseAutomationDetail,
   parseAutomationList,
+  parseRuns,
+  rotated,
+  runDuration,
+  runNowArgs,
   runSignal,
   triggerSummary,
+  untilLabel,
+  updateArgs,
+  webhookUrl,
 } from "./automations.ts"
 
 const wire = {
@@ -35,7 +48,7 @@ test("the list parses every automation and drops triggers and rows it cannot rea
   expect(list).toHaveLength(1)
   expect(list[0]?.target).toBe("same")
   expect(list[0]?.triggers.map((trigger) => trigger.kind)).toEqual(["schedule", "webhook"])
-  expect(list[0]?.lastRun).toEqual({ id: "r1", status: "failed", threadId: null, createdAt: "2026-11-16T02:00:00.000Z", error: "boom" })
+  expect(list[0]?.lastRun).toMatchObject({ id: "r1", status: "failed", source: "manual", threadId: null, inputs: 0, error: "boom" })
 })
 
 test("a last run with an unknown status is no last run", () => {
@@ -89,7 +102,7 @@ const now = Date.parse("2026-11-16T10:00:00.000Z")
 test("next run reads paused, on webhook, minutes away, a weekday this week, then a date", () => {
   const base = { enabled: true, triggers: [] }
   expect(nextLabel({ ...base, enabled: false, nextAt: "2026-11-16T10:30:00.000Z" }, now)).toBe("Paused")
-  expect(nextLabel({ enabled: true, nextAt: null, triggers: [{ id: "w", kind: "webhook", path: "/hooks/x" }] }, now)).toBe("On webhook")
+  expect(nextLabel({ enabled: true, nextAt: null, triggers: [{ id: "w", kind: "webhook", path: "/hooks/x", contains: [], regex: null, rules: [] }] }, now)).toBe("On webhook")
   expect(nextLabel({ ...base, nextAt: null }, now)).toBe("Not scheduled")
   expect(nextLabel({ ...base, nextAt: "2026-11-16T10:00:20.000Z" }, now)).toBe("Now")
   expect(nextLabel({ ...base, nextAt: "2026-11-16T10:12:00.000Z" }, now)).toBe("In 12m")
@@ -97,16 +110,106 @@ test("next run reads paused, on webhook, minutes away, a weekday this week, then
   expect(nextLabel({ ...base, nextAt: "2026-12-01T02:00:00.000Z" }, now, "UTC")).toBe("1 Dec")
 })
 
-test("the dialog creates one schedule trigger in the browser zone, trimmed", () => {
-  const draft = { title: " Digest ", prompt: " Summarise ", cron: " 0  9 * * 1 ", project: "prj_1", target: "fresh" as const }
+const parsed = parseAutomationList({ automations: [wire] })[0]
+if (parsed === undefined) throw new Error("fixture did not parse")
+
+test("the dialog creates its triggers trimmed, a schedule in its zone and a new webhook without an id", () => {
+  const draft = {
+    title: " Digest ",
+    prompt: " Summarise ",
+    project: "prj_1",
+    target: "fresh" as const,
+    triggers: [
+      { key: "a", kind: "schedule" as const, cron: " 0  9 * * 1 ", tz: "Asia/Kolkata" },
+      newTrigger("webhook", "b", "UTC"),
+    ],
+  }
   expect(draftReady(draft)).toBe(true)
   expect(draftReady({ ...draft, project: "" })).toBe(false)
-  expect(draftReady({ ...draft, cron: "  " })).toBe(false)
-  expect(createArgs(draft, "Asia/Kolkata")).toEqual({
+  expect(draftReady({ ...draft, triggers: [newTrigger("schedule", "c", "UTC")] })).toBe(false)
+  expect(draftReady({ ...draft, triggers: [newTrigger("once", "d", "UTC")] })).toBe(false)
+  expect(createArgs(draft)).toEqual({
     title: "Digest",
     prompt: "Summarise",
     project: "prj_1",
     target: { kind: "fresh" },
-    triggers: [{ kind: "schedule", cron: "0 9 * * 1", tz: "Asia/Kolkata" }],
+    triggers: [{ kind: "schedule", cron: "0 9 * * 1", tz: "Asia/Kolkata" }, { kind: "webhook" }],
   })
+})
+
+test("a webhook's filters go as a list and a regex, and its batching rules ride along untouched", () => {
+  const hook = { ...newTrigger("webhook", "w", "UTC"), contains: "opened, ,labeled ", regex: " ^ci ", rules: [{ count: 5 }] }
+  expect(createArgs({ title: "t", prompt: "p", project: "x", target: "fresh", triggers: [hook] }).triggers).toEqual([
+    { kind: "webhook", contains: ["opened", "labeled"], regex: "^ci", rules: [{ count: 5 }] },
+  ])
+})
+
+test("a once trigger goes as the ISO instant of the local time picked", () => {
+  const args = createArgs({ title: "t", prompt: "p", project: "x", target: "fresh", triggers: [{ key: "o", kind: "once", at: "2026-12-01T09:30" }] })
+  expect(args.triggers).toEqual([{ kind: "once", at: new Date("2026-12-01T09:30").toISOString() }])
+  expect(localInput(new Date("2026-12-01T09:30").toISOString())).toBe("2026-12-01T09:30")
+})
+
+test("editing sends only what changed, and an untouched trigger set is not sent at all", () => {
+  const draft = draftOf(parsed)
+  expect(updateArgs(parsed, draft)).toEqual({ id: "a1" })
+  expect(updateArgs(parsed, { ...draft, title: "Gate" })).toEqual({ id: "a1", title: "Gate" })
+})
+
+test("an edited trigger set keeps the webhook's id, so its URL survives, and rotating drops it", () => {
+  const draft = draftOf(parsed)
+  const [schedule, hook] = draft.triggers
+  if (schedule?.kind !== "schedule" || hook === undefined) throw new Error("fixture triggers")
+  const edited = updateArgs(parsed, { ...draft, triggers: [{ ...schedule, cron: "0 3 * * *" }, hook] })
+  expect(edited.triggers).toEqual([{ kind: "schedule", cron: "0 3 * * *", tz: "Asia/Kolkata" }, { kind: "webhook", id: "t2" }])
+  expect(updateArgs(parsed, { ...draft, triggers: [schedule, rotated(hook)] }).triggers).toEqual([
+    { kind: "schedule", cron: "0 2 * * *", tz: "Asia/Kolkata" },
+    { kind: "webhook" },
+  ])
+})
+
+test("a standing thread keeps its thread when the target is resent, and moving to fresh drops it", () => {
+  const fresh = { ...parsed, target: "fresh" as const, threadId: null }
+  expect(updateArgs(fresh, { ...draftOf(fresh), target: "same" }).target).toEqual({ kind: "same" })
+  expect(updateArgs(parsed, { ...draftOf(parsed), target: "fresh" }).target).toEqual({ kind: "fresh" })
+})
+
+test("run now sends the input only when there is some", () => {
+  expect(runNowArgs("a1", "  ")).toEqual({ id: "a1" })
+  expect(runNowArgs("a1", " ship it ")).toEqual({ id: "a1", input: "ship it" })
+})
+
+test("the detail parses runs and open batches, and paging merges older runs once each", () => {
+  const run = (id: string) => ({ ...wire.lastRun, id, source: "webhook", inputs: 3, startedAt: "2026-11-16T02:00:00.000Z", finishedAt: "2026-11-16T02:01:12.000Z", cost: 0.42 })
+  const detail = parseAutomationDetail({
+    ...wire,
+    runs: [run("r3"), run("r2")],
+    batches: [{ triggerId: "t2", rule: 0, group: "", count: 2, firstAt: "2026-11-16T01:00:00.000Z", closeAt: "2026-11-16T03:00:00.000Z" }, { count: 1 }],
+  })
+  expect(detail?.runs.map((entry) => entry.id)).toEqual(["r3", "r2"])
+  expect(detail?.runs[0]?.source).toBe("webhook")
+  expect(detail?.runs[0]?.cost).toBe(0.42)
+  expect(detail?.batches).toEqual([{ triggerId: "t2", group: "", count: 2, firstAt: "2026-11-16T01:00:00.000Z", closeAt: "2026-11-16T03:00:00.000Z" }])
+  const older = parseRuns({ runs: [run("r2"), run("r1")] })
+  expect(mergeRuns(detail?.runs ?? [], older).map((entry) => entry.id)).toEqual(["r3", "r2", "r1"])
+  expect(runDuration(detail?.runs[0] ?? run("x"))).toBe("1m 12s")
+  expect(runDuration({ startedAt: null, finishedAt: null })).toBeUndefined()
+})
+
+test("a webhook URL is the page origin plus the trigger path", () => {
+  expect(webhookUrl("https://ingle.example/", "/hooks/abc")).toBe("https://ingle.example/hooks/abc")
+})
+
+test("a batch's close reads as time left, and a due one as closing", () => {
+  expect(untilLabel("2026-11-16T10:00:30.000Z", now)).toBe("in 30s")
+  expect(untilLabel("2026-11-16T10:12:00.000Z", now)).toBe("in 12m")
+  expect(untilLabel("2026-11-16T13:00:00.000Z", now)).toBe("in 3h")
+  expect(untilLabel("2026-11-16T09:00:00.000Z", now)).toBe("closing")
+})
+
+test("a batch group reads as its values, and anything else as it came", () => {
+  expect(batchGroupLabel('["keyurbodar/xin","opened"]')).toBe("keyurbodar/xin · opened")
+  expect(batchGroupLabel('[null,3]')).toBe("null · 3")
+  expect(batchGroupLabel("")).toBe("")
+  expect(batchGroupLabel("not json")).toBe("not json")
 })

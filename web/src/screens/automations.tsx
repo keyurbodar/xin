@@ -1,33 +1,45 @@
-import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
+import { createMemo, For, Show, type JSX } from "solid-js"
 import { Plus } from "lucide-solid"
 import { firstLoad } from "../lib/loading.ts"
 import { describeTriggers, nextLabel, TARGET_WORD, type Automation } from "../lib/automations.ts"
 import { createAutomationList } from "../state/automations.ts"
 import { homeProjects } from "../state/home.ts"
-import { AutomationDialog } from "../components/automations/dialog.tsx"
-import { createAutomationActions, DeleteAutomationDialog, EnabledToggle, LastRun, RowMenu } from "../components/automations/parts.tsx"
+import { route } from "../lib/router.ts"
+import { AutomationHistoryView } from "../components/automations/history.tsx"
+import { createAutomationActions, createRowDialogs, EnabledToggle, LastRun, RowMenu, type RowAction } from "../components/automations/parts.tsx"
 import { Loading, RowSkeleton } from "../components/ui/skeleton.tsx"
 import { EmptyState, ResourceError } from "../components/chat/ui.tsx"
 
 const GRID = "md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,240px)_96px_72px_76px] md:items-center md:gap-4"
 
 export function AutomationsScreen(): JSX.Element {
-  const [list, retry] = createAutomationList()
-  const actions = createAutomationActions(() => list.latest)
-  const [creating, setCreating] = createSignal(false)
-  const [deleting, setDeleting] = createSignal<Automation>()
-  const shown = createMemo(() => (list.latest ?? []).filter((automation) => !actions.removed(automation)))
+  const id = (): string | undefined => {
+    const part = route().parts[1]
+    return part === undefined ? undefined : decodeURIComponent(part)
+  }
+  return (
+    <Show when={id()} keyed fallback={<AutomationList />}>
+      {(current) => <AutomationHistoryView id={current} />}
+    </Show>
+  )
+}
+
+function AutomationList(): JSX.Element {
+  const { list, value, retry } = createAutomationList()
+  const actions = createAutomationActions(() => value())
+  const rows = createRowDialogs(actions)
+  const shown = createMemo(() => (value() ?? []).filter((automation) => !actions.removed(automation)))
 
   return (
     <>
       <header class="flex h-[var(--h-topbar)] shrink-0 items-center gap-2 border-b border-line-1 px-4">
         <h1 class="text-base font-medium text-ink">Automations</h1>
-        <Show when={list.latest !== undefined}>
+        <Show when={value() !== undefined}>
           <span class="font-mono text-xs tabular-nums text-ink-3">{shown().length}</span>
         </Show>
         <button
           type="button"
-          onClick={() => setCreating(true)}
+          onClick={rows.create}
           class="im-press ml-auto flex h-7 items-center gap-1.5 rounded-sm bg-primary pl-2 pr-2.5 text-sm font-medium text-on-primary hover:opacity-90"
         >
           <Plus size={14} stroke-width={1.75} />
@@ -52,7 +64,7 @@ export function AutomationsScreen(): JSX.Element {
             <Show
               when={shown().length > 0}
               fallback={
-                <Show when={list.latest !== undefined}>
+                <Show when={value() !== undefined}>
                   <div class="pt-14">
                     <EmptyState
                       pictogram="schedules"
@@ -61,7 +73,7 @@ export function AutomationsScreen(): JSX.Element {
                       action={
                         <button
                           type="button"
-                          onClick={() => setCreating(true)}
+                          onClick={rows.create}
                           class="im-press flex h-8 items-center gap-1.5 rounded-sm border border-line-2 bg-card px-3 text-sm font-medium text-ink hover:border-line-3"
                         >
                           <Plus size={14} stroke-width={1.75} />
@@ -89,8 +101,7 @@ export function AutomationsScreen(): JSX.Element {
                         index={index()}
                         enabled={actions.enabled(automation)}
                         busy={actions.busy() === automation.id}
-                        onToggle={() => void actions.toggle(automation)}
-                        onDelete={() => setDeleting(automation)}
+                        onAction={(action) => rows.handle(automation, action)}
                       />
                     )}
                   </For>
@@ -100,8 +111,7 @@ export function AutomationsScreen(): JSX.Element {
           </Loading>
         </div>
       </div>
-      <AutomationDialog open={creating()} onClose={() => setCreating(false)} />
-      <DeleteAutomationDialog automation={deleting()} onClose={() => setDeleting(undefined)} onDelete={actions.remove} />
+      {rows.dialogs()}
     </>
   )
 }
@@ -111,8 +121,7 @@ function Row(props: {
   index: number
   enabled: boolean
   busy: boolean
-  onToggle: () => void
-  onDelete: () => void
+  onAction: (action: RowAction) => void
 }): JSX.Element {
   const project = (): string | undefined => homeProjects().find((item) => item.id === props.automation.project)?.name
   const view = (): Automation => ({ ...props.automation, enabled: props.enabled })
@@ -122,9 +131,14 @@ function Row(props: {
       style={{ "--i": props.index }}
     >
       <div class="min-w-0 flex-1">
-        <div class="truncate text-base font-medium" classList={{ "text-ink": props.enabled, "text-ink-2": !props.enabled }}>
+        <button
+          type="button"
+          onClick={() => props.onAction("open")}
+          class="block max-w-full truncate text-left text-base font-medium hover:underline hover:decoration-line-3 hover:underline-offset-4"
+          classList={{ "text-ink": props.enabled, "text-ink-2": !props.enabled }}
+        >
           {props.automation.title}
-        </div>
+        </button>
         <div class="mt-0.5 truncate text-sm text-ink-3">
           {TARGET_WORD[props.automation.target]}
           <Show when={project()}>{(name) => <> · {name()}</>}</Show>
@@ -145,13 +159,8 @@ function Row(props: {
         <LastRun automation={props.automation} />
       </span>
       <span class="flex shrink-0 items-center justify-end gap-1">
-        <EnabledToggle automation={props.automation} on={props.enabled} busy={props.busy} onToggle={props.onToggle} />
-        <RowMenu
-          automation={props.automation}
-          enabled={props.enabled}
-          busy={props.busy}
-          onAction={(action) => (action === "delete" ? props.onDelete() : props.onToggle())}
-        />
+        <EnabledToggle automation={props.automation} on={props.enabled} busy={props.busy} onToggle={() => props.onAction("toggle")} />
+        <RowMenu automation={props.automation} enabled={props.enabled} busy={props.busy} onAction={props.onAction} />
       </span>
     </div>
   )

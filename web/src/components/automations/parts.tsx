@@ -1,17 +1,18 @@
 import { createEffect, createSignal, Show, type Accessor, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
-import { Ellipsis, Pause, Play, Trash2 } from "lucide-solid"
-import { runSignal, type Automation } from "../../lib/automations.ts"
+import { Ellipsis, History, Pause, Pencil, Play, SkipForward, Trash2 } from "lucide-solid"
+import { runNowArgs, runSignal, type Automation } from "../../lib/automations.ts"
 import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import { STATE_WORD } from "../../lib/status.ts"
-import { deleteAutomation, setAutomationEnabled } from "../../state/automations.ts"
+import { deleteAutomation, runAutomation, setAutomationEnabled } from "../../state/automations.ts"
 import { homeProjects } from "../../state/home.ts"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from "../shell/menu.ts"
 import { Toggle } from "../extensions/chrome.tsx"
-import { Dialog } from "../ui/dialog.tsx"
+import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
 import { Signal } from "../ui/signal.tsx"
+import { AutomationDialog } from "./dialog.tsx"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
 
@@ -123,16 +124,26 @@ export function LastRun(props: { automation: Automation; withAge?: boolean }): J
   )
 }
 
-export type RowAction = "toggle" | "delete"
+export type RowAction = "open" | "run" | "edit" | "toggle" | "delete"
 
-export function RowMenu(props: { automation: Automation; enabled: boolean; busy: boolean; onAction: (action: RowAction) => void }): JSX.Element {
+const ROW_ACTIONS: readonly RowAction[] = ["open", "run", "edit", "toggle", "delete"]
+
+const isRowAction = (value: string): value is RowAction => ROW_ACTIONS.some((action) => action === value)
+
+export function RowMenu(props: {
+  automation: Automation
+  enabled: boolean
+  busy: boolean
+  withHistory?: boolean
+  onAction: (action: RowAction) => void
+}): JSX.Element {
   return (
     <Menu.Root
       positioning={{ placement: "bottom-end", gutter: 4 }}
       lazyMount
       unmountOnExit
       onSelect={(details) => {
-        if (details.value === "toggle" || details.value === "delete") props.onAction(details.value)
+        if (isRowAction(details.value)) props.onAction(details.value)
       }}
     >
       <Menu.Trigger class={ICON_BUTTON} aria-label={`${props.automation.title} actions`} disabled={props.busy}>
@@ -141,6 +152,26 @@ export function RowMenu(props: { automation: Automation; enabled: boolean; busy:
       <Portal>
         <Menu.Positioner>
           <Menu.Content class={MENU_CONTENT}>
+            <Menu.Item value="run" class={MENU_ITEM}>
+              <span class="text-ink-3">
+                <SkipForward {...ICON} />
+              </span>
+              Run now…
+            </Menu.Item>
+            <Menu.Item value="edit" class={MENU_ITEM}>
+              <span class="text-ink-3">
+                <Pencil {...ICON} />
+              </span>
+              Edit…
+            </Menu.Item>
+            <Show when={props.withHistory !== false}>
+              <Menu.Item value="open" class={MENU_ITEM}>
+                <span class="text-ink-3">
+                  <History {...ICON} />
+                </span>
+                Run history
+              </Menu.Item>
+            </Show>
             <Menu.Item value="toggle" class={MENU_ITEM}>
               <span class="text-ink-3">{props.enabled ? <Pause {...ICON} /> : <Play {...ICON} />}</span>
               {props.enabled ? "Pause" : "Resume"}
@@ -156,6 +187,86 @@ export function RowMenu(props: { automation: Automation; enabled: boolean; busy:
         </Menu.Positioner>
       </Portal>
     </Menu.Root>
+  )
+}
+
+/** Run now works while paused; the optional input is appended to the prompt for this run only. */
+export function RunNowDialog(props: { automation: Automation | undefined; onClose: () => void }): JSX.Element {
+  const [input, setInput] = createSignal("")
+  const [busy, setBusy] = createSignal(false)
+  const [failure, setFailure] = createSignal<string>()
+  const [kept, setKept] = createSignal<Automation>()
+  createEffect(() => {
+    if (props.automation !== undefined) setKept(props.automation)
+  })
+  resetOnOpen(
+    () => props.automation !== undefined,
+    () => {
+      setInput("")
+      setFailure(undefined)
+      setBusy(false)
+    },
+  )
+  const run = async (): Promise<void> => {
+    const target = props.automation
+    if (target === undefined || busy()) return
+    setBusy(true)
+    setFailure(undefined)
+    try {
+      await runAutomation(runNowArgs(target.id, input()))
+      props.onClose()
+    } catch (problem) {
+      setFailure(failureText(problem))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Dialog
+      open={props.automation !== undefined}
+      onClose={props.onClose}
+      title={`Run ${kept()?.title ?? "automation"} now`}
+      width="w-[520px]"
+      busy={busy()}
+      onSubmit={() => void run()}
+      footer={
+        <>
+          <Show when={kept()?.enabled === false}>
+            <span class="text-xs text-ink-3">Paused: this runs once and stays paused.</span>
+          </Show>
+          <span class="mr-auto" />
+          <button
+            type="button"
+            disabled={busy()}
+            onClick={props.onClose}
+            class="im-press h-8 rounded-sm px-3 text-sm text-ink-2 hover:text-ink disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={busy()}
+            class="im-press flex h-8 items-center gap-1.5 rounded-sm bg-primary px-3 text-sm font-medium text-on-primary disabled:opacity-40"
+          >
+            {busy() ? "Starting…" : "Run now"}
+            <span class="kbd border-on-primary/30 text-on-primary">⌘↵</span>
+          </button>
+        </>
+      }
+    >
+      <Field label="Input" optional hint="Added below the prompt for this run only">
+        <textarea
+          autofocus
+          class={`${FIELD_INPUT} min-h-[96px] resize-y py-2 font-mono text-sm leading-5`}
+          value={input()}
+          maxlength={16_384}
+          disabled={busy()}
+          placeholder="Anything this run should know: a link, a log line, a payload."
+          onInput={(event) => setInput(event.currentTarget.value)}
+        />
+      </Field>
+      <Show when={failure()}>{(text) => <div class="im-event text-sm text-failed">{text()}</div>}</Show>
+    </Dialog>
   )
 }
 
@@ -214,4 +325,73 @@ export function DeleteAutomationDialog(props: {
       </p>
     </Dialog>
   )
+}
+
+/** The dialogs a list of rows opens: new, edit, run now and delete, plus where each row action goes. */
+export function createRowDialogs(
+  actions: Pick<ReturnType<typeof createAutomationActions>, "toggle" | "remove">,
+  options: { project?: string | undefined; onDeleted?: (() => void) | undefined } = {},
+): {
+  readonly create: () => void
+  readonly handle: (automation: Automation, action: RowAction) => void
+  readonly dialogs: () => JSX.Element
+} {
+  const [open, setOpen] = createSignal(false)
+  const [editing, setEditing] = createSignal<Automation>()
+  const [running, setRunning] = createSignal<Automation>()
+  const [deleting, setDeleting] = createSignal<Automation>()
+  const handle = (automation: Automation, action: RowAction): void => {
+    switch (action) {
+      case "open":
+        navigate(`/automations/${encodeURIComponent(automation.id)}`)
+        return
+      case "run":
+        setRunning(automation)
+        return
+      case "edit":
+        setEditing(automation)
+        setOpen(true)
+        return
+      case "toggle":
+        void actions.toggle(automation)
+        return
+      case "delete":
+        setDeleting(automation)
+        return
+      default: {
+        const _exhaustive: never = action
+        return _exhaustive
+      }
+    }
+  }
+  return {
+    create: () => {
+      setEditing(undefined)
+      setOpen(true)
+    },
+    handle,
+    dialogs: () => (
+      <>
+        <AutomationDialog
+          open={open()}
+          editing={editing()}
+          project={options.project}
+          onClose={() => setOpen(false)}
+          onSaved={(saved) => {
+            if (editing() === undefined && saved.triggers.some((trigger) => trigger.kind === "webhook")) handle(saved, "open")
+          }}
+        />
+        <RunNowDialog automation={running()} onClose={() => setRunning(undefined)} />
+        <DeleteAutomationDialog
+          automation={deleting()}
+          onClose={() => setDeleting(undefined)}
+          onDelete={async (automation) => {
+            const done = await actions.remove(automation)
+            if (done) options.onDeleted?.()
+            return done
+          }}
+        />
+      </>
+    ),
+  }
 }
