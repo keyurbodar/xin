@@ -121,6 +121,7 @@ describe("the home stream and the read cache", () => {
       () => undefined,
       () => undefined,
       () => undefined,
+      () => undefined,
     )
     streams.subscribe("home", { value: () => undefined, delta: () => undefined })
     streams.open()
