@@ -48,7 +48,7 @@ flowchart LR
 - [10 Time](./architecture/10-time.md): schedules as pi tasks and the single owned timer.
 - [11 Failures and cost](./architecture/11-failures-and-cost.md): the failure matrix and the DO row-cost model.
 - [12 Market](./architecture/12-market.md): runtime bundles, contribution rows, discovery and updates on the free plan.
-- [13 Always-on](./architecture/13-always-on.md): the ambient clock, manual compaction, the loop guard, scheduled tasks and goals.
+- [13 Always-on](./architecture/13-always-on.md): the ambient clock, manual compaction, the loop guard, automations and goals.
 - [14 Client](./architecture/14-client.md): the web client, its design source, screens, ops and motion.
 - [15 Web](./architecture/15-web.md): public web search and page fetch as built-in tools.
 - [16 Git](./architecture/16-git.md): read-only GitHub history tools scoped to a project.

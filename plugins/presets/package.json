@@ -39,7 +39,7 @@
         "config": {
           "default": "full",
           "threadOmits": [
-            "tool-schedules",
+            "tool-automations",
             "tool-goals"
           ]
         }
