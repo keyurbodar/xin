@@ -1,9 +1,10 @@
 import type { ThreadSettled } from "../../src/contracts/threads.ts"
 import type { Context } from "../../src/kernel/index.ts"
+import { captainsHome } from "./captains.ts"
 import { create } from "./orchestrator.ts"
 
 export const name = "orchestrator"
-export const inject = ["pi", "harness", "ops", "clock", "intake", "watchdog", "models"]
+export const inject = ["pi", "harness", "ops", "clock", "intake", "watchdog", "models", "wire"]
 
 function emitSettled(ctx: Context, event: ThreadSettled): void {
   const args = ["thread/settled", event]
@@ -30,8 +31,10 @@ export function apply(ctx: Context): void {
     currentModels: () => ctx.pi.currentModels(),
     registry: ctx.pi.registry,
     settled: (event) => emitSettled(ctx, event),
+    publishHome: () => ctx.wire.publishHome(),
   })
   ctx.provide("threads", built.threads)
   ctx.pi.install(built.extension)
   for (const op of built.ops) ctx.ops.define(op)
+  ctx.wire.home("captains", () => captainsHome(ctx.harness))
 }
