@@ -56,7 +56,7 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
         <NavRow label="New thread" disabled={routeProject() === undefined} onClick={openNewThread}>
           <SquarePen {...ICON} />
         </NavRow>
-        <NavRow label="Schedules" active={first() === "schedules"} onClick={() => navigate("/schedules")}>
+        <NavRow label="Automations" active={first() === "automations"} onClick={() => navigate("/automations")}>
           <CalendarClock {...ICON} />
         </NavRow>
         <NavRow label="Extensions" active={first() === "extensions"} onClick={() => navigate("/extensions")}>

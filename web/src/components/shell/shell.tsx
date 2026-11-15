@@ -11,9 +11,10 @@ import { ICON_BUTTON } from "./menu.ts"
 import { ProjectScreen } from "../../screens/project.tsx"
 import { ExtensionsScreen } from "../../screens/extensions.tsx"
 import { SettingsScreen } from "../../screens/settings.tsx"
-import { SchedulesScreen } from "../../screens/schedules.tsx"
+import { AutomationsScreen } from "../../screens/automations.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
+import { Toasts } from "../ui/toast.tsx"
 
 export function Shell(): JSX.Element {
   const first = () => route().parts[0]
@@ -109,8 +110,8 @@ export function Shell(): JSX.Element {
                   <Match when={first() === "settings"}>
                     <SettingsScreen />
                   </Match>
-                  <Match when={first() === "schedules"}>
-                    <SchedulesScreen />
+                  <Match when={first() === "automations"}>
+                    <AutomationsScreen />
                   </Match>
                 </Switch>
               </section>
@@ -123,6 +124,7 @@ export function Shell(): JSX.Element {
       <NewProjectDialog open={first() === "new"} onClose={() => navigate("/")} />
       <NewThreadDialog />
       <CommandPalette open={palette()} onClose={() => setPalette(false)} />
+      <Toasts />
     </div>
   )
 }
