@@ -2,10 +2,12 @@ import { createSignal, Match, onMount, Show, Switch, type JSX } from "solid-js"
 import { probe, setToken, token } from "./lib/auth.ts"
 import { connect, connectionState, reauthorize } from "./state/connection.ts"
 import { subscribeHome } from "./state/home.ts"
+import { subscribeCaptains } from "./state/captains.ts"
 import { navigate, route } from "./lib/router.ts"
 import { Shell } from "./components/shell/shell.tsx"
 import { BootLoader } from "./components/ui/loaders.tsx"
 import { SignIn } from "./screens/signin.tsx"
+import { readProgress } from "./lib/onboarding.ts"
 import { WelcomeScreen } from "./screens/welcome.tsx"
 import { BootFailedScreen } from "./screens/boot-failed.tsx"
 import { cutOff, OfflineScreen } from "./screens/offline.tsx"
@@ -34,7 +36,9 @@ export function App(): JSX.Element {
       return
     }
     entered = true
-    subscribeHome(connect())
+    const streams = connect()
+    subscribeHome(streams)
+    subscribeCaptains(streams)
     // A push only goes out when no socket is open, so hearing one means this tab should try again now.
     navigator.serviceWorker?.addEventListener("message", (event: MessageEvent) => {
       if (isPushMessage(event.data) && connectionState() !== "open") reauthorize()
@@ -68,7 +72,13 @@ export function App(): JSX.Element {
   return (
     <Switch fallback={<div class="grid h-full place-items-center"><BootLoader label="Starting Ingle" /></div>}>
       <Match when={gate().kind === "signin"}>
-        <SignIn onSignedIn={() => void start()} />
+        <SignIn
+          onSignedIn={async () => {
+            await start()
+            const progress = await readProgress().catch(() => undefined)
+            if (progress?.captain === undefined) navigate("/welcome")
+          }}
+        />
       </Match>
       <Match when={bootFailure()}>
         {(failure) => <BootFailedScreen failure={failure()} onRecovered={() => void start()} onSignedOut={signOut} />}

@@ -297,7 +297,7 @@ describe("a delegated thread, in what its first request bills", () => {
     })
 
     expect(first.promptBytes, "the thread made no request").toBeDefined()
-    expect(first.tools).not.toContain("schedule_create")
+    expect(first.tools).not.toContain("automation_save")
     expect(first.tools).not.toContain("create_goal")
     expect(first.tools).not.toContain("issue")
     expect(first.tools).toContain("issue_comment")

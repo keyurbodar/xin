@@ -1,0 +1,21 @@
+{
+  "name": "ingle-plugin-automations",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Automations: stored prompts that start an agent run when a cron schedule, a one-time trigger or a webhook fires.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "automations": {
+        "module": "./index.ts",
+        "title": "Automations",
+        "description": "Stored prompts that start an agent run when a cron schedule, a one-time trigger or a webhook fires, with webhook coalescing and run history."
+      },
+      "tool-automations": {
+        "module": "./tools.ts",
+        "title": "Automations tools",
+        "description": "The model-facing create, list, update and trigger tools for automations. Disable to hide them; automations keep running."
+      }
+    }
+  }
+}
