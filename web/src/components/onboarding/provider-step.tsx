@@ -1,6 +1,7 @@
 import { createSignal, For, Show, type JSX } from "solid-js"
 import { Box, Check, KeyRound } from "lucide-solid"
-import { Field, INPUT_BOX, PrimaryButton, QuietButton, Spinner, StatusLine, StepCard, TextInput } from "./controls.tsx"
+import { Spinner } from "../ui/loaders.tsx"
+import { Field, INPUT_BOX, PrimaryButton, QuietButton, StatusLine, StepCard, TextInput } from "./controls.tsx"
 import {
   connectProvider,
   forgetProvider,
@@ -208,7 +209,7 @@ export function ProviderStep(): JSX.Element {
           />
           <Show when={busy()}>
             <span class="text-ink-3">
-              <Spinner />
+              <Spinner size={14} />
             </span>
           </Show>
           <Show when={saved() !== undefined && !busy()}>

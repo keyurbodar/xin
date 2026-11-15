@@ -4,8 +4,8 @@ import { visualState } from "../../lib/status.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { parseHistoryPage, type AnsweredView, type EntryView, type RequestRow, type Snapshot } from "../../state/conversation.ts"
 import { openRequests, respondToQuestion } from "../../state/requests.ts"
-import { Skullet } from "../ui/skeleton.tsx"
-import { Transcript, TranscriptSkeleton } from "./transcript.tsx"
+import { Loading, ThreadSkeleton } from "../ui/skeleton.tsx"
+import { Transcript } from "./transcript.tsx"
 import { SteerComposer } from "./composer.tsx"
 import { OpenQuestionCard } from "./cards.tsx"
 
@@ -57,7 +57,7 @@ export function ThreadConversation(props: {
 
   return (
     <div class="flex min-h-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
-      <Skullet loading={props.snapshot === undefined} sample={() => <TranscriptSkeleton />} label="Loading thread">
+      <Loading when={props.snapshot === undefined} skeleton={<ThreadSkeleton />} label="Loading thread">
         <Show when={props.snapshot}>
           {(value) => (
             <Transcript
@@ -77,7 +77,7 @@ export function ThreadConversation(props: {
             />
           )}
         </Show>
-      </Skullet>
+      </Loading>
       <div class="mx-auto w-full max-w-[var(--w-column)]">
         <For each={requests()}>
           {(request) => (
@@ -95,7 +95,7 @@ export function ThreadConversation(props: {
         <SteerComposer
           threadTitle={props.thread.title}
           busy={busy()}
-          waiting={state() === "waiting"}
+          waiting={state() === "needs"}
           onSend={async (text) => {
             await cmd("thread.send", { threadId: props.thread.id, text, mode: busy() ? "steer" : "queue" })
           }}

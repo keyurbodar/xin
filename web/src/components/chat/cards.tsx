@@ -1,22 +1,24 @@
 import { For, Show, createSignal, type JSX } from "solid-js"
 import type { BatchRow, FailureData, RequestRow, ToolCallView } from "../../state/conversation.ts"
 import type { ThreadSummary } from "../../state/home.ts"
-import { STATE_WORD, visualState, type VisualState } from "../../lib/status.ts"
+import { STATE_WORD, visualState, type SignalState } from "../../lib/status.ts"
 import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
+import { Signal } from "../ui/signal.tsx"
 import { Icon } from "../ui/icon.tsx"
 import { Markdown } from "./markdown.tsx"
-import { Button, Spinner } from "./ui.tsx"
+import { Button } from "./ui.tsx"
+import { Spinner } from "../ui/loaders.tsx"
+import { MorphIcon } from "../ui/morph-icon.tsx"
 
 function argString(args: Record<string, unknown>, key: string): string | undefined {
   const value = args[key]
   return typeof value === "string" ? value : undefined
 }
 
-function threadTone(state: VisualState): string {
+function threadTone(state: SignalState): string {
   switch (state) {
-    case "waiting":
+    case "needs":
       return "text-primary-ink"
     case "failed":
       return "text-failed"
@@ -39,13 +41,13 @@ function excerpt(text: string, limit = 120): string {
   return flat.length <= limit ? flat : `${flat.slice(0, limit - 1)}…`
 }
 
-function threadLine(thread: ThreadSummary | undefined, state: VisualState): string {
+function threadLine(thread: ThreadSummary | undefined, state: SignalState): string {
   if (thread === undefined) return STATE_WORD[state]
   switch (state) {
     case "done":
     case "failed":
       return thread.result !== undefined && thread.result !== "" ? excerpt(thread.result) : STATE_WORD[state]
-    case "cancelled":
+    case "idle":
       return STATE_WORD[state]
     default:
       return thread.statusLine !== undefined && thread.statusLine !== "" ? thread.statusLine : STATE_WORD[state]
@@ -60,7 +62,7 @@ export function ThreadRow(props: {
   flush?: boolean
   index?: number
 }): JSX.Element {
-  const state = (): VisualState => (props.thread === undefined ? "queued" : visualState(props.thread.status))
+  const state = (): SignalState => (props.thread === undefined ? "queued" : visualState(props.thread.status))
   return (
     <button
       type="button"
@@ -69,12 +71,12 @@ export function ThreadRow(props: {
       class="flex w-full items-start gap-2.5 bg-card px-2.5 py-2 text-left hover:bg-secondary disabled:cursor-default"
       classList={{
         "border-b border-line-1 last:border-b-0": props.flush === true,
-        "border border-primary/40": props.flush !== true && state() === "waiting",
-        "border border-line-2": props.flush !== true && state() !== "waiting",
+        "border border-primary/40": props.flush !== true && state() === "needs",
+        "border border-line-2": props.flush !== true && state() !== "needs",
         "rounded-sm": props.flush !== true,
       }}
     >
-      <StatusGlyph state={state()} size={16} class="mt-px" />
+      <Signal state={state()} size={16} class="mt-px" />
       <span class="min-w-0 flex-1">
         <span class="flex items-baseline gap-2">
           <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.title}</span>
@@ -113,7 +115,7 @@ export function ThreadFan(props: {
     })
 
   const tally = (): string => {
-    const counts = new Map<VisualState, number>()
+    const counts = new Map<SignalState, number>()
     for (const row of rows()) {
       const state = row.thread === undefined ? "queued" : visualState(row.thread.status)
       counts.set(state, (counts.get(state) ?? 0) + 1)
@@ -172,7 +174,7 @@ export function ThreadFan(props: {
 
 export function ReportCard(props: { row: BatchRow; onOpenThread: (id: number) => void }): JSX.Element {
   const [expanded, setExpanded] = createSignal(false)
-  const state = (): VisualState => visualState(props.row.status === "" ? "completed" : props.row.status)
+  const state = (): SignalState => visualState(props.row.status === "" ? "completed" : props.row.status)
   const threadId = (): number | undefined => {
     const id = Number(props.row.threadId)
     return Number.isInteger(id) && id > 0 ? id : undefined
@@ -182,7 +184,7 @@ export function ReportCard(props: { row: BatchRow; onOpenThread: (id: number) =>
   return (
     <div class="im-event max-w-[560px] overflow-hidden rounded-md border border-line-2 bg-card">
       <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5">
-        <StatusGlyph state={state()} size={16} />
+        <Signal state={state()} size={16} />
         <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.row.title}</span>
         <span class="mono-meta shrink-0">{STATE_WORD[state()]}</span>
       </div>
@@ -203,7 +205,7 @@ export function ReportCard(props: { row: BatchRow; onOpenThread: (id: number) =>
         <Show when={long()}>
           <Button variant="ghost" onClick={() => setExpanded((value) => !value)}>
             {expanded() ? "Show less" : "Show all"}
-            <Icon name={expanded() ? "chevron-down" : "chevron-right"} size={14} />
+            <MorphIcon kind="chevron" on={expanded()} size={14} />
           </Button>
         </Show>
         <span class="ml-auto mono-meta">{props.row.status === "" ? "report" : props.row.status}</span>
@@ -221,7 +223,7 @@ export function QuestionInboundCard(props: {
     const id = Number(props.row.threadId)
     return Number.isInteger(id) && id > 0 ? id : undefined
   }
-  const state = (): VisualState => (props.thread === undefined ? "waiting" : visualState(props.thread.status))
+  const state = (): SignalState => (props.thread === undefined ? "needs" : visualState(props.thread.status))
   const label = (): string => {
     if (props.thread === undefined) return "Needs your answer"
     if (props.thread.status === "completed") return "Answered"
@@ -230,15 +232,15 @@ export function QuestionInboundCard(props: {
   return (
     <div
       class="max-w-[560px] overflow-hidden rounded-md border bg-card"
-      classList={{ "border-primary/40": state() === "waiting", "border-line-2": state() !== "waiting" }}
+      classList={{ "border-primary/40": state() === "needs", "border-line-2": state() !== "needs" }}
     >
       <div
         class="flex items-center gap-2.5 border-b px-3.5 py-2.5"
-        classList={{ "border-primary/40 bg-primary-soft": state() === "waiting", "border-line-1": state() !== "waiting" }}
+        classList={{ "border-primary/40 bg-primary-soft": state() === "needs", "border-line-1": state() !== "needs" }}
       >
-        <StatusGlyph state={state()} size={16} />
+        <Signal state={state()} size={16} />
         <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.row.title}</span>
-        <span class="text-2xs" classList={{ "text-primary-ink": state() === "waiting", "text-ink-3": state() !== "waiting" }}>
+        <span class="text-2xs" classList={{ "text-primary-ink": state() === "needs", "text-ink-3": state() !== "needs" }}>
           {label()}
         </span>
       </div>
@@ -251,7 +253,7 @@ export function QuestionInboundCard(props: {
             </Button>
           )}
         </Show>
-        <Show when={state() === "waiting"}>
+        <Show when={state() === "needs"}>
           <span class="ml-auto mono-meta">Choices arrive on the thread card</span>
         </Show>
       </div>
@@ -260,7 +262,7 @@ export function QuestionInboundCard(props: {
 }
 
 export function JobCard(props: { row: BatchRow; onOpenThread: (id: number) => void }): JSX.Element {
-  const state = (): VisualState => visualState(props.row.status === "" ? "working" : props.row.status)
+  const state = (): SignalState => visualState(props.row.status === "" ? "working" : props.row.status)
   const threadId = (): number | undefined => {
     const id = Number(props.row.threadId)
     return Number.isInteger(id) && id > 0 ? id : undefined
@@ -268,7 +270,7 @@ export function JobCard(props: { row: BatchRow; onOpenThread: (id: number) => vo
   return (
     <div class="max-w-[560px] overflow-hidden rounded-md border border-line-2 bg-card">
       <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2.5">
-        <StatusGlyph state={state()} size={16} />
+        <Signal state={state()} size={16} />
         <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.row.title}</span>
         <span class="mono-meta shrink-0">{STATE_WORD[state()]}</span>
       </div>
@@ -306,7 +308,7 @@ export function FailureCard(props: { failure: FailureData; onRetry: () => Promis
   return (
     <div class="overflow-hidden rounded-md border border-failed/40 bg-card">
       <div class="flex items-center gap-2.5 border-b border-failed/30 px-3.5 py-2.5">
-        <StatusGlyph state="failed" size={16} />
+        <Signal state="failed" size={16} />
         <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">The turn failed</span>
         <span class="mono-meta shrink-0">{props.failure.reason}</span>
       </div>
@@ -316,7 +318,7 @@ export function FailureCard(props: { failure: FailureData; onRetry: () => Promis
       <div class="flex items-center gap-2 px-3.5 py-2">
         <Button onClick={() => void retry()} disabled={retrying()}>
           <Show when={retrying()} fallback={<Icon name="refresh" size={14} />}>
-            <Spinner />
+            <Spinner size={14} />
           </Show>
           Retry
         </Button>
@@ -358,7 +360,7 @@ export function OpenQuestionCard(props: {
   return (
     <div class="overflow-hidden rounded-md border border-primary/40 bg-card">
       <div class="flex items-center gap-2.5 border-b border-primary/40 bg-primary-soft px-3 py-2.5">
-        <StatusGlyph state="waiting" size={16} />
+        <Signal state="needs" size={16} />
         <span class="min-w-0 flex-1 truncate text-base font-medium text-ink">{props.title}</span>
         <span class="text-2xs text-primary-ink">{ago(props.request.askedAt)}</span>
       </div>
@@ -399,7 +401,7 @@ export function OpenQuestionCard(props: {
             aria-label="Send answer"
           >
             <Show when={sending()} fallback={<Icon name="arrow-up" size={14} />}>
-              <Spinner />
+              <Spinner size={14} />
             </Show>
           </button>
         </div>
@@ -422,7 +424,7 @@ export function AnsweredQuestionCard(props: {
   return (
     <div class="overflow-hidden rounded-md border border-line-2 bg-card">
       <div class="flex items-center gap-2.5 border-b border-line-1 px-3 py-2">
-        <StatusGlyph state="done" size={16} />
+        <Signal state="done" size={16} />
         <span class="min-w-0 flex-1 truncate text-sm text-ink-2">{props.question}</span>
         <span class="mono-meta shrink-0">answered · {ago(props.answeredAt)}</span>
       </div>

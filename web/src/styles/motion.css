@@ -57,15 +57,7 @@
   animation: im-shake var(--dur-shake) var(--ease-in-out);
 }
 
-@utility breath {
-  animation: im-breathe var(--loop-blink) ease-in-out infinite;
-}
-
-@utility pulse {
-  animation: im-breathe var(--loop-breathe) ease-in-out infinite;
-}
-
-:root[data-visibility="hidden"] :is(.breath, .pulse, .spinner-arc, .animate-pulse, .animate-spin) {
+:root[data-visibility="hidden"] .animate-pulse {
   animation-play-state: paused;
 }
 
@@ -91,11 +83,7 @@
   }
 
   .shake,
-  .breath,
-  .pulse,
-  .spinner-arc,
-  .animate-pulse,
-  .animate-spin {
+  .animate-pulse {
     animation: none;
   }
 }
@@ -122,11 +110,7 @@
   }
 
   .shake,
-  .breath,
-  .pulse,
-  .spinner-arc,
-  .animate-pulse,
-  .animate-spin {
+  .animate-pulse {
     animation: none;
   }
 }
