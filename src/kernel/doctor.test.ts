@@ -78,12 +78,23 @@ describe("plugin doctor", () => {
     expect(issue(unpermitted, "permission")).toMatchObject({ permission: "secrets", service: "secrets" })
   })
 
-  it("refuses a row's reach past its permissions: a secret read, a nested inject, and acting as the owner", async () => {
+  it("refuses every route a row has past its permissions to a guarded service or the owner's authority", async () => {
     const reply = await cmd(fresh(), "k-reach-1", "k.reach")
     expect(reply.result).toMatchObject({
       secret: expect.stringContaining("without declaring the secrets permission"),
+      alias: expect.stringContaining("without declaring the secrets permission"),
+      reflect: expect.stringContaining("without declaring the runtime permission"),
+      store: expect.stringContaining("without declaring the secrets permission"),
+      set: expect.stringContaining("without declaring the secrets permission"),
       inject: expect.stringContaining("without declaring the storage permission"),
       owner: expect.stringContaining("may run ops only as an agent"),
+      commands: "no commands",
+      defined: "no defined",
+      sockets: "no sockets",
+      rootSecret: expect.stringContaining("without declaring the secrets permission"),
+      rootHost: expect.stringContaining("without declaring the runtime permission"),
+      rootOwner: expect.stringContaining("may run ops only as an agent"),
+      frame: expect.stringContaining("may not deliver socket frames"),
     })
   })
 
