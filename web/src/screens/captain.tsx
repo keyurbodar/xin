@@ -11,6 +11,7 @@ import { presets, prompts } from "../state/extensions.ts"
 import { refreshRequests } from "../state/requests.ts"
 import { openThreadTab, paneOpen, projectTabs, pruneThreadTabs, sidebarHidden, toggleSidebar, wideShell } from "../state/tabs.ts"
 import { ICON_BUTTON } from "../components/shell/menu.ts"
+import { createPresence } from "../components/shell/presence.ts"
 import { ConversationTabs, type ConversationAction } from "../components/shell/conversation-tabs.tsx"
 import { SideThreadDialog } from "../components/shell/side-thread.tsx"
 import { ThreadConversation } from "../components/chat/panel.tsx"
@@ -34,6 +35,7 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
   const [settingsOpen, setSettingsOpen] = createSignal(false)
   const [sideOpen, setSideOpen] = createSignal(false)
   const [expanded, setExpanded] = createSignal(false)
+  const sheet = createPresence(() => paneOpen() && !docked() && !expanded(), 180)
   const base = (): string => `/c/${props.captain.alias}`
   const threads = createMemo(() => new Map(projectThreads(props.space).map((thread) => [thread.id, thread])))
   const thread = (): ThreadSummary | undefined => {
@@ -67,6 +69,18 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
     openThreadTab(props.space.id, id)
     navigate(`${base()}/t/${id}`)
   }
+  const paneShown = createMemo(() => paneOpen() || sheet.mounted())
+  const pane = createMemo(() =>
+    paneShown() ? (
+      <ProjectPane
+        project={props.space}
+        captain={props.captain}
+        expanded={expanded()}
+        onExpand={setExpanded}
+        onOpenThread={openThread}
+      />
+    ) : undefined,
+  )
   return (
     <div class="relative flex min-h-0 flex-1 gap-2">
       <Show when={!(expanded() && paneOpen())}>
@@ -95,35 +109,22 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
           </div>
         </section>
       </Show>
-      <Show when={paneOpen()}>
-        {(_open) => {
-          const pane = (
-            <ProjectPane
-              project={props.space}
-              captain={props.captain}
-              expanded={expanded()}
-              onExpand={setExpanded}
-              onOpenThread={openThread}
-            />
-          )
-          return (
-            <Show
-              when={docked() || expanded()}
-              fallback={
-                <div class="drawer-in absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay">
-                  {pane}
-                </div>
-              }
-            >
-              <div
-                class="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-lg bg-panel shadow-ring"
-                classList={{ "w-[var(--w-pane)]": !expanded(), "flex-1": expanded() }}
-              >
-                {pane}
-              </div>
-            </Show>
-          )
-        }}
+      <Show when={paneOpen() && (docked() || expanded())}>
+        <div
+          class="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-lg bg-panel shadow-ring"
+          classList={{ "w-[var(--w-pane)]": !expanded(), "flex-1": expanded() }}
+        >
+          {pane()}
+        </div>
+      </Show>
+      <Show when={sheet.mounted()}>
+        <div
+          class="im-sheet absolute inset-y-0 right-0 z-40 flex w-[min(var(--w-pane),100%)] flex-col overflow-hidden rounded-lg bg-panel shadow-overlay"
+          classList={{ "pointer-events-none": sheet.leaving() }}
+          data-state={sheet.leaving() ? "closed" : "open"}
+        >
+          {pane()}
+        </div>
       </Show>
       <CaptainSettings captain={props.captain} open={settingsOpen()} onClose={() => setSettingsOpen(false)} />
       <SideThreadDialog

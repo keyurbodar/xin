@@ -48,7 +48,7 @@ function CrewRow(props: { member: CrewMember; at: number; onOpen: (id: number) =
               <span class="shrink-0 font-mono text-2xs text-icon">run {props.member.run}</span>
             </Show>
           </span>
-          <span class="truncate text-xs text-ink-3" classList={{ shimmer: state() === "working" }}>
+          <span class="truncate text-xs text-ink-3" classList={{ "im-shimmer": state() === "working" }}>
             {props.member.statusLine ?? STATE_WORD[state()]}
           </span>
           <Show when={props.member.report}>
