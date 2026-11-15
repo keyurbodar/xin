@@ -1,8 +1,8 @@
-import { createResource, createSignal, onMount, Show, type JSX } from "solid-js"
+import { createResource, createSignal, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { cmd } from "../../lib/api.ts"
 import { setToken, token } from "../../lib/auth.ts"
 import { navigate } from "../../lib/router.ts"
-import { reauthorize } from "../../state/connection.ts"
+import { holdConnection, reauthorize, releaseConnection } from "../../state/connection.ts"
 import { errorMessage } from "../../state/extensions.ts"
 import { owner, ownerName, rotateSession } from "../../state/settings.ts"
 import { Markdown } from "../chat/markdown.tsx"
@@ -54,6 +54,7 @@ export function Profile(): JSX.Element {
     setBusy(true)
     setError(undefined)
     setNote(undefined)
+    if (signOut) holdConnection()
     try {
       const next = await rotateSession()
       setFresh(next)
@@ -69,6 +70,7 @@ export function Profile(): JSX.Element {
       reauthorize()
       setNote("This browser is on the new token. Every other device is signed out.")
     } catch (failure: unknown) {
+      if (signOut) releaseConnection()
       setError(errorMessage(failure))
     } finally {
       setBusy(false)
@@ -85,6 +87,12 @@ export function Profile(): JSX.Element {
     setRevealed(false)
     setNote("Signed in with the new token.")
   }
+
+  // Leaving Settings while a released token is still on screen would strand this tab on a retired token with the
+  // replacement gone, so it adopts the replacement instead; the owner can still sign this browser out from here.
+  onCleanup(() => {
+    if (released() && fresh() !== undefined) adopt()
+  })
 
   const startEditing = (): void => {
     setDraft(written())
