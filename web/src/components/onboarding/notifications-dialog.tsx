@@ -1,6 +1,7 @@
 import { createEffect, For, on, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { CircleAlert, CircleCheck, MessageSquare } from "lucide-solid"
-import { Spinner, StatusLine } from "./controls.tsx"
+import { Spinner } from "../ui/loaders.tsx"
+import { StatusLine } from "./controls.tsx"
 import { createPresence } from "../shell/presence.ts"
 import { trapTab } from "../../lib/focus.ts"
 import { enablePush, notificationsOpen, onboardingPush, openNotifications } from "../../state/onboarding.ts"
@@ -143,7 +144,7 @@ function Panel(props: { closing: boolean }): JSX.Element {
               class="im-press inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 text-base font-medium text-on-accent enabled:hover:brightness-110 disabled:opacity-60"
             >
               <Show when={busy()}>
-                <Spinner />
+                <Spinner size={14} />
               </Show>
               Turn on
             </button>

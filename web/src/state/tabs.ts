@@ -1,14 +1,16 @@
 import { createSignal, untrack } from "solid-js"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
-import { reinsert, type RemovedTab } from "../lib/tab-order.ts"
+import { closeTabs, forgetTabs, moveTab, openTab, openTabs, reopenTabs, type TabOrder } from "../lib/tab-order.ts"
 
 /** A pane view id from the view registry in components/pane/views.tsx; "overview" is always open. */
 export type PaneView = string
 
 export const OVERVIEW: PaneView = "overview"
 
+/** `threads` is the tab order with closed placeholders in it; `closed` lives in memory only, so a reload drops them. */
 type ProjectTabs = {
   readonly threads: readonly number[]
+  readonly closed: readonly number[]
   readonly pane: readonly PaneView[]
   readonly view: PaneView
 }
@@ -20,7 +22,7 @@ type Layout = {
 }
 
 const KEY = "ingle.tabs"
-const EMPTY: ProjectTabs = { threads: [], pane: [], view: OVERVIEW }
+const EMPTY: ProjectTabs = { threads: [], closed: [], pane: [], view: OVERVIEW }
 
 function projectTabsOf(value: unknown): ProjectTabs {
   const record = recordOf(value)
@@ -34,7 +36,7 @@ function projectTabsOf(value: unknown): ProjectTabs {
     return view === undefined || view === OVERVIEW ? [] : [view]
   })
   const view = strOf(record.view) ?? OVERVIEW
-  return { threads: [...new Set(threads)], pane: [...new Set(pane)], view: pane.includes(view) ? view : OVERVIEW }
+  return { threads: [...new Set(threads)], closed: [], pane: [...new Set(pane)], view: pane.includes(view) ? view : OVERVIEW }
 }
 
 function read(): Layout {
@@ -58,7 +60,22 @@ function update(change: (current: Layout) => Layout): void {
   const next = change(current)
   if (JSON.stringify(next) === JSON.stringify(current)) return
   setLayout(next)
-  localStorage.setItem(KEY, JSON.stringify(next))
+  const projects = Object.fromEntries(
+    Object.entries(next.projects).map(([id, tabs]) => {
+      const { closed: _closed, ...stored } = tabs
+      return [id, { ...stored, threads: openTabs(orderOf(tabs)) }]
+    }),
+  )
+  localStorage.setItem(KEY, JSON.stringify({ ...next, projects }))
+}
+
+const orderOf = (tabs: ProjectTabs): TabOrder => ({ order: tabs.threads, closed: tabs.closed })
+
+function updateOrder(projectId: string, change: (current: TabOrder) => TabOrder): void {
+  updateProject(projectId, (tabs) => {
+    const next = change(orderOf(tabs))
+    return { ...tabs, threads: next.order, closed: next.closed }
+  })
 }
 
 function updateProject(projectId: string, change: (current: ProjectTabs) => ProjectTabs): void {
@@ -72,30 +89,39 @@ export function projectTabs(projectId: string): ProjectTabs {
   return layout().projects[projectId] ?? EMPTY
 }
 
+/** The open thread tabs in order, without closed placeholders. */
+export function openThreadTabs(projectId: string): readonly number[] {
+  return openTabs(orderOf(projectTabs(projectId)))
+}
+
 export function openThreadTab(projectId: string, threadId: number): void {
-  updateProject(projectId, (tabs) => (tabs.threads.includes(threadId) ? tabs : { ...tabs, threads: [...tabs.threads, threadId] }))
+  updateOrder(projectId, (tabs) => openTab(tabs, threadId))
 }
 
 export function closeThreadTabs(projectId: string, threadIds: readonly number[]): void {
-  updateProject(projectId, (tabs) => ({ ...tabs, threads: tabs.threads.filter((id) => !threadIds.includes(id)) }))
+  updateOrder(projectId, (tabs) => closeTabs(tabs, threadIds))
 }
 
-/** Reopens closed tabs at their old indexes; every other tab stays where it is now. */
-export function reopenThreadTabs(projectId: string, removed: readonly RemovedTab[]): void {
-  updateProject(projectId, (tabs) => ({ ...tabs, threads: reinsert(tabs.threads, removed) }))
+export function reopenThreadTabs(projectId: string, threadIds: readonly number[]): void {
+  updateOrder(projectId, (tabs) => reopenTabs(tabs, threadIds))
+}
+
+/** Ends the undo window of closed tabs: their placeholders leave the order. */
+export function forgetThreadTabs(projectId: string, threadIds: readonly number[]): void {
+  updateOrder(projectId, (tabs) => forgetTabs(tabs, threadIds))
 }
 
 export function moveThreadTab(projectId: string, threadId: number, index: number): void {
-  updateProject(projectId, (tabs) => {
-    const rest = tabs.threads.filter((id) => id !== threadId)
-    const at = Math.max(0, Math.min(rest.length, index))
-    return { ...tabs, threads: [...rest.slice(0, at), threadId, ...rest.slice(at)] }
-  })
+  updateOrder(projectId, (tabs) => moveTab(tabs, threadId, index))
 }
 
 /** Drops tabs whose thread the home no longer lists, so a deleted thread never leaves a dead tab behind. */
 export function pruneThreadTabs(projectId: string, live: ReadonlySet<number>): void {
-  updateProject(projectId, (current) => ({ ...current, threads: current.threads.filter((id) => live.has(id)) }))
+  updateProject(projectId, (current) => ({
+    ...current,
+    threads: current.threads.filter((id) => live.has(id)),
+    closed: current.closed.filter((id) => live.has(id)),
+  }))
 }
 
 export function showPaneView(projectId: string, view: PaneView): void {

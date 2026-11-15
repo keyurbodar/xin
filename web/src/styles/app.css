@@ -4,15 +4,10 @@
 @import "./tokens.css";
 @import "./ingle-motion.css";
 @import "./motion.css";
+@import "./indicators.css";
 
 @layer base {
   :root {
-    --skullet-base: var(--color-card);
-    --skullet-highlight: var(--color-secondary);
-    --skullet-radius: var(--radius-sm);
-    --skullet-animation: pulse;
-    --skullet-speed: slow;
-
     --sh-keyword: var(--color-primary-ink);
     --sh-string: var(--color-diff-add);
     --sh-property: var(--color-primary-ink);
@@ -623,19 +618,6 @@
   100% {
     transform: translateY(3px);
     opacity: 0;
-  }
-}
-
-/* I1: a card or a button gets the plain arc, a quarter turn every 0.8s. */
-.spinner-arc {
-  transform-box: view-box;
-  transform-origin: center;
-  animation: spinner-arc 0.8s linear infinite;
-}
-
-@keyframes spinner-arc {
-  to {
-    transform: rotate(360deg);
   }
 }
 

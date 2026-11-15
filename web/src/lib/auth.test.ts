@@ -23,3 +23,8 @@ test("probe tells ok, a wrong token, a home that cannot boot and no answer apart
   answer(() => Promise.reject(new TypeError("network down")))
   expect(await probe("t")).toEqual({ kind: "unreachable" })
 })
+
+test("only a 503 means the home cannot boot; a 500 that names a failure is still no answer", async () => {
+  answer(() => new Response(JSON.stringify({ error: "internal", failure: "worker threw" }), { status: 500 }))
+  expect(await probe("t")).toEqual({ kind: "unreachable" })
+})

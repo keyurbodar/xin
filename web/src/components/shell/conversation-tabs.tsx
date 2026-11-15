@@ -11,7 +11,7 @@ import {
   closeThreadTabs,
   moveThreadTab,
   paneOpen,
-  projectTabs,
+  forgetThreadTabs,
   reopenThreadTabs,
   setPaneOpen,
   sidebarHidden,
@@ -19,9 +19,9 @@ import {
   wideShell,
 } from "../../state/tabs.ts"
 import { ProjectMark } from "../chat/project-glyph.tsx"
-import { StatusGlyph } from "../ui/status-glyph.tsx"
+import { Signal } from "../ui/signal.tsx"
 import { showUndoToast } from "../../state/toasts.ts"
-import { nearestKept, removedAt } from "../../lib/tab-order.ts"
+import { nearestKept } from "../../lib/tab-order.ts"
 import { openNewThread } from "./new-thread.tsx"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from "./menu.ts"
 
@@ -97,7 +97,6 @@ export function ConversationTabs(props: {
     const first = closingTabs[0]
     if (first === undefined) return
     const { id: projectId, slug } = props.project
-    const removed = removedAt(projectTabs(projectId).threads, ids)
     const order = props.threads.map((thread) => thread.id)
     const active = props.activeThreadId
     const activeClosed = active !== undefined && ids.includes(active)
@@ -112,10 +111,11 @@ export function ConversationTabs(props: {
         title: closingTabs.length === 1 ? "Closed tab" : `Closed ${closingTabs.length} tabs`,
         detail: closingTabs.length === 1 ? `“${first.title}”` : undefined,
         undo: () => {
-          reopenThreadTabs(projectId, removed)
+          reopenThreadTabs(projectId, ids)
           if (activeClosed) navigate(`/p/${slug}/t/${active}`)
           focusTab(activeClosed ? active : first.id)
         },
+        expire: () => forgetThreadTabs(projectId, ids),
       })
     }
     if (keyStarted()) {
@@ -283,7 +283,7 @@ export function ConversationTabs(props: {
                   "--drag-x": lifted() ? `${drag()?.dx ?? 0}px` : undefined,
                 }}
               >
-                <StatusGlyph state={visualState(thread.status)} size={14} class="shrink-0" />
+                <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
                 <span class="min-w-0 flex-1 truncate">{thread.title}</span>
                 <button
                   type="button"

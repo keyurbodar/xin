@@ -1,16 +1,6 @@
 import { Show, type JSX } from "solid-js"
 import { ArrowLeft, ArrowRight } from "lucide-solid"
-
-export function Spinner(): JSX.Element {
-  return (
-    <svg width={14} height={14} viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-opacity="0.25" stroke-width="1.6" />
-      <g class="spinner-arc">
-        <path d="M8 2a6 6 0 0 1 6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-      </g>
-    </svg>
-  )
-}
+import { Spinner } from "../ui/loaders.tsx"
 
 export function StepCard(props: { step: string; title: string; intro: string; width: string; children: JSX.Element }): JSX.Element {
   return (
@@ -41,7 +31,7 @@ export function PrimaryButton(props: {
       classList={{ "h-9 w-full": props.wide === true, "h-8": props.wide !== true }}
     >
       <Show when={props.busy === true}>
-        <Spinner />
+        <Spinner size={14} />
       </Show>
       {props.label}
       <Show when={props.busy !== true}>

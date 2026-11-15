@@ -5,7 +5,7 @@ import { confirmed, KEPT, repairOffers, type Drop, type RepairOffer, type Repair
 import { errorMessage } from "../state/extensions.ts"
 import { Button } from "../components/ui/button.tsx"
 import { Failure } from "../components/ui/state.tsx"
-import { StatusGlyph } from "../components/ui/status-glyph.tsx"
+import { Signal } from "../components/ui/signal.tsx"
 import { Glyph } from "../components/extensions/glyph.tsx"
 
 function count(value: number, noun: string): string {
@@ -82,7 +82,7 @@ export function BootFailedScreen(props: {
       <div class="flex min-h-0 flex-1 justify-center overflow-y-auto px-6 pb-16 pt-[12vh]">
         <div class="im-stagger flex w-full max-w-[560px] flex-col">
           <div class="flex items-center gap-2 text-sm text-failed">
-            <StatusGlyph state="failed" size={16} />
+            <Signal state="failed" size={16} />
             Home didn’t open
           </div>
           <h1 id="boot-title" class="mt-3 text-2xl font-semibold tracking-[-0.02em]" style={{ "--i": 1 }}>

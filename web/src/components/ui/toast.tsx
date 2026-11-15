@@ -94,7 +94,7 @@ export function Toasts(): JSX.Element {
                   </div>
                   <span
                     class="im-toast-life absolute inset-x-0 bottom-0 h-0.5 bg-accent [--toast-life:6s]"
-                    onAnimationEnd={() => dismissToast(toast.id)}
+                    onAnimationEnd={() => dismissToast(toast)}
                   />
                 </div>
               </li>
