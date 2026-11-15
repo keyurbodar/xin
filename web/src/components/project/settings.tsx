@@ -87,18 +87,18 @@ function Body(props: {
                 type="button"
                 disabled={busy()}
                 onClick={() => setConfirming(true)}
-                class="h-8 rounded-[2px] px-2 text-[12.5px] text-fg-3 hover:text-bad disabled:opacity-50"
+                class="h-8 rounded-sm px-2 text-sm text-ink-3 hover:text-failed disabled:opacity-50"
               >
                 Archive project
               </button>
             }
           >
-            <span class="text-[12px] text-fg-3">Archive {props.project.name}?</span>
+            <span class="text-sm text-ink-3">Archive {props.project.name}?</span>
             <button
               type="button"
               disabled={busy()}
               onClick={() => void archive()}
-              class="h-8 rounded-[2px] border border-bad/40 bg-bad-bg px-3 text-[12.5px] font-medium text-bad hover:border-bad disabled:opacity-50"
+              class="h-8 rounded-sm border border-failed/40 bg-failed-soft px-3 text-sm font-medium text-failed hover:border-failed disabled:opacity-50"
             >
               Archive
             </button>
@@ -106,7 +106,7 @@ function Body(props: {
               type="button"
               disabled={busy()}
               onClick={() => setConfirming(false)}
-              class="h-8 rounded-[2px] px-2 text-[12.5px] text-fg-2 hover:text-fg disabled:opacity-50"
+              class="h-8 rounded-sm px-2 text-sm text-ink-2 hover:text-ink disabled:opacity-50"
             >
               Keep
             </button>
@@ -117,14 +117,14 @@ function Body(props: {
               type="button"
               disabled={busy()}
               onClick={props.onClose}
-              class="h-8 rounded-[2px] px-3 text-[12.5px] text-fg-2 hover:text-fg disabled:opacity-50"
+              class="h-8 rounded-sm px-3 text-sm text-ink-2 hover:text-ink disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={busy() || !dirty() || name().trim() === ""}
-              class="h-8 rounded-[2px] bg-accent px-3 text-[12.5px] font-medium text-ink disabled:opacity-40"
+              class="h-8 rounded-sm bg-primary px-3 text-sm font-medium text-on-primary disabled:opacity-40"
             >
               {busy() ? "Saving…" : "Save"}
             </button>
@@ -154,7 +154,7 @@ function Body(props: {
       </Field>
 
       <Show when={failure()}>
-        {(text) => <div class="text-[12px] text-bad">{text()}</div>}
+        {(text) => <div class="text-sm text-failed">{text()}</div>}
       </Show>
     </Dialog>
   )

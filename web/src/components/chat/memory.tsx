@@ -83,13 +83,13 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
       <Show when={notes.error} fallback={null}>
         <ResourceError what="memory" error={notes.error} onRetry={() => void refetch()} />
       </Show>
-      <div class="flex items-center gap-2 border-b border-line px-3 py-2.5">
-        <span class="flex-1 text-[12px] leading-[1.5] text-fg-3">
+      <div class="flex items-center gap-2 border-b border-line-1 px-3 py-2.5">
+        <span class="flex-1 text-sm leading-[1.5] text-ink-3">
           What the coordinator keeps between chats. Every thread can read it.
         </span>
         <button
           type="button"
-          class="flex shrink-0 items-center gap-1.5 rounded-[2px] border border-line px-2 py-1 text-[12px] text-fg-2 hover:border-line-strong hover:text-fg"
+          class="flex shrink-0 items-center gap-1.5 rounded-sm border border-line-1 px-2 py-1 text-sm text-ink-2 hover:border-line-3 hover:text-ink"
           onClick={() => setAdding((open) => !open)}
         >
           <Icon name="plus" size={13} />
@@ -97,12 +97,12 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
         </button>
       </div>
       <Show when={adding()}>
-        <div class="flex flex-col gap-2 border-b border-line px-3 py-3">
+        <div class="flex flex-col gap-2 border-b border-line-1 px-3 py-3">
           <textarea
             rows={2}
             autofocus
             placeholder="A fact worth keeping across chats"
-            class="w-full resize-none rounded-[3px] border border-line-strong bg-surface px-2 py-1.5 text-[13px] leading-[1.5] text-fg outline-none placeholder:text-fg-4 focus:border-accent-line"
+            class="w-full resize-none rounded-xs border border-line-3 bg-panel px-2 py-1.5 text-base leading-[1.5] text-ink outline-none placeholder:text-icon focus:border-primary/40"
             value={fresh()}
             onInput={(event) => setFresh(event.currentTarget.value)}
             onKeyDown={(event) => {
@@ -114,42 +114,42 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
             <button
               type="button"
               disabled={action.busy() === "new" || fresh().trim() === ""}
-              class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 hover:border-line-strong hover:text-fg disabled:opacity-50"
+              class="rounded-sm border border-line-1 px-2 py-1 text-xs text-ink-2 hover:border-line-3 hover:text-ink disabled:opacity-50"
               onClick={() => void add()}
             >
               Remember
             </button>
-            <button type="button" class="link text-[11.5px]" onClick={() => setAdding(false)}>
+            <button type="button" class="link text-xs" onClick={() => setAdding(false)}>
               Cancel
             </button>
           </div>
         </div>
       </Show>
       <Show when={action.failed()}>
-        {(message) => <div class="border-b border-line px-3 py-2 text-[12px] text-bad">{message()}</div>}
+        {(message) => <div class="border-b border-line-1 px-3 py-2 text-sm text-failed">{message()}</div>}
       </Show>
       <For each={suggestions()?.suggestions ?? []}>
         {(suggestion) => (
-          <div class="mx-3 mb-3 mt-3 rounded-[4px] border border-accent-line bg-raised p-3">
+          <div class="mx-3 mb-3 mt-3 rounded-md border border-primary/40 bg-card p-3">
             <div class="flex items-center gap-2">
-              <span class="rounded-[2px] border border-accent-line bg-accent-dim px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.06em] text-accent-text">
+              <span class="rounded-sm border border-primary/40 bg-primary-soft px-1 py-px font-mono text-2xs uppercase tracking-[0.06em] text-primary-ink">
                 Suggested
               </span>
-              <span class="text-[11.5px] text-fg-3">from your last message</span>
+              <span class="text-xs text-ink-3">from your last message</span>
             </div>
-            <div class="mt-1.5 text-[13px] leading-[1.5] text-fg">{suggestion.text}</div>
+            <div class="mt-1.5 text-base leading-[1.5] text-ink">{suggestion.text}</div>
             <div class="mt-2 flex items-center gap-1.5">
               <button
                 type="button"
                 disabled={action.busy() === "new"}
-                class="rounded-[2px] border border-accent bg-accent px-2 py-1 text-[11.5px] font-medium text-ink hover:opacity-90 disabled:opacity-50"
+                class="rounded-sm border border-primary bg-primary px-2 py-1 text-xs font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                 onClick={() => void remember(suggestion)}
               >
                 Remember
               </button>
               <button
                 type="button"
-                class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 hover:border-line-strong hover:text-fg"
+                class="rounded-sm border border-line-1 px-2 py-1 text-xs text-ink-2 hover:border-line-3 hover:text-ink"
                 onClick={() => {
                   setFresh(suggestion.text)
                   setAdding(true)
@@ -159,7 +159,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
               </button>
               <button
                 type="button"
-                class="rounded-[2px] px-2 py-1 text-[11.5px] text-fg-3 hover:text-fg-2"
+                class="rounded-sm px-2 py-1 text-xs text-ink-3 hover:text-ink-2"
                 onClick={() => void dismiss(suggestion)}
               >
                 Dismiss
@@ -177,15 +177,15 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
             <div class="flex flex-col">
               <For each={data().notes}>
                 {(note) => (
-                  <div class="group flex items-start gap-2 border-b border-line px-3 py-3">
+                  <div class="group flex items-start gap-2 border-b border-line-1 px-3 py-3">
                     <div class="flex min-w-0 flex-1 flex-col gap-1.5">
                       <Show
                         when={editing() === note.id}
-                        fallback={<span class="text-[13px] leading-[1.5] text-fg">{note.text}</span>}
+                        fallback={<span class="text-base leading-[1.5] text-ink">{note.text}</span>}
                       >
                         <textarea
                           rows={3}
-                          class="w-full resize-none rounded-[3px] border border-line-strong bg-surface px-2 py-1.5 text-[13px] leading-[1.5] text-fg outline-none focus:border-accent-line"
+                          class="w-full resize-none rounded-xs border border-line-3 bg-panel px-2 py-1.5 text-base leading-[1.5] text-ink outline-none focus:border-primary/40"
                           value={draft()}
                           onInput={(event) => setDraft(event.currentTarget.value)}
                           onKeyDown={(event) => {
@@ -197,30 +197,30 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
                           <button
                             type="button"
                             disabled={action.busy() === note.id}
-                            class="rounded-[2px] border border-line px-2 py-1 text-[11.5px] text-fg-2 hover:border-line-strong hover:text-fg disabled:opacity-50"
+                            class="rounded-sm border border-line-1 px-2 py-1 text-xs text-ink-2 hover:border-line-3 hover:text-ink disabled:opacity-50"
                             onClick={() => void save(note)}
                           >
                             Save
                           </button>
-                          <button type="button" class="link text-[11.5px]" onClick={() => setEditing(undefined)}>
+                          <button type="button" class="link text-xs" onClick={() => setEditing(undefined)}>
                             Cancel
                           </button>
                         </div>
                       </Show>
-                      <span class="flex flex-wrap items-center gap-2 text-[11.5px] text-fg-3">
+                      <span class="flex flex-wrap items-center gap-2 text-xs text-ink-3">
                         <span class="flex items-center gap-1">
-                          <Icon name={note.source === "dreamer" ? "brain" : "message"} size={12} class="text-fg-4" />
+                          <Icon name={note.source === "dreamer" ? "brain" : "message"} size={12} class="text-icon" />
                           {note.source === "dreamer" ? "Learned by the coordinator" : "You said"}
                         </span>
-                        <span class="text-fg-4">·</span>
+                        <span class="text-icon">·</span>
                         {ago(note.at)}
                         <Show when={note.scope !== "me"}>
-                          <span class="rounded-[2px] border border-line-inner px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.06em]">
+                          <span class="rounded-sm border border-line-2 px-1 py-px font-mono text-2xs uppercase tracking-[0.06em]">
                             {note.scope}
                           </span>
                         </Show>
                         <Show when={note.pinned}>
-                          <span class="rounded-[2px] border border-accent-line bg-accent-dim px-1 py-px font-mono text-[9.5px] uppercase tracking-[0.06em] text-accent-text">
+                          <span class="rounded-sm border border-primary/40 bg-primary-soft px-1 py-px font-mono text-2xs uppercase tracking-[0.06em] text-primary-ink">
                             Pinned
                           </span>
                         </Show>
@@ -232,8 +232,8 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
                           type="button"
                           aria-label={note.pinned ? "Unpin this" : "Pin this"}
                           disabled={action.busy() === note.id}
-                          class="rounded-[2px] p-1 hover:bg-hover disabled:opacity-50"
-                          classList={{ "text-accent-text": note.pinned, "text-fg-4 hover:text-fg-2": !note.pinned }}
+                          class="rounded-sm p-1 hover:bg-secondary disabled:opacity-50"
+                          classList={{ "text-primary-ink": note.pinned, "text-icon hover:text-ink-2": !note.pinned }}
                           onClick={() => void pin(note)}
                         >
                           <Icon name="pin" size={13} />
@@ -242,7 +242,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
                           type="button"
                           aria-label="Edit this"
                           disabled={action.busy() === note.id}
-                          class="rounded-[2px] p-1 text-fg-4 hover:bg-hover hover:text-fg-2 disabled:opacity-50"
+                          class="rounded-sm p-1 text-icon hover:bg-secondary hover:text-ink-2 disabled:opacity-50"
                           onClick={() => openEdit(note)}
                         >
                           <Icon name="pencil" size={13} />
@@ -251,7 +251,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
                           type="button"
                           aria-label="Forget this"
                           disabled={action.busy() === note.id}
-                          class="rounded-[2px] p-1 text-fg-4 hover:bg-hover hover:text-fg-2 disabled:opacity-50"
+                          class="rounded-sm p-1 text-icon hover:bg-secondary hover:text-ink-2 disabled:opacity-50"
                           onClick={() => void forget(note)}
                         >
                           <Icon name="trash" size={13} />

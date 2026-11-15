@@ -57,24 +57,24 @@ export function Customize(props: { initialRowId?: string | undefined }): JSX.Ele
 
   return (
     <div class="flex min-h-0 flex-1">
-      <nav class="flex w-[200px] shrink-0 flex-col gap-0.5 border-r border-line px-2 py-3">
+      <nav class="flex w-[200px] shrink-0 flex-col gap-0.5 border-r border-line-1 px-2 py-3">
         <For each={SECTIONS}>
           {(entry) => (
             <button
               type="button"
               onClick={() => setSection(entry.id)}
-              class="flex h-8 items-center gap-2.5 rounded-[2px] px-2.5 text-[13px]"
-              classList={{ "bg-selected text-fg": section() === entry.id, "text-fg-2 hover:bg-hover": section() !== entry.id }}
+              class="flex h-8 items-center gap-2.5 rounded-sm px-2.5 text-base"
+              classList={{ "bg-hover text-ink": section() === entry.id, "text-ink-2 hover:bg-secondary": section() !== entry.id }}
             >
-              <Glyph name={entry.icon} size={14} class="text-fg-3" />
+              <Glyph name={entry.icon} size={14} class="text-ink-3" />
               {entry.label}
               <Show when={countOf(entry.id) !== undefined}>
-                <span class="ml-auto font-mono text-[10.5px] text-fg-4">{countOf(entry.id)}</span>
+                <span class="ml-auto font-mono text-2xs text-icon">{countOf(entry.id)}</span>
               </Show>
             </button>
           )}
         </For>
-        <div class="my-2 h-px bg-line" />
+        <div class="my-2 h-px bg-line-1" />
         <Note>Package skills are read-only. Forking a skill copies it into the owner's own set.</Note>
       </nav>
 
