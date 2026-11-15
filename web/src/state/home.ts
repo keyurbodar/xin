@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js"
 import type { Streams } from "../lib/api.ts"
+import { automationsRevisionOf } from "../lib/automations.ts"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
 import { route } from "../lib/router.ts"
 import { threadsOf } from "../lib/threads.ts"
@@ -47,10 +48,12 @@ export type ProjectSummary = {
 const [projects, setProjects] = createSignal<readonly ProjectSummary[]>([])
 const [requests, setRequests] = createSignal<readonly RequestRow[]>([])
 const [loaded, setLoaded] = createSignal(false)
+const [automationsRevision, setAutomationsRevision] = createSignal<number>()
 
 export const homeProjects = projects
 export const homeLoaded = loaded
 export const homeRequests = requests
+export const homeAutomationsRevision = automationsRevision
 
 function groupsOf(value: unknown): ThreadGroups {
   const record = recordOf(value) ?? {}
@@ -107,6 +110,7 @@ export function subscribeHome(streams: Streams): () => void {
     value: (value) => {
       setProjects(parse(value))
       setRequests(parseRequestList(value))
+      setAutomationsRevision(automationsRevisionOf(value))
       setLoaded(true)
     },
     delta: () => undefined,
