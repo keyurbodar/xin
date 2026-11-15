@@ -1,5 +1,6 @@
 import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai"
 import type { ConversationId, ModelRef } from "@earendil-works/pi-durable"
+import { MODEL_THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema"
 import { obj, oneOf, str } from "@earendil-works/pi-schema"
 import type { Outcome } from "../ops.ts"
 
@@ -25,7 +26,7 @@ export function resolveModel(input: {
 
 export const ModelRefSchema = obj({ provider: str({ minLength: 1 }), modelId: str({ minLength: 1 }) })
 
-export const ThinkingSchema = oneOf(["off", "low", "medium", "high"] as const)
+export const ThinkingSchema = oneOf(MODEL_THINKING_LEVELS)
 
 export type ModelMatch = {
   readonly model: Model<Api>
@@ -53,6 +54,8 @@ export interface ModelsService {
   switchModel(input: ModelSwitch): Promise<Outcome>
   /** Month-to-date spend against the owner's cap, for a surface that has to stop before it spends more. */
   spend(): Promise<{ readonly month: number; readonly cap: number | null }>
+  /** Whether the owner switched `ref` off; every path that picks a model refuses one that is. */
+  disabled(ref: ModelRef): Promise<boolean>
 }
 
 declare module "@deepseek-ai/cordis" {

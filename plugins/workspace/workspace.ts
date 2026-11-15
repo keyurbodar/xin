@@ -99,6 +99,7 @@ export type WorkspacePort = {
   readonly harness: Harness
   readonly kv: OwnerKv
   publishHome(): Promise<void>
+  disabled(ref: { readonly provider: string; readonly modelId: string }): Promise<boolean>
 }
 
 const OWNER_NAME = "owner.name"
@@ -407,8 +408,11 @@ export function create(port: WorkspacePort): WorkspaceFeature {
       settings: opt(SettingsPatchSchema),
     }),
     actors: ["owner"],
-    run: async (api, args) =>
-      api.harness.commit(async (tx) => {
+    run: async (api, args) => {
+      for (const model of Object.values(args.settings?.models ?? {}))
+        if (model !== undefined && (await port.disabled(model)))
+          throw new OpRejected("bad_args", `model ${model.provider}/${model.modelId} is disabled`)
+      return api.harness.commit(async (tx) => {
         const workspace = await tx.doc(WorkspaceDoc)
         const project = workspace.projects[args.id]
         if (project === undefined) throw new OpRejected("bad_args", `no project ${args.id}`)
@@ -427,7 +431,8 @@ export function create(port: WorkspacePort): WorkspaceFeature {
           return projectEntry(args.id, project, [[createdId, created]])
         }
         return projectEntry(args.id, project, spacesOf(workspace, args.id))
-      }, BACKGROUND_CONTEXT),
+      }, BACKGROUND_CONTEXT)
+    },
   })
 
   const archiveProject = defineOp({

@@ -49,6 +49,10 @@ export async function apply(ctx: Context): Promise<void> {
             `the monthly cap of ${spend.cap.toFixed(2)} USD is reached; raise it in Usage first`,
           )
         const target = await resolve(host, args.conv)
+        const conversation = await ctx.harness.conversation(target, BACKGROUND_CONTEXT)
+        const model = conversation === undefined ? undefined : (await conversation.agent(BACKGROUND_CONTEXT)).model
+        if (model !== undefined && (await ctx.models.disabled(model)))
+          throw new OpRejected("bad_args", "this conversation runs a disabled model; pick another first")
         const inserted = await enqueue(
           host,
           {

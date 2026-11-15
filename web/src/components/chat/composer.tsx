@@ -154,7 +154,7 @@ export function Composer(props: {
   presetId: string | undefined
   presetLocked: boolean
   effort: ThinkingLevel | undefined
-  reasoning: boolean
+  efforts: readonly ThinkingLevel[]
   onPickModel: (model: ModelRef) => Promise<void>
   onPickPreset: (id: string) => Promise<void>
   onPickEffort: (level: ThinkingLevel) => Promise<void>
@@ -330,7 +330,7 @@ export function Composer(props: {
               onPick={(model) => void run(() => props.onPickModel(model))}
             />
             <ReasoningMenu
-              reasoning={props.reasoning}
+              levels={props.efforts}
               level={props.effort}
               presets={props.presets}
               presetId={props.presetId}

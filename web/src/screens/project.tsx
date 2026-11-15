@@ -205,7 +205,7 @@ export function ProjectChat(props: {
             presetId={presetId()}
             presetLocked={started()}
             effort={agentThinkingOf(snapshot())}
-            reasoning={currentInfo()?.reasoning === true}
+            efforts={currentInfo()?.thinking ?? []}
             onPickModel={async (model) => {
               await configureConversation(props.project.coordinatorId, { model })
             }}

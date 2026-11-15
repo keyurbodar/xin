@@ -280,9 +280,9 @@ export function agentModelOf(snapshot: Snapshot | undefined): ModelRefView | und
   return provider === undefined || modelId === undefined ? undefined : { provider, modelId }
 }
 
-export type ThinkingLevel = "off" | "low" | "medium" | "high"
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
 
-export const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "low", "medium", "high"]
+export const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
 
 const isThinkingLevel = (value: string): value is ThinkingLevel =>
   THINKING_LEVELS.some((level) => level === value)
