@@ -2,35 +2,29 @@ import { fauxAssistantMessage, fauxToolCall, type FauxResponseStep } from "@eare
 import type { JsonObject } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { respond } from "../../test/plugins/m8.ts"
-import { cmd, fresh, recordOffers, rowState, turn } from "../../test/support.ts"
+import { cmd, fresh, recordOffers, turn } from "../../test/support.ts"
 import type { IssueDetail, IssuePage } from "./issues.ts"
 
-const call = (args: JsonObject): FauxResponseStep =>
-  fauxAssistantMessage([fauxToolCall("issue", args, { id: `issue-${crypto.randomUUID()}` })], { stopReason: "toolUse" })
+const call = (name: string, args: JsonObject): FauxResponseStep =>
+  fauxAssistantMessage([fauxToolCall(name, args, { id: `${name}-${crypto.randomUUID()}` })], { stopReason: "toolUse" })
 
-describe("issue tool row", () => {
-  it("ships off, and once enabled lets an agent create, update, comment on and read an issue as itself", async () => {
+describe("issue tool rows", () => {
+  it("let an agent create, update, comment on and read an issue as itself", async () => {
     const stub = fresh()
     const offers = recordOffers()
-    expect(await rowState(stub, "tool-issues")).toEqual({ kind: "disabled" })
-    respond([offers.step("ok")])
-    await turn(stub, "issue-tools-off")
-    expect(offers.latest().tools).not.toContain("issue")
-
-    const enabled = await cmd(stub, "issue-tools-enable", "plugin.enable", { id: "tool-issues", enabled: true })
-    expect(enabled.result).toMatchObject({ application: "applied" })
     respond([
-      call({ action: "create", title: "Agent filed", priority: "high", labels: ["agent"] }),
-      call({ action: "update", id: 1, state: "in-progress" }),
-      call({ action: "comment", id: 1, body: "started" }),
-      call({ action: "read", q: "agent" }),
+      call("issue", { action: "create", with: { title: "Agent filed", priority: "high", labels: ["agent"] } }),
+      call("issue", { action: "update", id: 1, with: { state: "in-progress" } }),
+      call("issue_comment", { id: 1, body: "started" }),
+      call("issue", { action: "update", id: 1, with: { assignees: ["robot"] } }),
+      call("issue", { action: "read", with: { q: "agent" } }),
       offers.step("done"),
     ])
     await turn(stub, "issue-tools")
-    expect(offers.latest().tools).toContain("issue")
+    expect(offers.latest().tools).toEqual(expect.arrayContaining(["issue", "issue_comment"]))
 
     const detail = (await cmd(stub, "issue-tools-get", "issue.get", { id: 1 })).result as IssueDetail
-    expect(detail.issue).toMatchObject({ title: "Agent filed", priority: "high", state: "in-progress" })
+    expect(detail.issue).toMatchObject({ title: "Agent filed", priority: "high", state: "in-progress", assignees: [] })
     expect(detail.timeline.map((event) => event.kind)).toEqual(["created", "changed", "comment"])
     expect(detail.timeline.every((event) => event.actor.startsWith("thread:"))).toBe(true)
     const page = (await cmd(stub, "issue-tools-list", "issue.list", { q: "agent" })).result as IssuePage

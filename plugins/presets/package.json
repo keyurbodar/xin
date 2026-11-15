@@ -25,7 +25,8 @@
           "default": "full",
           "threadOmits": [
             "tool-schedules",
-            "tool-goals"
+            "tool-goals",
+            "tool-issues"
           ]
         }
       },

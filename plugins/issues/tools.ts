@@ -1,5 +1,17 @@
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
-import { arr, bool, int, nullable, obj, oneOf, opt, type Static, str } from "@earendil-works/pi-schema"
+import {
+  arr,
+  bool,
+  compile,
+  int,
+  nullable,
+  obj,
+  oneOf,
+  opt,
+  type Static,
+  str,
+  unknown,
+} from "@earendil-works/pi-schema"
 import { type Context, OpRejected, textResult } from "../../src/kernel/index.ts"
 import {
   type Assignee,
@@ -17,34 +29,48 @@ export const inject = ["pi", "issues"]
 
 const COMMENTS_SHOWN = 20
 const COMMENT_CLIP = 500
-const ASSIGNEE = str({ pattern: "^(person:.+|thread:\\d+|captain:\\d+)$" })
+const ACTIONS = ["create", "read", "update"] as const
 
-const Args = obj({
-  action: oneOf(["create", "read", "update", "comment"] as const),
-  id: opt(int({ minimum: 1 })),
-  title: opt(str({ minLength: 1, maxLength: 300 })),
+const Inner = obj({
+  action: oneOf(ACTIONS),
+  id: opt(int()),
+  title: opt(str()),
   description: opt(str()),
   state: opt(str()),
   priority: opt(oneOf(PRIORITIES)),
   due: opt(nullable(str())),
   parent: opt(nullable(int())),
   labels: opt(arr(str())),
-  assignees: opt(arr(ASSIGNEE)),
+  assignees: opt(arr(str())),
   threads: opt(arr(int())),
   prs: opt(arr(str())),
   link: opt(obj({ kind: oneOf(LINK_KINDS), other: int(), remove: opt(bool()) })),
-  body: opt(str({ maxLength: 20_000 })),
-  replyTo: opt(int()),
-  mentions: opt(arr(int())),
   q: opt(str()),
   closed: opt(bool()),
   cursor: opt(str()),
 })
 
-type ToolArgs = Static<typeof Args>
+type ToolArgs = Static<typeof Inner>
+
+const checkInner = compile(Inner)
+
+const Args = obj({ action: oneOf(ACTIONS), id: opt(int()), with: opt(unknown()) })
 
 const DESCRIPTION =
-  "Issues, the shared work record. create: title plus fields. read: by id, or a list by q/assignees[0]/state/closed/parent; pass the returned cursor for more. update: id plus fields to change (lists replace; null clears due/parent) and/or link {kind, other, remove}. comment: id, body, replyTo, mentions (conversation ids to wake). Assignees are person:<id>, thread:<conv> or captain:<conv>. threads[0] owns the issue and is woken by its changes."
+  "Shared work record. with: create/update {title,description,state,priority,due,parent,labels,assignees,threads,prs,link:{kind:blocks|blocked_by|related,other,remove}}; read without id {q,state,closed,parent,assignees:[one],cursor}. Lists replace, null clears due/parent. assignees: person:<id>|thread:<conv>|captain:<conv>. threads[0] owns it."
+
+export const fail = (message: string): never => {
+  throw new OpRejected("bad_args", message)
+}
+
+export async function refusing(work: () => Promise<string>) {
+  try {
+    return textResult(await work())
+  } catch (error) {
+    if (error instanceof OpRejected) return textResult(`Not done: ${error.message}.`, { isError: true })
+    throw error
+  }
+}
 
 export function apply(ctx: Context): void {
   const issues = ctx.issues
@@ -55,7 +81,9 @@ function assignee(token: string): Assignee {
   const at = token.indexOf(":")
   const kind = token.slice(0, at)
   const id = token.slice(at + 1)
-  return kind === "person" ? { kind, id } : { kind: kind === "captain" ? "captain" : "thread", id: Number(id) }
+  if (kind === "person" && id !== "") return { kind, id }
+  if ((kind === "thread" || kind === "captain") && /^\d+$/.test(id)) return { kind, id: Number(id) }
+  return fail(`assignee ${token} is not person:<id>, thread:<conv> or captain:<conv>`)
 }
 
 const line = (issue: IssueSummary): string =>
@@ -151,25 +179,11 @@ async function run(issues: IssuesService, args: ToolArgs, conversationId: number
         ({ issue } = await issues.link(actor, id, args.link.kind, args.link.other, args.link.remove !== true))
       return `Updated ${line(issue)}`
     }
-    case "comment": {
-      const id = needId()
-      if (args.body === undefined) return fail("comment needs a body")
-      const { events } = await issues.comment(actor, id, {
-        body: args.body,
-        ...(args.replyTo === undefined ? {} : { replyTo: args.replyTo }),
-        ...(args.mentions === undefined ? {} : { mentions: args.mentions }),
-      })
-      return `Commented on #${id} (comment ${events[0]?.id ?? "?"}).`
-    }
     default: {
       const _exhaustive: never = args.action
       return _exhaustive
     }
   }
-}
-
-const fail = (message: string): never => {
-  throw new OpRejected("bad_args", message)
 }
 
 function issueTool(issues: IssuesService) {
@@ -178,13 +192,21 @@ function issueTool(issues: IssuesService) {
     description: DESCRIPTION,
     parameters: Args,
     replay: "unsafe",
-    execute: async (args, api) => {
-      try {
-        return textResult(await run(issues, args, api.conversationId))
-      } catch (error) {
-        if (error instanceof OpRejected) return textResult(`Not done: ${error.message}.`, { isError: true })
-        throw error
-      }
-    },
+    execute: async ({ action, id, with: extra }, api) =>
+      refusing(async () => {
+        const inner: unknown = {
+          ...(typeof extra === "object" && extra !== null && !Array.isArray(extra) ? extra : {}),
+          action,
+          ...(id === undefined ? {} : { id }),
+        }
+        if (!checkInner.check(inner))
+          return fail(
+            checkInner
+              .errors(inner)
+              .map((error) => `${error.path} ${error.message}`)
+              .join("; "),
+          )
+        return run(issues, inner, api.conversationId)
+      }),
   })
 }
