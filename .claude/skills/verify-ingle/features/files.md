@@ -13,10 +13,10 @@ File bytes live in R2 under content addresses (`b/<sha256>`), indexed by the DO'
 
 The web client uploads with a bearer-authenticated `PUT /files/projects/<slug>/<name>` and lists a project library with `file.list`.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 $S launch
 curl -s -X PUT -H "authorization: Bearer verify-owner-token" --data-binary @some.bin \
   http://127.0.0.1:8799/files/projects/demo/some.bin       # → {path,size,type,sha256}

@@ -57,7 +57,7 @@ export type Ack = { readonly ok: boolean; readonly result?: unknown }
 /** One owner command on the product home, as the client sends it. */
 export const productCmd = (stub: ProductStub, id: string, op: string, args: unknown = {}): Promise<Ack> =>
   stub
-    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
+    .fetch(new Request("https://ingle.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
     .then((reply) => reply.json<Ack>())
 
 export type Move =

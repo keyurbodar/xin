@@ -1,6 +1,6 @@
 # Wire protocol (socket)
 
-`GET /v1/socket` upgrades to a hibernatable WebSocket. The token goes in the subprotocol list `xin, bearer.<token>`, and the server answers with `xin`.
+`GET /v1/socket` upgrades to a hibernatable WebSocket. The token goes in the subprotocol list `ingle, bearer.<token>`, and the server answers with `ingle`.
 
 ## Sub-features
 
@@ -15,17 +15,17 @@
 
 One socket per open tab. A reconnect sends `sub` again and gets a fresh snapshot.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-.claude/skills/verify-xin/xin.sh ws '{"_tag":"Ping"}' '{"t":"sub","stream":"home"}' '{"t":"cmd","id":"ws-v1","op":"nope"}' '{"t":"sub","stream":"conv:999999"}'
+.claude/skills/verify-ingle/ingle.sh ws '{"_tag":"Ping"}' '{"t":"sub","stream":"home"}' '{"t":"cmd","id":"ws-v1","op":"nope"}' '{"t":"sub","stream":"conv:999999"}'
 ```
 
-Expected: `open protocol=xin`, Pong, a home snap, a rejected ack, and `unknown stream conv:999999`.
+Expected: `open protocol=ingle`, Pong, a home snap, a rejected ack, and `unknown stream conv:999999`.
 
 ## Gotchas
 
-- A browser only accepts the upgrade if the server echoes a protocol it offered. The Worker sets it when `xin` is in the list.
+- A browser only accepts the upgrade if the server echoes a protocol it offered. The Worker sets it when `ingle` is in the list.
 - Conversation snapshots after an eviction are proven in the gate (`src/wire.test.ts`), because HTTP can't evict.
 
 Evidence from the last wrangler dev drive: `.verify/evidence/M1-commands-socket.txt`.

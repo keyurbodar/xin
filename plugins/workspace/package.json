@@ -1,10 +1,10 @@
 {
-  "name": "xin-plugin-workspace",
+  "name": "ingle-plugin-workspace",
   "version": "0.1.0",
   "private": true,
   "description": "Projects and thread documents.",
   "type": "module",
-  "xin": {
+  "ingle": {
     "plugins": {
       "workspace": {
         "module": "./index.ts",

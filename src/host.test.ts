@@ -82,7 +82,7 @@ describe("Home host loop", () => {
     }))
     expect(upgraded.tables).toContain("files")
     expect(upgraded.version).toEqual({ version: 13 })
-    expect((await stub.fetch(new Request("https://xin.test/v1/status"))).status).toBe(200)
+    expect((await stub.fetch(new Request("https://ingle.test/v1/status"))).status).toBe(200)
   }, 20_000)
 
   it("answers a turn cut off by an eviction exactly once, after the alarm", async () => {
@@ -128,23 +128,23 @@ describe("Home host loop", () => {
     })
     await evictDurableObject(stub)
 
-    const failed = await stub.fetch("https://xin.test/v1/status")
+    const failed = await stub.fetch("https://ingle.test/v1/status")
     expect(failed.status).toBe(503)
     expect(await failed.json()).toMatchObject({ error: "boot_failed" })
 
-    const report = await stub.fetch("https://xin.test/v1/repair")
+    const report = await stub.fetch("https://ingle.test/v1/repair")
     expect(report.status).toBe(200)
     const diagnosis = await report.json<{ failure: string | null; journal: number }>()
     expect(diagnosis.failure).toEqual(expect.any(String))
     expect(diagnosis.journal).toBeGreaterThan(0)
 
     const repaired = await stub.fetch(
-      new Request("https://xin.test/v1/repair", { method: "POST", body: JSON.stringify({ drop: "journal" }) }),
+      new Request("https://ingle.test/v1/repair", { method: "POST", body: JSON.stringify({ drop: "journal" }) }),
     )
     expect(repaired.status).toBe(200)
     expect(await repaired.json()).toMatchObject({ failure: null, journal: 0 })
 
-    const opened = await stub.fetch("https://xin.test/v1/status")
+    const opened = await stub.fetch("https://ingle.test/v1/status")
     expect(opened.status).toBe(200)
   }, 30_000)
 
@@ -152,7 +152,7 @@ describe("Home host loop", () => {
     const stub = fresh()
     await runInDurableObject(stub, (home: Home) => home.root())
     const reply = await stub.fetch(
-      new Request("https://xin.test/v1/repair", { method: "POST", body: JSON.stringify({ drop: "journal" }) }),
+      new Request("https://ingle.test/v1/repair", { method: "POST", body: JSON.stringify({ drop: "journal" }) }),
     )
     expect(reply.status).toBe(409)
   })

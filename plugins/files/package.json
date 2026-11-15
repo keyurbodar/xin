@@ -1,10 +1,10 @@
 {
-  "name": "xin-plugin-files",
+  "name": "ingle-plugin-files",
   "version": "0.1.0",
   "private": true,
   "description": "R2-backed read, write and edit for pi's file tools.",
   "type": "module",
-  "xin": {
+  "ingle": {
     "plugins": {
       "files": {
         "module": "./index.ts",

@@ -1,6 +1,6 @@
 # Web push
 
-Xin sends an encrypted Web Push (RFC 8291 `aes128gcm`, VAPID ES256, RFC 8030 `Topic`) to each stored subscription when no socket is connected. The VAPID key pair is generated on first use and kept in kv `vapid` as a JWK; the application server key is derived from its `x`/`y`.
+Ingle sends an encrypted Web Push (RFC 8291 `aes128gcm`, VAPID ES256, RFC 8030 `Topic`) to each stored subscription when no socket is connected. The VAPID key pair is generated on first use and kept in kv `vapid` as a JWK; the application server key is derived from its `x`/`y`.
 
 ## Sub-features
 
@@ -13,10 +13,10 @@ Xin sends an encrypted Web Push (RFC 8291 `aes128gcm`, VAPID ES256, RFC 8030 `To
 
 The web client asks for notification permission, calls `push.key`, subscribes in the browser, then sends `push.subscribe`.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 $S call POST /v1/cmd '{"id":"k1","op":"push.key","args":{}}'
 $S call POST /v1/cmd '{"id":"s1","op":"push.subscribe","args":{"endpoint":"https://push.example.invalid/sub/1","keys":{"p256dh":"BP9J1roMvjJFaN4XFZRB5XNDuFi3UMM59qBNHbzvVul53DUVju5i1HqZCcEddfqFg6x5Wl8sqK5J5B7nMAW55UI","auth":"AFpgjbqtf8syCsO2VMPhJw"}}}'
 $S call POST /v1/cmd '{"id":"u1","op":"push.unsubscribe","args":{"endpoint":"https://push.example.invalid/sub/1"}}'

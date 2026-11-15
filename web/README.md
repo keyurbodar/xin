@@ -1,6 +1,6 @@
-# web · the Xin client
+# web · the Ingle client
 
-The first-party client for a Xin home: a SolidJS app that talks to the Worker's command API and socket. It is a separate package so the Worker gate never compiles it.
+The first-party client for a Ingle home: a SolidJS app that talks to the Worker's command API and socket. It is a separate package so the Worker gate never compiles it.
 
 ## Run
 
@@ -8,7 +8,7 @@ The Worker has to be up first, because the client proxies `/v1` and `/health` to
 
 ```bash
 # from the repo root
-.claude/skills/verify-xin/xin.sh launch          # wrangler dev on http://127.0.0.1:8799
+.claude/skills/verify-ingle/ingle.sh launch          # wrangler dev on http://127.0.0.1:8799
 
 # from web/
 bun run dev                                      # vite on http://localhost:5174
@@ -16,7 +16,7 @@ bun run dev                                      # vite on http://localhost:5174
 
 The token is the `OWNER_TOKEN` your deployment was started with. The verify skill's throwaway instance uses `verify-owner-token`. It is kept in `localStorage`; signing out is clearing it.
 
-Point at a different Worker with `XIN_DEV_URL=http://127.0.0.1:8800 bun run dev`.
+Point at a different Worker with `INGLE_DEV_URL=http://127.0.0.1:8800 bun run dev`.
 
 ## Check
 

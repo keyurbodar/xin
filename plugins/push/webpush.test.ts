@@ -45,7 +45,7 @@ describe("web push", () => {
     expect(JSON.parse(decoder.decode(fromBase64Url(claims)))).toMatchObject({
       aud: audience,
       exp: Math.floor(now / 1000) + 12 * 60 * 60,
-      sub: "mailto:xin@localhost",
+      sub: "mailto:ingle@localhost",
     })
 
     const key = await crypto.subtle.importKey(

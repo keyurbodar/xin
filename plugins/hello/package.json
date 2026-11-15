@@ -1,10 +1,10 @@
 {
-  "name": "xin-plugin-hello",
+  "name": "ingle-plugin-hello",
   "version": "0.1.0",
   "private": true,
-  "description": "The starter plugin: one tool and one prompt. `bun scripts/xin.ts plugin new <name>` copies it under a new name.",
+  "description": "The starter plugin: one tool and one prompt. `bun scripts/ingle.ts plugin new <name>` copies it under a new name.",
   "type": "module",
-  "xin": {
+  "ingle": {
     "plugins": {
       "hello": {
         "module": "./index.ts",

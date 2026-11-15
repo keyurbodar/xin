@@ -1,6 +1,6 @@
-# Xin
+# Ingle
 
-Xin is a personal agent backend on Cloudflare: one Worker, one SQLite-backed Durable Object per owner (`Home`), and R2. It is built on `@earendil-works/pi-durable`, `pi-ai` and `pi-mcp` 1.5.0, and shaped like Claude Projects (a coordinator per project, plus threads). The backend lives in `src/`, `plugins/` and `test/`; the first-party client is the web app in `web/` (102 tracked files), a separate package that the backend's `typecheck` step also covers and the deploy serves as static assets.
+Ingle is a personal agent backend on Cloudflare: one Worker, one SQLite-backed Durable Object per owner (`Home`), and R2. It is built on `@earendil-works/pi-durable`, `pi-ai` and `pi-mcp` 1.5.0, and shaped like Claude Projects (a coordinator per project, plus threads). The backend lives in `src/`, `plugins/` and `test/`; the first-party client is the web app in `web/` (102 tracked files), a separate package that the backend's `typecheck` step also covers and the deploy serves as static assets.
 
 **The spec is `docs/plan/`.** Start at `docs/plan/README.md`. When the code and the spec disagree, either fix the code or change the spec in the same commit and log why (see Decision log). Never let them drift silently.
 
@@ -20,7 +20,7 @@ Use these pstack skills. They are part of the workflow, not optional extras.
 |---|---|
 | Any non-trivial task (default entry point) | `/pstack:poteto-mode` |
 | Reading or editing any `.ts` file | `/pstack:typescript-best-practices` |
-| End of M0: create the project verification skill (`.claude/skills/verify-xin/`) that drives the real Worker through `wrangler dev` and the gate | `/pstack:create-verification-skill` |
+| End of M0: create the project verification skill (`.claude/skills/verify-ingle/`) that drives the real Worker through `wrangler dev` and the gate | `/pstack:create-verification-skill` |
 | End of every later milestone: keep that skill and its feature map honest | `/pstack:maintain-verification-skill` |
 | Before a milestone counts as done: strict maintainability review of its diff | `/pstack:thermo-nuclear-code-quality-review` |
 | Before a milestone counts as done: remove comment noise | `/pstack:no-comments` |
@@ -40,10 +40,10 @@ bun scripts/gate.ts [run] [steps]                  # lead only: run now, still b
 
 - **One runner**: jobs run in parallel, one per box (or one at a time when there are no boxes), with local heavy steps serialized under `nice -n 10` and vitest capped at 2 workers. `submit` starts the runner when needed, and it exits after 10 idle minutes. The machine has 4 cores and 15 GB.
 - **Coalescing**: identical jobs (same checkout, steps, filter and variant) submitted within 1.5 s run once, and every submitter gets the result.
-- **Variant**: a job carries the `XIN_LOAD`/`XIN_LIVE` values it was submitted with, and the runner hands those to the child instead of its own, so the same values decide what runs and key the cache. `XIN_LOAD=1 bun scripts/gate.ts submit test` runs the benchmark even when the runner was started without it.
-- **Box pool**: `test` and `bundle` run on the owner's instabox machines listed in `~/.config/xin/boxes.env` (`machine=key` per line, 4 vCPU / 8 GB each, free plan). The runner runs one job per box in parallel, and each job leases a box. The gate syncs the git-listed tree (never `.dev.vars`) and reinstalls only when `bun.lock` changes. A box that fails is benched for 10 minutes and the job moves to another box, or runs locally under the machine-wide lock when none is left. Boxes pause after 30 idle minutes and the next job wakes them, so there is no keep-alive. `XIN_GATE_BOX=0` forces local, and live runs (`XIN_LIVE=1`) always stay local. Never put a key in a brief or the repo.
+- **Variant**: a job carries the `INGLE_LOAD`/`INGLE_LIVE` values it was submitted with, and the runner hands those to the child instead of its own, so the same values decide what runs and key the cache. `INGLE_LOAD=1 bun scripts/gate.ts submit test` runs the benchmark even when the runner was started without it.
+- **Box pool**: `test` and `bundle` run on the owner's instabox machines listed in `~/.config/ingle/boxes.env` (`machine=key` per line, 4 vCPU / 8 GB each, free plan). The runner runs one job per box in parallel, and each job leases a box. The gate syncs the git-listed tree (never `.dev.vars`) and reinstalls only when `bun.lock` changes. A box that fails is benched for 10 minutes and the job moves to another box, or runs locally under the machine-wide lock when none is left. Boxes pause after 30 idle minutes and the next job wakes them, so there is no keep-alive. `INGLE_GATE_BOX=0` forces local, and live runs (`INGLE_LIVE=1`) always stay local. Never put a key in a brief or the repo.
 - **Cache**: a step that passed is skipped until its inputs change, so an unchanged tree costs nothing. Each variant keeps its own slot, so the suite and the benchmark never stand in for each other.
-- **Logs**: `.gate/<step>[-<filter hash>][-<variant>].log` in the checkout, and results in `/tmp/xin-gate/results/<id>.json`. Read them instead of re-running.
+- **Logs**: `.gate/<step>[-<filter hash>][-<variant>].log` in the checkout, and results in `/tmp/ingle-gate/results/<id>.json`. Read them instead of re-running.
 - `package.json` must define `fmt:check`, `lint`, `typecheck`, `test` and `bundle`. The gate calls exactly those.
 - Workers may only `submit lint types test --only=<own path>` and `wait`, at most 3 jobs per lane. `lint` and `types` are cheap and whole-tree; including them stops lint debt piling up at merge. Only the lead submits the full gate, once per merged wave.
 
@@ -63,7 +63,7 @@ The full system is in `docs/process/orchestration.md`, and briefs use `docs/proc
 - TypeScript strict, ESM, Bun for scripts, wrangler for the Worker.
 - Schemas: `@earendil-works/pi-schema` builders (`obj`, `str`, `lit`, `union`, `opt`) and `compile()` for tool parameters, op args and wire frames. pi-ai 1.5 has no TypeBox `Type` export. Parse at the boundary (socket frame, HTTP body, tool args, stored JSON), then trust the types.
 - Branded ids (`ConversationId`, `ProjectId`, `ThreadId`, `CommandId`, `BatchId`). Discriminated unions with a `kind` field for states and frames. No `as` casts except right after validation. Exhaustive `switch` with `const _exhaustive: never`.
-- One module per mechanism, matching the spec's sections: `src/host.ts`, `src/db.ts`, `src/ops.ts`, `src/wire.ts`, `plugins/intake/gateway.ts`, `plugins/models/models.ts`, and the kernel services in `src/kernel/*`. `src/catalog.ts` lists the required kernel rows plus `tool-plugins`, which is not required and ships disabled. Every feature is a native Cordis plugin package under `plugins/<name>/` (or an installed dependency) with a `xin` field: `export const name`, `inject` and `apply(ctx)`. Only the file that declares `inject` reads `ctx.<service>`, and every service it reads is in that list; helpers take narrow ports. No plugin imports another plugin or touches its tables. `bun scripts/boundaries.ts` (in `lint`) enforces the last three: a relative import that reaches another plugin, a `ctx.<service>` read in a file without `inject` or without that service listed, and a SQL statement naming another plugin's table. One module per mechanism, the `xin` field, `export const name` and `apply(ctx)` are conventions the gate does not check (see `docs/plan/architecture/09-plugins.md`).
+- One module per mechanism, matching the spec's sections: `src/host.ts`, `src/db.ts`, `src/ops.ts`, `src/wire.ts`, `plugins/intake/gateway.ts`, `plugins/models/models.ts`, and the kernel services in `src/kernel/*`. `src/catalog.ts` lists the required kernel rows plus `tool-plugins`, which is not required and ships disabled. Every feature is a native Cordis plugin package under `plugins/<name>/` (or an installed dependency) with a `ingle` field: `export const name`, `inject` and `apply(ctx)`. Only the file that declares `inject` reads `ctx.<service>`, and every service it reads is in that list; helpers take narrow ports. No plugin imports another plugin or touches its tables. `bun scripts/boundaries.ts` (in `lint`) enforces the last three: a relative import that reaches another plugin, a `ctx.<service>` read in a file without `inject` or without that service listed, and a SQL statement naming another plugin's table. One module per mechanism, the `ingle` field, `export const name` and `apply(ctx)` are conventions the gate does not check (see `docs/plan/architecture/09-plugins.md`).
 - Host schema changes append a step to the migration list. Never edit an existing step.
 - Everything that runs after a crash must be safe to run twice. Use the derived idempotency keys from `docs/plan/architecture/02-state.md`.
 
@@ -72,7 +72,7 @@ The full system is in `docs/process/orchestration.md`, and briefs use `docs/proc
 - Vitest with `@cloudflare/vitest-plugin` (the Cloudflare Workers pool, `cloudflareTest` in `vitest.config.ts`) against the real Worker and DO: `runInDurableObject`, `evictDurableObject`, `runDurableObjectAlarm`. Use the pi-ai faux provider by default.
 - No mocks of pi, SQLite or the DO runtime. Only the model transport is faked.
 - Tests sit beside the source as `*.test.ts`. Assert observable behaviour (replies, stored state, frames), not internals.
-- **Live tests** (Xin talking to a real model) are opt-in (`XIN_LIVE=1`). They read `OPENCODE_API_KEY` from `.dev.vars` (provider `opencode-go`, a temporary key; use it as is). Model order is in `XIN_LIVE_MODELS`:
+- **Live tests** (Ingle talking to a real model) are opt-in (`INGLE_LIVE=1`). They read `OPENCODE_API_KEY` from `.dev.vars` (provider `opencode-go`, a temporary key; use it as is). Model order is in `INGLE_LIVE_MODELS`:
   1. `iceman-contributor-free`
   2. `beam-free` if the first is unavailable
   3. `muse-spark-1.3-contributor` otherwise

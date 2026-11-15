@@ -29,7 +29,7 @@ import { defineOp } from "../src/ops.ts"
 import { int, obj, opt } from "@earendil-works/pi-schema"
 import { env } from "cloudflare:workers"
 import { BUNDLES, CATALOG } from "../src/catalog.ts"
-import { XIN_VERSION } from "../src/catalog.gen.ts"
+import { INGLE_VERSION } from "../src/catalog.gen.ts"
 import { Home as ProductHome, PROFILE } from "../src/host.ts"
 import type { Env } from "../src/env.ts"
 import { type InboundKind, IntakeDoc, type IntakeItem } from "../src/contracts/intake.ts"
@@ -193,7 +193,7 @@ export class Home extends ProductHome {
       catalog: { ...CATALOG, ...TEST_CATALOG },
       bundles: { ...BUNDLES, test: TEST_ROWS },
       profile: TEST_PROFILE,
-      version: XIN_VERSION,
+      version: INGLE_VERSION,
     }
   }
 

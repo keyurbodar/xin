@@ -10,7 +10,7 @@ import type { Home } from "../../test/worker.ts"
 
 const PATH = "/notes/a.md"
 const CONTENT = "hello fake"
-const BUNDLE = "xin-test-fake-files"
+const BUNDLE = "ingle-test-fake-files"
 
 const call = (name: string, args: JsonObject) =>
   fauxAssistantMessage([fauxToolCall(name, args, { id: `${name}-${crypto.randomUUID()}` })], { stopReason: "toolUse" })

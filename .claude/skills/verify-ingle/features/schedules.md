@@ -21,10 +21,10 @@ A schedule is a record in one `xin.schedules` session document, plus a pi timer 
 
 The owner says "every Monday at 9 remind me to review the week", and the agent calls `schedule_create`. The settings view lists schedules from `schedule.list` and pauses one with `schedule.edit active:false`.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 at=$(( $(date +%s%3N) + 3000 ))
 $S call POST /v1/cmd "{\"id\":\"c1\",\"op\":\"schedule.create\",\"args\":{\"id\":\"once\",\"at\":$at,\"tz\":\"UTC\",\"title\":\"Hello\",\"prompt\":\"scheduled hello\"}}"
 $S call POST /v1/cmd '{"id":"c2","op":"schedule.create","args":{"id":"weekly","title":"Week review","prompt":"weekly review","rrule":"RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0","target":"this_session"}}'

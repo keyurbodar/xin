@@ -44,7 +44,7 @@ export type Composition = {
   readonly version: string
 }
 
-export type XinLoaderConfig = {
+export type IngleLoaderConfig = {
   readonly baseUrl: string
   readonly composition: Composition
   readonly runtime: readonly RuntimeBundle[]
@@ -65,7 +65,7 @@ const failure = async (fiber: Fiber): Promise<string> =>
 const changedRow = (left: Row, right: Row): boolean =>
   left.disabled !== right.disabled || JSON.stringify(left.config ?? null) !== JSON.stringify(right.config ?? null)
 
-export class XinLoader extends Loader {
+export class IngleLoader extends Loader {
   override internal = undefined
   readonly composition: Composition
   readonly warnings: string[]
@@ -83,7 +83,7 @@ export class XinLoader extends Loader {
   private mounted = false
   private quiet = false
 
-  constructor(ctx: Context, config: XinLoaderConfig) {
+  constructor(ctx: Context, config: IngleLoaderConfig) {
     super(ctx, { baseUrl: config.baseUrl })
     this.composition = config.composition
     this.warnings = [...config.warnings]
@@ -284,7 +284,7 @@ export class XinLoader extends Loader {
 
 export type Kernel = {
   readonly root: Context
-  readonly loader: XinLoader
+  readonly loader: IngleLoader
   readonly failure: string | undefined
 }
 
@@ -295,7 +295,7 @@ export async function boot(runtime: Runtime, composition: Composition): Promise<
   const warnings: string[] = []
   const owner = readOwnerPatch(storage, (message) => void warnings.push(message))
   const runtimeBundles = readBundles(storage, (message) => void warnings.push(message))
-  await root.plugin(XinLoader, {
+  await root.plugin(IngleLoader, {
     baseUrl: "file:///bundle/",
     composition,
     runtime: runtimeBundles,
@@ -304,7 +304,7 @@ export async function boot(runtime: Runtime, composition: Composition): Promise<
     persist: (patch) => writeOwnerPatch(storage, patch),
   })
   const loader = root.get("loader")
-  if (!(loader instanceof XinLoader)) throw new Error("the loader did not start")
+  if (!(loader instanceof IngleLoader)) throw new Error("the loader did not start")
   root.provide("kernel", loader)
   await loader.mount()
   const broken = await loader.brokenRequired()

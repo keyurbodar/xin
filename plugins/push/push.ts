@@ -351,9 +351,9 @@ function inQuietHours(quiet: QuietHours, now: number): boolean {
 /** One notification to every subscribed browser, sockets or not: the owner asked to see it arrive. */
 export function testPush(db: SqliteDatabase, fetcher: Fetcher = send): Promise<number> {
   return deliverAll(db, fetcher, () => loadVapid(db).then(vapidSigner), {
-    threadTitle: "Xin",
+    threadTitle: "Ingle",
     title: "Push works",
-    body: "This is a test notification from Xin.",
+    body: "This is a test notification from Ingle.",
     tag: "test",
     kind: "finished",
   })

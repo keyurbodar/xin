@@ -46,7 +46,7 @@ describe("preset row", () => {
       plugin: "preset",
       config: { id: "solo", name: "Solo", description: "Memory only.", order: 5, plugins: ["tool-memory"] },
     }
-    expect(await put(stub, "xin-plugin-preset-solo", [solo])).toMatchObject({ application: "applied" })
+    expect(await put(stub, "ingle-plugin-preset-solo", [solo])).toMatchObject({ application: "applied" })
 
     const listed = await cmd(stub, `list-${crypto.randomUUID()}`, "preset.list")
     expect(listed.result, JSON.stringify(listed)).toMatchObject({
@@ -64,7 +64,7 @@ describe("preset row", () => {
 
   it("leaves the later row failed when two rows declare one id", async () => {
     const stub = fresh()
-    const result = await put(stub, "xin-plugin-preset-dupe", [
+    const result = await put(stub, "ingle-plugin-preset-dupe", [
       { id: "preset-row-first", plugin: "preset", config: { id: "dupe", plugins: "all" } },
       { id: "preset-row-second", plugin: "preset", config: { id: "dupe", plugins: "all" } },
     ])
@@ -78,7 +78,7 @@ describe("preset row", () => {
 
   it("applies the tool allowlist a row declares", async () => {
     const stub = fresh()
-    await put(stub, "xin-plugin-preset-memory", [
+    await put(stub, "ingle-plugin-preset-memory", [
       {
         id: "preset-row-memory",
         plugin: "preset",

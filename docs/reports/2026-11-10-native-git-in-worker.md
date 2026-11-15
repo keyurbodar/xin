@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-10
 **Branch:** `git/native-worker`, merged into `main` on 2026-11-10
-**Scope:** answer whether Xin can clone and read a git repository inside the Worker, with numbers, and what it would unlock — then build it as the optional row `tool-git-native` (`plugins/git-native/`).
+**Scope:** answer whether Ingle can clone and read a git repository inside the Worker, with numbers, and what it would unlock — then build it as the optional row `tool-git-native` (`plugins/git-native/`).
 **Prototype:** `test/git-native/` at [`e7dfd51`](https://github.com/keyurbodar/xin/tree/e7dfd51/test/git-native), removed from the tree once the row shipped — a standalone Worker (`wrangler.jsonc`, R2 binding `FILES`) driven over HTTP, plus a Node harness for CPU and heap. The prototype is the experiment; the row is the result, in [The row, as built](#the-row-as-built).
 
 ## Verdict
@@ -15,7 +15,7 @@ The cheapest useful shape is: **one smart-HTTP fetch → build a git-format `.id
 
 ## The row, as built
 
-`tool-git-native` is a native Cordis package in `plugins/git-native/`, one row in the `xin-plugin-git-native` bundle,
+`tool-git-native` is a native Cordis package in `plugins/git-native/`, one row in the `ingle-plugin-git-native` bundle,
 `disabled: true` like `tool-git`. It injects `pi`, `db` and `host`; it owns three tables (`git_native_repo`,
 `git_native_ref`, `git_native_shallow`, applied by its own `git_native` migration) and three R2 objects per repository
 (pack, v2 `.idx`, span table). The GitHub API row is untouched and stays the default path for GitHub.
@@ -53,7 +53,7 @@ Three other numbers from the row:
 - **History-only clones work on both hosts.** The same GitLab repository at depth 5 is a 4.5 MB pack as a full clone
   and a **96 KB** pack with `filter blob:none`; `log` and `diff` still answer (diff without patches) and `show` fetches
   the one blob it needs — GitLab and Gitea both answer a bare `want <blob>`.
-- **Live test in workerd:** `XIN_LIVE=1` passes against `gitlab.com/gitlab-org/gitlab-runner` in 13.2 s for the whole
+- **Live test in workerd:** `INGLE_LIVE=1` passes against `gitlab.com/gitlab-org/gitlab-runner` in 13.2 s for the whole
   test (Durable Object boot, clone, three reads, a diff and a file).
 
 Still missing, by decision rather than by surprise: no incremental fetch, no private repositories (no credentials are
@@ -200,7 +200,7 @@ a pack ceiling with a history-only fallback, and tests plus a spec section. What
 
 ```bash
 bun scripts/gate.ts submit test --only=plugins/git-native          # the row: fixture remote, ceiling, offers
-XIN_LIVE=1 bun scripts/gate.ts submit test --only=plugins/git-native/live   # the row against gitlab.com
+INGLE_LIVE=1 bun scripts/gate.ts submit test --only=plugins/git-native/live   # the row against gitlab.com
 
 git checkout e7dfd51 -- test/git-native    # the prototype was removed after the row shipped
 cd test/git-native && bunx wrangler dev --config wrangler.jsonc --port 8801   # the prototype Worker, real R2
@@ -208,7 +208,7 @@ curl 'http://127.0.0.1:8801/bench?repo=expressjs/express'                      #
 node test/git-native/bench-node.ts repo=expressjs/express impl=native          # the same code in Node, with CPU and heap
 ```
 
-`fmt`, `lint`, `types`, `bundle` and `test` all pass through the gate on this branch. The prototype was `test/git-native/` (removed later; see `e7dfd51`) plus this report; the shipped row is `plugins/git-native/` with the `git_native` tables in `src/kernel/dbtables.ts` and the `xin-plugin-git-native` bundle in `xin.profile.json`. The prototype's comparison engine, the dev dependency `isomorphic-git`, left with it, so nothing in the repository imports it.
+`fmt`, `lint`, `types`, `bundle` and `test` all pass through the gate on this branch. The prototype was `test/git-native/` (removed later; see `e7dfd51`) plus this report; the shipped row is `plugins/git-native/` with the `git_native` tables in `src/kernel/dbtables.ts` and the `ingle-plugin-git-native` bundle in `ingle.profile.json`. The prototype's comparison engine, the dev dependency `isomorphic-git`, left with it, so nothing in the repository imports it.
 
 ## Two surprises worth recording
 

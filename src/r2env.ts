@@ -564,7 +564,7 @@ export class R2Env implements ExecutionEnv {
     context: Context,
   ): Promise<Result<ShellExecResult, ExecutionError>> {
     if (context.abortSignal?.aborted === true) return err(new ExecutionError("aborted", "operation aborted"))
-    return err(new ExecutionError("shell_unavailable", "Xin runs files only, not code"))
+    return err(new ExecutionError("shell_unavailable", "Ingle runs files only, not code"))
   }
 
   async watch(): Promise<Result<FileWatcher, FileError>> {

@@ -3,7 +3,7 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 
 self.addEventListener("push", (event) => {
   const payload = readPayload(event)
-  const title = textOf(payload, "title") || textOf(payload, "threadTitle") || "Xin"
+  const title = textOf(payload, "title") || textOf(payload, "threadTitle") || "Ingle"
   const body = textOf(payload, "body") || textOf(payload, "threadTitle")
   const tag = textOf(payload, "tag")
   event.waitUntil(
@@ -23,7 +23,7 @@ self.addEventListener("push", (event) => {
 /** Every open tab hears the push too, so a visible window can refresh without waiting for a reload. */
 async function announce(message) {
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true })
-  for (const window of windows) window.postMessage({ type: "xin-push", ...message })
+  for (const window of windows) window.postMessage({ type: "ingle-push", ...message })
 }
 
 self.addEventListener("notificationclick", (event) => {

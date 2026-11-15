@@ -25,20 +25,20 @@ describe("plugin authoring", () => {
 
   it("writes a package this build accepts, under the new name", () => {
     const manifest: unknown = JSON.parse(fileOf("greeting", "package.json"))
-    const xin = field(manifest, "xin")
-    const plugins = field(xin, "plugins")
+    const ingle = field(manifest, "ingle")
+    const plugins = field(ingle, "plugins")
     const declared = field(plugins, "greeting")
 
-    expect(field(manifest, "name")).toBe("xin-plugin-greeting")
+    expect(field(manifest, "name")).toBe("ingle-plugin-greeting")
     expect(field(declared, "module")).toBe("./index.ts")
     expect(field(declared, "title")).toBe("Greeting")
     expect(
       readManifest(
         { api: field(declared, "api"), requires: field(declared, "requires") },
-        "xin-plugin-greeting: xin.plugins.greeting",
+        "ingle-plugin-greeting: ingle.plugins.greeting",
       ),
     ).toEqual({ api: 1, requires: [] })
-    expect(field(xin, "bundle")).toEqual([{ id: "greeting", plugin: "greeting" }])
+    expect(field(ingle, "bundle")).toEqual([{ id: "greeting", plugin: "greeting" }])
 
     expect(fileOf("greeting", "index.ts")).toContain('export const name = "greeting"')
     expect(fileOf("greeting", "index.ts")).toContain('name: "greeting"')

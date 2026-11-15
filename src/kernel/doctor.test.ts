@@ -37,7 +37,7 @@ describe("plugin doctor", () => {
 
     expect(row(report, "market")).toMatchObject({
       plugin: "market",
-      package: "xin-plugin-market",
+      package: "ingle-plugin-market",
       version: "0.1.0",
       manifest: { requires: [] },
       state: { kind: "active" },

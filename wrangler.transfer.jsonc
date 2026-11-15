@@ -1,0 +1,12 @@
+{
+  // One deploy only: moves the Home namespace and its data from the old `xin` script to `ingle`. See docs/deploy/rename.md.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ingle",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "define": { "import.meta.url": "\"file:///bundle/index.js\"" },
+  "durable_objects": { "bindings": [{ "name": "HOME", "class_name": "Home" }] },
+  "migrations": [{ "tag": "v1", "transferred_classes": [{ "from": "Home", "from_script": "xin", "to": "Home" }] }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "xin-files" }]
+}
