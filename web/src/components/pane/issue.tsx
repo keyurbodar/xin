@@ -27,6 +27,7 @@ import {
   dueLabel,
   eventLine,
   initials,
+  latestIssue,
   localDay,
   PRIORITIES,
   PRIORITY_LABEL,
@@ -81,7 +82,9 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
   const open = (id: number): void => showPaneView(props.project.id, issueView(id))
 
   const keep = (issue: Issue): void => {
-    mutate((current) => (current === undefined ? current : { ...current, detail: { ...current.detail, issue } }))
+    mutate((current) =>
+      current === undefined ? current : { ...current, detail: { ...current.detail, issue: latestIssue(current.detail.issue, issue) } },
+    )
   }
   const write = async (fields: Record<string, unknown>): Promise<void> => keep(await updateIssue(props.id, fields))
   const edit = (key: string, change: Edit): Promise<boolean> => action.send(key, change, write)

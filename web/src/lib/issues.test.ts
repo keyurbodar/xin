@@ -17,6 +17,7 @@ import {
   dueLabel,
   eventLine,
   initials,
+  latestIssue,
   issueScope,
   nextCommandId,
   threadPlace,
@@ -316,4 +317,13 @@ test("a linked thread opens in this pane, under its own project, or not at all w
   expect(threadPlace(7, pane, [pane, other])).toEqual({ kind: "here", title: "Fix the build" })
   expect(threadPlace(9, pane, [pane, other])).toEqual({ kind: "elsewhere", title: "Draft copy", projectId: "prj_b", slug: "beta" })
   expect(threadPlace(42, pane, [pane, other])).toEqual({ kind: "unknown" })
+})
+
+test("a delayed ack never replaces a newer rename the rev already showed", () => {
+  const base = { ...issue(1, "todo"), description: "" }
+  const ack = { ...base, title: "Alpha one", priority: "low" as const, updatedAt: 100 }
+  const renamed = { ...base, title: "Alpha one newest", priority: "low" as const, updatedAt: 160 }
+  expect(latestIssue(renamed, ack)).toBe(renamed)
+  expect(latestIssue({ ...base, updatedAt: 90 }, ack)).toBe(ack)
+  expect(latestIssue(ack, { ...ack })).toEqual(ack)
 })

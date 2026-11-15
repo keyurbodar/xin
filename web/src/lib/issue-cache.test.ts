@@ -6,6 +6,7 @@ function fakeClock(): Clock & { readonly advance: (ms: number) => void } {
   let next = 0
   const timers = new Map<number, { readonly at: number; readonly run: () => void }>()
   return {
+    now: () => now,
     set: (run, ms) => {
       next += 1
       timers.set(next, { at: now + ms, run })
@@ -28,7 +29,7 @@ function fakeClock(): Clock & { readonly advance: (ms: number) => void } {
 test("a burst of revisions settles once, after the last one; the first settles at once", () => {
   const clock = fakeClock()
   const settled: number[] = []
-  const note = createTrailing(275, (rev: number) => settled.push(rev), clock)
+  const note = createTrailing(275, 1_000, (rev: number) => settled.push(rev), clock)
   note(10)
   expect(settled).toEqual([10])
   note(11)
@@ -43,6 +44,32 @@ test("a burst of revisions settles once, after the last one; the first settles a
   note(14)
   clock.advance(275)
   expect(settled).toEqual([10, 13, 14])
+})
+
+test("home frames that repeat the last rev never hold a settle back", () => {
+  const clock = fakeClock()
+  const settled: number[] = []
+  const note = createTrailing(275, 1_000, (rev: number) => settled.push(rev), clock)
+  note(1)
+  note(2)
+  for (let frame = 0; frame < 4; frame += 1) {
+    clock.advance(100)
+    note(2)
+  }
+  expect(settled).toEqual([1, 2])
+})
+
+test("a steady stream of new revs still settles within the max wait", () => {
+  const clock = fakeClock()
+  const settled: number[] = []
+  const note = createTrailing(275, 1_000, (rev: number) => settled.push(rev), clock)
+  note(0)
+  for (let rev = 1; rev <= 14; rev += 1) {
+    note(rev)
+    clock.advance(150)
+  }
+  expect(settled[1]).toBe(7)
+  expect(settled.length).toBeGreaterThanOrEqual(3)
 })
 
 test("a key read twice at one revision loads once; a new revision loads again; a failure is retried", async () => {
@@ -63,18 +90,39 @@ test("a key read twice at one revision loads once; a new revision loads again; a
   expect(await cache(7, "p1", load("e"))).toBe("e")
 })
 
-test("states are read once, again once for an unknown id, and never twice for the same unknown id", async () => {
+test("states are read once per rev, beside the list, and that read is shared within the rev", async () => {
   let reads = 0
-  const answers = [[{ id: "todo" }], [{ id: "todo" }, { id: "qa" }], [{ id: "todo" }, { id: "qa" }]]
-  const states = createStatesCache(async () => answers[Math.min(reads++, answers.length - 1)] ?? [])
-  expect((await states(["todo"])).map((state) => state.id)).toEqual(["todo"])
-  expect(await states(["todo"])).toHaveLength(1)
+  const states = createStatesCache(async () => {
+    reads += 1
+    return [{ id: "todo", name: `Todo ${reads}` }]
+  })
+  expect((await states(1, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 1")
+  expect((await states(1, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 1")
   expect(reads).toBe(1)
-  expect((await states(["todo", "qa"])).map((state) => state.id)).toEqual(["todo", "qa"])
+  expect((await states(2, Promise.resolve(["todo"])))[0]?.name).toBe("Todo 2")
   expect(reads).toBe(2)
-  expect(await states(["qa"])).toHaveLength(2)
+})
+
+test("an unknown state id reads the states again once, and never twice for the same id", async () => {
+  let reads = 0
+  const answers = [[{ id: "todo" }], [{ id: "todo" }, { id: "qa" }]]
+  const states = createStatesCache(async () => answers[Math.min(reads++, answers.length - 1)] ?? [])
+  expect((await states(1, Promise.resolve(["todo", "qa"]))).map((state) => state.id)).toEqual(["todo", "qa"])
   expect(reads).toBe(2)
-  await states(["gone"])
-  await states(["gone"])
+  await states(1, Promise.resolve(["gone"]))
+  await states(1, Promise.resolve(["gone"]))
   expect(reads).toBe(3)
+})
+
+test("a failed states read is forgotten, so the next read at the same rev retries", async () => {
+  let reads = 0
+  const states = createStatesCache(async () => {
+    reads += 1
+    if (reads === 1) throw new Error("offline")
+    return [{ id: "todo" }]
+  })
+  await expect(states(1, Promise.resolve(["todo"]))).rejects.toThrow("offline")
+  await Promise.resolve()
+  expect(await states(1, Promise.resolve(["todo"]))).toHaveLength(1)
+  expect(reads).toBe(2)
 })

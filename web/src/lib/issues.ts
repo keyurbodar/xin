@@ -531,3 +531,8 @@ export function threadPlace(thread: number, pane: ThreadHome, projects: readonly
   }
   return { kind: "unknown" }
 }
+
+/** A write's ack only replaces the shown issue when it is not older, so a slow ack cannot undo a newer change the rev already showed. */
+export function latestIssue(shown: Issue, incoming: Issue): Issue {
+  return incoming.updatedAt >= shown.updatedAt ? incoming : shown
+}
