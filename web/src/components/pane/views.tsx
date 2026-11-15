@@ -1,7 +1,7 @@
 import { For, Show, type JSX } from "solid-js"
 import { Brain, CalendarClock, Folder, LayoutList, ListTree, Timer, Users, type LucideProps } from "lucide-solid"
 import { MemoryTab } from "../chat/memory.tsx"
-import { SchedulesTab } from "../chat/schedules.tsx"
+import { AutomationsTab } from "../chat/automations.tsx"
 import { FilesView, JobsView, ThreadsView } from "./bodies.tsx"
 import { CrewSection, CrewView } from "./crew.tsx"
 import { DriveSection, InProgressSection, NeedsYouSection, ThreadsSection, type PaneContext } from "./overview.tsx"
@@ -87,17 +87,17 @@ export const PANE_VIEWS: readonly PaneEntry[] = [
     ),
   },
   {
-    id: "schedules",
-    label: "Schedules",
+    id: "automations",
+    label: "Automations",
     icon: CalendarClock,
     scope: "project",
-    render: (context) => <SchedulesTab slug={context.project.slug} />,
+    render: (context) => <AutomationsTab project={context.project} />,
   },
   { id: "jobs", label: "Jobs", icon: Timer, render: () => <JobsView /> },
   { id: "threads", label: "All threads", icon: ListTree, render: (context) => <ThreadsView {...context} /> },
 ]
 
-/** The views this pane offers: a Captain's crew in its own pane, a project's files, memory and schedules in theirs. */
+/** The views this pane offers: a Captain's crew in its own pane, a project's files, memory and automations in theirs. */
 export function paneViews(context: PaneContext): readonly PaneEntry[] {
   return PANE_VIEWS.filter((entry) => fits(entry, context))
 }

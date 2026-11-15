@@ -29,58 +29,6 @@ export function count(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`
 }
 
-const DAYS: Readonly<Record<string, string>> = {
-  MO: "Mon",
-  TU: "Tue",
-  WE: "Wed",
-  TH: "Thu",
-  FR: "Fri",
-  SA: "Sat",
-  SU: "Sun",
-}
-
-/** A recurrence the owner can read; anything it does not recognise stays as the rule it was given. */
-export function describeRule(rrule: string): string {
-  const parts = new Map(
-    rrule
-      .split(";")
-      .map((part) => part.split("="))
-      .filter((pair): pair is [string, string] => pair.length === 2)
-      .map(([key, value]) => [key.toUpperCase(), value]),
-  )
-  const freq = parts.get("FREQ")?.toUpperCase()
-  if (freq === undefined) return rrule
-  const every = Number(parts.get("INTERVAL") ?? "1")
-  const each = (unit: string, plural: string): string =>
-    Number.isFinite(every) && every > 1 ? `Every ${every} ${plural}` : `Every ${unit}`
-  const at = (): string => {
-    const hour = Number(parts.get("BYHOUR") ?? "9")
-    const minute = Number(parts.get("BYMINUTE") ?? "0")
-    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return ""
-    return ` at ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
-  }
-  switch (freq) {
-    case "DAILY":
-      return `${each("day", "days")}${at()}`
-    case "WEEKLY": {
-      const days = (parts.get("BYDAY") ?? "")
-        .split(",")
-        .map((day) => DAYS[day.trim().toUpperCase()] ?? day.trim())
-        .filter((day) => day !== "")
-      if (days.length === 0) return `${each("week", "weeks")}${at()}`
-      const label = days.join(", ")
-      return Number.isFinite(every) && every > 1 ? `Every ${every} weeks on ${label}${at()}` : `Every ${label}${at()}`
-    }
-    case "MONTHLY":
-      return `${each("month", "months")}${at()}`
-    case "YEARLY":
-      return `${each("year", "years")}${at()}`
-    default:
-      return rrule
-  }
-}
-
-/** A browser origin without its scheme, for a session or device row. */
 export function originLabel(origin: string): string {
   const stripped = origin.replace(/^https?:\/\//u, "").replace(/\/$/u, "")
   return stripped === "" ? "No origin sent" : stripped
