@@ -6,7 +6,7 @@ Read with: [06 Orchestration](./06-orchestration.md) for threads, [09 Plugins](.
 
 ```text
 project.settings.git = { repo: "owner/name", ref?: "main" }
-tool-git row (bundle xin-plugin-git)
+tool-git row (bundle ingle-plugin-git)
   git_log   { path?, ref?, limit? }   -> commits
   git_show  { ref }                   -> one commit and file patches
   git_diff  { base, head?, path? }    -> comparison and patches
@@ -30,22 +30,22 @@ All four are read-only and `replay:"safe"`:
 | `git_diff` | `GET /repos/{repo}/compare/{base}...{head}` | Status, ahead/behind counts, commits and file patches; `path` filters files. |
 | `git_blame` | GitHub GraphQL `repository.object(expression: ref).blame(path)` | Line ranges with the commit that last changed them. |
 
-`git_blame` needs a named credential `github.token` for the GraphQL API. The other three work unauthenticated on public repositories and use the same token when it exists, for private repositories and higher rate limits. The tools send a `Xin/0.1` user agent and the GitHub API version header, cap output at 100,000 characters and time out at 15 seconds.
+`git_blame` needs a named credential `github.token` for the GraphQL API. The other three work unauthenticated on public repositories and use the same token when it exists, for private repositories and higher rate limits. The tools send a `Ingle/0.1` user agent and the GitHub API version header, cap output at 100,000 characters and time out at 15 seconds.
 
 A ref is encoded one path segment at a time, and a ref with an empty, `.` or `..` segment, a backslash or a `%` is refused before any request: `git_show` and `git_diff` put the ref in the URL path, so `../..` would otherwise walk out of `/repos/{repo}/` and reach another repository with the home's token.
 
 ## Row and hiding
 
-The feature is a native Cordis package, `plugins/git`, with one row, `tool-git`, in the `xin-plugin-git` bundle. It injects `pi` and `secrets` and installs the `tool-git` extension. The bundle declares the row `disabled: true` (`plugins/git/package.json`, carried into `src/catalog.gen.ts`): git access is an optional plugin and off by default, but the row is in the tree so `plugin.list` shows it and `plugin.enable` mounts it without a rebuild. `xin.profile.json` names the bundle and carries no row state; the disabled flag lives on the row. Disabling the row again, or a preset that hides it, removes all four tools; a thread inherits its coordinator's preset.
+The feature is a native Cordis package, `plugins/git`, with one row, `tool-git`, in the `ingle-plugin-git` bundle. It injects `pi` and `secrets` and installs the `tool-git` extension. The bundle declares the row `disabled: true` (`plugins/git/package.json`, carried into `src/catalog.gen.ts`): git access is an optional plugin and off by default, but the row is in the tree so `plugin.list` shows it and `plugin.enable` mounts it without a rebuild. `ingle.profile.json` names the bundle and carries no row state; the disabled flag lives on the row. Disabling the row again, or a preset that hides it, removes all four tools; a thread inherits its coordinator's preset.
 
 ## Native git (optional row)
 
-A second row, `tool-git-native` in the `xin-plugin-git-native` bundle, reads a public repository of **any** host inside
+A second row, `tool-git-native` in the `ingle-plugin-git-native` bundle, reads a public repository of **any** host inside
 the Worker: one smart-HTTP v2 fetch, a git-format `.idx` built with `node:zlib`, the pack and its index in R2, and a
 reader that pulls one object at a time by R2 range read. There is no git binary, no checkout and no dependency.
 
 ```text
-tool-git-native row (bundle xin-plugin-git-native, disabled: true)
+tool-git-native row (bundle ingle-plugin-git-native, disabled: true)
   git_native_clone { url?, ref?, depth? }   -> clone or refresh into R2
   git_native_log   { url?, ref?, path?, limit? }
   git_native_show  { url?, path, ref? }     -> one file at a revision

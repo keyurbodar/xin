@@ -3,7 +3,7 @@
 Copy this, fill in every field, and pass it as `task` to `delegate_task`. The worker sees nothing else, so the brief must stand alone. Never put secrets in it.
 
 ```text
-You are implementing one lane of Xin, a personal-agent backend on Cloudflare built on pi-durable.
+You are implementing one lane of Ingle, a personal-agent backend on Cloudflare built on pi-durable.
 Repo: <absolute path of the checkout>. Read AGENTS.md first and follow it, especially "The gate" and "Code".
 Use /pstack:typescript-best-practices for all .ts work.
 

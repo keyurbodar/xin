@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest"
 import { TEST_PROFILE } from "../test/worker.ts"
 import type { Home } from "./host.ts"
 
-const call = (path: string, init?: RequestInit) => exports.default.fetch(new Request(`https://xin.test${path}`, init))
+const call = (path: string, init?: RequestInit) => exports.default.fetch(new Request(`https://ingle.test${path}`, init))
 
 describe("Worker auth", () => {
   it("serves health without a token", async () => {
@@ -27,7 +27,7 @@ describe("Worker auth", () => {
   })
 
   it("accepts the token as a WebSocket subprotocol", async () => {
-    const reply = await call("/v1/status", { headers: { "sec-websocket-protocol": "xin, bearer.test-owner-token" } })
+    const reply = await call("/v1/status", { headers: { "sec-websocket-protocol": "ingle, bearer.test-owner-token" } })
     expect(reply.status).toBe(200)
   })
 
@@ -38,9 +38,9 @@ describe("Worker auth", () => {
     const second = await rotate()
     expect((await call("/v1/status", { headers: { authorization: `Bearer ${second}` } })).status).toBe(200)
     expect((await call("/v1/status", { headers: { authorization: `Bearer ${first}` } })).status).toBe(401)
-    expect((await call("/v1/status", { headers: { "sec-websocket-protocol": `xin, bearer.${second}` } })).status).toBe(
-      200,
-    )
+    expect(
+      (await call("/v1/status", { headers: { "sec-websocket-protocol": `ingle, bearer.${second}` } })).status,
+    ).toBe(200)
     expect((await call("/v1/status", { headers: { authorization: "Bearer test-owner-token" } })).status).toBe(200)
   })
 

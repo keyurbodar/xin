@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { marketInstallTarget, MarketIndexError, parseMarketIndex } from "./marketindex.ts"
 
-const INDEX_URL = "https://index.test/xin.json"
+const INDEX_URL = "https://index.test/ingle.json"
 const COMMIT = "b".repeat(40)
 
 const version = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -13,7 +13,7 @@ const version = (overrides: Record<string, unknown> = {}): Record<string, unknow
 })
 
 const plugin = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
-  name: "@lahn/xin-notes",
+  name: "@lahn/ingle-notes",
   metadata: { keywords: ["notes"] },
   versions: [version()],
   ...overrides,
@@ -47,7 +47,7 @@ describe("parseMarketIndex", () => {
       metadata: { categories: {}, labels: {}, sortKeys: {} },
       plugins: [
         {
-          name: "@lahn/xin-notes",
+          name: "@lahn/ingle-notes",
           metadata: { keywords: ["notes"], labels: [], sortKeys: {} },
           versions: [{ version: "1.0.0", publishTimestamp: 1_767_225_600, source: { type: "npm" }, engines: {} }],
         },
@@ -64,7 +64,7 @@ describe("parseMarketIndex", () => {
               version({ version: "1.0.0" }),
               version({
                 version: "2.0.0",
-                engines: { xin: ">=1.0.0" },
+                engines: { ingle: ">=1.0.0" },
                 source: { type: "npm", registry: "https://npm.test" },
               }),
               version({ version: "1.5.0" }),
@@ -74,7 +74,7 @@ describe("parseMarketIndex", () => {
       }),
     )
     expect(parsed.plugins[0]?.versions.map((entry) => entry.version)).toEqual(["2.0.0", "1.5.0", "1.0.0"])
-    expect(parsed.plugins[0]?.versions[0]?.engines).toEqual({ xin: ">=1.0.0" })
+    expect(parsed.plugins[0]?.versions[0]?.engines).toEqual({ ingle: ">=1.0.0" })
     expect(parsed.plugins[0]?.versions[0]?.source).toEqual({ type: "npm", registry: "https://npm.test/" })
   })
 
@@ -101,7 +101,7 @@ describe("parseMarketIndex", () => {
     const repeatedName = rejection(() => parse(index({ plugins: [plugin(), plugin()] })))
     expect(repeatedName).toEqual({
       path: "$.plugins[1].name",
-      reason: "duplicates @lahn/xin-notes",
+      reason: "duplicates @lahn/ingle-notes",
     })
     const repeatedVersion = rejection(() => parse(index({ plugins: [plugin({ versions: [version(), version()] })] })))
     expect(repeatedVersion).toEqual({
@@ -129,25 +129,25 @@ describe("parseMarketIndex", () => {
     })
   })
 
-  it("validates engines.xin as a range and ignores engines.dsh", () => {
+  it("validates engines.ingle as a range and ignores engines.dsh", () => {
     expect(() =>
-      parse(index({ plugins: [plugin({ versions: [version({ engines: { xin: ">=1.0.0" } })] })] })),
+      parse(index({ plugins: [plugin({ versions: [version({ engines: { ingle: ">=1.0.0" } })] })] })),
     ).not.toThrow()
     expect(() =>
       parse(index({ plugins: [plugin({ versions: [version({ engines: { dsh: ">=1.0.0" } })] })] })),
     ).not.toThrow()
     expect(
       rejection(() =>
-        parse(index({ plugins: [plugin({ versions: [version({ engines: { xin: "workspace:*" } })] })] })),
+        parse(index({ plugins: [plugin({ versions: [version({ engines: { ingle: "workspace:*" } })] })] })),
       ),
     ).toEqual({
-      path: "$.plugins[0].versions[0].engines.xin",
+      path: "$.plugins[0].versions[0].engines.ingle",
       reason: "must not be a workspace: range",
     })
     expect(
-      rejection(() => parse(index({ plugins: [plugin({ versions: [version({ engines: { xin: "latest" } })] })] }))),
+      rejection(() => parse(index({ plugins: [plugin({ versions: [version({ engines: { ingle: "latest" } })] })] }))),
     ).toEqual({
-      path: "$.plugins[0].versions[0].engines.xin",
+      path: "$.plugins[0].versions[0].engines.ingle",
       reason: "must be a SemVer range",
     })
   })
@@ -161,7 +161,7 @@ describe("parseMarketIndex", () => {
               version({
                 source: {
                   type: "git",
-                  url: "https://github.com/lahn/xin-tools",
+                  url: "https://github.com/lahn/ingle-tools",
                   commit: COMMIT,
                   path: "packages/tools",
                 },
@@ -174,12 +174,12 @@ describe("parseMarketIndex", () => {
     const listed = parsed.plugins[0]?.versions[0]
     expect(listed?.source).toEqual({
       type: "git",
-      url: "https://github.com/lahn/xin-tools",
+      url: "https://github.com/lahn/ingle-tools",
       commit: COMMIT,
       path: "packages/tools",
     })
-    expect(listed === undefined ? undefined : marketInstallTarget("@lahn/xin-tools", listed)).toEqual({
-      spec: `git+https://github.com/lahn/xin-tools.git#${COMMIT}&path:/packages/tools`,
+    expect(listed === undefined ? undefined : marketInstallTarget("@lahn/ingle-tools", listed)).toEqual({
+      spec: `git+https://github.com/lahn/ingle-tools.git#${COMMIT}&path:/packages/tools`,
     })
   })
 
@@ -202,8 +202,8 @@ describe("parseMarketIndex", () => {
   it("builds name@version for an npm source and resolves a relative icon", () => {
     const parsed = parse(index({ plugins: [plugin({ icon: "icons/notes.png" })] }))
     const listed = parsed.plugins[0]?.versions[0]
-    expect(listed === undefined ? undefined : marketInstallTarget("@lahn/xin-notes", listed)).toEqual({
-      spec: "@lahn/xin-notes@1.0.0",
+    expect(listed === undefined ? undefined : marketInstallTarget("@lahn/ingle-notes", listed)).toEqual({
+      spec: "@lahn/ingle-notes@1.0.0",
     })
     expect(parsed.plugins[0]?.icon).toBe("https://index.test/icons/notes.png")
   })

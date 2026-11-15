@@ -1,5 +1,5 @@
 {
-  "name": "xin-test",
+  "name": "ingle-test",
   "main": "./worker.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],

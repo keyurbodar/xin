@@ -6,7 +6,7 @@ import { defineOp, OpRejected } from "../ops.ts"
 import { FragmentId } from "../rowid.ts"
 import { configSchemaOf, validateConfig } from "./config.ts"
 import { pluginOf, type Layer, type Row } from "./layers.ts"
-import type { RowState, XinLoader } from "./loader.ts"
+import type { RowState, IngleLoader } from "./loader.ts"
 import { checkManifest, DEFAULT_MANIFEST, type Manifest, type ManifestProblem } from "./manifest.ts"
 import { sourcePackage, sourceVersion } from "./packages.ts"
 
@@ -52,14 +52,14 @@ const isJsonObject = (value: unknown): value is JsonObject =>
 
 const toJson = (value: unknown): JsonValue => (value === undefined ? null : JSON.parse(JSON.stringify(value)))
 
-const packageOf = (loader: XinLoader, row: Row): { package: string; version: string } => {
+const packageOf = (loader: IngleLoader, row: Row): { package: string; version: string } => {
   const entry = loader.composition.catalog[pluginOf(row)]
   return entry === undefined
     ? { package: pluginOf(row), version: "dev" }
     : { package: sourcePackage(entry.source), version: sourceVersion(entry.source) }
 }
 
-export function createManager(loader: XinLoader): Manager {
+export function createManager(loader: IngleLoader): Manager {
   const { catalog, profile } = loader.composition
   const find = (id: string): Row => {
     const row = loader.rows().find((candidate) => candidate.id === id)

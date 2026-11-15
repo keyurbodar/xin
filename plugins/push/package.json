@@ -1,10 +1,10 @@
 {
-  "name": "xin-plugin-push",
+  "name": "ingle-plugin-push",
   "version": "0.1.0",
   "private": true,
   "description": "Encrypted pushes when no tab is open.",
   "type": "module",
-  "xin": {
+  "ingle": {
     "plugins": {
       "push": {
         "module": "./index.ts",

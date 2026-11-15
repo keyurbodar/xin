@@ -38,7 +38,7 @@ const toolTexts = (home: Home, id: ConversationId): Promise<string[]> =>
 describe("files", () => {
   it("stores a web upload in R2 and commits metadata without carrying the body to the DO", async () => {
     const path = "/projects/m4/upload.txt"
-    const body = "xin-upload:" + "x".repeat(2 * 1024 * 1024)
+    const body = "ingle-upload:" + "x".repeat(2 * 1024 * 1024)
     const reply = await put(path, body, { "content-type": "text/plain" })
     expect(reply.status).toBe(200)
     expect(await reply.json()).toMatchObject({ path, size: body.length, type: "text/plain" })
@@ -56,7 +56,7 @@ describe("files", () => {
     expect(databaseSize).toBeLessThan(body.length / 4)
 
     const direct = await owner().fetch(
-      new Request("https://xin.internal/v1/files/commit", {
+      new Request("https://ingle.internal/v1/files/commit", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "x".repeat(8192),

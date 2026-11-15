@@ -105,7 +105,7 @@ describe("clock", () => {
   it("mounts a row from its own bundle beside the composed default row", async () => {
     const stub = fresh()
     const put = await cmd(stub, "clock-put", "bundle.put", {
-      package: "xin-test-time-tokyo",
+      package: "ingle-test-time-tokyo",
       rows: [{ id: "time-tokyo", plugin: "time", config: { timezone: "Asia/Tokyo" } }],
     })
     expect(put.result).toMatchObject({ application: "applied" })

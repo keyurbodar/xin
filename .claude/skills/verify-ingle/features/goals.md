@@ -17,10 +17,10 @@ One durable objective per conversation that continues itself while the coordinat
 
 The owner says "keep going on this until it is done" and the agent creates a goal; the coordinator then keeps taking rounds on its own until it completes or runs out. The owner can pause it from the settings view with `goal.set pause`. When a long conversation gets slow, the owner compacts it from the same view.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 $S call POST /v1/cmd '{"id":"g1","op":"goal.get","args":{"conversation":1}}'                       # {goal:null}
 $S call POST /v1/cmd '{"id":"g2","op":"goal.set","args":{"conversation":1,"action":"create","objective":"Ship it","maxRounds":4}}'
 $S call POST /v1/cmd '{"id":"g3","op":"goal.set","args":{"conversation":1,"action":"pause","id":"<id>","revision":1}}'

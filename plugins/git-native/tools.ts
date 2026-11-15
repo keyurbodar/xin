@@ -93,7 +93,7 @@ export function createTools(port: GitNativePort): readonly ToolRegistration[] {
   const clone = defineTool({
     name: "git_native_clone",
     description:
-      "Clone or refresh a public git repository inside Xin, from any host (not only GitHub), and keep it in R2. Prefer git_log for GitHub repositories; use this for another host, for full history, or before reading a file at a revision.",
+      "Clone or refresh a public git repository inside Ingle, from any host (not only GitHub), and keep it in R2. Prefer git_log for GitHub repositories; use this for another host, for full history, or before reading a file at a revision.",
     parameters: CloneArgs,
     replay: "safe",
     execute: async (args, api) => {

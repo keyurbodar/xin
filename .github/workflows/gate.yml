@@ -31,4 +31,4 @@ jobs:
       - run: bun run test
       - run: bun run bundle
       - name: 100-thread benchmark
-        run: XIN_LOAD=1 bun run test
+        run: INGLE_LOAD=1 bun run test

@@ -12,12 +12,12 @@ Every mutation is an op run through one command layer (`src/ops.ts`), reached by
 
 Every button in the web client sends a command, and retries after a reconnect reuse the same id.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-.claude/skills/verify-xin/xin.sh call POST /v1/cmd '{"id":"v-1","op":"nope"}'   # ok:false unknown_op
-.claude/skills/verify-xin/xin.sh call POST /v1/cmd '{"id":"v-1","op":"nope"}'   # same ack, from the receipt
-.claude/skills/verify-xin/xin.sh call POST /v1/cmd '{bad'                        # HTTP 400
+.claude/skills/verify-ingle/ingle.sh call POST /v1/cmd '{"id":"v-1","op":"nope"}'   # ok:false unknown_op
+.claude/skills/verify-ingle/ingle.sh call POST /v1/cmd '{"id":"v-1","op":"nope"}'   # same ack, from the receipt
+.claude/skills/verify-ingle/ingle.sh call POST /v1/cmd '{bad'                        # HTTP 400
 ```
 
 Ops come from plugins. Which ops exist under `wrangler dev` depends on `src/plugins/bundled.ts`. The effect-once proof (`test.bump` counter) runs through the gate: `src/ops.test.ts`.

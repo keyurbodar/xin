@@ -17,7 +17,7 @@ type Ack = { readonly ok: boolean; readonly result?: unknown; readonly error?: u
 
 const cmd = async (stub: Stub, id: string, op: string, args: unknown): Promise<Ack> => {
   const reply = await stub.fetch(
-    new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }),
+    new Request("https://ingle.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }),
   )
   const ack = await reply.json<Ack>()
   expect(ack.ok, `${op}: ${JSON.stringify(ack)}`).toBe(true)
@@ -69,7 +69,7 @@ async function until<T>(stub: Stub, label: string, check: () => Promise<T | unde
 
 const apiKey = (): string => {
   const key: unknown = Reflect.get(env, "OPENCODE_API_KEY")
-  if (typeof key !== "string" || key.length === 0) throw new Error("XIN_LIVE=1 needs OPENCODE_API_KEY")
+  if (typeof key !== "string" || key.length === 0) throw new Error("INGLE_LIVE=1 needs OPENCODE_API_KEY")
   return key
 }
 

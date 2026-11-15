@@ -1,15 +1,15 @@
 # 12 · Market, runtime bundles and updates (free plan)
 
-This section decides how an owner finds, installs and updates other people's plugins while Xin runs on the Cloudflare free plan, which has no Worker Loader. Every mechanism here mirrors a dsh package, named in each heading. Xin builds nothing dsh lacks (owner rule 2026-11-07); the free plan only changes where code comes from.
+This section decides how an owner finds, installs and updates other people's plugins while Ingle runs on the Cloudflare free plan, which has no Worker Loader. Every mechanism here mirrors a dsh package, named in each heading. Ingle builds nothing dsh lacks (owner rule 2026-11-07); the free plan only changes where code comes from.
 
 > **Code needs a build. Rows don't.**
 
-dsh separates a plugin's code from its *bundle*, the ordered list of rows that mount that code. Xin keeps that split and turns it into two install paths.
+dsh separates a plugin's code from its *bundle*, the ordered list of rows that mount that code. Ingle keeps that split and turns it into two install paths.
 
-| Package kind | How Xin tells | Install and update | Time |
+| Package kind | How Ingle tells | Install and update | Time |
 | --- | --- | --- | --- |
-| **bundle** | its `package.json` `xin` field declares `bundle` and no `plugins` | fetched by the Worker, verified, stored, mounted live | seconds, no deploy |
-| **code** | its `xin` field declares `plugins` | recorded as pending, applied by the build pipeline (§15 Installing from the client) | one build and deploy |
+| **bundle** | its `package.json` `ingle` field declares `bundle` and no `plugins` | fetched by the Worker, verified, stored, mounted live | seconds, no deploy |
+| **code** | its `ingle` field declares `plugins` | recorded as pending, applied by the build pipeline (§15 Installing from the client) | one build and deploy |
 
 A bundle row may name any compiled plugin, so a bundle can carry MCP servers, presets and configuration for code that is already built. A bundle can also `require` code packages. Those go to the pending build list, and their rows report `missing` until the build lands, then mount on their own.
 
@@ -21,7 +21,7 @@ Read with: [09 Plugins](./09-plugins.md) for rows, layers, the plugin manager an
 
 The composed tree is built as in dsh: a profile is a list of bundles plus a patch, and an installed bundle joins the end of the bundle list.
 
-1. The bundles: the compiled ones named in `xin.profile.json`, then the **runtime bundles** in install order (the `kv` key `plugins.bundles`).
+1. The bundles: the compiled ones named in `ingle.profile.json`, then the **runtime bundles** in install order (the `kv` key `plugins.bundles`).
 2. That file's `patch`.
 3. The owner patch (`plugins.patch`), computed as the minimal departure from layers 1 and 2.
 
@@ -72,12 +72,12 @@ A package name is installed either as a runtime bundle or as compiled code. Inst
 
 | Plugin | Package | Config | Mirrors |
 | --- | --- | --- | --- |
-| `mcp-server` | `xin-plugin-mcp` | `{ name, url, headers?: { [name]: string } }` | dsh `mcp-client`. `url` and header values may contain `${credential:REF}`, resolved from `ctx.secrets` at connect time; a missing credential leaves the row active and logging `waiting-credentials`, and it connects when `secret.set` writes the value |
-| `preset` | `xin-plugin-presets` | `{ id, name?, description?, order?, plugins }` | dsh `agent-preset` (§9 Presets) |
+| `mcp-server` | `ingle-plugin-mcp` | `{ name, url, headers?: { [name]: string } }` | dsh `mcp-client`. `url` and header values may contain `${credential:REF}`, resolved from `ctx.secrets` at connect time; a missing credential leaves the row active and logging `waiting-credentials`, and it connects when `secret.set` writes the value |
+| `preset` | `ingle-plugin-presets` | `{ id, name?, description?, order?, plugins }` | dsh `agent-preset` (§9 Presets) |
 
 Any plugin may have several rows. A second row of a plugin that registers fixed names fails to start and reports `failed`, as a duplicate does in dsh.
 
-## Market (`market` row, `xin-plugin-market`, dsh `plugin-market`)
+## Market (`market` row, `ingle-plugin-market`, dsh `plugin-market`)
 
 The market is a feature plugin, not kernel. It reads market indexes and the npm registry over `fetch`, and installs through `ctx.packages`.
 
@@ -109,7 +109,7 @@ type MarketIndex = {
       version: string                      // exact semver
       publishTimestamp: number             // unix seconds
       source: { type: "npm"; registry?: string } | { type: "git"; url: string; commit: string; path?: string }
-      engines: { xin?: string }            // dsh reads engines.dsh
+      engines: { ingle?: string }            // dsh reads engines.dsh
     }>
   }>
 }
@@ -117,7 +117,7 @@ type MarketIndex = {
 
 An invalid index is reported with dsh's error path (`$.plugins[3].versions`) and skipped; the other indexes still serve. The same package in two indexes takes the first index's entry.
 
-**Compatibility.** A version is compatible when its `engines.xin` is absent or satisfied by the running Xin version (`ctx.packages.version`). The version offered is the newest compatible one, else the newest.
+**Compatibility.** A version is compatible when its `engines.ingle` is absent or satisfied by the running Ingle version (`ctx.packages.version`). The version offered is the newest compatible one, else the newest.
 
 **Status**, as dsh's market shows it:
 
@@ -142,7 +142,7 @@ An invalid index is reported with dsh's error path (`$.plugins[3].versions`) and
 | `market.skip` / `market.unskip` / `market.skipped` | kv `market.skipped`, one version per package: a skipped version is marked in `market.search` and `market.entry`, and `market.update` to it answers `{ application: "skipped" }` without touching the install |
 | `market.rollback` | reinstalls the newest `market_history` version other than the installed one; refuses when there is none, when it is no longer in an index, or when it is incompatible, and never moves forward |
 
-**Installing a version.** An `npm` source reads the version document from `source.registry`, else the configured `registry`, for the `xin` field and `dist`. A `git` source cannot be fetched by the Worker, so it is always recorded as a pending code install `git+<url>#<commit>` (with `&path:/<path>`), as dsh's `marketInstallTarget` builds it. For an npm package:
+**Installing a version.** An `npm` source reads the version document from `source.registry`, else the configured `registry`, for the `ingle` field and `dist`. A `git` source cannot be fetched by the Worker, so it is always recorded as a pending code install `git+<url>#<commit>` (with `&path:/<path>`), as dsh's `marketInstallTarget` builds it. For an npm package:
 
 - A code package is recorded pending as `name@version`. `market.install` and `market.update` do not deploy; the client calls `system.update` after them, so one build can carry several changes.
 - A bundle is fetched from `dist.tarball` over https with redirects refused, at most 8 MiB compressed. The bytes must match `dist.integrity` (`sha512-<base64>`, checked with `crypto.subtle`). The tarball is gunzipped with `DecompressionStream` and read as ustar, at most 4 MiB unpacked, and only `package/package.json` is read. The rows, patch and `requires` that get mounted come from that verified file, not from the version document; a tarball whose kind differs from the document is refused. The result is validated by the `packages` row like any bundle.
@@ -154,4 +154,4 @@ Every applied install writes a `market_history { package, version, at }` row, wh
 - Bundle rows are data. They run only code that is already compiled into the build, and their config is checked against that code's schema.
 - A bundle's rows can still steer the model (an MCP server's tools, a preset), so the client shows a bundle's rows before install.
 - Code packages are trusted by installing them, as in §15. Third-party code that should not run in the Home isolate should be an MCP server.
-- dsh has no capability manifest or plugin sandbox, so Xin has none either. Approval for risky tool calls is not built: the `tools/pre-execute` gate and the `user-approval` service were planned as P10 and dropped with the rest of the approval seam (09, Dropped for simplicity). Showing a bundle's rows before install is the only review step, and it happens in the client.
+- dsh has no capability manifest or plugin sandbox, so Ingle has none either. Approval for risky tool calls is not built: the `tools/pre-execute` gate and the `user-approval` service were planned as P10 and dropped with the rest of the approval seam (09, Dropped for simplicity). Showing a bundle's rows before install is the only review step, and it happens in the client.

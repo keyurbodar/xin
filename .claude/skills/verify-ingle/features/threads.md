@@ -14,10 +14,10 @@ A project has one coordinator conversation and a list of threads. The coordinato
 
 The owner creates a project, picks a model, and chats with its coordinator. The Overview lists threads and their results.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 KEY=$(grep -o '^OPENCODE_API_KEY=.*' .dev.vars | cut -d= -f2-)      # local only, never echo it
 $S call POST /v1/cmd "{\"id\":\"c\",\"op\":\"credential.set\",\"args\":{\"provider\":\"opencode-go\",\"key\":\"$KEY\"}}" >/dev/null
 $S call POST /v1/cmd '{"id":"p","op":"project.create","args":{"slug":"live","name":"Live"}}'   # → coordinatorId
@@ -34,5 +34,5 @@ Proof: `workspace.read` shows the thread `completed` with the reply text as `res
 ## Gotchas
 
 - Without a model the batch is followed by `xin.error` ("pick a model").
-- `xin.sh stop` wipes state, so read the thread conversation (`sub conv:<threadId>`) before stopping.
+- `ingle.sh stop` wipes state, so read the thread conversation (`sub conv:<threadId>`) before stopping.
 - Faux replies have no thinking parts. Real models do, so keep the live check in the loop for report text.

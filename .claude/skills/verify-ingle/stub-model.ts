@@ -7,7 +7,7 @@
  * question, then answers the resumed turn with prose. That is enough to drive threads,
  * waiting questions, reports and usage through the running Worker.
  *
- *   bun .claude/skills/verify-xin/stub-model.ts 8790
+ *   bun .claude/skills/verify-ingle/stub-model.ts 8790
  */
 
 const port = Number(process.argv[2] ?? 8790)

@@ -1,15 +1,15 @@
 import { DurableObject } from "cloudflare:workers"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Conversation, Harness, Wake } from "@earendil-works/pi-durable"
-import profile from "../xin.profile.json"
+import profile from "../ingle.profile.json"
 import { BUNDLES, CATALOG } from "./catalog.ts"
-import { XIN_VERSION } from "./catalog.gen.ts"
+import { INGLE_VERSION } from "./catalog.gen.ts"
 import type { Env } from "./env.ts"
 import { messageOf } from "./errors.ts"
 import { HEARTBEAT_MS } from "./kernel/clock.ts"
 import type { DbService } from "./kernel/db.ts"
 import type { Profile } from "./kernel/layers.ts"
-import { boot, type Composition, type Kernel, type XinLoader } from "./kernel/loader.ts"
+import { boot, type Composition, type Kernel, type IngleLoader } from "./kernel/loader.ts"
 import { parseProfilePatch } from "./kernel/patch.ts"
 import type { Provider } from "./module.ts"
 import type { Actor, Command, Outcome } from "./ops.ts"
@@ -37,7 +37,7 @@ export class Home extends DurableObject<Env> {
   }
 
   protected composition(): Composition {
-    return { catalog: CATALOG, bundles: BUNDLES, profile: PROFILE, version: XIN_VERSION }
+    return { catalog: CATALOG, bundles: BUNDLES, profile: PROFILE, version: INGLE_VERSION }
   }
 
   get #current(): Kernel {
@@ -55,7 +55,7 @@ export class Home extends DurableObject<Env> {
     return this.#current.root.db
   }
 
-  get loader(): XinLoader {
+  get loader(): IngleLoader {
     return this.#current.loader
   }
 

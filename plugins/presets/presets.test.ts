@@ -10,7 +10,7 @@ import type { Home } from "../../test/worker.ts"
 const context = BACKGROUND_CONTEXT
 const FILES = ["read", "write", "edit"]
 const THREAD_PROMPT = "You are a thread named"
-const PACKAGE = "xin-plugin-presets-test"
+const PACKAGE = "ingle-plugin-presets-test"
 const MINIMAL: readonly string[] = ["tool-memory", "tool-skills"]
 
 type PresetRow = { readonly id: string; readonly plugin: string; readonly config?: Record<string, unknown> }

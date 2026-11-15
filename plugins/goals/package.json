@@ -1,10 +1,10 @@
 {
-  "name": "xin-plugin-goals",
+  "name": "ingle-plugin-goals",
   "version": "0.1.0",
   "private": true,
   "description": "One durable goal per conversation, with automatic continuation rounds.",
   "type": "module",
-  "xin": {
+  "ingle": {
     "plugins": {
       "goals": {
         "module": "./index.ts",

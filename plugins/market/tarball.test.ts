@@ -2,17 +2,17 @@ import { describe, expect, it } from "vitest"
 import { extractBundle, fetchTarball } from "./tarball.ts"
 import { gzip, integrityOf, tarball, ustar } from "../../test/plugins/market.ts"
 
-const manifest = (xin: unknown): string => JSON.stringify({ name: "demo", version: "1.0.0", xin })
+const manifest = (ingle: unknown): string => JSON.stringify({ name: "demo", version: "1.0.0", ingle })
 
 describe("extractBundle", () => {
-  it("reads the xin field of package/package.json and nothing else", async () => {
-    const xin = { bundle: [{ id: "clock", plugin: "time", config: { timezone: "UTC" } }] }
+  it("reads the ingle field of package/package.json and nothing else", async () => {
+    const ingle = { bundle: [{ id: "clock", plugin: "time", config: { timezone: "UTC" } }] }
     const bytes = await tarball({
-      "package.json": manifest(xin),
+      "package.json": manifest(ingle),
       "skills/research.md": "# Research",
     })
     const found = await extractBundle({ bytes, integrity: await integrityOf(bytes) })
-    expect(found).toEqual({ ok: true, value: { xin } })
+    expect(found).toEqual({ ok: true, value: { ingle } })
   })
 
   it("ignores directories, other packages and entries outside package/", async () => {
@@ -25,7 +25,7 @@ describe("extractBundle", () => {
       ]),
     )
     const found = await extractBundle({ bytes, integrity: await integrityOf(bytes) })
-    expect(found).toEqual({ ok: true, value: { xin: { bundle: [] } } })
+    expect(found).toEqual({ ok: true, value: { ingle: { bundle: [] } } })
   })
 
   it("ignores symlink entries", async () => {
@@ -36,13 +36,13 @@ describe("extractBundle", () => {
       ]),
     )
     const found = await extractBundle({ bytes, integrity: await integrityOf(bytes) })
-    expect(found).toEqual({ ok: true, value: { xin: { bundle: [] } } })
+    expect(found).toEqual({ ok: true, value: { ingle: { bundle: [] } } })
   })
 
-  it("accepts a package.json without a xin field", async () => {
+  it("accepts a package.json without a ingle field", async () => {
     const bytes = await tarball({ "package.json": JSON.stringify({ name: "demo", version: "1.0.0" }) })
     const found = await extractBundle({ bytes, integrity: await integrityOf(bytes) })
-    expect(found).toEqual({ ok: true, value: { xin: undefined } })
+    expect(found).toEqual({ ok: true, value: { ingle: undefined } })
   })
 
   it("refuses bytes that do not match the integrity", async () => {

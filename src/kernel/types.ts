@@ -5,7 +5,7 @@ import type { Actor, Command, Outcome } from "../ops.ts"
 import type { Clock } from "./clock.ts"
 import type { DbService } from "./db.ts"
 import type { Http } from "./http.ts"
-import type { XinLoader } from "./loader.ts"
+import type { IngleLoader } from "./loader.ts"
 import type { Manager } from "./manager.ts"
 import type { Ops } from "./ops.ts"
 import type { Pi } from "./pi.ts"
@@ -37,7 +37,7 @@ declare module "@deepseek-ai/cordis" {
     plugins: Manager
     system: System
     deployer: Deployer
-    kernel: XinLoader
+    kernel: IngleLoader
   }
 
   interface Events {

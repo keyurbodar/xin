@@ -1,6 +1,6 @@
 # Web client
 
-The first-party client is a SolidJS app in `web/` that talks to the same contract the agent uses: `POST /v1/cmd` for commands and `GET /v1/socket` with subprotocol `xin, bearer.<token>` for the home stream and each conversation stream. It is a separate package, so the Worker gate never compiles it.
+The first-party client is a SolidJS app in `web/` that talks to the same contract the agent uses: `POST /v1/cmd` for commands and `GET /v1/socket` with subprotocol `ingle, bearer.<token>` for the home stream and each conversation stream. It is a separate package, so the Worker gate never compiles it.
 
 ## Sub-features
 
@@ -29,7 +29,7 @@ Open the client, paste the owner token, land on Home. Projects in the sidebar op
 The client is a Vite dev server that proxies `/v1`, `/files` and `/health` to the Worker. `/files` matters: without it an attachment upload gets a 404 from Vite itself.
 
 ```bash
-S=.claude/skills/verify-xin/xin.sh
+S=.claude/skills/verify-ingle/ingle.sh
 $S launch                                   # the Worker on :8799
 cd web && bun run dev                       # the client on :5174, proxying to :8799
 agent-browser open http://localhost:5174/
@@ -40,7 +40,7 @@ agent-browser eval "[...document.querySelectorAll('button')].find(b=>b.innerText
 Route-by-route screenshots:
 
 ```bash
-.claude/skills/verify-xin/shots.sh .verify/shots   # one png per route at 1440x900
+.claude/skills/verify-ingle/shots.sh .verify/shots   # one png per route at 1440x900
 ```
 
 Settings panes, per feature (S1 General, S2 Usage, S3 Models, S4 Notifications, Profile + token, System):

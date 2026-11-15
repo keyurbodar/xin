@@ -18,7 +18,7 @@ type Ack = { readonly ok: boolean; readonly result?: unknown }
 
 const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Promise<Ack> =>
   stub
-    .fetch(new Request("https://xin.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
+    .fetch(new Request("https://ingle.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
     .then((reply) => reply.json<Ack>())
 
 async function fireNow(stub: Stub): Promise<void> {

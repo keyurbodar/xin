@@ -3,12 +3,12 @@ import { createHash } from "node:crypto"
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
-const BOXES_ENV = join(process.env.HOME ?? "", ".config/xin/boxes.env")
-const LEASES = "/tmp/xin-gate/leases"
+const BOXES_ENV = join(process.env.HOME ?? "", ".config/ingle/boxes.env")
+const LEASES = "/tmp/ingle-gate/leases"
 const BENCH_MS = 10 * 60_000
 const WAIT_MS = 15 * 60_000
-const SYNCED = "__XIN_GATE_SYNCED"
-const EXIT = "__XIN_GATE_EXIT="
+const SYNCED = "__INGLE_GATE_SYNCED"
+const EXIT = "__INGLE_GATE_EXIT="
 
 export type Box = { readonly machine: string; readonly key: string }
 export type BoxRun =
@@ -17,9 +17,9 @@ export type BoxRun =
 
 export function boxes(): readonly Box[] {
   if (
-    process.env.XIN_GATE_BOX === "0" ||
-    process.env.XIN_LIVE === "1" ||
-    process.env.XIN_LOAD === "1" ||
+    process.env.INGLE_GATE_BOX === "0" ||
+    process.env.INGLE_LIVE === "1" ||
+    process.env.INGLE_LOAD === "1" ||
     !existsSync(BOXES_ENV)
   )
     return []
@@ -101,7 +101,7 @@ function sync(box: Box, root: string): string | undefined {
     `find . -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf {} +`,
     `tar -xzf -`,
     `h=$(sha256sum bun.lock | cut -c1-64)`,
-    `if [ "$(cat node_modules/.xin-lock 2>/dev/null)" != "$h" ]; then ~/.bun/bin/bun install --frozen-lockfile >/dev/null 2>&1; echo "$h" > node_modules/.xin-lock; fi`,
+    `if [ "$(cat node_modules/.ingle-lock 2>/dev/null)" != "$h" ]; then ~/.bun/bin/bun install --frozen-lockfile >/dev/null 2>&1; echo "$h" > node_modules/.ingle-lock; fi`,
     `echo ${SYNCED}`,
   ].join("\n")
   const run = exec(box, "--stdin", unpack, archive.stdout)

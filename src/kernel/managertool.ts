@@ -19,7 +19,7 @@ function pluginManagerTool(manager: Manager): Extension {
       defineTool({
         name: "plugin_manager",
         description:
-          "Inspect and change Xin's plugin rows: list, catalog, tree, doctor, enable {id, enabled}, configure {id, config}. Changes apply live; tell the owner what you changed.",
+          "Inspect and change Ingle's plugin rows: list, catalog, tree, doctor, enable {id, enabled}, configure {id, config}. Changes apply live; tell the owner what you changed.",
         parameters: obj({
           action: oneOf(ACTIONS),
           id: opt(str({ minLength: 1 })),

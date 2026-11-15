@@ -1,6 +1,6 @@
 # Health check
 
-`GET /health` answers `ok` without a token. It is the readiness signal for `xin.sh launch`.
+`GET /health` answers `ok` without a token. It is the readiness signal for `ingle.sh launch`.
 
 ## Sub-features
 
@@ -10,7 +10,7 @@
 
 A load balancer or the web client probes `https://<worker>/health`.
 
-## Driving it with xin.sh
+## Driving it with ingle.sh
 
 ```bash
 curl -s -w '\nHTTP %{http_code}\n' http://127.0.0.1:8799/health   # ok / HTTP 200

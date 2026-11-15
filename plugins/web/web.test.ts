@@ -119,7 +119,7 @@ describe("web tools", () => {
       const stub = fresh()
       await setRow(stub, "tool-web", true)
       respond([
-        () => fauxAssistantMessage([fauxToolCall("web_search", { query: "xin" })], { stopReason: "toolUse" }),
+        () => fauxAssistantMessage([fauxToolCall("web_search", { query: "ingle" })], { stopReason: "toolUse" }),
         () =>
           fauxAssistantMessage([fauxToolCall("web_fetch", { url: "https://example.com/page" })], {
             stopReason: "toolUse",

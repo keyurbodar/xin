@@ -223,7 +223,7 @@ describe("load", () => {
     // Bounds are the measurement with about a third of headroom: a message measured 12 writes and 17 reads, its
     // harness window 8 writes and 9 reads, a cold turn 42 calls, 14 reads and 11 writes, an idle alarm 4 reads and 2
     // writes, and a cold boot 315 reads: the 288 slots of the journal ring, 254 of them left to replay, and 27 others.
-    // Almost every written row is a journal row now, so a Xin regression still shows here in the small part: the
+    // Almost every written row is a journal row now, so an Ingle regression still shows here in the small part: the
     // intake document's three commits add one overwritten slot each. The cold boot bound fails when the ring stops
     // wrapping, since a cold start reads every slot.
     const within = (name: string, value: number, bound: number): void => {

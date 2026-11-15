@@ -1,10 +1,10 @@
 {
-  "name": "xin-plugin-failures",
+  "name": "ingle-plugin-failures",
   "version": "0.1.0",
   "private": true,
   "description": "Run failures as visible entries.",
   "type": "module",
-  "xin": {
+  "ingle": {
     "plugins": {
       "failures": {
         "module": "./index.ts",

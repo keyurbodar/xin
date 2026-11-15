@@ -30,7 +30,7 @@ type Counter = {
   open: Cursor[]
 }
 
-const METER = Symbol.for("xin.rows.meter")
+const METER = Symbol.for("ingle.rows.meter")
 
 type Metered = { [METER]?: Counter }
 

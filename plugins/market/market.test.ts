@@ -6,21 +6,21 @@ import type { Home } from "../../test/worker.ts"
 
 const REGISTRY = "https://registry.npmjs.org"
 const REGISTRY_HOST = "registry.npmjs.org"
-const INDEX_URL = "https://index.test/xin.json"
+const INDEX_URL = "https://index.test/ingle.json"
 const BAD_INDEX_URL = "https://index.test/bad.json"
 
-const NOTES = "@lahn/xin-notes"
-const TOOLS = "@lahn/xin-tools"
-const CODE = "@lahn/xin-code"
-const BROKEN = "@lahn/xin-broken"
-const FUTURE = "@lahn/xin-future"
-const MIXED = "@lahn/xin-mixed"
-const FLAKY = "@lahn/xin-flaky"
-const PROVIDED = "xin-plugin-time"
-const PATCHY = "@lahn/xin-patchy"
+const NOTES = "@lahn/ingle-notes"
+const TOOLS = "@lahn/ingle-tools"
+const CODE = "@lahn/ingle-code"
+const BROKEN = "@lahn/ingle-broken"
+const FUTURE = "@lahn/ingle-future"
+const MIXED = "@lahn/ingle-mixed"
+const FLAKY = "@lahn/ingle-flaky"
+const PROVIDED = "ingle-plugin-time"
+const PATCHY = "@lahn/ingle-patchy"
 const COMMIT = "a".repeat(40)
 const GIT_PATH = "packages/tools"
-const GIT_SPEC = `git+https://github.com/lahn/xin-tools.git#${COMMIT}&path:/${GIT_PATH}`
+const GIT_SPEC = `git+https://github.com/lahn/ingle-tools.git#${COMMIT}&path:/${GIT_PATH}`
 
 type SeedSource =
   | {
@@ -31,9 +31,9 @@ type SeedSource =
 type SeedVersion = {
   readonly version: string
   readonly source?: SeedSource
-  readonly engines?: { readonly xin?: string }
-  readonly xin?: unknown
-  readonly tarballXin?: unknown
+  readonly engines?: { readonly ingle?: string }
+  readonly ingle?: unknown
+  readonly tarballIngle?: unknown
   readonly integrity?: string
 }
 
@@ -50,7 +50,7 @@ type Seed = {
 type Doc = {
   readonly name: string
   readonly version: string
-  readonly xin?: unknown
+  readonly ingle?: unknown
   readonly dist: { readonly tarball: string; readonly integrity: string }
 }
 
@@ -77,7 +77,7 @@ const NOTES_1_0 = notes("Asia/Tokyo")
 const NOTES_1_1 = notes("Asia/Tokyo", [{ id: "market-clock", timezone: "Europe/Berlin" }])
 const FLAKY_1_0 = { bundle: [{ id: "flaky-time", plugin: "time", config: { timezone: "Asia/Tokyo" } }] }
 const FLAKY_1_1 = { bundle: [{ id: "flaky-bad", plugin: "time", config: { timezone: "Not/AZone" } }] }
-const CODE_XIN = { plugins: { tools: { module: "./index.ts" } } }
+const CODE_INGLE = { plugins: { tools: { module: "./index.ts" } } }
 
 const SEEDS: readonly Seed[] = [
   {
@@ -86,26 +86,26 @@ const SEEDS: readonly Seed[] = [
     description: "Take notes from sources.",
     author: "Lahn",
     category: "developer",
-    repository: { url: "https://github.com/lahn/xin-notes" },
+    repository: { url: "https://github.com/lahn/ingle-notes" },
     versions: [
-      { version: "0.9.0", xin: NOTES_1_0 },
-      { version: "1.0.0", xin: NOTES_1_0 },
-      { version: "1.1.0", xin: NOTES_1_1 },
+      { version: "0.9.0", ingle: NOTES_1_0 },
+      { version: "1.0.0", ingle: NOTES_1_0 },
+      { version: "1.1.0", ingle: NOTES_1_1 },
     ],
   },
   {
     name: PATCHY,
     title: "Patchy",
     versions: [
-      { version: "1.0.0", xin: FLAKY_1_0 },
-      { version: "1.0.1", xin: FLAKY_1_0 },
+      { version: "1.0.0", ingle: FLAKY_1_0 },
+      { version: "1.0.1", ingle: FLAKY_1_0 },
     ],
   },
   {
     name: FLAKY,
     versions: [
-      { version: "1.0.0", xin: FLAKY_1_0 },
-      { version: "1.1.0", xin: FLAKY_1_1 },
+      { version: "1.0.0", ingle: FLAKY_1_0 },
+      { version: "1.1.0", ingle: FLAKY_1_1 },
     ],
   },
   {
@@ -113,15 +113,15 @@ const SEEDS: readonly Seed[] = [
     versions: [
       {
         version: "1.0.0",
-        source: { type: "git", url: "https://github.com/lahn/xin-tools", commit: COMMIT, path: GIT_PATH },
+        source: { type: "git", url: "https://github.com/lahn/ingle-tools", commit: COMMIT, path: GIT_PATH },
       },
     ],
   },
   {
     name: CODE,
     versions: [
-      { version: "1.0.0", xin: CODE_XIN },
-      { version: "1.1.0", xin: CODE_XIN },
+      { version: "1.0.0", ingle: CODE_INGLE },
+      { version: "1.1.0", ingle: CODE_INGLE },
     ],
   },
   {
@@ -129,26 +129,26 @@ const SEEDS: readonly Seed[] = [
     versions: [
       {
         version: "1.0.0",
-        xin: NOTES_1_0,
+        ingle: NOTES_1_0,
         integrity: "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
       },
     ],
   },
   {
     name: FUTURE,
-    versions: [{ version: "2.0.0", xin: NOTES_1_0, engines: { xin: ">=99.0.0" } }],
+    versions: [{ version: "2.0.0", ingle: NOTES_1_0, engines: { ingle: ">=99.0.0" } }],
   },
   {
     name: MIXED,
     versions: [
-      { version: "2.0.0", xin: NOTES_1_0, engines: { xin: ">=99.0.0" } },
-      { version: "1.5.0", xin: NOTES_1_0 },
+      { version: "2.0.0", ingle: NOTES_1_0, engines: { ingle: ">=99.0.0" } },
+      { version: "1.5.0", ingle: NOTES_1_0 },
     ],
   },
   {
     name: PROVIDED,
     title: "Current time",
-    versions: [{ version: "0.2.0", xin: NOTES_1_0 }],
+    versions: [{ version: "0.2.0", ingle: NOTES_1_0 }],
   },
 ]
 
@@ -167,7 +167,7 @@ async function build(seed: Seed): Promise<readonly Built[]> {
         "package.json": JSON.stringify({
           name: seed.name,
           version: version.version,
-          xin: version.tarballXin ?? version.xin,
+          ingle: version.tarballIngle ?? version.ingle,
         }),
       })
       const integrity = version.integrity ?? (await integrityOf(bytes))
@@ -180,7 +180,7 @@ async function build(seed: Seed): Promise<readonly Built[]> {
         doc: {
           name: seed.name,
           version: version.version,
-          ...(version.xin === undefined ? {} : { xin: version.xin }),
+          ...(version.ingle === undefined ? {} : { ingle: version.ingle }),
           dist: { tarball: tarballUrl, integrity },
         },
       }
@@ -192,7 +192,7 @@ const BUILT = await Promise.all(SEEDS.map(build))
 
 const INDEX_DOCUMENT = {
   format: 1,
-  title: "Xin test market",
+  title: "Ingle test market",
   description: "Fixtures for the market proof.",
   metadata: { categories: { developer: { title: "Developer tools" } }, labels: {}, sortKeys: {} },
   plugins: SEEDS.map((seed, position) => ({
@@ -290,19 +290,19 @@ describe("market", () => {
     expect(entriesOf(listed)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: "xin-plugin-presets",
+          name: "ingle-plugin-presets",
           title: "Presets",
           category: "first-party",
           status: "provided",
         }),
-        expect.objectContaining({ name: "xin-plugin-memory", status: "provided" }),
+        expect.objectContaining({ name: "ingle-plugin-memory", status: "provided" }),
       ]),
     )
     expect(transport.urls).toEqual([])
 
-    const entry = await op(stub, "market.entry", { name: "xin-plugin-presets" })
+    const entry = await op(stub, "market.entry", { name: "ingle-plugin-presets" })
     expect(entry.result, JSON.stringify(entry)).toMatchObject({
-      name: "xin-plugin-presets",
+      name: "ingle-plugin-presets",
       kind: "code",
       status: "provided",
     })
@@ -336,7 +336,7 @@ describe("market", () => {
 
     expect((await op(stub, "market.refresh")).result).toEqual({
       indexes: [
-        { url: INDEX_URL, title: "Xin test market", description: "Fixtures for the market proof." },
+        { url: INDEX_URL, title: "Ingle test market", description: "Fixtures for the market proof." },
         { url: BAD_INDEX_URL, error: "$.plugins must be an array" },
       ],
     })
@@ -422,7 +422,7 @@ describe("market", () => {
     expect(await installedClock(stub, "flaky-bad")).toBe(false)
   })
 
-  it("offers the newest version the running xin supports", async () => {
+  it("offers the newest version the running ingle supports", async () => {
     const transport = fake()
     serve(transport)
     const stub = fresh()
@@ -483,7 +483,7 @@ describe("market", () => {
     })
     expect(await op(stub, "market.install", { name: FUTURE })).toMatchObject({
       ok: false,
-      error: { code: "bad_args", message: expect.stringContaining("requires xin") },
+      error: { code: "bad_args", message: expect.stringContaining("requires ingle") },
     })
     expect((await op(stub, "market.entry", { name: FUTURE })).result).toMatchObject({
       status: "not-installed",
@@ -636,7 +636,7 @@ describe("market", () => {
       package: FLAKY,
       reason: "no earlier version",
     })
-    expect(await op(stub, "market.rollback", { name: "@lahn/xin-missing" })).toMatchObject({
+    expect(await op(stub, "market.rollback", { name: "@lahn/ingle-missing" })).toMatchObject({
       ok: false,
       error: { code: "bad_args", message: expect.stringContaining("not in any market index") },
     })
