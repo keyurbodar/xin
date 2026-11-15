@@ -13,6 +13,8 @@ let stored = "own_revoked"
 /** A status reply the test resolves by hand, so a token can change while the check is in flight. */
 let pending: ((status: number) => void) | undefined
 let hold = false
+let sent: unknown[] = []
+let sockets: FakeSocket[] = []
 
 /** A clock the test drives: timers fire in order of their due time as `advance` moves it on. */
 let now = 0
@@ -26,6 +28,7 @@ class FakeSocket {
 
   constructor(url: URL, protocols: readonly string[]) {
     requests.push(`socket ${url.pathname}`)
+    sockets.push(this)
     dialled.push(protocols.find((protocol) => protocol.startsWith("bearer.")) ?? "")
     queueMicrotask(() => {
       if (accept) {
@@ -39,7 +42,13 @@ class FakeSocket {
     this.#listeners.set(type, [...(this.#listeners.get(type) ?? []), listener])
   }
 
-  send(): void {}
+  send(frame: string): void {
+    sent.push(JSON.parse(frame))
+  }
+
+  deliver(frame: unknown): void {
+    this.#emit("message", { data: JSON.stringify(frame) })
+  }
 
   close(): void {
     if (this.readyState === 3) return
@@ -87,6 +96,8 @@ beforeEach(() => {
   stored = "own_revoked"
   pending = undefined
   hold = false
+  sent = []
+  sockets = []
   now = 0
   timers = []
   install("WebSocket", FakeSocket)
@@ -290,5 +301,88 @@ describe("Streams held while a released token is shown", () => {
     tab.streams.resume()
     await advance(1_000)
     expect(dialled).toEqual(["bearer.own_revoked", "bearer.own_revoked"])
+  })
+})
+
+describe("Streams on a reconnect", () => {
+  async function reconnected(tab: Streams): Promise<void> {
+    accept = true
+    tab.open()
+    await advance(0)
+    tab.reconnectNow()
+    await advance(1_000)
+  }
+
+  test("resubscribes with what each stream holds and hands the server's answer to it", async () => {
+    const applied: unknown[] = []
+    const { streams: tab } = streams()
+    tab.subscribe("conv:7", {
+      value: () => {},
+      delta: () => {},
+      resume: { cursor: () => ({ start: 3, from: 9 }), apply: (value, start) => applied.push({ value, start }) },
+    })
+    tab.subscribe("home", { value: () => {}, delta: () => {} })
+    accept = true
+    tab.open()
+    await advance(0)
+    sent = []
+    tab.reconnectNow()
+    await advance(1_000)
+    expect(sent).toEqual([
+      { t: "sub", stream: "conv:7", resume: { start: 3, from: 9 } },
+      { t: "sub", stream: "home" },
+    ])
+    sockets.at(-1)?.deliver({ t: "resume", stream: "conv:7", value: { entries: [] }, start: 5 })
+    expect(applied).toEqual([{ value: { entries: [] }, start: 5 }])
+  })
+
+  test("gives a subscriber that joins during the resume a snapshot, never the delta", async () => {
+    const early: string[] = []
+    const late: string[] = []
+    const { streams: tab } = streams()
+    tab.subscribe("conv:7", {
+      value: () => early.push("snap"),
+      delta: () => {},
+      resume: { cursor: () => ({ start: 1, from: 4 }), apply: () => early.push("resume") },
+    })
+    await reconnected(tab)
+    sent = []
+    tab.subscribe("conv:7", {
+      value: () => late.push("snap"),
+      delta: () => {},
+      resume: { cursor: () => ({ start: 0, from: 0 }), apply: () => late.push("resume") },
+    })
+    expect(sent).toEqual([{ t: "sub", stream: "conv:7" }])
+    const socket = sockets.at(-1)
+    socket?.deliver({ t: "resume", stream: "conv:7", value: { entries: [{ id: 4 }] }, start: 1 })
+    socket?.deliver({ t: "snap", stream: "conv:7", value: { entries: [{ id: 1 }, { id: 4 }] } })
+    expect(late).toEqual(["snap"])
+    expect(early).toEqual(["resume", "snap"])
+  })
+
+  test("asks a second subscriber of a live stream for a snapshot", async () => {
+    const { streams: tab } = streams()
+    tab.subscribe("conv:7", { value: () => {}, delta: () => {} })
+    accept = true
+    tab.open()
+    await advance(0)
+    sent = []
+    tab.subscribe("conv:7", { value: () => {}, delta: () => {} })
+    expect(sent).toEqual([{ t: "sub", stream: "conv:7" }])
+  })
+
+  test("falls back to a plain sub when a server without resume refuses the frame", async () => {
+    const { streams: tab } = streams()
+    tab.subscribe("conv:7", {
+      value: () => {},
+      delta: () => {},
+      resume: { cursor: () => ({ start: 3, from: 9 }), apply: () => {} },
+    })
+    await reconnected(tab)
+    sent = []
+    sockets.at(-1)?.deliver({ t: "error", message: "unknown frame" })
+    expect(sent).toEqual([{ t: "sub", stream: "conv:7" }])
+    sockets.at(-1)?.deliver({ t: "error", message: "unknown frame" })
+    expect(sent).toHaveLength(1)
   })
 })
