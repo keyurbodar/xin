@@ -27,6 +27,10 @@ export const PERMISSIONS = {
 
 export type Permission = keyof typeof PERMISSIONS
 
+/** Whether a declaration grants `permission`: `runtime` reaches the raw Home, so it grants every other one. */
+export const grants = (permissions: readonly Permission[], permission: Permission): boolean =>
+  permissions.includes(permission) || permissions.includes("runtime")
+
 export const isPermission = (value: string): value is Permission => Object.hasOwn(PERMISSIONS, value)
 
 /** What a row registers. A name ending in `*` covers every name with that prefix. */

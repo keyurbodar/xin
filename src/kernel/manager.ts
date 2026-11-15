@@ -244,6 +244,7 @@ export function apply(ctx: Context): void {
       name: "plugin.configure",
       args: obj({ id: FragmentId, config: ConfigSchema }),
       actors: OWNER,
+      credentials: ["config"],
       run: async (_api, args) => toJson(await manager.configure(args.id, isJsonObject(args.config) ? args.config : {})),
     }),
   )

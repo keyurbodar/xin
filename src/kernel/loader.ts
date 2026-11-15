@@ -18,6 +18,7 @@ import {
   covers,
   DEFAULT_MANIFEST,
   describeProblem,
+  grants,
   injectOf,
   permissionFor,
   type Manifest,
@@ -25,6 +26,7 @@ import {
   type Permission,
 } from "./manifest.ts"
 import { sourcePackage, sourceVersion } from "./packages.ts"
+import { facade } from "./facade.ts"
 import { readOwnerPatch, writeOwnerPatch } from "./patch.ts"
 import type { Runtime } from "./types.ts"
 
@@ -92,6 +94,8 @@ export class IngleLoader extends Loader {
   private runtimeUnresolved: readonly Patch[] = []
   private mounted = false
   private quiet = false
+  private readonly permissions = new Map<string, readonly Permission[]>()
+  private readonly trusted = new WeakSet<object>()
 
   constructor(ctx: Context, config: IngleLoaderConfig) {
     super(ctx, { baseUrl: config.baseUrl })
@@ -115,15 +119,17 @@ export class IngleLoader extends Loader {
     this.missing = applied.rows.filter((row) => !this.has(row))
     this.persistPatch = config.persist
     ctx.on("internal/get", (target: Context, service: string, _error: Error, next: () => unknown) => {
-      this.refuse(target.fiber, service)
-      return next()
+      this.refuse(target, service)
+      return this.handOut(target, next())
     })
     const reflect: Context["reflect"] = Reflect.get(ctx.reflect, symbols.original)
     const get = reflect.get
-    const refuse = (fiber: Fiber, service: string): void => this.refuse(fiber, service)
+    const serve = (caller: Context, service: string, value: unknown): unknown => {
+      this.refuse(caller, service)
+      return this.handOut(caller, value)
+    }
     reflect.get = function (this: Context["reflect"], name: string, strict?: boolean): unknown {
-      refuse(this.ctx.fiber, name)
-      return get.call(this, name, strict)
+      return serve(this.ctx, name, get.call(this, name, strict))
     }
     const root = ctx.root
     const pluginRow = (fiber: Fiber): string | undefined => this.pluginRow(fiber)
@@ -188,29 +194,56 @@ export class IngleLoader extends Loader {
 
   /** The permissions a row's plugin declares, or undefined for a row with no manifest: kernel code, or not in this tree. */
   permissionsOf(id: string): readonly Permission[] | undefined {
-    const plugin = this.pluginOfRow(id)
-    return plugin === undefined ? undefined : this.composition.catalog[plugin]?.manifest?.permissions
+    return this.permissions.get(id)
+  }
+
+  private index(rows: readonly Row[]): void {
+    this.permissions.clear()
+    for (const row of rows) this.indexRow(row)
+  }
+
+  private indexRow(row: Row): void {
+    const permissions = this.composition.catalog[pluginOf(row)]?.manifest?.permissions
+    if (permissions === undefined) this.permissions.delete(row.id)
+    else this.permissions.set(row.id, permissions)
   }
 
   /** The plugin row the code running in `fiber` belongs to, when that row's plugin has a manifest to hold it to. */
   pluginRow(fiber: Fiber): string | undefined {
     const id = this.locate(fiber)
-    return id === undefined || this.permissionsOf(id) === undefined ? undefined : id
+    return id === undefined || !this.permissions.has(id) ? undefined : id
   }
 
-  /** Throws when the code running in `fiber` may not use `service`: it runs in a plugin row that does not declare the permission. */
-  refuse(fiber: Fiber, service: string): void {
+  /** Lets kernel code that runs outside every row, such as the Durable Object host, read guarded services through `ctx`. */
+  trust(ctx: Context): void {
+    this.trusted.add(ctx)
+  }
+
+  /**
+   * Throws when code reading through `ctx` may not use `service`. A guarded service resolves only for a kernel row, a
+   * plugin row that declares its permission, or a context the kernel trusts; a context that belongs to no row, such as
+   * the root or the loader's own, gets none, so a walk up from a row finds nothing.
+   */
+  refuse(ctx: Context, service: string): void {
     const permission = permissionFor(service)
     if (permission === undefined) return
-    const id = this.pluginRow(fiber)
-    if (id === undefined || this.permissionsOf(id)?.includes(permission) === true) return
+    const id = this.locate(ctx.fiber)
+    if (id === undefined) {
+      if (this.trusted.has(ctx)) return
+      throw new Error(`the ${service} service is not reachable from outside a row that declares ${permission}`)
+    }
+    const permissions = this.permissions.get(id)
+    if (permissions === undefined || grants(permissions, permission)) return
     throw new Error(`${id} uses the ${service} service without declaring the ${permission} permission`)
   }
 
-  /** Throws when the code running in `fiber` is a plugin row: `what` is for the kernel alone. */
-  kernelOnly(fiber: Fiber, what: string): void {
-    const id = this.pluginRow(fiber)
-    if (id !== undefined) throw new Error(`${id} may not ${what}; only the kernel may`)
+  /**
+   * What a plugin row gets for a service read: a Cordis service becomes a frozen facade with no `ctx` and no
+   * `cordis.original`, so the row can call it but never reach the kernel context behind it.
+   */
+  private handOut(caller: Context, value: unknown): unknown {
+    const id = this.pluginRow(caller.fiber)
+    return id === undefined ? value : facade(value, caller, { id, permissions: this.permissions.get(id) ?? [] })
   }
 
   /** Why a row may not register this tool or op: its plugin declares `contributes` and leaves the name out. */
@@ -277,6 +310,7 @@ export class IngleLoader extends Loader {
   }
 
   override async create(row: Row, parent?: string | null, position?: number): Promise<string> {
+    this.indexRow(row)
     return super.create(this.patchedRow(row), parent, position)
   }
 
@@ -288,6 +322,7 @@ export class IngleLoader extends Loader {
   }
 
   async mount(): Promise<void> {
+    this.index(this.initial)
     this.blocked = this.initial.filter((row) => this.has(row) && this.problemOf(row) !== undefined)
     const blocked = new Set(this.blocked.map((row) => row.id))
     for (const row of this.initial) if (this.has(row) && !blocked.has(row.id)) await this.create(row)
@@ -302,6 +337,7 @@ export class IngleLoader extends Loader {
     const present = applied.rows.filter((row) => this.has(row) && !blocked.includes(row))
     const missing = applied.rows.filter((row) => !this.has(row))
     const mountedRows = [...this.root.data]
+    this.index(applied.rows)
     this.quiet = true
     try {
       for (const row of mountedRows) if (!present.some((candidate) => candidate.id === row.id)) this.remove(row.id)
@@ -363,13 +399,22 @@ export type Kernel = {
 }
 
 export async function boot(runtime: Runtime, composition: Composition): Promise<Kernel> {
-  const root = new Context()
-  root.provide("host", runtime)
+  const base = new Context()
+  let own: Context | undefined
+  await base.plugin({
+    name: "kernel",
+    apply: (ctx: Context) => {
+      own = ctx
+      ctx.provide("host", runtime)
+    },
+  })
+  if (own === undefined) throw new Error("the kernel fiber did not start")
+  const kernelCtx = own
   const storage = runtime.state.storage
   const warnings: string[] = []
   const owner = readOwnerPatch(storage, (message) => void warnings.push(message))
   const runtimeBundles = readBundles(storage, (message) => void warnings.push(message))
-  await root.plugin(IngleLoader, {
+  await base.plugin(IngleLoader, {
     baseUrl: "file:///bundle/",
     composition,
     runtime: runtimeBundles,
@@ -377,9 +422,11 @@ export async function boot(runtime: Runtime, composition: Composition): Promise<
     warnings,
     persist: (patch) => writeOwnerPatch(storage, patch),
   })
-  const loader = root.get("loader")
+  const loader = base.get("loader")
   if (!(loader instanceof IngleLoader)) throw new Error("the loader did not start")
-  root.provide("kernel", loader)
+  kernelCtx.provide("kernel", loader)
+  const root = base.extend({})
+  loader.trust(root)
   await loader.mount()
   const broken = await loader.brokenRequired()
   const harness = root.get("harness")

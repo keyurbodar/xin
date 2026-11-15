@@ -79,7 +79,9 @@ describe("plugin doctor", () => {
   })
 
   it("refuses every route a row has past its permissions to a guarded service or the owner's authority", async () => {
-    const reply = await cmd(fresh(), "k-reach-1", "k.reach")
+    const stub = fresh()
+    await cmd(stub, "k-reach-secret", "secret.set", { ref: "k-reach-probe", value: "s3cret-value" })
+    const reply = await cmd(stub, "k-reach-1", "k.reach")
     expect(reply.result).toMatchObject({
       secret: expect.stringContaining("without declaring the secrets permission"),
       alias: expect.stringContaining("without declaring the secrets permission"),
@@ -95,6 +97,22 @@ describe("plugin doctor", () => {
       rootHost: expect.stringContaining("without declaring the runtime permission"),
       rootOwner: expect.stringContaining("may run ops only as an agent"),
       frame: expect.stringContaining("may not deliver socket frames"),
+      parentHost: expect.stringContaining("not reachable from outside a row that declares runtime"),
+      parentGet: expect.stringContaining("not reachable from outside a row that declares runtime"),
+      parentSecret: expect.stringContaining("not reachable from outside a row that declares secrets"),
+      entryHost: expect.stringContaining("not reachable from outside a row that declares runtime"),
+      entryGet: expect.stringContaining("not reachable from outside a row that declares runtime"),
+      opsCtx: "no ctx",
+      opsOriginal: "no original",
+      opsOriginalOwner: "no original",
+      wireOriginal: "no original",
+      piOriginal: "no original",
+      clockOriginal: "no original",
+      getOriginal: "no original",
+      rootOriginal: "no original",
+      ctxOriginal: "no original",
+      harness: expect.stringContaining("without declaring the conversations permission"),
+      before: JSON.stringify({ ref: "k-reach-probe", value: "[redacted]" }),
     })
   })
 
