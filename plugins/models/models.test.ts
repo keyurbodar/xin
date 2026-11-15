@@ -5,11 +5,13 @@ import {
   type Conversation,
   type ConversationId,
   type EntryRecord,
+  ROOT_CONVERSATION_ID,
 } from "@earendil-works/pi-durable"
 import { arr, bool, compile, int, lit, num, obj, str, union, unknown, type Static } from "@earendil-works/pi-schema"
 import { describe, expect, it } from "vitest"
 import source from "./models.ts?raw"
 import { resolveModel } from "../../src/contracts/models.ts"
+import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
 import type { Actor } from "../../src/ops.ts"
 import { addThreads, api, cmd as call, fresh, owner } from "../../test/support.ts"
@@ -543,6 +545,95 @@ describe("models", () => {
     expect(
       await call(stub, "move-captain", "captain.create", { projectId: project.id, name: "Off Captain", model: narrow }),
     ).toMatchObject({ ok: false, error: { code: "bad_args" } })
+  }, 30_000)
+
+  it("moves Puck chats, pruned threads and automation threads off a disabled model too", async () => {
+    const stub = fresh()
+    const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+    const created = await call(stub, "every-project", "project.create", { slug: "every", name: "Every" })
+    const project = created.result as { id: string; coordinatorId: number }
+    const [pruned] = await addThreads(stub, project.id, ["pruned"])
+    if (pruned === undefined) throw new Error("no thread")
+    await call(stub, "every-default", "owner.defaults", { role: "chat", model: WIDE_MODEL })
+    await call(stub, "every-thread-default", "owner.defaults", { role: "thread", model: WIDE_MODEL })
+    await call(stub, "every-coord", "conv.configure", { conv: project.coordinatorId, model: WIDE_MODEL })
+    const puck = (await call(stub, "every-puck", "puck.create", { title: "side" })).result as { id: string }
+    const automation = (await call(stub, "every-auto", "automation.create", {
+      title: "Standing",
+      prompt: "Keep notes",
+      project: project.id,
+      target: { kind: "same" },
+      triggers: [],
+    })) as { result: { id: string } }
+    const run = (await call(stub, "every-auto-run", "automation.trigger", { id: automation.result.id })) as {
+      result: { threadId: number }
+    }
+    const standing = run.result.threadId
+    expect(standing, JSON.stringify(run)).toEqual(expect.any(Number))
+    await runInDurableObject(stub, (home: Home) =>
+      home.harness.commit(async (tx) => {
+        for (const space of Object.values((await tx.doc(WorkspaceDoc)).spaces))
+          space.threadIds = space.threadIds.filter((id) => id !== pruned.id)
+      }, context),
+    )
+    const targets = [Number(puck.id), pruned.id, standing]
+    for (const [index, conv] of targets.entries()) {
+      const configured = await call(stub, `every-narrow-${index}`, "conv.configure", { conv, model: narrow })
+      expect(configured.ok, JSON.stringify({ conv, configured })).toBe(true)
+    }
+
+    const disabled = await call(stub, "every-off", "models.enable", { model: narrow, enabled: false })
+    expect((disabled.result as { moved: number[] }).moved.toSorted()).toEqual(targets.toSorted())
+    const after = await runInDurableObject(stub, async (home: Home) =>
+      Promise.all(
+        targets.map(async (id) => (await home.harness.conversation(id as ConversationId, context))?.agent(context)),
+      ),
+    )
+    expect(after.map((agent) => agent?.model)).toEqual([WIDE_MODEL, WIDE_MODEL, WIDE_MODEL])
+  }, 30_000)
+
+  it("refuses to start a turn or a thread on a disabled model at every start point", async () => {
+    const stub = fresh()
+    const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+    const created = await call(stub, "start-project", "project.create", { slug: "start", name: "Start" })
+    const project = created.result as { id: string; coordinatorId: number }
+    const [thread] = await addThreads(stub, project.id, ["starter"])
+    if (thread === undefined) throw new Error("no thread")
+    const captain = (await call(stub, "start-captain", "captain.create", {
+      projectId: project.id,
+      name: "Start Captain",
+      model: WIDE_MODEL,
+    })) as { ok: boolean; result: { id: string } }
+    expect(captain.ok, JSON.stringify(captain)).toBe(true)
+    await call(stub, "start-off", "models.enable", { model: narrow, enabled: false })
+    await runInDurableObject(stub, async (home: Home) => {
+      await home.root()
+      for (const id of [ROOT_CONVERSATION_ID, project.coordinatorId, thread.id])
+        await (await home.harness.conversation(id as ConversationId, context))?.configure({ model: narrow }, context)
+    })
+
+    const refused = { ok: false, error: { code: "bad_args" } }
+    expect(await call(stub, "start-msg", "message.send", { text: "hi", clientTs: 1 })).toMatchObject(refused)
+    expect(
+      await call(stub, "start-send", "thread.send", { threadId: thread.id, text: "again", mode: "queue" }),
+    ).toMatchObject(refused)
+    expect(
+      await call(stub, "start-create", "thread.create", { title: "t", task: "do it", project: project.id }),
+    ).toMatchObject(refused)
+    expect(
+      await call(stub, "start-side", "thread.side", { conv: project.coordinatorId, title: "t", task: "do it" }),
+    ).toMatchObject(refused)
+    expect(
+      await call(stub, "start-captain-update", "captain.update", { id: captain.result.id, model: narrow }),
+    ).toMatchObject(refused)
+    const outcome = await runInDurableObject(stub, (home: Home) =>
+      home.loader.ctx.threads.delegate(
+        { conversationId: project.coordinatorId as ConversationId, taskId: "start-task" },
+        { task: "say hi", title: "hi", mode: "async", clientRequestId: "start-delegate" },
+        context,
+      ),
+    )
+    expect(outcome).toMatchObject({ kind: "no_model" })
   }, 30_000)
 
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {

@@ -439,7 +439,7 @@ async function deliver(harness: Harness, threadId: ConversationId, args: SendArg
   return { kind: "sent", note: "The thread is running; the message was sent to it." }
 }
 
-function sendThreadOp(send: SendFn): Op {
+function sendThreadOp(send: SendFn, disabled: ThreadDeps["disabled"]): Op {
   return defineOp({
     name: "thread.send",
     args: obj({
@@ -451,6 +451,10 @@ function sendThreadOp(send: SendFn): Op {
     run: async (api, args) => {
       if (await denied(api.actor, api.harness, args.threadId))
         throw new OpRejected("bad_args", `no thread ${args.threadId}`)
+      const thread = await api.harness.conversation(args.threadId as ConversationId, context)
+      const model = thread === undefined ? undefined : (await thread.agent(context)).model
+      if (model !== undefined && (await disabled(model)))
+        throw new OpRejected("bad_args", `thread ${args.threadId} runs a disabled model; pick another first`)
       const outcome = await send(api.harness, { ...args, sendKey: api.commandId })
       switch (outcome.kind) {
         case "rejected":
@@ -735,6 +739,6 @@ export function lifecycle(deps: ThreadDeps): Threads {
     reporter,
     report,
     createThread,
-    ops: [sendThreadOp(send), stopThread, archiveThread, createThreadOp, sideThreadOp],
+    ops: [sendThreadOp(send, deps.disabled), stopThread, archiveThread, createThreadOp, sideThreadOp],
   }
 }
