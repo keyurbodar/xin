@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { OpError } from "./api.ts"
 import {
+  copyLink,
   createRetryIds,
   crumbsOf,
   failureText,
@@ -134,4 +135,14 @@ test("files over the limit stay in the browser and are named with any that faile
   expect(split.tooBig.map((file) => file.name)).toEqual(["big.bin"])
   expect(uploadSummary([], [])).toBeUndefined()
   expect(uploadSummary(["big.bin"], ["c.txt"], 50 * 1024 * 1024)).toBe("Over 50.0 MB, not sent: big.bin. Failed to upload: c.txt.")
+})
+
+test("a share link is copied when the clipboard takes it, and left to copy by hand when it is missing or refused", async () => {
+  const written: string[] = []
+  expect(await copyLink("https://ingle.example/s/ab12/a.md", async (text) => void written.push(text))).toBe("copied")
+  expect(written).toEqual(["https://ingle.example/s/ab12/a.md"])
+  expect(await copyLink("https://ingle.example/s/ab12/a.md", undefined)).toBe("manual")
+  expect(
+    await copyLink("https://ingle.example/s/ab12/a.md", () => Promise.reject(new DOMException("denied", "NotAllowedError"))),
+  ).toBe("manual")
 })

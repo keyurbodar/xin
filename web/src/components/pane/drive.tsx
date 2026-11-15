@@ -20,6 +20,7 @@ import {
 } from "lucide-solid"
 import { putFile } from "../../lib/api.ts"
 import {
+  copyLink,
   crumbsOf,
   drive,
   folderOf,
@@ -39,6 +40,7 @@ import {
   uploadPath,
   uploadSummary,
   type ConflictChoice,
+  type CopyOutcome,
   type DriveEntry,
   type DriveFile,
   type DriveListing,
@@ -83,27 +85,8 @@ function ReservedNote(props: { reserved: Reserved }): JSX.Element {
   )
 }
 
-function CopyLink(props: { url: string }): JSX.Element {
-  const [copied, setCopied] = createSignal(false)
-  const copy = async (): Promise<void> => {
-    await navigator.clipboard.writeText(props.url)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
-  return (
-    <button
-      type="button"
-      class={ICON_BUTTON}
-      aria-label={copied() ? "Copied" : "Copy link"}
-      title={copied() ? "Copied" : "Copy link"}
-      onClick={() => void copy()}
-    >
-      <Show when={copied()} fallback={<Copy {...SMALL} />}>
-        <Check {...SMALL} class="text-done" />
-      </Show>
-    </button>
-  )
-}
+const clipboard = (): ((text: string) => Promise<void>) | undefined =>
+  navigator.clipboard === undefined ? undefined : (text) => navigator.clipboard.writeText(text)
 
 /** The right pane's Drive: the conversation's scopes, one folder at a time, and the open file. One drive.list per folder open and per op. */
 export function DriveView(props: { conversationId: number; prefer: DriveScope; projectSlug: string }): JSX.Element {
@@ -433,15 +416,39 @@ function FilePanel(props: {
       }
       await write(next.text, next.base)
     })
+  const [copied, setCopied] = createSignal<CopyOutcome | undefined>()
+  let focusNext: "link" | "share" | undefined
+  let linkField: HTMLInputElement | undefined
+  const focusOnce = (target: "link" | "share", element: HTMLElement): void => {
+    if (focusNext !== target) return
+    focusNext = undefined
+    queueMicrotask(() => {
+      element.focus()
+      if (element instanceof HTMLInputElement) element.select()
+    })
+  }
+  const copy = async (url: string): Promise<void> => {
+    const outcome = await copyLink(url, clipboard())
+    setCopied(outcome)
+    if (outcome === "manual") {
+      linkField?.focus()
+      linkField?.select()
+      return
+    }
+    setTimeout(() => setCopied((now) => (now === "copied" ? undefined : now)), 1500)
+  }
   const share = (): void =>
     void action.run("share", async () => {
       const link = await drive.share(scope(), props.path)
-      await navigator.clipboard.writeText(`${location.origin}${link.url}`).catch(() => undefined)
+      focusNext = "link"
       props.onChanged()
+      await copy(`${location.origin}${link.url}`)
     })
   const unshare = (): void =>
     void action.run("share", async () => {
       await drive.unshare(scope(), props.path)
+      setCopied(undefined)
+      focusNext = "share"
       props.onChanged()
     })
 
@@ -486,6 +493,7 @@ function FilePanel(props: {
             class={ICON_BUTTON}
             aria-label="Share a link"
             title="Share a link"
+            ref={(element) => focusOnce("share", element)}
             disabled={action.busy() === "share"}
             onClick={share}
           >
@@ -506,15 +514,39 @@ function FilePanel(props: {
         {(id) => (
           <div class="mx-2 mb-2 flex items-center gap-2 rounded-sm border border-primary/30 bg-primary-soft py-1 pl-2.5 pr-1 text-xs">
             <Link2 size={12} stroke-width={1.5} class="shrink-0 text-primary-ink" />
-            <span class="min-w-0 flex-1 truncate font-mono text-2xs text-ink-2" title="Anyone with this link can open the file">
-              {shareUrl(location.origin, id(), props.path)}
-            </span>
-            <CopyLink url={shareUrl(location.origin, id(), props.path)} />
+            <input
+              ref={(element) => {
+                linkField = element
+                focusOnce("link", element)
+              }}
+              readonly
+              aria-label="Share link"
+              title="Anyone with this link can open the file"
+              value={shareUrl(location.origin, id(), props.path)}
+              onFocus={(event) => event.currentTarget.select()}
+              class="min-w-0 flex-1 truncate bg-transparent font-mono text-2xs text-ink-2 outline-none"
+            />
+            <button
+              type="button"
+              class={ICON_BUTTON}
+              aria-label={copied() === "copied" ? "Copied" : "Copy link"}
+              title={copied() === "copied" ? "Copied" : "Copy link"}
+              onClick={() => void copy(shareUrl(location.origin, id(), props.path))}
+            >
+              <Show when={copied() === "copied"} fallback={<Copy {...SMALL} />}>
+                <Check {...SMALL} class="text-done" />
+              </Show>
+            </button>
             <button type="button" class="link shrink-0 pr-1.5 text-xs" disabled={action.busy() === "share"} onClick={unshare}>
               Stop sharing
             </button>
           </div>
         )}
+      </Show>
+      <Show when={props.shareId !== undefined && copied() === "manual"}>
+        <p role="status" class="mx-2 mb-2 font-mono text-2xs text-failed">
+          The browser blocked the clipboard. The link is selected: press Ctrl+C (⌘C on a Mac) to copy it.
+        </p>
       </Show>
 
       <Show when={action.failed()}>

@@ -124,6 +124,19 @@ export function shareUrl(origin: string, id: string, path: string): string {
   return `${origin}/s/${id}/${encodeURIComponent(path.slice(path.lastIndexOf("/") + 1))}`
 }
 
+export type CopyOutcome = "copied" | "manual"
+
+/** Copies a share link, or says it must be copied by hand when the browser has no clipboard or refuses access. */
+export async function copyLink(url: string, write: ((text: string) => Promise<void>) | undefined): Promise<CopyOutcome> {
+  if (write === undefined) return "manual"
+  try {
+    await write(url)
+    return "copied"
+  } catch {
+    return "manual"
+  }
+}
+
 /** What a failed Drive op says inline: the host's own words for a rejection, a retry hint when the Worker never answered. */
 export function failureText(problem: unknown): string {
   if (problem instanceof OpError && problem.code === "http") return `${problem.message}. Try again; a retry lands once.`
