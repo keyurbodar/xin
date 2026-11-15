@@ -35,8 +35,8 @@ import {
 } from "../../lib/issues.ts"
 import { ago } from "../../lib/format.ts"
 import { firstLoad } from "../../lib/loading.ts"
-import { homeIssuesRev, homeProjects, projectThreads, type ProjectSummary } from "../../state/home.ts"
-import { commentOnIssue, issueDetail, issueStates, linkIssue, updateIssue } from "../../state/issues.ts"
+import { homeProjects, projectThreads, type ProjectSummary } from "../../state/home.ts"
+import { commentOnIssue, issueDetail, issueScreen, issuesRev, linkIssue, updateIssue } from "../../state/issues.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { createPaneAction, ResourceError } from "../chat/ui.tsx"
 import { Button } from "../ui/button.tsx"
@@ -56,12 +56,9 @@ const LABEL = "px-2 pb-1 pt-3 text-xs text-ink-3"
 export function IssueView(props: PaneContext & { id: number }): JSX.Element {
   const [data, { mutate, refetch }] = createResource(
     () => props.id,
-    async (id) => {
-      const [states, detail] = await Promise.all([issueStates(), issueDetail(id)])
-      return { states, detail }
-    },
+    (id) => issueScreen(id, untrack(issuesRev)),
   )
-  createEffect(on(homeIssuesRev, () => void refetch(), { defer: true }))
+  createEffect(on(issuesRev, () => void refetch(), { defer: true }))
   const [pages, setPages] = createSignal<TimelinePages>()
   createEffect(() => {
     const head = data.latest?.detail

@@ -54,12 +54,22 @@ test("states parse in position order and drop malformed rows", () => {
 })
 
 test("open groups put Needs you first, then state order, and skip closed and empty states", () => {
-  const groups = openGroups(STATES, [issue(1, "todo"), issue(2, "done"), issue(3, "needs-you"), issue(4, "in-progress"), issue(5, "gone")])
+  const groups = openGroups(STATES, [issue(1, "todo"), issue(2, "done"), issue(3, "needs-you"), issue(4, "in-progress")])
   expect(groups.map((group) => [group.state.id, group.issues.map((entry) => entry.id)])).toEqual([
     ["needs-you", [3]],
     ["in-progress", [4]],
     ["todo", [1]],
   ])
+})
+
+test("an issue in a state the client has not read waits in a fallback group after the known ones", () => {
+  const groups = openGroups(STATES, [issue(1, "qa"), issue(2, "todo"), issue(3, "qa", "urgent"), issue(4, "triage")])
+  expect(groups.map((group) => [group.state.id, group.state.name, group.issues.map((entry) => entry.id)])).toEqual([
+    ["todo", "Todo", [2]],
+    ["qa", "qa", [3, 1]],
+    ["triage", "triage", [4]],
+  ])
+  expect(groups.reduce((sum, group) => sum + group.issues.length, 0)).toBe(4)
 })
 
 test("inside a state, higher priority comes first and ties keep the list order", () => {
