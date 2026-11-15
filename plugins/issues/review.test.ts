@@ -136,6 +136,22 @@ describe("issue wake rules", () => {
     expect(await jobs(stub)).toHaveLength(4)
   })
 
+  it("counts every waking agent change as a hop, comments and updates alike, until a person acts", async () => {
+    const stub = fresh()
+    const work = await project(stub, "relay")
+    const [first, second] = await addThreads(stub, work.id, ["A", "B"])
+    if (first === undefined || second === undefined) throw new Error("no threads")
+    const issue = await ok<Issue>(stub, "issue.create", { title: "Relay", threads: [first.id] })
+    const states = ["in-progress", "in-review"]
+    await withIssues(stub, async (issues) => {
+      for (let n = 0; n < 10; n += 1) {
+        await issues.comment(thread(first.id), issue.id, { body: `ask ${n}`, mentions: [second.id] })
+        await issues.update(thread(second.id), issue.id, { state: states[n % 2] ?? "todo" })
+      }
+    })
+    expect((await jobs(stub)).length).toBeLessThanOrEqual(3)
+  })
+
   it("wakes initial assignees and folds several changes into one wake per target", async () => {
     const stub = fresh()
     const work = await project(stub, "fold")
@@ -177,6 +193,51 @@ describe("issue wake rules", () => {
     expect((await jobs(stub)).map((job) => job.body).join("\n")).toContain("moved it from Waiting to Done")
   })
 
+  it("does not deliver twice when a crash lands between the intake enqueue and the outbox delete", async () => {
+    const stub = fresh()
+    const work = await project(stub, "twice")
+    await ok(stub, "issue.create", { title: "Once", assignees: [{ kind: "thread", id: work.coordinatorId }] })
+    const delivered = await jobs(stub)
+    expect(delivered).toHaveLength(1)
+    const commandId = await runInDurableObject(stub, async (home: Home) => {
+      const item = (await home.intake()).find((entry) => entry.kind === "job")
+      if (item === undefined) throw new Error("no job")
+      await home.db.run(
+        "INSERT INTO issue_wakes (command_id, issue_id, target, title, status, text) VALUES (?, 1, ?, '#1 Once', 'todo', 'again')",
+        item.commandId,
+        work.coordinatorId,
+      )
+      return item.commandId
+    })
+    await evictDurableObject(stub)
+    await call(stub, "issue.states")
+    expect(await jobs(stub)).toEqual(delivered)
+    const left = await runInDurableObject(stub, (home: Home) =>
+      home.db.all("SELECT command_id FROM issue_wakes WHERE command_id = ?", commandId),
+    )
+    expect(left).toEqual([])
+  })
+
+  it("moves the home revision on every state edit", async () => {
+    const stub = fresh()
+    const rev = () =>
+      runInDurableObject(stub, async (home: Home) => {
+        const snapshot = await home.loader.ctx.wire.snapshot()
+        return (snapshot["issues"] as { rev: number }).rev
+      })
+    const seen = [await rev()]
+    await ok(stub, "issue.state.create", { name: "Triage" })
+    seen.push(await rev())
+    await ok(stub, "issue.state.update", { id: "triage", name: "Triage queue" })
+    seen.push(await rev())
+    await ok(stub, "issue.state.update", { id: "triage", position: 0 })
+    seen.push(await rev())
+    await ok(stub, "issue.state.delete", { id: "triage", moveTo: "todo" })
+    seen.push(await rev())
+    expect(seen.toSorted((left, right) => left - right)).toEqual(seen)
+    expect(new Set(seen).size).toBe(seen.length)
+  })
+
   it("delivers a wake left in the outbox by a crash on the next boot", async () => {
     const stub = fresh()
     const work = await project(stub, "outbox")
@@ -215,6 +276,34 @@ describe("issue reads stay bounded", () => {
     expect(older.timeline.map((event) => event.kind)[0]).toBe("created")
     expect(older.timeline).toHaveLength(21)
     expect(older.earlier).toBeNull()
+  })
+
+  it("filters a search to the caller's project before ranking, and pages past the first hundred", async () => {
+    const stub = fresh()
+    const near = await project(stub, "near")
+    const far = await project(stub, "far")
+    await withIssues(stub, async (issues) => {
+      for (let n = 0; n < 150; n += 1)
+        await issues.create(thread(far.coordinatorId), { title: `needle far ${n}`, description: "needle needle" })
+      await issues.create(thread(near.coordinatorId), { title: "needle near" })
+    })
+    const scoped = await withIssues(stub, (issues) => issues.list(thread(near.coordinatorId), { q: "needle" }))
+    expect(scoped.issues.map((issue) => issue.title)).toEqual(["needle near"])
+    const seen = new Set<number>()
+    let cursor: string | undefined
+    for (let page = 0; page < 5; page += 1) {
+      const result = await ok<IssuePage>(stub, "issue.list", {
+        q: "needle",
+        limit: 60,
+        ...(cursor === undefined ? {} : { cursor }),
+      })
+      for (const issue of result.issues) seen.add(issue.id)
+      if (result.cursor === null) break
+      cursor = result.cursor
+    }
+    expect(seen.size).toBe(151)
+    const open = await ok<IssuePage>(stub, "issue.list", { q: "needle", states: ["todo"], project: near.id })
+    expect(open.issues.map((issue) => issue.title)).toEqual(["needle near"])
   })
 
   it("holds every write path to the op size limits", async () => {

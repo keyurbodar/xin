@@ -18,9 +18,11 @@ Issues are host tables, not pi documents. They do not need to change atomically 
 
 ## Rules
 
+- State edits (create, rename, reorder, make default, delete) append a `states` event on issue 0, so `rev` moves and clients refetch the state list. No issue timeline shows these events.
+
 - Sub-issues go one level deep. Every mutation reads and checks its rows inside its own write transaction, so concurrent edits cannot form a cycle or leave `closed_at` or the assignee index out of step with the row.
 - `issue.get` returns the newest 100 timeline events. Its `earlier` cursor pages back through the older ones.
-- Search tokens of 3 or more characters match as prefixes, and shorter tokens match exactly. A search considers the 100 best-ranked matches at most, so its rows read stay flat as issues grow.
+- Search tokens of 3 or more characters match as prefixes, and shorter tokens match exactly. The project is an FTS column, so a scoped search matches only its own project inside the FTS query. Other filters (state, closed, parent, assignee) join the issue row inside the ranked query, before its LIMIT, so each page holds only rows that already match. Results come in rank order, and a `cursor` pages past the first page.
 - Strings are capped on every write path: title 300 characters, description and comment 20,000, label 40, PR URL 500, person id 120. Each list holds at most 20 entries.
 
 ## Scope
@@ -48,7 +50,7 @@ A change plans its wakes inside its own transaction and writes them to `issue_wa
 
 A conversation is never woken by its own change. Several lines for one target in one change are folded into a single wake.
 
-Agent comments stop waking anyone once the issue has had more than 3 agent comments in a row since a person last acted on it. This bounds two agents mentioning each other.
+Each issue carries an `agent_hops` counter. Every agent change that wakes someone, whether a comment or an update, uses one hop, and a person's change resets the counter to 0. Once 3 hops are used, agent changes wake nobody until a person acts. This bounds two agents relaying an issue back and forth.
 
 ## Cost
 
@@ -61,7 +63,7 @@ These figures are held as bounds in `plugins/issues/cost.test.ts`.
 | List 20 issues | receipt only | 21 |
 | Get one issue | receipt only | 7 |
 
-A search that matches 300 issues reads about 300 rows, because only the 100 best matches are fetched; the bound is 320. Each wake adds one outbox insert and one delete, plus the intake journal write.
+A search that matches 300 issues reads 154 rows, bounded at 180. Each wake adds one outbox insert and one delete, plus the intake journal write.
 
 ## Tool
 

@@ -50,7 +50,7 @@ export type IssueEvent = {
   readonly issue: number
   readonly at: number
   readonly actor: string
-  readonly kind: "created" | "changed" | "comment" | "linked" | "unlinked"
+  readonly kind: "created" | "changed" | "comment" | "linked" | "unlinked" | "states"
   readonly data: { [key: string]: JsonValue }
   readonly replyTo: number | null
 }
@@ -106,13 +106,16 @@ export type Change = { readonly issue: Issue; readonly events: IssueEvent[]; rea
 
 export interface IssuesService {
   states(): Promise<IssueState[]>
-  createState(input: { readonly name: string; readonly closed: boolean }): Promise<IssueState>
-  updateState(input: {
-    readonly id: string
-    readonly name?: string
-    readonly position?: number
-    readonly isDefault?: true
-  }): Promise<IssueState>
+  createState(actor: IssueActor, input: { readonly name: string; readonly closed: boolean }): Promise<IssueState>
+  updateState(
+    actor: IssueActor,
+    input: {
+      readonly id: string
+      readonly name?: string
+      readonly position?: number
+      readonly isDefault?: true
+    },
+  ): Promise<IssueState>
   deleteState(
     actor: IssueActor,
     input: { readonly id: string; readonly moveTo: string },
@@ -151,8 +154,9 @@ export type IssuesPort = {
 const LIST_LIMIT = 50
 const LIST_MAX = 200
 const TIMELINE_PAGE = 100
-const SEARCH_MATCHES = 100
 const AGENT_HOPS = 3
+/** State edits are timeline events on issue 0, so they move `rev` and no issue timeline shows them. */
+const STATES_EVENT = 0
 const MANY = 20
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const URL_PATTERN = /^https?:\/\/\S+$/
@@ -317,16 +321,22 @@ const slugOf = (name: string): string =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 40) || "state"
 
-const ftsQuery = (q: string): string | undefined => {
+const ftsQuery = (q: string, project: string | undefined): string | undefined => {
   const tokens = q.slice(0, LIMITS.q).match(/[\p{L}\p{N}_]+/gu) ?? []
-  return tokens.length === 0
-    ? undefined
-    : tokens.map((token) => (token.length >= 3 ? `"${token}"*` : `"${token}"`)).join(" ")
+  if (tokens.length === 0) return undefined
+  const text = `{title description} : (${tokens.map((token) => (token.length >= 3 ? `"${token}"*` : `"${token}"`)).join(" ")})`
+  return project === undefined ? text : `project : "${project.replaceAll('"', '""')}" AND ${text}`
 }
 
 const same = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right)
 
 const encodeCursor = (issue: IssueSummary): string => `${issue.updatedAt}.${issue.id}`
+
+function decodeOffset(cursor: string): number {
+  const match = /^r(\d+)$/.exec(cursor)
+  if (match === null) return fail("cursor is not one this search returned")
+  return Number(match[1])
+}
 
 function decodeCursor(cursor: string): readonly [number, number] {
   const match = /^(\d+)\.(\d+)$/.exec(cursor)
@@ -409,22 +419,11 @@ function changeState(before: Issue, to: StateRow, sets: string[], params: Sqlite
   } else if (to.closed === 0 && before.closedAt !== null) sets.push("closed_at = NULL")
 }
 
-/** How many agent comments the issue has had since a person last acted on it, counting at most `AGENT_HOPS + 1`. */
-async function agentStreak(q: SqliteExecutor, issue: number): Promise<number> {
-  const recent = await q.all<{ actor: string; kind: string }>(
-    "SELECT actor, kind FROM issue_events WHERE issue_id = ? ORDER BY id DESC LIMIT ?",
-    issue,
-    AGENT_HOPS + 1,
-  )
-  let streak = 0
-  for (const event of recent) {
-    if (event.actor.startsWith("person:")) break
-    if (event.kind === "comment") streak += 1
-  }
-  return streak
-}
-
-/** Plans the wakes a change causes and stores them in the outbox inside the same transaction as the change. */
+/**
+ * Plans the wakes a change causes and stores them in the outbox inside the same transaction as the change. Each
+ * agent change that wakes someone is one hop; past `AGENT_HOPS` hops since a person last acted, agent changes wake
+ * nobody until a person acts again.
+ */
 async function queueWakes(q: SqliteExecutor, issue: Issue, events: IssueEvent[], actor: IssueActor): Promise<Wake[]> {
   const self = actor.kind === "thread" ? actor.id : undefined
   const owner = issue.threads[0]
@@ -435,8 +434,6 @@ async function queueWakes(q: SqliteExecutor, issue: Issue, events: IssueEvent[],
     if (found === undefined) planned.set(target, { commandId: `issue:${event.id}:${target}`, lines: [text] })
     else found.lines.push(text)
   }
-  const looping = actor.kind === "thread" && events.some((event) => event.kind === "comment")
-  const quiet = looping && (await agentStreak(q, issue.id)) > AGENT_HOPS
   const newlyAssigned = (event: IssueEvent, before: Assignee[]): void => {
     const had = new Set(before.map(assigneeToken))
     for (const assignee of issue.assignees)
@@ -445,7 +442,7 @@ async function queueWakes(q: SqliteExecutor, issue: Issue, events: IssueEvent[],
   }
   for (const event of events) {
     if (event.kind === "created") newlyAssigned(event, [])
-    if (event.kind === "comment" && !quiet) {
+    if (event.kind === "comment") {
       const body = typeof event.data["body"] === "string" ? event.data["body"] : ""
       add(owner, event, `${event.actor} commented${event.replyTo === null ? "" : " in a reply"}: ${body}`)
       const mentioned = Array.isArray(event.data["mentions"]) ? event.data["mentions"] : []
@@ -463,6 +460,14 @@ async function queueWakes(q: SqliteExecutor, issue: Issue, events: IssueEvent[],
       add(owner, event, `${event.actor} set the assignees to ${names.length === 0 ? "nobody" : names.join(", ")}.`)
       newlyAssigned(event, assigneesOf(event.data["from"]))
     }
+  }
+  const hops =
+    (await q.get<{ agent_hops: number }>("SELECT agent_hops FROM issues WHERE id = ?", issue.id))?.agent_hops ?? 0
+  if (actor.kind === "person") {
+    if (hops !== 0) await q.run("UPDATE issues SET agent_hops = 0 WHERE id = ?", issue.id)
+  } else if (planned.size > 0) {
+    if (hops >= AGENT_HOPS) return []
+    await q.run("UPDATE issues SET agent_hops = ? WHERE id = ?", hops + 1, issue.id)
   }
   const wakes: Wake[] = []
   for (const [target, plan] of planned) {
@@ -578,7 +583,7 @@ export function createIssues(port: IssuesPort): IssuesService {
   return {
     states: async () => (await stateRows(db)).map(stateOf),
 
-    createState: async (input) => {
+    createState: async (actor, input) => {
       const name = input.name.trim()
       if (name.length === 0) fail("a state needs a name")
       return db.transaction(async (tx) => {
@@ -594,11 +599,12 @@ export function createIssues(port: IssuesPort): IssuesService {
           input.closed ? 1 : 0,
           position,
         )
+        await appendEvent(tx, STATES_EVENT, actor, port.now(), "states", { created: id })
         return stateOf(await stateById(tx, id))
       })
     },
 
-    updateState: async (input) => {
+    updateState: async (actor, input) => {
       const name = input.name?.trim()
       if (name !== undefined && name.length === 0) fail("a state needs a name")
       return db.transaction(async (tx) => {
@@ -612,6 +618,7 @@ export function createIssues(port: IssuesPort): IssuesService {
         }
         if (input.isDefault === true && state.is_default === 0)
           await tx.run("UPDATE issue_states SET is_default = (id = ?) WHERE closed = ?", state.id, state.closed)
+        await appendEvent(tx, STATES_EVENT, actor, port.now(), "states", { updated: state.id })
         return stateOf(await stateById(tx, state.id))
       })
     },
@@ -642,6 +649,7 @@ export function createIssues(port: IssuesPort): IssuesService {
           wakes.push(...(await queueWakes(tx, issueOf(await requireRow(tx, before.id)), [event], actor)))
         }
         await tx.run("DELETE FROM issue_states WHERE id = ?", state.id)
+        await appendEvent(tx, STATES_EVENT, actor, at, "states", { deleted: state.id, moveTo: target.id })
         return { moved: moved.length, wakes }
       })
     },
@@ -713,43 +721,57 @@ export function createIssues(port: IssuesPort): IssuesService {
 
     list: async (actor, filter) => {
       const scope = await scopeOf(actor)
-      const where: string[] = []
-      const params: SqliteValue[] = []
       const project = scope?.project ?? filter.project
-      if (project !== undefined) {
-        where.push("project = ?")
-        params.push(project)
-      }
-      const match = filter.q === undefined ? undefined : ftsQuery(filter.q)
-      const source =
-        match === undefined
-          ? "issues"
-          : "(SELECT rowid AS hit FROM issues_fts WHERE issues_fts MATCH ? ORDER BY rank LIMIT ?) JOIN issues ON id = hit"
-      const sourceParams: SqliteValue[] = match === undefined ? [] : [match, SEARCH_MATCHES]
+      const filters: string[] = []
+      const params: SqliteValue[] = []
       if (filter.assignee !== undefined) {
-        where.push("id IN (SELECT issue_id FROM issue_assignees WHERE assignee = ?)")
+        filters.push("id IN (SELECT issue_id FROM issue_assignees WHERE assignee = ?)")
         params.push(assigneeToken(filter.assignee))
       }
       if (filter.states !== undefined && filter.states.length > 0) {
-        where.push(`state IN (${filter.states.map(() => "?").join(", ")})`)
+        filters.push(`state IN (${filter.states.map(() => "?").join(", ")})`)
         params.push(...filter.states)
       }
-      if (filter.closed !== undefined) where.push(filter.closed ? "closed_at IS NOT NULL" : "closed_at IS NULL")
-      if (filter.parent === null) where.push("parent IS NULL")
+      if (filter.closed !== undefined) filters.push(filter.closed ? "closed_at IS NOT NULL" : "closed_at IS NULL")
+      if (filter.parent === null) filters.push("parent IS NULL")
       else if (filter.parent !== undefined) {
-        where.push("parent = ?")
+        filters.push("parent = ?")
         params.push(filter.parent)
+      }
+      const limit = Math.max(1, Math.min(filter.limit ?? LIST_LIMIT, LIST_MAX))
+      const match = filter.q === undefined ? undefined : ftsQuery(filter.q, project)
+      if (match !== undefined) {
+        const offset = filter.cursor === undefined ? 0 : decodeOffset(filter.cursor)
+        const joined = filters.length > 0
+        const rows = await db.all<IssueRow>(
+          `SELECT ${SUMMARY_COLUMNS} FROM (
+             SELECT issues_fts.rowid AS hit, rank AS score FROM issues_fts
+             ${joined ? "JOIN issues ON issues.id = issues_fts.rowid" : ""}
+             WHERE issues_fts MATCH ? ${joined ? `AND ${filters.join(" AND ")}` : ""}
+             ORDER BY rank LIMIT ? OFFSET ?
+           ) JOIN issues ON id = hit ORDER BY score, id`,
+          match,
+          ...params,
+          limit + 1,
+          offset,
+        )
+        return {
+          issues: rows.slice(0, limit).map(summaryOf),
+          cursor: rows.length > limit ? `r${offset + limit}` : null,
+        }
+      }
+      if (project !== undefined) {
+        filters.push("project = ?")
+        params.push(project)
       }
       if (filter.cursor !== undefined) {
         const [updatedAt, id] = decodeCursor(filter.cursor)
-        where.push("(updated_at < ? OR (updated_at = ? AND id < ?))")
+        filters.push("(updated_at < ? OR (updated_at = ? AND id < ?))")
         params.push(updatedAt, updatedAt, id)
       }
-      const limit = Math.max(1, Math.min(filter.limit ?? LIST_LIMIT, LIST_MAX))
       const rows = await db.all<IssueRow>(
-        `SELECT ${SUMMARY_COLUMNS} FROM ${source} ${where.length === 0 ? "" : `WHERE ${where.join(" AND ")}`}
+        `SELECT ${SUMMARY_COLUMNS} FROM issues ${filters.length === 0 ? "" : `WHERE ${filters.join(" AND ")}`}
          ORDER BY updated_at DESC, id DESC LIMIT ?`,
-        ...sourceParams,
         ...params,
         limit + 1,
       )
