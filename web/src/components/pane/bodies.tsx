@@ -41,7 +41,7 @@ export function openFile(slug: string, path: string): void {
 }
 
 export const PANE_ROW =
-  "flex w-full items-start gap-2.5 rounded-sm px-2 py-1.5 text-left transition-colors duration-[var(--dur-color)] hover:bg-secondary"
+  "im-hover flex w-full items-start gap-2.5 rounded-sm px-2 py-1.5 text-left"
 
 type JobEntry = {
   readonly id: number
@@ -114,7 +114,7 @@ export function ThreadLine(props: { thread: ThreadSummary; onOpen: (id: number) 
       <StatusGlyph state={state()} size={16} class="mt-0.5 shrink-0" />
       <span class="min-w-0 flex-1">
         <span class="block truncate text-sm text-ink">{props.thread.title}</span>
-        <span class="block truncate text-xs text-ink-3" classList={{ shimmer: state() === "working" }}>
+        <span class="block truncate text-xs text-ink-3" classList={{ "im-shimmer": state() === "working" }}>
           {props.thread.statusLine ?? STATE_WORD[state()]}
         </span>
       </span>

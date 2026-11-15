@@ -43,7 +43,7 @@ export function SignIn(props: { onSignedIn: () => void }): JSX.Element {
     <div class="flex h-full flex-col bg-bg text-ink">
       <OnboardingTopBar items={STEPS} />
       <div class="atmos flex min-h-0 flex-1 justify-center overflow-y-auto px-6 pb-16 pt-[22vh]">
-        <form onSubmit={submit} class="enter w-full max-w-[440px]">
+        <form onSubmit={submit} class="im-content w-full max-w-[440px]">
           <div class="label">Owner access</div>
           <h1 class="mt-3 text-2xl font-light leading-[1.15] tracking-[-0.03em]">Sign in to your workspace</h1>
           <p class="mt-3 text-base leading-[1.6] text-ink-3">
