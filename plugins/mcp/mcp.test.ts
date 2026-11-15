@@ -9,7 +9,7 @@ import {
 import { LATEST_PROTOCOL_VERSION } from "@earendil-works/pi-mcp"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { MCP_MODEL, requests, script } from "../../test/plugins/mcp.ts"
-import { cmd, eventually, fresh, turn } from "../../test/support.ts"
+import { cmd, eventually, fresh, OWNER_HEADERS, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -404,6 +404,7 @@ describe("mcp servers", () => {
       await home.fetch(
         new Request("https://ingle.test/v1/cmd", {
           method: "POST",
+          headers: OWNER_HEADERS,
           body: JSON.stringify({ id: "mcp-remove-2", op: "mcp.remove", args: { name: "demo" } }),
         }),
       )

@@ -44,13 +44,20 @@ import { Transcript, TranscriptSkeleton, type PendingMessage } from "../componen
 import { Composer } from "../components/chat/composer.tsx"
 import { ThreadConversation } from "../components/chat/panel.tsx"
 import { ConversationTabs } from "../components/shell/conversation-tabs.tsx"
+import { configureConversation, selectPreset } from "../state/context.ts"
+import { forgetProjectFiles } from "../components/pane/bodies.tsx"
 import { ProjectPane } from "../components/pane/pane.tsx"
 import { ProjectSettings } from "../components/project/settings.tsx"
 import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 
-function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | undefined; onOpenThread: (id: number) => void }): JSX.Element {
+function ProjectChat(props: {
+  project: ProjectSummary
+  snapshot: Snapshot | undefined
+  active: boolean
+  onOpenThread: (id: number) => void
+}): JSX.Element {
   const snapshot = (): Snapshot | undefined => props.snapshot
   const [optimistic, setOptimistic] = createSignal<readonly PendingMessage[]>([])
   const [answered, setAnswered] = createSignal<readonly AnsweredView[]>([])
@@ -181,8 +188,9 @@ function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | unde
         </Show>
       </Skullet>
           <Composer
-            projectName={props.project.name}
-            modelLabel={modelLabel()}
+            project={props.project}
+            active={props.active}
+            modelLabel={currentInfo()?.name ?? modelLabel()}
             model={chosenModel()}
             models={choices()}
             omitted={pickerModels.latest?.omitted ?? 0}
@@ -195,16 +203,20 @@ function ProjectChat(props: { project: ProjectSummary; snapshot: Snapshot | unde
             effort={agentThinkingOf(snapshot())}
             reasoning={currentInfo()?.reasoning === true}
             onPickModel={async (model) => {
-              await cmd("conv.configure", { conv: props.project.coordinatorId, model })
+              await configureConversation(props.project.coordinatorId, { model })
             }}
             onPickPreset={async (preset) => {
-              await cmd("preset.select", { conversation: props.project.coordinatorId, preset })
+              await selectPreset(props.project.coordinatorId, preset)
               await presetStore.reload()
             }}
             onPickEffort={async (thinking: ThinkingLevel) => {
-              await cmd("conv.configure", { conv: props.project.coordinatorId, thinking })
+              await configureConversation(props.project.coordinatorId, { thinking })
             }}
-            onAttach={(file, onProgress) => uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress)}
+            onAttach={async (file, onProgress, signal) => {
+              const uploaded = await uploadFile(file, `/projects/${props.project.slug}/attachments`, onProgress, signal)
+              forgetProjectFiles(props.project.slug)
+              return uploaded
+            }}
             onSend={async (text, key, attachments) => {
               const loaded = prompts.state()
               const expanded = expandSlash(text, loaded.kind === "ready" ? loaded.value : [])
@@ -260,6 +272,8 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
       return found === undefined ? [] : [found]
     })
   const snapshot = createConversationView(streams, () => thread()?.id ?? props.project.coordinatorId)
+  const onCoordinator = (): boolean => filePath() === undefined && runId() === undefined && thread() === undefined
+  const coordinatorSnapshot = createMemo<Snapshot | undefined>((last) => (thread() === undefined ? snapshot() : last))
 
   createEffect(() => {
     const current = thread()
@@ -310,11 +324,7 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
               <Show
                 when={runId()}
                 fallback={
-                  <Show
-                    when={thread()?.id}
-                    keyed
-                    fallback={<ProjectChat project={props.project} snapshot={snapshot()} onOpenThread={openThread} />}
-                  >
+                  <Show when={thread()?.id} keyed>
                     {(_id) => (
                       <Show when={thread()}>
                         {(current) => (
@@ -336,6 +346,9 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
           >
             {(path) => <FileScreen project={props.project} path={path()} />}
           </Show>
+          <div class="flex min-h-0 flex-1 flex-col" classList={{ hidden: !onCoordinator() }}>
+            <ProjectChat project={props.project} snapshot={coordinatorSnapshot()} active={onCoordinator()} onOpenThread={openThread} />
+          </div>
         </section>
       </Show>
       <Show when={paneOpen()}>

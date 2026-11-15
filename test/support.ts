@@ -18,6 +18,9 @@ import { CLOCK_READING_PREFIX } from "../src/contracts/message.ts"
 
 export type Stub = DurableObjectStub<Home>
 
+/** The deploy token every direct call to a home presents: the home is the auth boundary, not the Worker. */
+export const OWNER_HEADERS = { authorization: "Bearer test-owner-token" } as const
+
 export const fresh = (): Stub => env.HOME.get(env.HOME.newUniqueId())
 
 export type TestThread = { readonly id: ConversationId; readonly title: string }
@@ -69,7 +72,13 @@ export type Ack = {
 
 export const cmd = (stub: Stub, id: string, op: string, args: unknown = {}): Promise<Ack> =>
   stub
-    .fetch(new Request("https://ingle.test/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }))
+    .fetch(
+      new Request("https://ingle.test/v1/cmd", {
+        method: "POST",
+        headers: OWNER_HEADERS,
+        body: JSON.stringify({ id, op, args }),
+      }),
+    )
     .then((reply) => reply.json<Ack>())
 
 export const field = (value: unknown, key: string): unknown =>
