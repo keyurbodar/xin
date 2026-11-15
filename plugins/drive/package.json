@@ -13,7 +13,8 @@
         "permissions": [
           "conversations",
           "files",
-          "runtime"
+          "runtime",
+          "storage"
         ],
         "contributes": {
           "tools": [],
@@ -25,6 +26,8 @@
             "drive.move",
             "drive.read",
             "drive.scopes",
+            "drive.share",
+            "drive.unshare",
             "drive.write"
           ]
         }
