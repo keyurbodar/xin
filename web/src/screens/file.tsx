@@ -1,4 +1,5 @@
-import { For, Show, createResource, createSignal, type JSX } from "solid-js"
+import { For, Show, createEffect, createResource, createSignal, on, type JSX } from "solid-js"
+import { firstLoadFor, valueFor } from "../lib/loading.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
 import { setPendingDraft } from "../lib/draft.ts"
 import { ago, bytes } from "../lib/format.ts"
@@ -6,9 +7,10 @@ import { navigate } from "../lib/router.ts"
 import { mediaQuery } from "../lib/media.ts"
 import type { ProjectSummary } from "../state/home.ts"
 import { Markdown } from "../components/chat/markdown.tsx"
-import { Skullet } from "../components/ui/skeleton.tsx"
+import { Bar, Loading } from "../components/ui/skeleton.tsx"
 import { Icon } from "../components/ui/icon.tsx"
 import { EmptyState } from "../components/chat/ui.tsx"
+import { forgetProjectFiles } from "../components/pane/bodies.tsx"
 
 export type FileEntry = {
   readonly path: string
@@ -45,16 +47,36 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
     () => `${props.project.slug}:${version()}`,
     () => cmd<readonly FileEntry[]>("file.list", { prefix: `/projects/${props.project.slug}` }),
   )
-  const [content] = createResource(
+  const [read] = createResource(
     () => props.path,
-    (path) => cmd<FileContent>("file.read", { path }),
+    async (path) => ({ key: path, value: await cmd<FileContent>("file.read", { path }) }),
   )
-  const [revisions] = createResource(
+  const [history] = createResource(
     () => props.path,
-    (path) => cmd<{ revisions: readonly Revision[] }>("file.revisions", { path }),
+    async (path) => ({ key: path, value: await cmd<{ revisions: readonly Revision[] }>("file.revisions", { path }) }),
   )
   const [viewing, setViewing] = createSignal<string | undefined>()
-  const [older] = createResource(viewing, (sha256) => cmd<Revision & { text: string | null }>("file.revision", { path: props.path, sha256 }))
+  createEffect(on(() => props.path, () => setViewing(undefined), { defer: true }))
+  const pastKey = (): string | undefined => {
+    const sha256 = viewing()
+    return sha256 === undefined ? undefined : `${props.path}@${sha256}`
+  }
+  const [past] = createResource(
+    () => {
+      const sha256 = viewing()
+      return sha256 === undefined ? undefined : { path: props.path, sha256 }
+    },
+    async (source) => ({
+      key: `${source.path}@${source.sha256}`,
+      value: await cmd<Revision & { text: string | null }>("file.revision", source),
+    }),
+  )
+  const content = (): FileContent | undefined => valueFor(read, props.path)
+  const revisions = (): { revisions: readonly Revision[] } | undefined => valueFor(history, props.path)
+  const older = (): (Revision & { text: string | null }) | undefined => {
+    const key = pastKey()
+    return key === undefined ? undefined : valueFor(past, key)
+  }
   const [copied, setCopied] = createSignal(false)
   const [dropping, setDropping] = createSignal(false)
   const wide = mediaQuery("(min-width: 1024px)")
@@ -79,15 +101,18 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
   }
 
   const ask = (): void => {
-    setPendingDraft(`About ${name(props.path)}: `)
+    setPendingDraft(props.project.coordinatorId, `About ${name(props.path)}: `)
     navigate(`/p/${props.project.slug}`)
   }
 
   const upload = async (dropped: FileList): Promise<void> => {
     const list = Array.from(dropped)
-    await Promise.all(list.map((file) => uploadFile(file, root().replace(/\/$/u, ""))))
+    const results = await Promise.allSettled(list.map((file) => uploadFile(file, root().replace(/\/$/u, ""))))
+    forgetProjectFiles(props.project.slug)
     setVersion((value) => value + 1)
     await refetchFiles()
+    const failed = results.find((result) => result.status === "rejected")
+    if (failed !== undefined) throw failed.reason
   }
 
   return (
@@ -156,7 +181,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
         </Show>
 
         <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-          <Skullet loading={content.loading} sample={() => <div class="h-3 w-2/3 rounded-2xs bg-secondary" />} label="Opening file">
+          <Loading when={firstLoadFor(read, props.path)} skeleton={<div class="flex flex-col gap-2.5"><Bar width="66%" /><Bar width="88%" /><Bar width="52%" /></div>} label="Opening file">
             <Show when={content()} fallback={<EmptyState pictogram="folder" title="File not found" detail="It may have been deleted." />}>
               {(entry) => (
                 <Show
@@ -206,7 +231,7 @@ export function FileScreen(props: { project: ProjectSummary; path: string }): JS
                 </Show>
               )}
             </Show>
-          </Skullet>
+          </Loading>
         </div>
       </section>
 
