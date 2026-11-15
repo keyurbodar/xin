@@ -185,8 +185,12 @@ async function runStep(root: string, step: Step, force: boolean, only: readonly 
     return { step, outcome: "cached", seconds: 0, log }
   const started = performance.now()
   writeFileSync(log, `$ bun run ${script} ${extra.join(" ")}\n`)
-  const remote = BOX_STEPS.has(step) ? await runOnBox(root, script, extra, log) : undefined
-  const passed = remote?.kind === "ran" ? remote.ok : runLocal(root, step, script, extra, log)
+  const web = step === "test" ? webPaths(extra) : []
+  const worker = extra.filter((path) => !isWebPath(path))
+  const workerRuns = extra.length === 0 || worker.length > 0
+  const remote = workerRuns && BOX_STEPS.has(step) ? await runOnBox(root, script, worker, log) : undefined
+  const workerPassed = !workerRuns || (remote?.kind === "ran" ? remote.ok : runLocal(root, step, script, worker, log))
+  const passed = workerPassed && (web.length === 0 || runWebTests(root, web, log))
   const seconds = Math.round((performance.now() - started) / 100) / 10
   if (passed) writeFileSync(cachePath, key)
   return { step, outcome: passed ? "pass" : "fail", seconds, log }
@@ -203,6 +207,35 @@ function runLocal(root: string, step: Step, script: string, extra: readonly stri
   })
   appendFileSync(log, `${run.stdout}${run.stderr}`)
   return run.status === 0
+}
+
+const isWebPath = (path: string): boolean => path === "web" || path.startsWith("web/")
+
+/** What `bun test` gets inside `web/`: the whole suite unless `--only` names web paths, nothing when it names only others. */
+function webPaths(only: readonly string[]): string[] {
+  if (only.length === 0) return ["src"]
+  return only.filter(isWebPath).map((path) => (path === "web" ? "src" : path.slice("web/".length)))
+}
+
+/** CI's web job runs the client's bun:test suite (its `prebuild`), so the gate's test step runs it too. */
+function runWebTests(root: string, paths: readonly string[], log: string): boolean {
+  const cwd = join(root, "web")
+  const steps = [
+    ...(existsSync(join(cwd, "node_modules")) ? [] : [["bun", "install", "--frozen-lockfile"]]),
+    ["nice", "-n", "10", "bun", "test", ...paths],
+  ]
+  for (const [program, ...rest] of steps) {
+    appendFileSync(log, `$ (web) ${program} ${rest.join(" ")}\n`)
+    const run = spawnSync(program ?? "bun", rest, {
+      cwd,
+      encoding: "utf8",
+      maxBuffer: 256 << 20,
+      env: { ...process.env, FORCE_COLOR: "0" },
+    })
+    appendFileSync(log, `${run.stdout}${run.stderr}`)
+    if (run.status !== 0) return false
+  }
+  return true
 }
 
 function tail(path: string, lines: number): string {
