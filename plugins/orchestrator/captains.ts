@@ -294,6 +294,7 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
 
   const list = defineOp({
     name: "captain.list",
+    read: true,
     args: obj({ archived: opt(bool()) }),
     actors: ["owner"],
     run: async (_api, args) => {
@@ -312,6 +313,7 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
 
   const get = defineOp({
     name: "captain.get",
+    read: true,
     args: obj({ id: str({ minLength: 1 }) }),
     actors: ["owner"],
     run: async (_api, args) => {

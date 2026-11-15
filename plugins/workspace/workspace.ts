@@ -539,6 +539,7 @@ export function create(port: WorkspacePort): WorkspaceFeature {
 
   const readWorkspace = defineOp({
     name: "workspace.read",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => ({ projects: projectSummaries(projection), spaces: spaceSummaries(projection) }),
@@ -546,6 +547,7 @@ export function create(port: WorkspacePort): WorkspaceFeature {
 
   const puckList = defineOp({
     name: "puck.list",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async (api) => {
@@ -628,6 +630,7 @@ export function create(port: WorkspacePort): WorkspaceFeature {
   })
   const readOwner = defineOp({
     name: "owner.read",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => owner(),

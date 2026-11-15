@@ -96,6 +96,7 @@ export function createPrompts(port: PromptsPort): PromptsModule {
 
   const listOp: Op = defineOp({
     name: "prompt.list",
+    read: true,
     args: obj({ conversation: opt(int({ minimum: 0 })) }),
     actors: ["owner"],
     run: async (_api, args) => (await visible(args.conversation)).map(json),
