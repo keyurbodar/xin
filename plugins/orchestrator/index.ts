@@ -1,6 +1,6 @@
 import type { ThreadSettled } from "../../src/contracts/threads.ts"
 import type { Context } from "../../src/kernel/index.ts"
-import { captainsHome } from "./captains.ts"
+import { captainScopeOf, captainsHome } from "./captains.ts"
 import { create } from "./orchestrator.ts"
 
 export const name = "orchestrator"
@@ -38,4 +38,12 @@ export function apply(ctx: Context): void {
   ctx.pi.install(built.extension)
   for (const op of built.ops) ctx.ops.define(op)
   ctx.wire.home("captains", () => captainsHome(ctx.harness))
+  ctx.inject(["drive"], (inner) => {
+    inner.effect(() =>
+      inner.drive.attach(async (conversationId) => {
+        const id = await captainScopeOf(ctx.harness, conversationId)
+        return id === undefined ? [] : [{ kind: "captain", id }]
+      }),
+    )
+  })
 }

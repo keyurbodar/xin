@@ -41,47 +41,76 @@ export async function cmd<T>(op: string, args: Record<string, unknown> = {}, opt
 export type ServerFrame =
   | { readonly t: "hello"; readonly socket: string }
   | { readonly t: "ack"; readonly id: string; readonly ok: boolean; readonly result?: unknown; readonly error?: { code: string; message: string } }
-  | { readonly t: "snap"; readonly stream: string; readonly value: unknown }
+  | { readonly t: "snap"; readonly stream: string; readonly value: unknown; readonly rev?: string }
+  | { readonly t: "resume"; readonly stream: string; readonly value?: unknown; readonly start?: number }
   | { readonly t: "ev"; readonly stream: string; readonly events: readonly unknown[] }
   | { readonly t: "error"; readonly message: string }
 
-export type StreamListener = (value: unknown) => void
+export type StreamListener = (value: unknown, rev: string | undefined) => void
 export type DeltaListener = (events: readonly unknown[]) => void
 
-type Subscription = {
-  readonly value: StreamListener
-  readonly delta: DeltaListener
+/** What a subscriber already holds, sent on a resubscribe so the server answers with only what is missing. */
+export type ResumeCursor = { readonly start: number; readonly from: number } | { readonly rev: string }
+
+export type Resumable = {
+  cursor(): ResumeCursor | undefined
+  /** The server's answer to the cursor: what changed since it, and where the shared window now starts. */
+  apply(value: unknown, start: number | undefined): void
 }
 
-/** One socket per tab, a fresh snapshot per reconnect, resubscribed from the current view set. */
+export type Subscription = {
+  readonly value: StreamListener
+  readonly delta: DeltaListener
+  readonly resume?: Resumable
+}
+
+/** Handshakes refused in a row before the tab asks `/v1/status` whether its token is still good. */
+export const REFUSED_HANDSHAKES = 3
+
 export class Streams {
   #ws: WebSocket | undefined
   #subs = new Map<string, Set<Subscription>>()
+  /** The subscribers each outstanding resume was computed from: only they may apply its answer. */
+  #resuming = new Map<string, ReadonlySet<Subscription>>()
   #retry = 0
+  #refused = 0
+  #stopped = false
+  /** The token being retired while the stream is held; the hold ends only once a different token is stored. */
+  #held: string | undefined
+  /** Bumped by every reconnect the tab asks for, so a status check from before it does nothing. */
+  #run = 0
   #timer: ReturnType<typeof setTimeout> | undefined
   #waiting: (() => void) | undefined
   readonly #onStatus: (status: "connecting" | "open" | "closed") => void
   readonly #onSession: (socket: string | undefined) => void
   readonly #onRetry: (at: number) => void
+  readonly #onSignedOut: () => void
+  readonly #onHeld: (held: boolean) => void
 
   constructor(
     onStatus: (status: "connecting" | "open" | "closed") => void,
     onSession: (socket: string | undefined) => void,
     onRetry: (at: number) => void,
+    onSignedOut: () => void,
+    onHeld: (held: boolean) => void,
   ) {
     this.#onStatus = onStatus
     this.#onSession = onSession
     this.#onRetry = onRetry
+    this.#onSignedOut = onSignedOut
+    this.#onHeld = onHeld
   }
 
   subscribe(stream: string, subscription: Subscription): () => void {
     const set = this.#subs.get(stream) ?? new Set<Subscription>()
     this.#subs.set(stream, set)
     set.add(subscription)
-    if (set.size === 1) this.#send({ t: "sub", stream })
+    // A plain sub per subscriber, so one that joins a live stream (or one awaiting a resume) gets a full snapshot.
+    this.#send({ t: "sub", stream })
     return () => {
       set.delete(subscription)
       if (set.size === 0) {
+        this.#resuming.delete(stream)
         this.#subs.delete(stream)
         this.#send({ t: "unsub", stream })
       }
@@ -89,31 +118,43 @@ export class Streams {
   }
 
   open(): void {
-    if (this.#ws !== undefined) return
+    if (this.#ws !== undefined || this.#stopped || this.#holding()) return
     this.#cancelPending()
     this.#onStatus("connecting")
     const url = new URL("/v1/socket", location.href)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
     const socket = new WebSocket(url, ["ingle", `bearer.${token()}`])
     this.#ws = socket
+    let opened = false
     socket.addEventListener("open", () => {
+      opened = true
       this.#retry = 0
+      this.#refused = 0
       this.#onStatus("open")
-      for (const stream of this.#subs.keys()) this.#send({ t: "sub", stream })
+      this.#resuming.clear()
+      for (const [stream, subs] of this.#subs) {
+        const resume = cursorOf(subs)
+        if (resume !== undefined) this.#resuming.set(stream, new Set(subs))
+        this.#send(resume === undefined ? { t: "sub", stream } : { t: "sub", stream, resume })
+      }
     })
     socket.addEventListener("message", (event) => this.#receive(event.data))
     socket.addEventListener("close", () => {
       this.#ws = undefined
       this.#onSession(undefined)
       this.#onStatus("closed")
-      this.#reconnect()
+      if (!opened) this.#refused += 1
+      void this.#reconnect()
     })
     socket.addEventListener("error", () => socket.close())
   }
 
   /** Drops the socket so the next handshake carries the current token, or dials at once when none is open. */
   reconnectNow(): void {
+    if (this.#holding()) return
     this.#retry = 0
+    this.#refused = 0
+    this.#run += 1
     if (this.#ws === undefined) this.open()
     else this.#ws.close()
   }
@@ -124,6 +165,35 @@ export class Streams {
     this.open()
   }
 
+  /**
+   * Holds the socket closed while the owner retires this tab's token on purpose, so its refused handshakes cannot end
+   * the session before the one-time replacement is copied or adopted. Only a different stored token ends the hold: a
+   * push, a reconnect, or another tab's sign-out emptying the shared token all keep it.
+   */
+  pause(): void {
+    this.#held = token()
+    this.#onHeld(true)
+    this.#run += 1
+    this.#cancelPending()
+    this.#ws?.close()
+  }
+
+  /** Ends a hold whose rotation never happened, so the token it held is still the live one. */
+  resume(): void {
+    this.#held = undefined
+    this.#onHeld(false)
+    this.reconnectNow()
+  }
+
+  #holding(): boolean {
+    if (this.#held === undefined) return false
+    const stored = token()
+    if (stored === this.#held || stored === "") return true
+    this.#held = undefined
+    this.#onHeld(false)
+    return false
+  }
+
   #cancelPending(): void {
     clearTimeout(this.#timer)
     this.#timer = undefined
@@ -132,7 +202,28 @@ export class Streams {
     this.#waiting = undefined
   }
 
-  #reconnect(): void {
+  /**
+   * A handshake the server refuses looks like any dropped socket, so after a run of them the tab asks once whether the
+   * token still works. A 401 for the token still stored ends the session instead of redialling for the life of the tab;
+   * a 401 for a token replaced meanwhile, or anything else, an offline network included, keeps the backoff.
+   */
+  async #reconnect(): Promise<void> {
+    if (this.#holding()) return
+    const run = this.#run
+    if (this.#refused >= REFUSED_HANDSHAKES) {
+      this.#refused = 0
+      const presented = token()
+      const status = await fetch("/v1/status", { headers: { authorization: `Bearer ${presented}` } }).then(
+        (response) => response.status,
+        () => undefined,
+      )
+      if (run !== this.#run || this.#ws !== undefined) return
+      if (status === 401 && token() === presented) {
+        this.#stopped = true
+        this.#onSignedOut()
+        return
+      }
+    }
     this.#cancelPending()
     const delay = Math.min(15_000, 500 * 2 ** this.#retry)
     this.#retry += 1
@@ -170,13 +261,33 @@ export class Streams {
       return
     }
     if (frame.t === "snap") {
-      for (const sub of this.#subs.get(frame.stream) ?? []) sub.value(frame.value)
+      for (const sub of this.#subs.get(frame.stream) ?? []) sub.value(frame.value, frame.rev)
+      return
+    }
+    if (frame.t === "resume") {
+      const asked = this.#resuming.get(frame.stream)
+      this.#resuming.delete(frame.stream)
+      for (const sub of this.#subs.get(frame.stream) ?? []) if (asked?.has(sub)) sub.resume?.apply(frame.value, frame.start)
+      return
+    }
+    // A server from before resume (a rollback) refuses a sub that carries one: ask again plainly, for a snapshot.
+    if (frame.t === "error" && frame.message === "unknown frame" && this.#resuming.size > 0) {
+      for (const stream of this.#resuming.keys()) if (this.#subs.has(stream)) this.#send({ t: "sub", stream })
+      this.#resuming.clear()
       return
     }
     if (frame.t === "ev") {
       for (const sub of this.#subs.get(frame.stream) ?? []) sub.delta(frame.events)
     }
   }
+}
+
+/** Subscribers of one stream share its frames, so a cursor is only sent when every one of them can resume. */
+function cursorOf(subs: ReadonlySet<Subscription>): ResumeCursor | undefined {
+  const cursors = [...subs].map((sub) => sub.resume?.cursor())
+  const first = cursors[0]
+  if (first === undefined || cursors.some((cursor) => JSON.stringify(cursor) !== JSON.stringify(first))) return undefined
+  return first
 }
 
 function parseFrame(raw: string): ServerFrame | undefined {
@@ -188,7 +299,7 @@ function parseFrame(raw: string): ServerFrame | undefined {
   }
   if (typeof value !== "object" || value === null) return undefined
   const t = Reflect.get(value, "t")
-  if (t === "snap" || t === "ev" || t === "ack" || t === "error" || t === "hello") return value as ServerFrame
+  if (t === "snap" || t === "resume" || t === "ev" || t === "ack" || t === "error" || t === "hello") return value as ServerFrame
   return undefined
 }
 

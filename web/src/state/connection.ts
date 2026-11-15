@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js"
 import { Streams } from "../lib/api.ts"
+import { setToken } from "../lib/auth.ts"
 
 export type Connection = "connecting" | "open" | "closed"
 
@@ -9,6 +10,7 @@ const [retryAt, setRetryAt] = createSignal<number | undefined>(undefined)
 const [lastOpen, setLastOpen] = createSignal<number | undefined>(undefined)
 const [downSince, setDownSince] = createSignal<number | undefined>(undefined)
 const [online, setOnline] = createSignal(navigator.onLine)
+const [held, setHeld] = createSignal(false)
 let streams: Streams | undefined
 
 export const connectionState = connection
@@ -27,6 +29,15 @@ export const disconnectedSince = downSince
 
 export const networkOnline = online
 
+/** The socket is closed on purpose while a retired token is shown, so its silence is no outage. */
+export const connectionHeld = held
+
+/** The server refused this tab's token, so it is dropped and the tab reopens on sign-in. */
+function signOut(): void {
+  setToken("")
+  location.reload()
+}
+
 export function connect(): Streams {
   if (streams === undefined) {
     const opened = new Streams(
@@ -42,6 +53,11 @@ export function connect(): Streams {
       },
       setThisSession,
       setRetryAt,
+      signOut,
+      (holding) => {
+        setHeld(holding)
+        if (!holding && connection() !== "open") setDownSince(Date.now())
+      },
     )
     window.addEventListener("online", () => {
       setOnline(true)
@@ -58,6 +74,16 @@ export function connect(): Streams {
 /** Dials now when no socket is open, as one chain with the pending backoff. */
 export function dialNow(): void {
   streams?.dialNow()
+}
+
+/** Keeps the socket closed while this tab's token is being retired on purpose; a new stored token resumes it. */
+export function holdConnection(): void {
+  streams?.pause()
+}
+
+/** Ends a hold whose rotation failed, so the socket redials with the token it already had. */
+export function releaseConnection(): void {
+  streams?.resume()
 }
 
 /** Bounces the socket after the owner token changed, so the handshake carries the new one. */

@@ -199,6 +199,7 @@ export class Engine {
   readonly #queue = serial()
   #deadline: Deadline | undefined
   #revision = Date.now()
+  #threads: Promise<Map<number, Set<string>>> | undefined
 
   constructor(private readonly port: EnginePort) {
     this.store = new Store(port.db)
@@ -210,6 +211,26 @@ export class Engine {
    */
   get revision(): number {
     return this.#revision
+  }
+
+  /** The automations whose runs went to a conversation, from memory after the first call. */
+  async automationsOf(conversationId: number): Promise<readonly string[]> {
+    return [...((await this.#runThreads()).get(conversationId) ?? [])]
+  }
+
+  #runThreads(): Promise<Map<number, Set<string>>> {
+    this.#threads ??= this.store.runThreads().then((rows) => {
+      const threads = new Map<number, Set<string>>()
+      for (const row of rows)
+        threads.set(row.thread_id, (threads.get(row.thread_id) ?? new Set()).add(row.automation_id))
+      return threads
+    })
+    return this.#threads
+  }
+
+  async #ranOn(threadId: number, automationId: string): Promise<void> {
+    const threads = await this.#runThreads()
+    threads.set(threadId, (threads.get(threadId) ?? new Set()).add(automationId))
   }
 
   async create(input: CreateInput, caller: Caller, now: number, id: string): Promise<AutomationView> {
@@ -277,7 +298,9 @@ export class Engine {
     const removed = await this.#queue(async () => {
       const row = await this.store.automation(id)
       if (row === undefined || !visible(row, await this.#scope(caller))) return false
-      return this.store.remove(id)
+      if (!(await this.store.remove(id))) return false
+      for (const ids of (await this.#runThreads()).values()) ids.delete(id)
+      return true
     })
     if (removed) await this.#changed()
     return removed
@@ -546,6 +569,7 @@ export class Engine {
       if (threadId === undefined) return await this.store.failed(id, "thread.create returned no thread", now)
       if (automation.target === "same") await this.store.setThread(automation.id, threadId)
       await this.store.started(id, "running", threadId, now, { cost: 0, tokens: 0 })
+      await this.#ranOn(threadId, automation.id)
       await this.#notify(automation, run)
     } catch (error) {
       console.warn("automations: a run failed to start", error)
@@ -571,7 +595,10 @@ export class Engine {
         OWNER,
       )
       if (outcome.kind === "rejected") await this.store.failed(run.id, outcome.message, now)
-      else await this.store.started(run.id, "running", threadId, now, base)
+      else {
+        await this.store.started(run.id, "running", threadId, now, base)
+        await this.#ranOn(threadId, automation.id)
+      }
       return true
     }
     await this.port.intake.enqueue({
@@ -586,6 +613,7 @@ export class Engine {
     })
     await this.port.arm()
     await this.store.started(run.id, "delivered", threadId, now, base)
+    await this.#ranOn(threadId, automation.id)
     return true
   }
 
