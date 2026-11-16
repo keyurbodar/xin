@@ -12,6 +12,44 @@
       const scheme = localStorage.getItem("ingle.theme.scheme") ?? localStorage.getItem("ingle.theme")
       document.documentElement.dataset.theme = ["light", "rose"].includes(scheme) ? scheme : "dark"
       if (localStorage.getItem("ingle.motion") === "reduce") document.documentElement.dataset.motion = "reduce"
+      addEventListener(
+        "error",
+        (event) => {
+          const el = event.target
+          const chunk = el instanceof HTMLScriptElement || (el instanceof HTMLLinkElement && el.rel === "modulepreload")
+          if (!chunk || window.ingleBooted) return
+          if (sessionStorage.getItem("ingle.boot.retry") === null) {
+            sessionStorage.setItem("ingle.boot.retry", "1")
+            const url = new URL(location.href)
+            url.searchParams.set("boot", String(Date.now()))
+            location.replace(url)
+            return
+          }
+          if (document.getElementById("boot-failed") !== null) return
+          const box = document.createElement("div")
+          box.id = "boot-failed"
+          box.setAttribute("role", "alert")
+          box.style.cssText =
+            "position:fixed;inset:0;display:grid;place-content:center;gap:12px;justify-items:center;padding:24px;text-align:center;font:14px/1.5 system-ui,sans-serif;background:Canvas;color:CanvasText;color-scheme:" +
+            (document.documentElement.dataset.theme === "dark" ? "dark" : "light")
+          const text = document.createElement("p")
+          text.style.margin = "0"
+          text.textContent = "Ingle didn't load. Check your connection and reload."
+          const button = document.createElement("button")
+          button.type = "button"
+          button.textContent = "Reload"
+          button.style.cssText =
+            "font:inherit;padding:6px 14px;border-radius:6px;border:1px solid GrayText;background:ButtonFace;color:ButtonText;cursor:pointer"
+          button.onclick = () => {
+            sessionStorage.removeItem("ingle.boot.retry")
+            location.reload()
+          }
+          box.append(text, button)
+          document.body.append(box)
+          button.focus()
+        },
+        true,
+      )
     </script>
   </head>
   <body>

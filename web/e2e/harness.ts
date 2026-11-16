@@ -10,6 +10,8 @@ export type OpenOptions = {
 }
 
 export type Harness = {
+  readonly origin: string
+  readonly newPage: () => Promise<Page>
   readonly open: (fixture: string, options?: OpenOptions) => Promise<Page>
   readonly close: () => Promise<void>
 }
@@ -24,12 +26,15 @@ export async function startHarness(): Promise<Harness> {
   })
   await server.listen()
   const address = server.httpServer?.address()
-  if (address === null || address === undefined || typeof address === "string") throw new Error("vite did not bind a port")
+  if (address === null || address === undefined || typeof address === "string")
+    throw new Error("vite did not bind a port")
   const browser: Browser = await chromium.launch().catch(async (problem: unknown) => {
     await server.close()
     throw problem
   })
   return {
+    origin: `http://127.0.0.1:${address.port}`,
+    newPage: () => browser.newPage({ viewport: { width: 1280, height: 800 } }),
     open: async (fixture, options = {}) => {
       const width = options.width ?? 1280
       const page = await browser.newPage({ viewport: { width, height: width < 600 ? 844 : 800 } })
