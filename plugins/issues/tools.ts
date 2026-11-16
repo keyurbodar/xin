@@ -1,61 +1,115 @@
-import { defineExtension, defineTool } from "@earendil-works/pi-durable"
-import { arr, bool, int, nullable, obj, oneOf, opt, type Static, str } from "@earendil-works/pi-schema"
-import { type Context, OpRejected, textResult } from "../../src/kernel/index.ts"
+import type { JsonValue } from "@earendil-works/chord"
+import { defineExtension, defineTool, type ToolExecutionApi } from "@earendil-works/pi-durable"
+import {
+  arr,
+  bool,
+  compile,
+  int,
+  nullable,
+  obj,
+  oneOf,
+  opt,
+  type Static,
+  str,
+  unknown,
+} from "@earendil-works/pi-schema"
+import type { CommandId } from "../../src/ids.ts"
+import { type Actor, type Command, type Context, OpRejected, type Outcome, textResult } from "../../src/kernel/index.ts"
 import {
   type Assignee,
   assigneeToken,
   type IssueDetail,
   type IssueFields,
   type IssueSummary,
+  type Issue,
   type IssuesService,
   LINK_KINDS,
   PRIORITIES,
 } from "./issues.ts"
 
 export const name = "tool-issues"
-export const inject = ["pi", "issues"]
+export const inject = ["pi", "issues", "ops"]
 
 const COMMENTS_SHOWN = 20
 const COMMENT_CLIP = 500
-const ASSIGNEE = str({ pattern: "^(person:.+|thread:\\d+|captain:\\d+)$" })
+const ACTIONS = ["create", "read", "update"] as const
 
-const Args = obj({
-  action: oneOf(["create", "read", "update", "comment"] as const),
-  id: opt(int({ minimum: 1 })),
-  title: opt(str({ minLength: 1, maxLength: 300 })),
+const Inner = obj({
+  action: oneOf(ACTIONS),
+  id: opt(int()),
+  title: opt(str()),
   description: opt(str()),
   state: opt(str()),
   priority: opt(oneOf(PRIORITIES)),
   due: opt(nullable(str())),
   parent: opt(nullable(int())),
   labels: opt(arr(str())),
-  assignees: opt(arr(ASSIGNEE)),
+  assignees: opt(arr(str())),
   threads: opt(arr(int())),
   prs: opt(arr(str())),
   link: opt(obj({ kind: oneOf(LINK_KINDS), other: int(), remove: opt(bool()) })),
-  body: opt(str({ maxLength: 20_000 })),
-  replyTo: opt(int()),
-  mentions: opt(arr(int())),
   q: opt(str()),
   closed: opt(bool()),
   cursor: opt(str()),
 })
 
-type ToolArgs = Static<typeof Args>
+type ToolArgs = Static<typeof Inner>
+
+const checkInner = compile(Inner)
+
+const Args = obj({ action: oneOf(ACTIONS), id: opt(int()), with: opt(unknown()) })
 
 const DESCRIPTION =
-  "Issues, the shared work record. create: title plus fields. read: by id, or a list by q/assignees[0]/state/closed/parent; pass the returned cursor for more. update: id plus fields to change (lists replace; null clears due/parent) and/or link {kind, other, remove}. comment: id, body, replyTo, mentions (conversation ids to wake). Assignees are person:<id>, thread:<conv> or captain:<conv>. threads[0] owns the issue and is woken by its changes."
+  "Shared work record. with: create/update {title,description,state,priority,due,parent,labels,assignees,threads,prs,link:{kind:blocks|blocked_by|related,other,remove}}; read without id {q,state,closed,parent,assignees:[one],cursor}. Lists replace, null clears due/parent. assignees: person:<id>|thread:<conv>|captain:<conv>. threads[0] owns it."
+
+export const fail = (message: string): never => {
+  throw new OpRejected("bad_args", message)
+}
+
+export async function refusing(work: () => Promise<string>) {
+  try {
+    return textResult(await work())
+  } catch (error) {
+    if (error instanceof OpRejected) return textResult(`Not done: ${error.message}.`, { isError: true })
+    throw error
+  }
+}
+
+export type IssueToolPort = {
+  readonly issues: IssuesService
+  run(command: Command, actor: Actor): Promise<Outcome>
+}
 
 export function apply(ctx: Context): void {
-  const issues = ctx.issues
-  ctx.pi.install(defineExtension({ name: "tool-issues", tools: [issueTool(issues)] }))
+  const port: IssueToolPort = { issues: ctx.issues, run: (command, actor) => ctx.ops.run(command, actor) }
+  ctx.pi.install(defineExtension({ name: "tool-issues", tools: [issueTool(port)] }))
 }
+
+/** Runs an issue write op keyed by the tool call's task, so a replayed call returns the first call's receipt. */
+export async function write(
+  port: IssueToolPort,
+  api: ToolExecutionApi,
+  op: string,
+  args: JsonValue,
+  step = "",
+): Promise<JsonValue> {
+  const outcome = await port.run(
+    { id: `${op}:${api.taskId}${step}` as CommandId, op, args },
+    { kind: "agent", conversationId: api.conversationId },
+  )
+  if (outcome.kind !== "ok") return fail(outcome.message)
+  return outcome.result
+}
+
+const issueOf = (result: JsonValue): Issue => result as unknown as Issue
 
 function assignee(token: string): Assignee {
   const at = token.indexOf(":")
   const kind = token.slice(0, at)
   const id = token.slice(at + 1)
-  return kind === "person" ? { kind, id } : { kind: kind === "captain" ? "captain" : "thread", id: Number(id) }
+  if (kind === "person" && id !== "") return { kind, id }
+  if ((kind === "thread" || kind === "captain") && /^\d+$/.test(id)) return { kind, id: Number(id) }
+  return fail(`assignee ${token} is not person:<id>, thread:<conv> or captain:<conv>`)
 }
 
 const line = (issue: IssueSummary): string =>
@@ -113,13 +167,14 @@ function fieldsOf(args: ToolArgs): IssueFields {
   }
 }
 
-async function run(issues: IssuesService, args: ToolArgs, conversationId: number): Promise<string> {
-  const actor = { kind: "thread", id: conversationId } as const
+async function run(port: IssueToolPort, args: ToolArgs, api: ToolExecutionApi): Promise<string> {
+  const { issues } = port
+  const actor = { kind: "thread", id: api.conversationId } as const
   const needId = (): number => args.id ?? fail(`${args.action} needs an id`)
   switch (args.action) {
     case "create": {
       if (args.title === undefined) return fail("create needs a title")
-      const { issue } = await issues.create(actor, { ...fieldsOf(args), title: args.title })
+      const issue = issueOf(await write(port, api, "issue.create", { ...fieldsOf(args), title: args.title }))
       return `Created ${line(issue)}`
     }
     case "read": {
@@ -146,20 +201,18 @@ async function run(issues: IssuesService, args: ToolArgs, conversationId: number
     }
     case "update": {
       const id = needId()
-      let { issue } = await issues.update(actor, id, fieldsOf(args))
+      let issue = issueOf(await write(port, api, "issue.update", { id, ...fieldsOf(args) }))
       if (args.link !== undefined)
-        ({ issue } = await issues.link(actor, id, args.link.kind, args.link.other, args.link.remove !== true))
+        issue = issueOf(
+          await write(
+            port,
+            api,
+            args.link.remove === true ? "issue.unlink" : "issue.link",
+            { id, kind: args.link.kind, other: args.link.other },
+            ":link",
+          ),
+        )
       return `Updated ${line(issue)}`
-    }
-    case "comment": {
-      const id = needId()
-      if (args.body === undefined) return fail("comment needs a body")
-      const { events } = await issues.comment(actor, id, {
-        body: args.body,
-        ...(args.replyTo === undefined ? {} : { replyTo: args.replyTo }),
-        ...(args.mentions === undefined ? {} : { mentions: args.mentions }),
-      })
-      return `Commented on #${id} (comment ${events[0]?.id ?? "?"}).`
     }
     default: {
       const _exhaustive: never = args.action
@@ -168,23 +221,29 @@ async function run(issues: IssuesService, args: ToolArgs, conversationId: number
   }
 }
 
-const fail = (message: string): never => {
-  throw new OpRejected("bad_args", message)
-}
-
-function issueTool(issues: IssuesService) {
+export function issueTool(port: IssueToolPort) {
   return defineTool({
     name: "issue",
     description: DESCRIPTION,
     parameters: Args,
-    replay: "unsafe",
-    execute: async (args, api) => {
-      try {
-        return textResult(await run(issues, args, api.conversationId))
-      } catch (error) {
-        if (error instanceof OpRejected) return textResult(`Not done: ${error.message}.`, { isError: true })
-        throw error
-      }
-    },
+    replay: "safe",
+    execute: async ({ action, id, with: extra }, api) =>
+      refusing(async () => {
+        if (extra !== undefined && (typeof extra !== "object" || extra === null || Array.isArray(extra)))
+          return fail("with must be an object")
+        const inner: unknown = {
+          ...extra,
+          action,
+          ...(id === undefined ? {} : { id }),
+        }
+        if (!checkInner.check(inner))
+          return fail(
+            checkInner
+              .errors(inner)
+              .map((error) => `${error.path} ${error.message}`)
+              .join("; "),
+          )
+        return run(port, inner, api)
+      }),
   })
 }
