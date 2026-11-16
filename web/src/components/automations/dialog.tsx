@@ -1,3 +1,6 @@
+import "@ui-sdk/web/segmented-control"
+import "@ui-sdk/web/select"
+import { Check, ChevronDown } from "lucide-solid"
 import { createSignal, For, Show, type JSX } from "solid-js"
 import { isDefinitive } from "../../lib/api.ts"
 import {
@@ -16,11 +19,16 @@ import {
 import { createAutomation, updateAutomation } from "../../state/automations.ts"
 import { activeProjects } from "../../state/home.ts"
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
+import { POPUP, POPUP_ITEM } from "../ui/surface.ts"
 import { TriggersEditor } from "./triggers.tsx"
 
 const TARGET_SHORT: Readonly<Record<Automation["target"], string>> = { fresh: "New thread", same: "Standing thread" }
 
 const TARGETS: readonly Automation["target"][] = ["fresh", "same"]
+
+const targetOf = (value: unknown): Automation["target"] | undefined => TARGETS.find((target) => target === value)
+
+const LABEL = "text-sm font-title text-ink-2"
 
 const browserZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone
 
@@ -119,7 +127,7 @@ export function AutomationDialog(props: {
           <button
             type="submit"
             disabled={!ready()}
-            class="im-press flex h-8 items-center gap-1.5 rounded-sm bg-primary px-3 text-sm font-medium text-on-primary disabled:opacity-40"
+            class="im-press flex h-8 items-center gap-1.5 rounded-sm bg-primary px-3 text-sm font-title text-on-primary disabled:opacity-40"
           >
             {busy() ? (editing() ? "Saving…" : "Creating…") : editing() ? "Save" : "Create"}
             <span class="kbd border-on-primary/30 text-on-primary">⌘↵</span>
@@ -149,38 +157,62 @@ export function AutomationDialog(props: {
       </Field>
       <TriggersEditor triggers={draft().triggers} busy={busy()} tz={browserZone()} onChange={(triggers) => set({ triggers })} />
       <div class="grid grid-cols-2 gap-3">
-        <Field label="Project">
-          <select
-            class={`${FIELD_INPUT} h-[34px]`}
-            value={draft().project}
-            disabled={busy()}
-            onChange={(event) => set({ project: event.currentTarget.value })}
-          >
-            <Show when={activeProjects().length === 0}>
-              <option value="">No projects yet</option>
-            </Show>
-            <For each={activeProjects()}>{(project) => <option value={project.id}>{project.name}</option>}</For>
-          </select>
-        </Field>
-        <div class="flex flex-col gap-1.5">
-          <span class="text-sm font-medium text-ink-2">Each run goes to</span>
-          <div role="radiogroup" aria-label="Each run goes to" class="grid h-[34px] grid-cols-2 gap-0.5 rounded-sm border border-line-2 bg-panel p-0.5">
-            <For each={TARGETS}>
-              {(target) => (
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={draft().target === target}
-                  title={TARGET_WORD[target]}
-                  disabled={busy()}
-                  onClick={() => set({ target })}
-                  class="im-press truncate rounded-xs px-1.5 text-xs text-ink-3 hover:text-ink aria-checked:bg-card aria-checked:text-ink aria-checked:shadow-ring"
-                >
-                  {TARGET_SHORT[target]}
-                </button>
+        <ui-select
+          class="flex min-w-0 flex-col gap-1.5"
+          prop:value={draft().project === "" ? null : draft().project}
+          placeholder="No projects yet"
+          disabled={busy() || activeProjects().length === 0 ? "" : undefined}
+          on:valuechange={(event) => {
+            const value = event.detail.value
+            if (typeof value === "string") set({ project: value })
+          }}
+        >
+          <ui-select-label class={LABEL}>Project</ui-select-label>
+          <ui-select-trigger class="block">
+            <button type="button" class={`${FIELD_INPUT} flex h-[34px] items-center gap-2 text-left`}>
+              <ui-select-value class="min-w-0 flex-1 truncate data-[placeholder]:text-icon" />
+              <ChevronDown size={14} stroke-width={1.5} class="shrink-0 text-icon" />
+            </button>
+          </ui-select-trigger>
+          <ui-select-content side-offset="4" class={`${POPUP} w-[var(--anchor-width)]`}>
+            <For each={activeProjects()}>
+              {(project) => (
+                <ui-select-item value={project.id} label={project.name} class={POPUP_ITEM}>
+                  <ui-select-item-text class="min-w-0 flex-1 truncate">{project.name}</ui-select-item-text>
+                  <ui-select-item-indicator class="text-ink-2">
+                    <Check size={14} stroke-width={1.5} />
+                  </ui-select-item-indicator>
+                </ui-select-item>
               )}
             </For>
-          </div>
+          </ui-select-content>
+        </ui-select>
+        <div class="flex flex-col gap-1.5">
+          <span id="automation-target" class={LABEL}>
+            Each run goes to
+          </span>
+          <ui-segmented-control
+            aria-labelledby="automation-target"
+            prop:value={draft().target}
+            disabled={busy() ? "" : undefined}
+            on:valuechange={(event) => {
+              const target = targetOf(event.detail.value)
+              if (target !== undefined) set({ target })
+            }}
+            class="grid h-[34px] grid-cols-2 gap-0.5 rounded-sm border border-line-2 bg-panel p-0.5"
+          >
+            <For each={TARGETS}>
+              {(target) => (
+                <ui-segmented-control-item
+                  value={target}
+                  title={TARGET_WORD[target]}
+                  class="im-press grid cursor-default place-items-center truncate rounded-xs px-1.5 text-xs text-ink-3 outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-primary-soft data-[checked]:bg-card data-[checked]:text-ink data-[checked]:shadow-ring data-[disabled]:opacity-50"
+                >
+                  {TARGET_SHORT[target]}
+                </ui-segmented-control-item>
+              )}
+            </For>
+          </ui-segmented-control>
         </div>
       </div>
       <Show when={failure()}>{(text) => <div class="im-event text-sm text-failed">{text()}</div>}</Show>
