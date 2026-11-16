@@ -1,7 +1,6 @@
+import { bayerThreshold } from "../lib/halftone.ts"
 import { parseColor, type Rgb } from "./color.ts"
 import type { Background } from "./model.ts"
-
-const BAYER = [0, 32, 8, 40, 2, 34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44, 4, 36, 14, 46, 6, 38, 60, 28, 52, 20, 62, 30, 54, 22, 3, 35, 11, 43, 1, 33, 9, 41, 51, 19, 59, 27, 49, 17, 57, 25, 15, 47, 7, 39, 13, 45, 5, 37, 63, 31, 55, 23, 61, 29, 53, 21]
 
 const images = new Map<string, Promise<HTMLImageElement>>()
 
@@ -83,7 +82,7 @@ function dither(
       const g = pixels[at + 1] ?? 0
       const b = pixels[at + 2] ?? 0
       const light = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-      const threshold = ((BAYER[(y % 8) * 8 + (x % 8)] ?? 0) + 0.5) / 64
+      const threshold = bayerThreshold(x, y)
       const level = Math.min(1, Math.max(0, light * 1.15 + (threshold - 0.5) * 0.5))
       const radius = cell * 0.46 * Math.sqrt(level)
       if (radius < 0.4) continue
