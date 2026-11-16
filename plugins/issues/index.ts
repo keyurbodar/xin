@@ -2,8 +2,11 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { arr, bool, int, lit, nullable, obj, oneOf, opt, str, union } from "@earendil-works/pi-schema"
 import { type Actor, type Context, defineOp, OpRejected } from "../../src/kernel/index.ts"
+import { projectByRef } from "../../src/contracts/scope.ts"
 import { projectInScope } from "../../src/contracts/threaddoc.ts"
+import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import {
+  adoptProjectIds,
   type Change,
   createIssues,
   type IssueActor,
@@ -66,11 +69,17 @@ export const LinkArgs = obj({ id: ID, kind: oneOf(LINK_KINDS), other: ID })
 
 export async function apply(ctx: Context): Promise<void> {
   await ctx.db.applySqliteMigrations("issues", MIGRATIONS)
+  const workspace = await ctx.harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
+  await adoptProjectIds(
+    ctx.db,
+    Object.entries(workspace?.projects ?? {}).map(([id, project]) => [id, project.slug] as const),
+  )
   const issues = createIssues({
     db: ctx.db,
     conversationExists: async (id) =>
       (await ctx.harness.conversation(id as ConversationId, BACKGROUND_CONTEXT)) !== undefined,
     projectOf: async (id) => (await projectInScope(ctx.harness, id as ConversationId))?.projectId,
+    projectId: async (ref) => (await projectByRef(ctx.harness, ref))?.projectId,
     now: () => Date.now(),
   })
 
