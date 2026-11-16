@@ -22,6 +22,7 @@ import {
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
 import { createToolSearchTool } from "@earendil-works/pi-durable/tool-search"
 import { num, obj, opt, str } from "@earendil-works/pi-schema"
+import { PROVIDER_RETRIES } from "../contracts/models.ts"
 import { loaderRow } from "../contributions.ts"
 import { JournalStorage } from "./journal.ts"
 import { hidden } from "./hidden.ts"
@@ -38,12 +39,6 @@ export type InstalledName = {
   readonly kind: "kernel" | "row"
 }
 type EnvProvider = (target: EnvTarget) => ExecutionEnv | undefined
-
-/**
- * Provider retries per model request: 2, 4, 8, 16, 32 and 60 s apart (pi-ai caps one wait at 60 s), so a run rides out
- * about two minutes of rate limiting or overload before it fails. Each wait is one durable sleep commit.
- */
-const PROVIDER_RETRIES = 6
 
 const own = hidden<Pi, Context>()
 

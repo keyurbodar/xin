@@ -40,12 +40,13 @@ import {
 } from "@earendil-works/pi-durable"
 import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
 import { conversationCost, createBudget, untag } from "./budget.ts"
-import { createFallbacks } from "./fallback.ts"
+import { FALLBACK_KIND, fallbackHook } from "./fallback.ts"
 import { FastDoc, fastOn, modesOf } from "./fast.ts"
 import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
   FeatureSchema,
   ModelRefSchema,
+  PROVIDER_RETRIES,
   resolveModel,
   ThinkingSchema,
   type ModelDefaults,
@@ -494,7 +495,7 @@ export type ModelsParts = {
   readonly service: ModelsService
   readonly ops: readonly Op[]
   compaction(): CompactionSettings | undefined
-  /** Ends a conversation's fallback streak on its first good response. */
+  /** Moves a failing generation to the owner's next fallback model. */
   readonly fallbackHook: HookRegistration
   home(): JsonObject
   models(): Models
@@ -872,10 +873,16 @@ export function create(deps: ModelsPort): ModelsParts {
   const registry = createRegistry(deps)
   const store = registry.store
   let fallbackOrder: readonly ModelRef[] = []
-  const fallbacks = createFallbacks({
-    harness,
+  const fallbacks = fallbackHook({
+    maxRetries: PROVIDER_RETRIES,
     order: () => fallbackOrder,
-    usable: async (ref) => !isOff(ref) && (await available(registry)).some((model) => same(refOf(model), ref)),
+    usable: async (ref) =>
+      isOff(ref) ? undefined : (await available(registry)).find((model) => same(refOf(model), ref)),
+    known: (ref) => registry.models.getModel(ref.provider, ref.modelId),
+    note: async (conversation, requestId, data) => {
+      const handle = await harness.conversation(conversation, BACKGROUND_CONTEXT)
+      await handle?.submit({ type: "write", requestId, entry: { kind: FALLBACK_KIND, data } }, BACKGROUND_CONTEXT)
+    },
     admitted: async (conversation) => (await budget.admitConversation(conversation)).kind === "ok",
     configure: async (conversation, model, id) =>
       (
@@ -885,7 +892,6 @@ export function create(deps: ModelsPort): ModelsParts {
         )
       ).kind === "ok",
   })
-  let stopFallbacks: (() => void) | undefined
   let disabledRefs: readonly ModelRef[] = []
   /** The owner's disabled models, read once at start and updated by `models.enable`, so a check reads no row. */
   const isOff = (ref: ModelRef): boolean => disabledRefs.some((entry) => same(entry, ref))
@@ -1633,7 +1639,7 @@ export function create(deps: ModelsPort): ModelsParts {
     service,
     ops,
     compaction,
-    fallbackHook: fallbacks.hook,
+    fallbackHook: fallbacks,
     home: () => ({ spend: budget.todaySpend() }),
     models: () => registry.models,
     flush,
@@ -1641,8 +1647,6 @@ export function create(deps: ModelsPort): ModelsParts {
     start: async () => {
       disabledRefs = (await readKv(db, "owner.disabled", refsCheck.check)) ?? []
       fallbackOrder = (await readKv(db, FALLBACKS_KEY, refsCheck.check)) ?? []
-      stopFallbacks?.()
-      stopFallbacks = fallbacks.start()
       await registry.sync()
       setPercent((await readKv(db, COMPACTION_KEY, compactionCheck.check))?.percent)
       await seedUsage(db, harness)
