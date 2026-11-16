@@ -8,6 +8,7 @@ import { reuseItems, type PassItem, type TimelineItem, type ToolCall, type WaitT
 import { ToolGroup } from "./tool-group.tsx"
 
 const PINNED_WITHIN = 32
+const ANCHOR_PROBE = 16
 const MESSAGE_KINDS: ReadonlySet<TimelineItem["kind"]> = new Set(["owner", "pass", "text"])
 
 type Kind = TimelineItem["kind"]
@@ -150,14 +151,18 @@ export function Timeline(props: {
   let anchor: { readonly element: Element; readonly offset: number } | undefined
   const offsetOf = (element: Element): number => element.getBoundingClientRect().top - scroller.getBoundingClientRect().top
   const markAnchor = (): void => {
-    const top = scroller.getBoundingClientRect().top
-    const element = [...content.querySelectorAll(":scope > [data-item]")].find(
-      (candidate) => candidate.getBoundingClientRect().bottom > top,
-    )
-    anchor = element === undefined ? undefined : { element, offset: offsetOf(element) }
+    const view = scroller.getBoundingClientRect()
+    const column = content.getBoundingClientRect()
+    anchor = undefined
+    for (let y = view.top + 1; y < view.bottom; y += ANCHOR_PROBE) {
+      const element = document.elementFromPoint(column.left + column.width / 2, y)
+      if (element === null || element === content || !content.contains(element)) continue
+      anchor = { element, offset: offsetOf(element) }
+      return
+    }
   }
   const holdAnchor = (): void => {
-    if (anchor === undefined || !anchor.element.isConnected) return markAnchor()
+    if (anchor === undefined || !anchor.element.isConnected || Math.abs(scroller.scrollTop - lastTop) > 1) return markAnchor()
     const shift = offsetOf(anchor.element) - anchor.offset
     if (Math.abs(shift) >= 0.5) {
       scroller.scrollTop = Math.round(scroller.scrollTop + shift)
@@ -168,7 +173,7 @@ export function Timeline(props: {
   const settle = (): void => {
     markAnchor()
     const top = scroller.scrollTop
-    const now = atEnd() || (pinned() && top >= lastTop)
+    const now = atEnd() || (pinned() && top >= lastTop - 1)
     lastTop = top
     if (now === pinned()) return
     setPinned(now)

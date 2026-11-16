@@ -24,6 +24,8 @@ type Fixture = {
     readonly reconnect: () => void
     readonly paginate: () => void
     readonly frames: (count: number) => void
+    readonly bulk: (turns: number) => void
+    readonly stream: (turns: number, ms: number) => void
   }
 }
 
@@ -283,5 +285,104 @@ test("a sent image keeps its thumbnail across snapshot frames and opens with the
   const reads: readonly string[] = await page.evaluate(() => Reflect.get(window, "requested"))
   expect(reads).toEqual(["a".repeat(64)])
   await page.keyboard.press("Escape")
+  await page.close()
+})
+
+const fromEnd = (page: Page) =>
+  page.evaluate(() => {
+    const scroller = document.querySelector<HTMLElement>("[data-timeline]")!
+    return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+  })
+
+const grow = (page: Page, selector: string, height: number) =>
+  page.evaluate(
+    ([selector, height]) => {
+      const spacer = document.createElement("div")
+      spacer.style.height = `${height}px`
+      document.querySelector(String(selector))!.prepend(spacer)
+    },
+    [selector, height] as const,
+  )
+
+const topOf = (page: Page, selector: string) =>
+  page.evaluate((selector) => document.querySelector(selector)!.getBoundingClientRect().top, selector)
+
+test("pinned to the end of a long transcript, turns streaming in keep it pinned, through a window that drops its oldest half", async () => {
+  const page = await harness.open("timeline")
+  await tl(page, (fixture) => fixture.bulk(200))
+  await settled(page)
+  expect(await fromEnd(page)).toBeLessThan(2)
+  await tl(page, (fixture) => fixture.stream(15, 16))
+  await page.waitForFunction(() => Reflect.get(window, "streaming") === false, undefined, { timeout: 30_000 })
+  await settled(page)
+  expect(await page.locator("[data-jump]").count()).toBe(0)
+  expect(await fromEnd(page)).toBeLessThan(2)
+  await page.close()
+})
+
+test("scrolled up, content growing above the view by fractions of a pixel leaves what is on screen in place, on a whole pixel", async () => {
+  const page = await harness.open("timeline")
+  await page.evaluate(() => {
+    document.querySelector<HTMLElement>("[data-timeline]")!.scrollTop = 400
+  })
+  await settled(page)
+  const watched = "[data-turn-summary]"
+  const before = await topOf(page, watched)
+  for (const height of [37.5, 12.25, 61.75]) {
+    await grow(page, "[data-item]", height)
+    await settled(page)
+  }
+  expect(Math.abs((await topOf(page, watched)) - before)).toBeLessThan(1)
+  expect(Number.isInteger(await scrollTop(page))).toBe(true)
+  expect(await page.locator("[data-jump]").count()).toBe(0)
+  await page.close()
+})
+
+test("scrolled up, growth inside the item that spans the top of the view, above it, leaves what is on screen in place", async () => {
+  const page = await harness.open("timeline")
+  const spanning = await page.evaluate(() => {
+    const scroller = document.querySelector<HTMLElement>("[data-timeline]")!
+    const tall = [...scroller.querySelectorAll<HTMLElement>("[data-item]")].find((item) => item.offsetHeight > 100)!
+    scroller.scrollTop = Math.round(tall.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop + 40)
+    return tall.dataset.item!
+  })
+  await settled(page)
+  const watched = `[data-item="${spanning}"] + [data-item]`
+  const before = await topOf(page, watched)
+  await grow(page, `[data-item="${spanning}"]`, 120)
+  await settled(page)
+  expect(Math.abs((await topOf(page, watched)) - before)).toBeLessThan(1)
+  await page.close()
+})
+
+test("loading older from a fractional scroll position restores the view on a whole pixel", async () => {
+  const page = await harness.open("timeline")
+  await tl(page, (fixture) => fixture.paginate())
+  await settled(page)
+  await page.evaluate(() => {
+    document.querySelector<HTMLElement>("[data-timeline]")!.scrollTop = 0.5
+  })
+  await settled(page)
+  await page.click("[data-load-older]")
+  await settled(page)
+  expect(Number.isInteger(await scrollTop(page))).toBe(true)
+  await page.close()
+})
+
+test("pinned, a scroll position read a pixel short while content grows keeps the view pinned", async () => {
+  const page = await harness.open("timeline")
+  await settled(page)
+  for (let round = 0; round < 3; round++) {
+    await page.evaluate(() => {
+      const scroller = document.querySelector<HTMLElement>("[data-timeline]")!
+      scroller.scrollTop -= 1
+      const spacer = document.createElement("div")
+      spacer.style.height = "120px"
+      document.querySelector("[data-item]:last-of-type")!.append(spacer)
+    })
+    await settled(page)
+  }
+  expect(await page.locator("[data-jump]").count()).toBe(0)
+  expect(await fromEnd(page)).toBeLessThan(2)
   await page.close()
 })

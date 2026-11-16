@@ -219,6 +219,39 @@ Object.assign(window, {
     longer: () => commit(assistant(NOW + 90_000, [text(LONG)])),
     stopWaiting: () => setProject(projectWith("completed")),
     reconnect: () => setEntries((current) => structuredClone(current)),
+    bulk: (turns: number) => {
+      const start = NOW - turns * 60_000
+      setEntries(
+        Array.from({ length: turns }, (_, index) => [
+          user(start + index * 60_000, `Check item ${index + 1}.`),
+          assistant(start + index * 60_000 + 4_000, [text(`Item ${index + 1} is fine. ${LONG.slice(0, 40 + ((index * 37) % 200))}`)]),
+        ]).flat(),
+      )
+    },
+    stream: (turns: number, ms: number) => {
+      let turn = 0
+      let token = 0
+      const words = LONG.split(" ")
+      Reflect.set(window, "streaming", true)
+      timer = setInterval(() => {
+        const at = NOW + turn * 60_000
+        if (token === 0) {
+          commit(user(at, `Next step ${turn + 1}.`))
+          setLive({ busy: true, content: [], tools: [] })
+        }
+        token += 16
+        setLive({ busy: true, content: [text(words.slice(0, token).join(" "))], tools: [] })
+        if (token < words.length) return
+        commit(assistant(at + 4_000, [text(LONG)]))
+        setLive({ busy: false, content: [], tools: [] })
+        token = 0
+        turn += 1
+        if (turn === Math.floor(turns / 2)) setEntries((current) => current.slice(Math.floor(current.length / 2)))
+        if (turn < turns) return
+        clearInterval(timer)
+        Reflect.set(window, "streaming", false)
+      }, ms)
+    },
     frames: (count: number) => {
       for (let index = 0; index < count; index++) setLive((current) => ({ ...current }))
     },
