@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test"
+import { installGlobal, snapshotGlobals } from "../../test/globals.ts"
 import { cmd, invalidateReads, MAX_BATCH, noteHomeRev, READ_TTL_MS, Streams } from "./api.ts"
 
 type Frame = { readonly id: string; readonly op: string; readonly args: unknown }
@@ -13,20 +14,15 @@ const ack = (frame: Frame) =>
     ? { t: "ack", id: frame.id, ok: false, error: { code: "failed", message: "broken" } }
     : { t: "ack", id: frame.id, ok: true, result: { op: frame.op, args: frame.args } }
 
-const saved = Object.fromEntries(
-  ["fetch", "WebSocket", "location", "localStorage"].map((name) => [name, Reflect.get(globalThis, name)]),
-)
-
-function install(name: string, value: unknown): void {
-  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true })
-}
+let restore = (): void => undefined
 
 beforeEach(() => {
+  restore = snapshotGlobals(["fetch", "WebSocket", "location", "localStorage"])
   posts = []
   reply = {}
   invalidateReads()
-  install("localStorage", { getItem: () => "own_token", setItem: () => undefined, removeItem: () => undefined })
-  install("fetch", async (_input: string, init: { body: string }) => {
+  installGlobal("localStorage", { getItem: () => "own_token", setItem: () => undefined, removeItem: () => undefined })
+  installGlobal("fetch", async (_input: string, init: { body: string }) => {
     const body: unknown = JSON.parse(init.body)
     const frames = (Array.isArray(body) ? body : [body]) as Frame[]
     posts.push(frames)
@@ -40,7 +36,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setSystemTime()
-  for (const [name, value] of Object.entries(saved)) install(name, value)
+  restore()
 })
 
 const ops = () => posts.map((frames) => frames.map((frame) => frame.op))
@@ -115,8 +111,8 @@ type HomeSocket = { emit(type: string, data?: string): void }
 /** A fake socket the test drives by hand, and a tab subscribed to the home stream over it. */
 function homeTab(): { socket: () => HomeSocket | undefined; streams: Streams } {
   let socket: HomeSocket | undefined
-  install("location", { href: "https://ingle.test/" })
-  install(
+  installGlobal("location", { href: "https://ingle.test/" })
+  installGlobal(
     "WebSocket",
     class {
       static readonly OPEN = 1
