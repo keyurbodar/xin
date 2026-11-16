@@ -1,0 +1,1 @@
+2026-11-16T13:00:00Z	client	XIN-23 #4: Progress, ContextRing, MorphIcon send and Signal waiting/merged deleted; supersedes the earlier rows that kept them for #14 and for the full family	nothing in the client uses them; the composer lane builds its own when it needs one	cd web && bun run typecheck && bun run build	adopted

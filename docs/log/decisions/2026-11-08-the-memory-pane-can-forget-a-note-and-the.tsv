@@ -1,0 +1,1 @@
+2026-11-08T00:05	P14	The Memory pane can forget a note, and the Schedules pane offers New	the mockup gives both panes an action; memory.forget and the /schedules create form already existed, so the panes only needed the entry points	web/src/components/chat/panel.tsx MemoryTab forget, SchedulesTab header	P14-live-panel-memory.png, P14-live-panel-schedules.png

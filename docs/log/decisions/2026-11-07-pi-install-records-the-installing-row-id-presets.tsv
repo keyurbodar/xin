@@ -1,0 +1,1 @@
+2026-11-07T09:00	P8	pi.install records the installing row id; presets match prompt rows by data	Presets walked Cordis fibers via ctx.registry/ctx.loader, outside its inject list; boundaries.ts could not see Cordis services	P8 review #2	accepted

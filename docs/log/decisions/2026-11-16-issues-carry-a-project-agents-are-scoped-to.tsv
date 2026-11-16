@@ -1,0 +1,1 @@
+2026-11-16T06:00:00Z	issues	Issues carry a project; agents are scoped to their conversation's project, owner ops are unscoped	a thread in one project could read, close and wake another project's work	review.test.ts scope test	kept

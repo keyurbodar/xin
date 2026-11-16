@@ -1,5 +1,5 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
-import { addSpec, consentOf, errorMessage, packages, type ConsentPermission } from "../../state/extensions.ts"
+import { addSpec, consentOf, errorMessage, packages, type ConsentRequest } from "../../state/extensions.ts"
 import { Button, Failure, MONO_INPUT, Note } from "./chrome.tsx"
 import { ConsentPrompt } from "./consent.tsx"
 import { Glyph } from "./glyph.tsx"
@@ -12,7 +12,7 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [added, setAdded] = createSignal<string | undefined>(undefined)
-  const [consent, setConsent] = createSignal<readonly ConsentPermission[] | undefined>(undefined)
+  const [consent, setConsent] = createSignal<ConsentRequest | undefined>(undefined)
   const [closing, setClosing] = createSignal(false)
   const close = (): void => {
     if (closing()) return
@@ -31,13 +31,13 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
 
   const valid = (): boolean => SPEC.test(spec().trim())
 
-  const submit = async (grant: readonly string[] = []): Promise<void> => {
+  const submit = async (grant: readonly string[] = [], integrity?: string): Promise<void> => {
     if (!valid() || busy()) return
     setBusy(true)
     setError(undefined)
     setConsent(undefined)
     try {
-      await addSpec(spec().trim(), grant)
+      await addSpec(spec().trim(), grant, integrity)
       setAdded(spec().trim())
     } catch (failure: unknown) {
       const asked = consentOf(failure)
@@ -128,13 +128,15 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
           </Show>
 
           <Show when={consent()}>
-            {(permissions) => (
+            {(asked) => (
               <ConsentPrompt
                 subject={spec().trim()}
-                permissions={permissions()}
+                permissions={asked().permissions}
+                integrity={asked().integrity}
+                changed={asked().changed}
                 action="Allow and add"
                 busy={busy()}
-                onAllow={(grant) => void submit(grant)}
+                onAllow={(grant) => void submit(grant, asked().integrity)}
                 onCancel={() => setConsent(undefined)}
               />
             )}

@@ -1,0 +1,1 @@
+2026-11-16T20:30:00Z	plugins	Client modules load through generated lazy import() loaders, each caught on its own, and each slot component renders in its own ErrorBoundary	XIN-23 #30: a client module that threw at import or render blanked the whole app	one failing load or render leaves the rest of the shell running	fixed in #30

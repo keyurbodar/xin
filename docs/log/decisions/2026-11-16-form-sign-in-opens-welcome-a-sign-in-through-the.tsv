@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	onboarding v5	form sign-in opens welcome: A sign-in through the form navigates to #/welcome; a stored token still goes straight to the shell	nothing linked to #/welcome before, so onboarding was unreachable	web/src/app.tsx	adopted

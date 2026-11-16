@@ -1,0 +1,1 @@
+2026-11-15T17:20:00Z	page-15	ingle-motion.css and the data-visibility flag come from #22 (capy/motion-system c7b2feb); this lane's interim copy and motion.ts change were dropped in the merge	one vendored copy and one owner of motion.ts; the toast relies on its :root[data-visibility=hidden] pause	merge of origin/capy/motion-system	adopted

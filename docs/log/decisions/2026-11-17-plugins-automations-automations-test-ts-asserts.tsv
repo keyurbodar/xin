@@ -1,0 +1,1 @@
+2026-11-17T04:00:00Z	XIN-21	plugins/automations/automations.test.ts asserts home.automations.touched from the wire snapshot	XIN-23 low: nothing failed when #touched.set was removed. The new test does (1 of 31 failed with the set removed)	gate test --only=plugins/automations	adopted

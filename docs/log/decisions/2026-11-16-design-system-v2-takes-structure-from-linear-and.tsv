@@ -1,0 +1,1 @@
+2026-11-16T04:00:00Z	AMA-23 (XIN-25)	Design system v2 takes structure from Linear and Palermo and mobile flow from zeron; colours and motion carry over unchanged	Keyur asked for Linear/Palermo structure with Ingle colours, and zeron mobile UX. zeron mobile is Swift/Kotlin (MIT), so patterns are adapted and no code is ported	docs/design/ingle-system-v2.md sections 1-6	adopted
