@@ -11,6 +11,9 @@ Status: spec, 16 Nov 2026 (AMA-23). It supersedes the structure parts of the v4/
 | zeron (github.com/zeronsh/zeron, MIT, © 2026 Wing) | Native iOS (UIKit) and Android apps for driving coding agents | Mobile flow and patterns: search-pill header, filter chips, foldable grouped lists, two-line cells, a floating New button, capsule composer that grows into a card, bottom sheets with a grabber and large title, a companions sheet, floating activity pills | Code. Its mobile apps are Swift and Kotlin, so nothing ports to Solid; we adapt patterns only. Attribution stays in this doc and in each mobile PR. |
 | emil-design-eng skill (project-xin drive) | Motion and polish rules | Applied to every component and motion decision below (§6) | — |
 | UI SDK (`@ui-sdk/core` + `@ui-sdk/web`) | Headless behaviours with ARIA | Every keyboard, focus, selection, dismissal, popup and drag behaviour (§7) | Its `web.css` look; we style from `data-slot` and state attributes with our tokens |
+| sadu-ui (github.com/y0u-0/sadu-ui) | 56 React components styled after Al Sadu weaving, built on UI SDK. The repo has no licence file and no `license` field, so all rights are reserved | The woven structure as a restrained motif (§4.3), and its way of composing UI SDK primitives (§7.3), translated to Solid | Code, colours, themes, motifs, the weave renderer and its copy. No licence means nothing is reused verbatim |
+
+Precedence when sources disagree, highest first: UI SDK for every behaviour; Linear and Palermo structure with emil-design-eng for the design system; zeron for phone UX; the Sadu motif only where it improves structure.
 
 capy.ai's literal values stay out, as before.
 
@@ -164,6 +167,21 @@ Adopt means we build it as described. Change means we take the idea with a state
 | Tablet: companions as an inspector column | Adopt | Same as today's docked pane at ≥1280; tablets get a sheet below that |
 | Terminal, key bar, voice, wallpaper, glass blur | Skip | No such features in Ingle; blur costs frames on mid phones |
 
+### 4.3 Woven structure (sadu-ui), as a motif
+
+The rule: a motif earns its place by carrying meaning (a boundary, a sequence or a state) in Ingle's existing colours. Where it only decorates, it stays out.
+
+| Pattern | Decision | Ingle shape and why |
+|---|---|---|
+| Numbered section label with a trailing rule ("01 Rug ——") | Adopt for Settings sections, onboarding steps and pane sections | Mono 12/16 `ink-3` index, 13/18 510 label, then a `line-1` hairline to the edge. It gives long pages a scannable sequence, and Palermo's Section Header keeps title and actions |
+| Banded divider with a centre knot (line · label · line) | Adopt for date dividers in the transcript and lists ("Today", "Earlier") and for "New since you left" | A `line-2` rule, 13/18 `ink-3` label, and a 4px rotated-square knot in `line-3` on each side. It marks a boundary in time, which a bare rule doesn't say. Built on UI SDK Separator |
+| Stitched (dashed) framing | Change: only for states that aren't solid yet: the file drop target, a queued message and a draft issue | A 1px dashed `line-3` edge means "not yet". On settled surfaces it would read as noise |
+| Woven band under the active tab | Change: a 2px `ink` band under the active conversation tab and the active pane tab, 1px above the strip's hairline | Stronger than a fill change at 13px, and it meets the 3:1 state contrast UI SDK asks for |
+| Rhythmic repeated bands (striped meters, loom progress) | Change: the context meter's category bar keeps its 1px gaps between segments | The gap already reads as banding; more pattern would hide the numbers |
+| Patterned cord edge on popups and dialogs | Skip | Every menu and dialog would carry a decorative strip; popovers read busier, and Linear's restraint wins in the precedence order |
+| Woven controls (switch as cloth, rating as eyes, slider as loom), the beater animation, rugs, skeins | Skip | Ornament over function, and the beater reveal fails emil's frequency rule for UI used many times a day |
+| Its palettes and day/tent themes | Skip | Ingle's colours stay |
+
 ## 5. Component anatomy (v2)
 
 | Component | Anatomy and sizes |
@@ -247,6 +265,16 @@ Two adapter facts each surface must respect: options are set as attributes or pr
 | Tooltips (`title` attributes today) | Native | Tooltip where a control has no visible text, with delay skip on subsequent hovers | Each surface |
 
 Ark UI is gone when the last row above ships; the PR that moves it removes the dependency.
+
+### 7.3 Composition, learned from sadu-ui
+
+sadu-ui is React on `@ui-sdk/react`; these are the patterns, not its code:
+
+- **One popup surface.** Every menu, popover, select and combobox content renders inside one shared surface component (radius, ring, shadow, padding, `--transform-origin`, `--available-height` max height). Ingle: `ui/surface.tsx` replaces the `MENU_CONTENT`, `SURFACE` and per-file class strings.
+- **One overlay kit.** Dialog, Alert Dialog and Drawer share header (title + close), body and footer parts, so the three overlays can't drift. Ingle: the Dialog shell's header and footer become parts that the notifications dialog, the extension sheets and the phone sheets reuse.
+- **Shortcuts come from the core.** `formatShortcut` and `ariaKeyshortcuts` from `@ui-sdk/core` render the Kbd text and the `aria-keyshortcuts` value from one `mod+k` string, replacing hand-written "⌘/" labels.
+- **Thin wrappers that forward state.** Each wrapper styles the UI SDK part through `data-slot` and state attributes and passes every other prop through, so behaviour stays UI SDK's and the wrapper owns only the look.
+- **Separator for every rule that has meaning.** Labelled dividers use UI SDK Separator, so screen readers get `role="separator"` once and decorative rules stay `aria-hidden`.
 
 ## 8. Surface order
 
