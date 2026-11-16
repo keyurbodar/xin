@@ -1,7 +1,13 @@
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai"
-import type { ConversationId, TaskId, ToolExecutionApi, ToolExecutionResult } from "@earendil-works/pi-durable"
+import type {
+  ConversationId,
+  JsonObject,
+  TaskId,
+  ToolExecutionApi,
+  ToolExecutionResult,
+} from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { M8_MODEL, respond } from "../../test/plugins/m8.ts"
 import { cmd, fresh, type Stub, toolTexts } from "../../test/support.ts"
@@ -32,6 +38,49 @@ const detail = async (stub: Stub, id: number): Promise<IssueDetail> =>
   (await cmd(stub, `replay-get-${crypto.randomUUID()}`, "issue.get", { id })).result as IssueDetail
 
 const kinds = (issue: IssueDetail): string[] => issue.timeline.map((event) => event.kind)
+
+/**
+ * Runs one model tool call, holds it after its op writes, flushes the running task to the journal with an owner commit,
+ * then evicts the home and returns the tool results once pi has rerun the call.
+ */
+async function evictMidCall(stub: Stub, tool: string, args: JsonObject, op: string): Promise<readonly string[]> {
+  respond([
+    fauxAssistantMessage([fauxToolCall(tool, args, { id: "evicted" })], { stopReason: "toolUse" }),
+    fauxAssistantMessage("done"),
+  ])
+  const written = Promise.withResolvers<void>()
+  await runInDurableObject(stub, async (home: Home) => {
+    const ops = home.loader.ctx.get("ops")
+    if (ops === undefined) throw new Error("no ops service")
+    const run = ops.run.bind(ops)
+    ops.run = async (command, actor) => {
+      const outcome = await run(command, actor)
+      if (command.op !== op) return outcome
+      await run(
+        { id: "flush" as CommandId, op: "project.create", args: { slug: "flush", name: "flush" } },
+        { kind: "owner" },
+      )
+      written.resolve()
+      return new Promise<never>(() => undefined)
+    }
+    await home.chooseModel(M8_MODEL)
+    await home.submit("go", `evict-${tool}`)
+  })
+  const reached = await Promise.race([
+    written.promise.then(() => true),
+    new Promise<false>((resolve) => setTimeout(() => resolve(false), 5000)),
+  ])
+  expect(reached, "the call never reached its write").toBe(true)
+  expect(await toolTexts(stub)).toEqual([])
+  await evictDurableObject(stub)
+  let texts: readonly string[] = []
+  for (let attempt = 0; attempt < 500 && texts.length === 0; attempt += 1) {
+    await runDurableObjectAlarm(stub).catch(() => undefined)
+    texts = await toolTexts(stub)
+    if (texts.length === 0) await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  return texts
+}
 
 describe("issue tool replay keys", () => {
   it("lands two distinct calls with the same arguments", async () => {
@@ -85,49 +134,45 @@ describe("issue tool replay keys", () => {
 
   it("reruns a create cut off by an eviction and still writes one issue", async () => {
     const stub = fresh()
-    respond([
-      fauxAssistantMessage(
-        [fauxToolCall("issue", { action: "create", with: { title: "Survives" } }, { id: "evicted" })],
-        {
-          stopReason: "toolUse",
-        },
-      ),
-      fauxAssistantMessage("done"),
-    ])
-    await runInDurableObject(stub, async (home: Home) => {
-      const ops = home.loader.ctx.get("ops")
-      if (ops === undefined) throw new Error("no ops service")
-      const run = ops.run.bind(ops)
-      ops.run = async (command, actor) => {
-        const outcome = await run(command, actor)
-        if (command.op !== "issue.create") return outcome
-        await run(
-          { id: "flush" as CommandId, op: "project.create", args: { slug: "flush", name: "flush" } },
-          { kind: "owner" },
-        )
-        return new Promise<never>(() => undefined)
-      }
-      await home.chooseModel(M8_MODEL)
-      await home.submit("file it", "replay-evict")
-    })
-    for (let attempt = 0; attempt < 500; attempt += 1) {
-      const count = await runInDurableObject(
-        stub,
-        async (home: Home) => (await home.db.get<{ n: number }>("SELECT count(*) AS n FROM issues"))?.n ?? 0,
-      )
-      if (count > 0) break
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    expect(await toolTexts(stub)).toEqual([])
-    await evictDurableObject(stub)
-    let texts: readonly string[] = []
-    for (let attempt = 0; attempt < 500 && texts.length === 0; attempt += 1) {
-      await runDurableObjectAlarm(stub).catch(() => undefined)
-      texts = await toolTexts(stub)
-      if (texts.length === 0) await new Promise((resolve) => setTimeout(resolve, 10))
-    }
+    const texts = await evictMidCall(stub, "issue", { action: "create", with: { title: "Survives" } }, "issue.create")
     expect(texts).toEqual([expect.stringMatching(/^Created #1 /)])
     const page = (await cmd(stub, "evicted-list", "issue.list", {})).result as IssuePage
     expect(page.issues.map((found) => found.title)).toEqual(["Survives"])
+  })
+
+  it("reruns a comment cut off by an eviction and still writes one comment", async () => {
+    const stub = fresh()
+    await cmd(stub, "evicted-comment-issue", "issue.create", { title: "Talked about" })
+    const texts = await evictMidCall(stub, "issue_comment", { id: 1, body: "once" }, "issue.comment")
+    expect(texts).toEqual([expect.stringMatching(/^Commented on #1 /)])
+    expect(kinds(await detail(stub, 1))).toEqual(["created", "comment"])
+  })
+
+  it("applies a link given to create, once, under its own key", async () => {
+    const stub = fresh()
+    const texts = await withTools(stub, async ({ issue }, root) => {
+      await issue.execute({ action: "create", with: { title: "Target" } }, heldApi(root, 31), BACKGROUND_CONTEXT)
+      const call = { action: "create", with: { title: "Blocker", link: { kind: "blocks", other: 1 } } } as const
+      const api = heldApi(root, 32)
+      return [
+        textOf(await issue.execute(call, api, BACKGROUND_CONTEXT)),
+        textOf(await issue.execute(call, api, BACKGROUND_CONTEXT)),
+        textOf(
+          await issue.execute(
+            { action: "create", with: { title: "Odd", link: { kind: "related", other: 1, remove: true } } },
+            heldApi(root, 33),
+            BACKGROUND_CONTEXT,
+          ),
+        ),
+      ]
+    })
+    expect(texts[0]).toMatch(/^Created #2 /)
+    expect(texts[1]).toBe(texts[0])
+    expect(texts[2]).toBe("Not done: create cannot remove a link.")
+    const blocker = await detail(stub, 2)
+    expect(blocker.links.blocks.map((other) => other.id)).toEqual([1])
+    expect(kinds(blocker)).toEqual(["created", "linked"])
+    const page = (await cmd(stub, "create-link-list", "issue.list", {})).result as IssuePage
+    expect(page.issues).toHaveLength(2)
   })
 })

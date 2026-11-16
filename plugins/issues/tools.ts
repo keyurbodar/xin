@@ -166,6 +166,17 @@ function fieldsOf(args: ToolArgs): IssueFields {
   }
 }
 
+async function withLink(
+  port: IssueToolPort,
+  api: ToolExecutionApi,
+  issue: Issue,
+  link: ToolArgs["link"],
+): Promise<Issue> {
+  if (link === undefined) return issue
+  const op = link.remove === true ? "issue.unlink" : "issue.link"
+  return issueOf(await write(port, api, op, { id: issue.id, kind: link.kind, other: link.other }))
+}
+
 async function run(port: IssueToolPort, args: ToolArgs, api: ToolExecutionApi): Promise<string> {
   const { issues } = port
   const actor = { kind: "thread", id: api.conversationId } as const
@@ -173,8 +184,9 @@ async function run(port: IssueToolPort, args: ToolArgs, api: ToolExecutionApi): 
   switch (args.action) {
     case "create": {
       if (args.title === undefined) return fail("create needs a title")
-      const issue = issueOf(await write(port, api, "issue.create", { ...fieldsOf(args), title: args.title }))
-      return `Created ${line(issue)}`
+      if (args.link?.remove === true) return fail("create cannot remove a link")
+      const created = issueOf(await write(port, api, "issue.create", { ...fieldsOf(args), title: args.title }))
+      return `Created ${line(await withLink(port, api, created, args.link))}`
     }
     case "read": {
       if (args.id !== undefined) {
@@ -199,17 +211,8 @@ async function run(port: IssueToolPort, args: ToolArgs, api: ToolExecutionApi): 
       )
     }
     case "update": {
-      const id = needId()
-      let issue = issueOf(await write(port, api, "issue.update", { id, ...fieldsOf(args) }))
-      if (args.link !== undefined)
-        issue = issueOf(
-          await write(port, api, args.link.remove === true ? "issue.unlink" : "issue.link", {
-            id,
-            kind: args.link.kind,
-            other: args.link.other,
-          }),
-        )
-      return `Updated ${line(issue)}`
+      const issue = issueOf(await write(port, api, "issue.update", { id: needId(), ...fieldsOf(args) }))
+      return `Updated ${line(await withLink(port, api, issue, args.link))}`
     }
     default: {
       const _exhaustive: never = args.action
