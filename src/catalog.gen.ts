@@ -786,11 +786,11 @@ export const CATALOG: Catalog = {
   "tool-web": {
     plugin: p46,
     title: "Web tools",
-    description: "Search the public web and fetch a page as readable text.",
+    description: "Fetch a public page as readable text, and search the web once a Brave Search key is set.",
     manifest: {
       api: 1,
       requires: ["jobs"],
-      permissions: ["network"],
+      permissions: ["network", "secrets"],
       contributes: { tools: ["web_fetch", "web_search"], ops: [] },
       slots: [],
     },
@@ -919,7 +919,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
   "ingle-plugin-theme-pack": [{ id: "theme-pack", name: "cordis:theme-pack" }],
   "ingle-plugin-time": [{ id: "time", name: "cordis:time", config: { timezone: "UTC" } }],
   "ingle-plugin-watchdog": [{ id: "watchdog", name: "cordis:watchdog" }],
-  "ingle-plugin-web": [{ id: "tool-web", name: "cordis:tool-web", disabled: true }],
+  "ingle-plugin-web": [{ id: "tool-web", name: "cordis:tool-web" }],
   "ingle-plugin-workspace": [{ id: "workspace", name: "cordis:workspace" }],
 }
 
