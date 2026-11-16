@@ -197,7 +197,7 @@ describe("plugin doctor", () => {
 
   it("lists what each shipped row registered, inside what its manifest declares", async () => {
     const report = await doctor(fresh())
-    expect(row(report, "tool-files").registered).toEqual({ tools: ["edit", "read", "write"], ops: [] })
+    expect(row(report, "tool-files").registered).toEqual({ tools: ["edit", "find", "grep", "ls", "read", "write"], ops: [] })
     expect(row(report, "artifacts").registered.ops.length).toBeGreaterThan(0)
     const shipped = report.rows.filter((diagnosis) => diagnosis.package.startsWith("ingle-plugin-"))
     expect(shipped.filter((diagnosis) => diagnosis.issues.length > 0 && diagnosis.state.kind !== "disabled")).toEqual(
