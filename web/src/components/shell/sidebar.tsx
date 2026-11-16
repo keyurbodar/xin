@@ -1,4 +1,3 @@
-import "@ui-sdk/web/segmented-control"
 import { createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { Blocks, CalendarClock, Check, ChevronsUpDown, Flower2, HardDrive, Moon, Palette, PanelLeft, Plus, Search, Settings, SquarePen, Sun, X } from "lucide-solid"
@@ -11,7 +10,7 @@ import { ago } from "../../lib/format.ts"
 import { stagger } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { theme } from "../../lib/theme.ts"
-import { loadUiSdk, uiSdkReady } from "../../lib/ui-sdk-lazy.ts"
+import { replayWhenReady, warmUiSdk } from "../../lib/ui-sdk-lazy.ts"
 import { applyTheme, SlotList, themes } from "../../plugins/slots.tsx"
 import { openThreadTab, paneOpen, projectTabs, setSidebarDrawer, showPaneView } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
@@ -40,6 +39,18 @@ const storedSection = (): Section => (localStorage.getItem(SECTION_KEY) === "cap
 
 const SEGMENT =
   "im-focus flex h-full flex-1 cursor-default select-none items-center justify-center rounded-xs text-small text-ink-3 outline-none hover:text-ink-2 data-[checked]:text-ink"
+
+const INDICATOR =
+  "im-pill absolute inset-y-0.5 left-0 -z-10 w-[var(--segmented-control-indicator-width,calc(50%-2px))] rounded-xs bg-card shadow-[var(--shadow-ring)]"
+
+/**
+ * Where the indicator sits before the segmented control's elements load after mount: the same place they put it,
+ * so the swap to their measured values moves nothing.
+ */
+const INDICATOR_AT: Readonly<Record<Section, string>> = {
+  threads: "[translate:var(--segmented-control-indicator-left,2px)_0]",
+  captains: "[translate:var(--segmented-control-indicator-left,calc(100%+2px))_0]",
+}
 
 export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; drawer: boolean }): JSX.Element {
   onMount(() => void owner.reload())
@@ -215,6 +226,7 @@ function LowerSection(): JSX.Element {
     setSection(value)
     localStorage.setItem(SECTION_KEY, value)
   }
+  onMount(() => warmUiSdk("segmented-control"))
   return (
     <>
       <div class="flex shrink-0 items-center gap-1 px-2 pb-1 pt-4">
@@ -224,11 +236,11 @@ function LowerSection(): JSX.Element {
           on:valuechange={(event) => pick(event.detail.value)}
           class="relative isolate flex h-[var(--h-control-sm)] flex-1 items-center rounded-sm bg-secondary p-0.5"
         >
-          <ui-segmented-control-indicator class="im-pill absolute inset-y-0.5 left-0 -z-10 w-[var(--segmented-control-indicator-width)] rounded-xs bg-card shadow-[var(--shadow-ring)] [translate:var(--segmented-control-indicator-left)_0]" />
-          <ui-segmented-control-item value="threads" class={SEGMENT}>
+          <ui-segmented-control-indicator class={`${INDICATOR} ${INDICATOR_AT[initial]}`} />
+          <ui-segmented-control-item value="threads" attr:data-checked={initial === "threads" ? "" : undefined} class={SEGMENT}>
             Threads
           </ui-segmented-control-item>
-          <ui-segmented-control-item value="captains" class={SEGMENT}>
+          <ui-segmented-control-item value="captains" attr:data-checked={initial === "captains" ? "" : undefined} class={SEGMENT}>
             Captains
           </ui-segmented-control-item>
         </ui-segmented-control>
@@ -352,16 +364,9 @@ function ThreadList(props: {
  */
 function AccountChip(): JSX.Element {
   const initial = (): string => ownerName().trim().slice(0, 1).toUpperCase() || "O"
-  const warm = (): void => void loadUiSdk("menu")
-  const replay = (event: MouseEvent & { currentTarget: HTMLButtonElement }): void => {
-    if (uiSdkReady("menu")) return
-    event.preventDefault()
-    const button = event.currentTarget
-    const detail = event.detail
-    void loadUiSdk("menu").then(() =>
-      requestAnimationFrame(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail }))),
-    )
-  }
+  const warm = (): void => warmUiSdk("menu")
+  const replay = (event: MouseEvent): void =>
+    replayWhenReady("menu", event, () => new MouseEvent("click", { bubbles: true, cancelable: true, detail: event.detail }))
   return (
     <div class="shrink-0 border-t border-line-1 p-2">
       <ui-menu

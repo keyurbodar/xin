@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, setDefaultTimeout, test } from "bun:test"
-import type { Page } from "playwright"
+import type { Page, Route } from "playwright"
 import { startHarness, type Harness } from "./harness.ts"
 
 setDefaultTimeout(60_000)
@@ -16,6 +16,23 @@ afterAll(async () => {
 
 const segment = (page: Page, name: string) => page.getByRole("radio", { name })
 const rows = (page: Page) => page.locator("aside button").allTextContents()
+
+/** Holds the prebundled UI SDK module for `family` until `release` runs, or fails it when `abort` is set. */
+async function holdChunk(page: Page, family: string, abort = false): Promise<() => Promise<void>> {
+  const held: Route[] = []
+  const pattern = `**/.vite/deps/@ui-sdk_web_${family}.js*`
+  await page.route(pattern, (route) => (abort ? route.abort() : void held.push(route)))
+  return async () => {
+    await Promise.all(held.map((route) => route.continue()))
+    await page.unroute(pattern)
+  }
+}
+
+const menuShown = (page: Page) =>
+  page.evaluate(() => {
+    const content = document.querySelector("ui-menu-content")
+    return content !== null && !content.hasAttribute("hidden") && content.getBoundingClientRect().height > 0
+  })
 
 test("Threads shows the current project's threads, Captains swaps in the Captains, and the pick survives a reload", async () => {
   const page = await harness.open("sidebar")
@@ -125,6 +142,80 @@ test("the owner menu loads on first use, and a cold keyboard open shows it with 
   await page.waitForTimeout(100)
   expect(await page.evaluate(() => document.activeElement?.textContent?.trim())).toBe("Settings")
   await page.close()
+})
+
+test("a double press before the menu chunk lands opens the menu once and leaves it open", async () => {
+  let release = async (): Promise<void> => undefined
+  const page = await harness.open("sidebar", {
+    before: async (page) => {
+      release = await holdChunk(page, "menu")
+    },
+  })
+  const chip = page.locator("ui-menu-trigger > button")
+  await page.waitForFunction(() => document.querySelector("ui-menu-trigger > button")?.textContent?.includes("Ada Lovelace"))
+  await chip.click()
+  await chip.click()
+  await page.waitForTimeout(200)
+  expect(await menuShown(page)).toBe(false)
+  await release()
+  await page.getByRole("menu").waitFor({ state: "visible", timeout: 5000 })
+  await page.waitForTimeout(400)
+  expect(await menuShown(page)).toBe(true)
+  await page.close()
+})
+
+test("an aborted menu chunk raises no page error, and the next press loads it and opens the menu", async () => {
+  const errors: string[] = []
+  let release = async (): Promise<void> => undefined
+  const page = await harness.open("sidebar", {
+    before: async (page) => {
+      page.on("pageerror", (error) => errors.push(String(error)))
+      release = await holdChunk(page, "menu", true)
+    },
+  })
+  const chip = page.locator("ui-menu-trigger > button")
+  await page.waitForFunction(() => document.querySelector("ui-menu-trigger > button")?.textContent?.includes("Ada Lovelace"))
+  await chip.hover()
+  await chip.click()
+  await page.waitForTimeout(400)
+  expect(await menuShown(page)).toBe(false)
+  expect(errors).toEqual([])
+  await release()
+  await chip.click()
+  await page.getByRole("menu").waitFor({ state: "visible", timeout: 5000 })
+  expect(errors).toEqual([])
+  await page.close()
+})
+
+test("before Segmented Control loads, the stored section already shows checked under an indicator that does not move", async () => {
+  for (const section of ["threads", "captains"]) {
+    let release = async (): Promise<void> => undefined
+    const page = await harness.open("sidebar", {
+      before: async (page) => {
+        await page.addInitScript((value) => localStorage.setItem("ingle.sidebar.section", value), section)
+        release = await holdChunk(page, "segmented-control")
+      },
+    })
+    const look = () =>
+      page.evaluate(() => {
+        const indicator = document.querySelector("ui-segmented-control-indicator")?.getBoundingClientRect()
+        const checked = [...document.querySelectorAll("ui-segmented-control-item")].filter((item) => item.hasAttribute("data-checked"))
+        return {
+          indicator: indicator === undefined ? undefined : [indicator.x, indicator.y, indicator.width, indicator.height].map(Math.round),
+          checked: checked.map((item) => item.getAttribute("value")),
+        }
+      })
+    await page.waitForTimeout(200)
+    expect(await page.evaluate(() => customElements.get("ui-segmented-control") === undefined)).toBe(true)
+    const before = await look()
+    expect(before.checked).toEqual([section])
+    await release()
+    await page.waitForFunction(() => customElements.get("ui-segmented-control") !== undefined)
+    await page.waitForTimeout(300)
+    expect(await look()).toEqual(before)
+    expect(await segment(page, section === "threads" ? "Threads" : "Captains").getAttribute("aria-checked")).toBe("true")
+    await page.close()
+  }
 })
 
 test("the sidebar sends only owner.read on mount, and switching sections sends nothing", async () => {
