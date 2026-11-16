@@ -84,3 +84,22 @@ test("an empty project shows Kiko over a Files card that opens Drive, in place o
   expect(await page.locator("svg.kiko").count()).toBe(1)
   await page.close()
 })
+
+test("pressing the + menu before the issues chunk lands shows a skeleton, then the pull requests once it loads 1 s later", async () => {
+  let released = 0
+  const page = await harness.open("pane-overview", {
+    before: (page) =>
+      page.route(/\/components\/pane\/issues\.tsx/u, async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1_000))
+        released = Date.now()
+        await route.continue()
+      }),
+  })
+  await page.getByRole("button", { name: "Open a view" }).click()
+  await page.getByRole("option", { name: /Pull requests/ }).click()
+  await page.locator("aside .im-skeleton").first().waitFor()
+  await page.locator("aside").getByText("acme/atlas #15").waitFor()
+  expect(released).toBeGreaterThan(0)
+  expect(await page.locator("aside .im-skeleton").count()).toBe(0)
+  await page.close()
+})
