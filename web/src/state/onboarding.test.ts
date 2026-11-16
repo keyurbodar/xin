@@ -1,15 +1,19 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
+import { stubGlobals } from "../../test/globals.ts"
+import { invalidateReads } from "../lib/api.ts"
 
 const location = { hash: "" }
-Object.assign(globalThis, {
+stubGlobals({
   window: {
     location,
     addEventListener: () => undefined,
     matchMedia: () => ({ matches: false, addEventListener: () => undefined }),
   },
 })
-const { invalidateReads } = await import("../lib/api.ts")
-const { createFirstCaptain, onboardingCaptain, skipStep } = await import("./onboarding.ts")
+let onboarding: typeof import("./onboarding.ts")
+beforeAll(async () => {
+  onboarding = await import("./onboarding.ts")
+})
 
 type Sent = { readonly id: string; readonly op: string; readonly args: Record<string, unknown> }
 
@@ -31,6 +35,12 @@ function serve(results: Record<string, () => unknown>, failing: readonly string[
     return new Response(JSON.stringify(Array.isArray(body) ? acks : acks[0]))
   }) as typeof fetch
 }
+
+beforeEach(async () => {
+  serve({ "models.list": () => ({ models: [] }), "captain.list": () => [] })
+  await onboarding.loadProgress()
+  sent.length = 0
+})
 
 afterEach(() => {
   globalThis.fetch = realFetch
@@ -60,27 +70,27 @@ const flagWrites = () => sent.filter((frame) => frame.op === "owner.set").map((f
 
 test("skipping to the shell writes the onboarding flag, and a failed write still leaves for the shell", async () => {
   serve({ "owner.set": () => ({}) })
-  await skipStep(2)
+  await onboarding.skipStep(2)
   expect(flagWrites()).toEqual([{ onboarded: true }])
   expect(location.hash).toBe("/")
 
   location.hash = ""
   sent.length = 0
   serve({}, ["owner.set"])
-  await skipStep(2)
+  await onboarding.skipStep(2)
   expect(flagWrites()).toEqual([{ onboarded: true }])
   expect(location.hash).toBe("/")
 })
 
 test("creating the first Captain writes the flag, and a failed write never undoes the create", async () => {
   serve({ "captain.list": () => [bosun], "owner.set": () => ({}) })
-  await createFirstCaptain(input, "cmd-1")
+  await onboarding.createFirstCaptain(input, "cmd-1")
   expect(flagWrites()).toEqual([{ onboarded: true }])
 
   sent.length = 0
   serve({ "captain.list": () => [bosun] }, ["owner.set"])
-  const result = await createFirstCaptain(input, "cmd-2")
+  const result = await onboarding.createFirstCaptain(input, "cmd-2")
   expect(result.id).toBe("cpt_bosun")
-  expect(onboardingCaptain()?.id).toBe("cpt_bosun")
+  expect(onboarding.onboardingCaptain()?.id).toBe("cpt_bosun")
   expect(flagWrites()).toEqual([{ onboarded: true }])
 })
