@@ -17,6 +17,7 @@ export default defineConfig({
       "/files": { target: backend, changeOrigin: true },
       "/s/": { target: backend, changeOrigin: true },
       "/health": { target: backend, changeOrigin: true },
+      "/hooks": { target: backend, changeOrigin: true },
     },
   },
 })

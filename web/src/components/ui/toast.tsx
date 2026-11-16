@@ -18,13 +18,13 @@ function editable(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select") !== null)
 }
 
-/** The toast stack: collapsed to the front toast, fanned out on hover, each toast's life bar its own timer. */
+/** The toast stack, for undo toasts and plain notices alike: collapsed to the front toast, fanned out on hover, each toast's life bar its own timer. */
 export function Toasts(): JSX.Element {
   onMount(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.key.toLowerCase() !== "z") return
       if (editable(event.target)) return
-      const newest = liveToasts()[0]
+      const newest = liveToasts().find((toast) => toast.undo !== undefined)
       if (newest === undefined) return
       event.preventDefault()
       undoToast(newest)
@@ -79,6 +79,7 @@ export function Toasts(): JSX.Element {
                     <Show when={at() === 0 && liveToasts().length > 1}>
                       <span class="shrink-0 text-xs text-ink-3 group-hover:hidden group-focus-within:hidden">+{liveToasts().length - 1} more</span>
                     </Show>
+                    <Show when={toast.undo !== undefined}>
                     <button
                       type="button"
                       onClick={() => undoToast(toast)}
@@ -91,6 +92,7 @@ export function Toasts(): JSX.Element {
                         <span class="kbd">Z</span>
                       </Show>
                     </button>
+                    </Show>
                   </div>
                   <span
                     class="im-toast-life absolute inset-x-0 bottom-0 h-0.5 bg-accent [--toast-life:6s]"

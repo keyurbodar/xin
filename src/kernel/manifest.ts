@@ -33,6 +33,11 @@ export const grants = (permissions: readonly Permission[], permission: Permissio
 
 /** The one package that may declare `owner`: first-party Automations, which runs ops as the owner by design. */
 export const OWNER_PACKAGE = "ingle-plugin-automations"
+/** Where that package ships in this repository; a package of the same name anywhere else gets no `owner`. */
+export const OWNER_DIR = "plugins/automations"
+
+/** A package that ships in this repository: its name and its directory relative to the repository root. */
+export type FirstParty = { readonly pkg: string; readonly dir: string }
 
 export const isPermission = (value: string): value is Permission => Object.hasOwn(PERMISSIONS, value)
 
@@ -94,8 +99,8 @@ const PLUGIN_NAME = /^[a-z][a-z0-9-]*$/
 const REQUIRE = /^([a-z][a-z0-9-]*)(?:@(.+))?$/
 
 /** Parse the declaration keys of one plugin entry. Throws with the entry's location on a bad value. */
-/** `firstParty` names the package when it ships in this repository; only then may it declare `owner`. */
-export function readManifest(value: unknown, where: string, firstParty?: string): Manifest {
+/** `firstParty` names the package when it ships in this repository; only Automations at its own path may declare `owner`. */
+export function readManifest(value: unknown, where: string, firstParty?: FirstParty): Manifest {
   if (!manifestCheck.check(value)) {
     const detail = manifestCheck
       .errors(value)
@@ -111,8 +116,8 @@ export function readManifest(value: unknown, where: string, firstParty?: string)
   const permissions = (value.permissions ?? []).map((permission) => {
     if (!isPermission(permission))
       throw new Error(`${where}: permission ${permission} is not one of ${Object.keys(PERMISSIONS).join(", ")}`)
-    if (permission === "owner" && firstParty !== OWNER_PACKAGE)
-      throw new Error(`${where}: only first-party ${OWNER_PACKAGE} may declare the owner permission`)
+    if (permission === "owner" && (firstParty?.pkg !== OWNER_PACKAGE || firstParty.dir !== OWNER_DIR))
+      throw new Error(`${where}: only first-party ${OWNER_PACKAGE} at ${OWNER_DIR} may declare the owner permission`)
     return permission
   })
   const slots = (value.slots ?? []).map((slot) => {
@@ -120,15 +125,20 @@ export function readManifest(value: unknown, where: string, firstParty?: string)
     return slot
   })
   const contributes = value.contributes
-  return {
+  return Object.freeze({
     api: value.api ?? DEFAULT_MANIFEST.api,
-    requires: [...(value.requires ?? [])],
-    permissions: [...new Set(permissions)].toSorted(),
+    requires: Object.freeze([...(value.requires ?? [])]),
+    permissions: Object.freeze([...new Set(permissions)].toSorted()),
     ...(contributes === undefined
       ? {}
-      : { contributes: { tools: [...(contributes.tools ?? [])], ops: [...(contributes.ops ?? [])] } }),
-    slots,
-  }
+      : {
+          contributes: Object.freeze({
+            tools: Object.freeze([...(contributes.tools ?? [])]),
+            ops: Object.freeze([...(contributes.ops ?? [])]),
+          }),
+        }),
+    slots: Object.freeze(slots),
+  })
 }
 
 /** Whether a declared name list covers `name`, exactly or through a trailing `*`. */

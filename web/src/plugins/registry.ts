@@ -1,16 +1,18 @@
 import { createEffect, createRoot, createSignal, onCleanup, type Accessor } from "solid-js"
+import { Puzzle } from "lucide-solid"
 import { cmd } from "../lib/api.ts"
 import { BUILT_IN_THEMES, DEFAULT_THEME, paintTheme, setTheme, theme, type ThemeChoice } from "../lib/theme.ts"
 import { navigate } from "../lib/router.ts"
 import { CLIENT_PLUGINS } from "../plugins.gen.ts"
 import { homeLoaded, homePlugins } from "../state/home.ts"
+import { showToast } from "../state/toasts.ts"
 import {
   THEME_TOKENS,
   type ClientEntry,
   type ComposerHandle,
   type Host,
-  type MessageRenderer,
   type PaneConversation,
+  type PluginDef,
   type SlotMap,
   type SlotName,
   type Theme,
@@ -18,22 +20,31 @@ import {
 
 export type SlotItem<K extends SlotName> = SlotMap[K] & { readonly plugin: string; readonly key: string }
 
-export type Toast = { readonly id: number; readonly text: string }
-
-const TOAST_MS = 4000
-
 const [composer, setComposer] = createSignal<ComposerHandle | undefined>()
 const [conversation, setConversation] = createSignal<PaneConversation | undefined>()
-const [toasts, setToasts] = createSignal<readonly Toast[]>([])
-let toastSeq = 0
+const [loaded, setLoaded] = createSignal<ReadonlyMap<string, PluginDef>>(new Map())
 
 export const activeConversation = conversation
-export const toastList = toasts
 
 function toast(text: string): void {
-  const id = ++toastSeq
-  setToasts((current) => [...current, { id, text }])
-  setTimeout(() => setToasts((current) => current.filter((entry) => entry.id !== id)), TOAST_MS)
+  showToast({ icon: Puzzle, title: text, detail: undefined, expire: () => undefined })
+}
+
+/** Each client module loads on its own: one that throws at import is logged and left out, and the others still load. */
+for (const entry of CLIENT_PLUGINS)
+  entry.load().then(
+    (module) => setLoaded((current) => new Map([...current, [entry.name, module.default]])),
+    (error: unknown) => console.error(`plugin ${entry.name} failed to load`, error),
+  )
+
+type Loaded = { readonly name: string; readonly plugin: PluginDef }
+
+function loadedOf(entries: readonly ClientEntry[]): readonly Loaded[] {
+  const modules = loaded()
+  return entries.flatMap((entry) => {
+    const plugin = modules.get(entry.name)
+    return plugin === undefined ? [] : [{ name: entry.name, plugin }]
+  })
 }
 
 export const host: Host = {
@@ -64,9 +75,9 @@ export function bindConversation(view: Accessor<PaneConversation | undefined>): 
   onCleanup(() => setConversation(undefined))
 }
 
-function enabled(): readonly ClientEntry[] {
+function enabled(): readonly Loaded[] {
   const states = homePlugins()
-  return CLIENT_PLUGINS.filter((entry) => entry.rows.some((row) => states[row] === "active"))
+  return loadedOf(CLIENT_PLUGINS.filter((entry) => entry.rows.some((row) => states[row] === "active")))
 }
 
 function keyOf(registration: SlotMap[SlotName]): string {
@@ -100,7 +111,7 @@ const DECORATE: { readonly [K in SlotName]: Decorate<K> } = {
   theme: decorator(),
 }
 
-function itemsOf<K extends SlotName>(entries: readonly ClientEntry[], slot: K): readonly SlotItem<K>[] {
+function itemsOf<K extends SlotName>(entries: readonly Loaded[], slot: K): readonly SlotItem<K>[] {
   const decorate: Decorate<K> = DECORATE[slot]
   const items = entries.flatMap((entry) =>
     (entry.plugin.slots[slot] ?? []).map((registration) => decorate(entry.name, registration)),
@@ -112,8 +123,8 @@ export function slotItems<K extends SlotName>(slot: K): Accessor<readonly SlotIt
   return () => itemsOf(enabled(), slot)
 }
 
-export function rendererFor(tool: string): MessageRenderer["component"] | undefined {
-  return itemsOf(enabled(), "message.renderer").find((item) => item.tool === tool)?.component
+export function rendererFor(tool: string): SlotItem<"message.renderer"> | undefined {
+  return itemsOf(enabled(), "message.renderer").find((item) => item.tool === tool)
 }
 
 const KNOWN_TOKENS: ReadonlySet<string> = new Set(THEME_TOKENS)
@@ -138,7 +149,7 @@ export function applyTheme(id: string): void {
 createRoot(() => {
   createEffect(() => {
     const wanted = theme()
-    const pool = homeLoaded() ? themes() : [...BUILT_IN_THEMES, ...itemsOf(CLIENT_PLUGINS, "theme").map(choiceOf)]
+    const pool = homeLoaded() ? themes() : [...BUILT_IN_THEMES, ...itemsOf(loadedOf(CLIENT_PLUGINS), "theme").map(choiceOf)]
     paintTheme(pool.find((entry) => entry.id === wanted) ?? DEFAULT_THEME)
   })
 })

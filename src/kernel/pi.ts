@@ -22,6 +22,11 @@ export type Installed = {
   readonly owner: number | null
   readonly row: string | undefined
 }
+export type InstalledName = {
+  readonly name: string
+  readonly row: string | undefined
+  readonly kind: "kernel" | "row"
+}
 type EnvProvider = (target: EnvTarget) => ExecutionEnv | undefined
 
 const own = hidden<Pi, Context>()
@@ -118,9 +123,18 @@ export class Pi extends Service {
     }, "pi.env")
   }
 
-  /** Every installed extension with the row that installed it, as a copy. */
-  extensions(): readonly Installed[] {
-    return [...this.installed.values()]
+  /** Every installed extension's name and the row that installed it, never the extension objects themselves. */
+  extensions(): readonly InstalledName[] {
+    return Object.freeze(
+      [...this.installed.values()].map(({ extension, row }) =>
+        Object.freeze({ name: extension.name, row, kind: row === undefined ? ("kernel" as const) : ("row" as const) }),
+      ),
+    )
+  }
+
+  /** The installed extensions with these names, for a row that reconfigures conversations, such as presets. */
+  extensionsNamed(names: readonly string[]): readonly Extension[] {
+    return names.flatMap((name) => this.installed.get(name)?.extension ?? [])
   }
 
   currentModels(): Models {

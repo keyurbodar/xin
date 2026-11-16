@@ -73,7 +73,7 @@ export function apply(ctx: Context, config: Config): void {
 bun scripts/ingle.ts plugin dev            # Worker on :8799, web on Vite's port
 ```
 
-`plugin dev` regenerates the catalog, then runs `wrangler dev` and the web dev server side by side. Edit `index.ts` and wrangler reloads the Worker; edit `client.tsx` and Vite hot-reloads the shell; change `package.json` (permissions, slots, a new client module) and it regenerates the catalog for both. With no `.dev.vars` it starts with the throwaway owner token `dev-owner-token`. A new plugin ships enabled; turn it on and off in Extensions, and read `plugin.doctor` there when a row reports `failed`. `--port N` moves the Worker.
+`plugin dev` regenerates the catalog, then runs `wrangler dev` and the web dev server side by side. Edit `index.ts` and wrangler reloads the Worker; edit `client.tsx` and Vite hot-reloads the shell; change `package.json` (permissions, slots, a new client module) and it regenerates the catalog for both. With no `.dev.vars` it starts with the throwaway owner token `dev-owner-token` and a throwaway KEK (`scripts/devvars.ts`); `bun run dev:smoke` checks that path end to end; `bun run bundle` ends with it, so the gate and CI run it on every change. A new plugin ships enabled; turn it on and off in Extensions, and read `plugin.doctor` there when a row reports `failed`. `--port N` moves the Worker.
 
 ## 4 · Test it
 

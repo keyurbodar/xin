@@ -4,9 +4,11 @@ import {
   captainModel,
   ensureCaptain,
   firstOpenStep,
+  needsOnboarding,
   projectPlan,
   readProgress,
   sendKeyFor,
+  showsOnboarding,
   skipTarget,
    type CaptainInput,
   type SendKey,
@@ -185,4 +187,22 @@ test("Skip moves past the key step, leaves for the shell from the Captain and th
   expect(skipTarget(3, false)).toEqual({ kind: "shell" })
   expect(skipTarget(2, true)).toBeUndefined()
   expect(skipTarget(3, true)).toBeUndefined()
+})
+
+test("onboarding shows only while the owner flag is unset and no Captain lives", () => {
+  expect(showsOnboarding({ onboarded: false, hasCaptain: false })).toBe(true)
+  expect(showsOnboarding({ onboarded: true, hasCaptain: false })).toBe(false)
+  expect(showsOnboarding({ onboarded: false, hasCaptain: true })).toBe(false)
+  expect(showsOnboarding({ onboarded: true, hasCaptain: true })).toBe(false)
+})
+
+test("needsOnboarding reads the stored flag and falls back to a live Captain", async () => {
+  serve({ "owner.read": () => ({ name: "", instructions: "" }), "captain.list": () => [] })
+  expect(await needsOnboarding()).toBe(true)
+  serve({ "owner.read": () => ({ name: "", instructions: "", onboardedAt: "2026-11-16T00:00:00.000Z" }), "captain.list": () => [] })
+  expect(await needsOnboarding()).toBe(false)
+  serve({ "owner.read": () => ({ name: "", instructions: "" }), "captain.list": () => [profile("Bosun", "bosun")] })
+  expect(await needsOnboarding()).toBe(false)
+  serve({ "owner.read": () => ({ name: "", instructions: "" }), "captain.list": () => [profile("Old", "old", true)] })
+  expect(await needsOnboarding()).toBe(true)
 })

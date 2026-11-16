@@ -1,6 +1,6 @@
 # Client plugins: adding to the shell
 
-A plugin's web module is a `client.tsx` that default-exports `definePlugin` from `@ingle/sdk`. `plugin generate` compiles it into the web build through static imports in `web/src/plugins.gen.ts`, and lists it in `web/public/plugins.json`. Nothing is fetched from outside the build at run time.
+A plugin's web module is a `client.tsx` that default-exports `definePlugin` from `@ingle/sdk`. `plugin generate` compiles it into the web build through a lazy `import()` loader in `web/src/plugins.gen.ts`, so it becomes its own chunk. Nothing is fetched from outside the build at run time. The shell loads each module on its own and renders each slot component in its own error boundary, so a module that throws at import or while rendering is logged and left out, and the rest of the shell keeps working.
 
 Declare it in the manifest next to the server module, together with every slot it fills:
 
@@ -40,7 +40,7 @@ Every slot receives `host`:
 | `composer.insert(text)`, `composer.submit(text)` | write to the open composer |
 | `toast(text)` | shows a short notice |
 
-A client module reaches the backend only through `host.cmd`, and never opens its own socket. It can't call an op the owner couldn't call. If your plugin needs data that no op returns, add an op to its server module.
+Use `host.cmd` to reach the backend, and add an op to your server module when you need data no op returns. Nothing enforces that: a client module runs in the shell's own page with the owner's session, so it can call any op the owner can, open its own requests and read the page. Its manifest's `permissions` govern its server rows, not its client code. Installing a plugin with a client module is a decision to trust its author with the owner's account.
 
 ## Example
 

@@ -19,7 +19,7 @@ import {
   wideShell,
 } from "../../state/tabs.ts"
 import { Signal } from "../ui/signal.tsx"
-import { showUndoToast } from "../../state/toasts.ts"
+import { showToast } from "../../state/toasts.ts"
 import { nearestKept } from "../../lib/tab-order.ts"
 import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from "./menu.ts"
 
@@ -116,7 +116,7 @@ export function ConversationTabs(props: {
       const closeId = closeThreadTabs(projectId, ids)
       if (activeClosed) openTab(nearestKept(order, ids, active))
       if (focused !== undefined) focusTab(nearestKept(order, ids, focused))
-      showUndoToast({
+      showToast({
         icon: X,
         title: closingTabs.length === 1 ? "Closed tab" : `Closed ${closingTabs.length} tabs`,
         detail: closingTabs.length === 1 ? `“${first.title}”` : undefined,

@@ -1,6 +1,6 @@
-import { For, Show, type JSX } from "solid-js"
+import { ErrorBoundary, For, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import { host, rendererFor, slotItems, toastList } from "./registry.ts"
+import { host, rendererFor, slotItems } from "./registry.ts"
 import type { RenderedCall } from "./sdk.ts"
 
 export {
@@ -15,6 +15,20 @@ export {
   type SlotItem,
 } from "./registry.ts"
 
+/** Contains a plugin component that throws while rendering, so it shows a line in its place instead of blanking the app. */
+export function PluginBoundary(props: { plugin: string; children: JSX.Element }): JSX.Element {
+  return (
+    <ErrorBoundary
+      fallback={(error: unknown) => {
+        console.error(`plugin ${props.plugin} failed to render`, error)
+        return <p class="px-2 py-1.5 text-sm text-ink-3">{props.plugin} failed to render</p>
+      }}
+    >
+      {props.children}
+    </ErrorBoundary>
+  )
+}
+
 export function SlotList(props: { slot: "sidebar.section" | "settings.page" }): JSX.Element {
   const items = slotItems(props.slot)
   return (
@@ -22,7 +36,9 @@ export function SlotList(props: { slot: "sidebar.section" | "settings.page" }): 
       {(item) => (
         <section class="flex flex-col">
           <span class="label px-2 pb-1.5 pt-4">{item.title}</span>
-          <Dynamic component={item.component} host={host} />
+          <PluginBoundary plugin={item.plugin}>
+            <Dynamic component={item.component} host={host} />
+          </PluginBoundary>
         </section>
       )}
     </For>
@@ -32,25 +48,13 @@ export function SlotList(props: { slot: "sidebar.section" | "settings.page" }): 
 export function ToolRenderer(props: { call: RenderedCall; class?: string }): JSX.Element {
   return (
     <Show when={rendererFor(props.call.name)}>
-      {(component) => (
+      {(renderer) => (
         <div class={props.class}>
-          <Dynamic component={component()} host={host} call={props.call} />
+          <PluginBoundary plugin={renderer().plugin}>
+            <Dynamic component={renderer().component} host={host} call={props.call} />
+          </PluginBoundary>
         </div>
       )}
     </Show>
-  )
-}
-
-export function Toasts(): JSX.Element {
-  return (
-    <div class="pointer-events-none fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2">
-      <For each={toastList()}>
-        {(toast) => (
-          <div class="enter rounded-md bg-popover px-3 py-2 text-sm text-ink shadow-overlay">
-            {toast.text}
-          </div>
-        )}
-      </For>
-    </div>
   )
 }

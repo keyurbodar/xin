@@ -1,5 +1,7 @@
+import { runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { api, connect, fresh, owner, OWNER_HEADERS } from "../test/support.ts"
+import type { Home } from "../test/worker.ts"
 import { MAX_BATCH } from "./kernel/wire.ts"
 
 type Ack = { readonly t: "ack"; readonly id: string; readonly ok: boolean; readonly result?: unknown }
@@ -109,6 +111,30 @@ describe("a batch that throws, and the home revision", () => {
     const next = await socket.next((frame) => frame.t === "changed")
     const [epoch, count] = String(rev).split(".")
     expect(next.rev).toBe(`${epoch}.${Number(count) + 1}`)
+    socket.close()
+  })
+
+  it("tells home subscribers once for agent writes that land in the same tick", async () => {
+    const socket = await connect()
+    socket.send({ t: "sub", stream: "home" })
+    await socket.next((frame) => frame.t === "snap" && frame.stream === "home")
+    await runInDurableObject(owner(), async (home: Home) => {
+      const at = Date.now()
+      await Promise.all(
+        ["one", "two", "three"].map((text) =>
+          home.services.memory.remember({ text, scope: "me", at, source: "agent", originTask: "probe" }),
+        ),
+      )
+    })
+    const told = await socket.next((frame) => frame.t === "changed")
+    const write = await post({ id: `w-${crypto.randomUUID()}`, op: "test.bump", args: { by: 1 } })
+    expect(await socket.next((frame) => frame.t === "changed")).toEqual({
+      t: "changed",
+      stream: "home",
+      rev: write.headers.get("x-ingle-rev"),
+    })
+    const [epoch, count] = String(told.rev).split(".")
+    expect(write.headers.get("x-ingle-rev")).toBe(`${epoch}.${Number(count) + 1}`)
     socket.close()
   })
 })

@@ -353,16 +353,19 @@ function createFiles(store: MemoryStore): FilesService {
     watch: () => () => {},
     grant: () => () => {},
     textOf: async () => null,
-    share: async () => {},
-    unshare: async () => {},
+    share: async () => undefined,
+    reshare: async () => false,
+    unshare: async () => false,
   }
 }
 
 const fakeFiles = {
   name: "fake-files",
+  inject: ["pi"],
   apply(ctx: Context): void {
-    const store = new MemoryStore()
-    ctx.provide("files", createFiles(store))
+    const files = createFiles(new MemoryStore())
+    ctx.provide("files", files)
+    ctx.pi.env((target) => files.env(target))
   },
 }
 
