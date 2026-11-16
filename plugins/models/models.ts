@@ -791,10 +791,13 @@ async function moveOff(
     })
     const next = resolved.kind === "model" ? resolved.model : null
     const found = next === null ? undefined : models.getModel(next.provider, next.modelId)
-    await conversation.configure(
-      { model: next, ...(found?.reasoning === true ? {} : { thinkingLevel: null }) },
-      BACKGROUND_CONTEXT,
-    )
+    const fastable = found !== undefined && modesOf(found).includes("fast")
+    await harness.commit(async (tx) => {
+      await configureAgent(tx, id, { model: next, ...(found?.reasoning === true ? {} : { thinkingLevel: null }) })
+      if (fastable) return
+      const fast = await tx.doc(FastDoc, id)
+      if (fast.on) fast.on = false
+    }, BACKGROUND_CONTEXT)
     moved.push(id)
   }
   return moved
