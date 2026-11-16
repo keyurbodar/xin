@@ -43,6 +43,18 @@ export function reservedOf(path: string): Reserved | undefined {
   return name === undefined ? undefined : { kind: "skill", name }
 }
 
+const THUMBNAIL = /^image\/(png|jpe?g|gif|webp|avif)$/u
+
+/** Whether a file shows its own picture as its thumbnail: the raster types every browser decodes. */
+export function hasThumbnail(type: string): boolean {
+  return THUMBNAIL.test(type)
+}
+
+/** The largest image the tree fetches for its 16px icon; a bigger one keeps its file icon until it is opened. */
+export const TREE_THUMBNAIL_BYTES = 1024 * 1024
+
+export const hasTreeThumbnail = (entry: DriveEntry): boolean => hasThumbnail(entry.type) && entry.size <= TREE_THUMBNAIL_BYTES
+
 export type DriveRow =
   | { readonly kind: "folder"; readonly name: string; readonly path: string; readonly files: number }
   | { readonly kind: "file"; readonly name: string; readonly entry: DriveEntry }
