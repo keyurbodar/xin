@@ -29,6 +29,7 @@ import {
   UsageDoc,
   type AgentChange,
   configure as configureAgent,
+  type CompactionSettings,
   type ConversationId,
   type Harness,
   type JsonObject,
@@ -59,6 +60,9 @@ import { Sealer, SealedSchema } from "../../src/seal.ts"
 
 const MAX_LISTED = 40
 const MAX_CATALOG = 200
+const COMPACTION_KEY = "owner.compaction"
+const CompactionSchema = obj({ percent: int({ minimum: 50, maximum: 95 }) })
+const compactionCheck = compile(CompactionSchema)
 const MAX_RECENT = 8
 
 type UsageBucket = {
@@ -481,6 +485,7 @@ export type ModelsPort = {
 export type ModelsParts = {
   readonly service: ModelsService
   readonly ops: readonly Op[]
+  compaction(): CompactionSettings | undefined
   home(): JsonObject
   models(): Models
   flush(): Promise<UsageState>
@@ -853,6 +858,52 @@ export function create(deps: ModelsPort): ModelsParts {
   let disabledRefs: readonly ModelRef[] = []
   /** The owner's disabled models, read once at start and updated by `models.enable`, so a check reads no row. */
   const isOff = (ref: ModelRef): boolean => disabledRefs.some((entry) => same(entry, ref))
+  let percent: number | undefined
+  let overrides: { readonly models: number; readonly settings: CompactionSettings } | undefined
+  /** Tokens kept free above the compact-at point: the owner's share of the window, or pi's default. */
+  const reserveFor = (contextWindow: number): number =>
+    percent === undefined
+      ? DEFAULT_COMPACTION_POLICY.reserveTokens
+      : Math.max(1, Math.round((contextWindow * (100 - percent)) / 100))
+  const compaction = (): CompactionSettings | undefined => {
+    if (percent === undefined) return undefined
+    const models = registry.models.getModels()
+    if (overrides?.models !== models.length)
+      overrides = {
+        models: models.length,
+        settings: {
+          modelOverrides: Object.fromEntries(
+            models
+              .filter((model) => model.contextWindow > 0)
+              .map((model) => [`${model.provider}/${model.id}`, { reserveTokens: reserveFor(model.contextWindow) }]),
+          ),
+        },
+      }
+    return overrides.settings
+  }
+  const setPercent = (next: number | undefined): void => {
+    percent = next
+    overrides = undefined
+  }
+
+  const compactionOp = defineOp({
+    name: "owner.compaction",
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => ({ percent: percent ?? null, defaultReserveTokens: DEFAULT_COMPACTION_POLICY.reserveTokens }),
+  })
+
+  const setCompactionOp = defineOp({
+    name: "owner.compaction.set",
+    args: obj({ percent: union([int({ minimum: 50, maximum: 95 }), lit(null)]) }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      if (args.percent === null) await db.run("DELETE FROM kv WHERE key = ?", COMPACTION_KEY)
+      else await writeKv(db, COMPACTION_KEY, { percent: args.percent })
+      setPercent(args.percent ?? undefined)
+      return { percent: percent ?? null }
+    },
+  })
 
   const configure = defineOp({
     name: "conv.configure",
@@ -971,7 +1022,7 @@ export function create(deps: ModelsPort): ModelsParts {
           { key: "tools", tokens: tools },
           { key: "conversation", tokens: Math.max(0, used - system - tools) },
         ],
-        compactAt: Math.max(0, contextWindow - DEFAULT_COMPACTION_POLICY.reserveTokens),
+        compactAt: Math.max(0, contextWindow - reserveFor(contextWindow)),
       }
     },
   })
@@ -1371,6 +1422,8 @@ export function create(deps: ModelsPort): ModelsParts {
   const ops: readonly Op[] = [
     configure,
     contextOp,
+    compactionOp,
+    setCompactionOp,
     list,
     catalogOp,
     favoriteOp,
@@ -1393,6 +1446,7 @@ export function create(deps: ModelsPort): ModelsParts {
   return {
     service,
     ops,
+    compaction,
     home: () => ({ spend: budget.todaySpend() }),
     models: () => registry.models,
     flush,
@@ -1400,6 +1454,7 @@ export function create(deps: ModelsPort): ModelsParts {
     start: async () => {
       disabledRefs = (await readKv(db, "owner.disabled", refsCheck.check)) ?? []
       await registry.sync()
+      setPercent((await readKv(db, COMPACTION_KEY, compactionCheck.check))?.percent)
       await seedUsage(db, harness)
       await budget.load()
       await budget.seed()

@@ -14,7 +14,7 @@ import { resolveModel } from "../../src/contracts/models.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
 import type { Actor } from "../../src/ops.ts"
-import { addThreads, api, cmd as call, fresh, owner } from "../../test/support.ts"
+import { addThreads, api, cmd as call, field, fresh, owner } from "../../test/support.ts"
 import { WIDE_MODEL } from "../../test/plugins/m3.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 
@@ -677,6 +677,35 @@ describe("models", () => {
     expect(outcome.disabled).toMatchObject({ kind: "ok" })
     expect(outcome.configured).toMatchObject({ kind: "rejected", code: "bad_args" })
     expect(outcome.model).not.toEqual(narrow)
+  })
+
+  it("compacts at the owner's share of each model's window and reports that point in conv.context", async () => {
+    const stub = fresh()
+    await call(stub, "compact-at-model", "conv.configure", { model: WIDE_MODEL })
+    const compactAt = async (id: string): Promise<unknown> => {
+      const reply = await call(stub, id, "conv.context", {})
+      expect(reply.ok, JSON.stringify(reply)).toBe(true)
+      return field(reply.result, "compactAt")
+    }
+    expect(await compactAt("compact-at-default")).toBe(128_000 - DEFAULT_COMPACTION_POLICY.reserveTokens)
+    expect(await call(stub, "compact-at-set", "owner.compaction.set", { percent: 80 })).toMatchObject({
+      ok: true,
+      result: { percent: 80 },
+    })
+    expect(await compactAt("compact-at-80")).toBe(102_400)
+    const reserve = await runInDurableObject(
+      stub,
+      (home: Home) =>
+        home.loader.ctx.pi.compactionSources[0]?.()?.modelOverrides?.[`${WIDE_MODEL.provider}/${WIDE_MODEL.modelId}`],
+    )
+    expect(reserve).toEqual({ reserveTokens: 25_600 })
+    expect(await call(stub, "compact-at-low", "owner.compaction.set", { percent: 30 })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    await call(stub, "compact-at-clear", "owner.compaction.set", { percent: null })
+    expect(await compactAt("compact-at-cleared")).toBe(128_000 - DEFAULT_COMPACTION_POLICY.reserveTokens)
+    expect(await runInDurableObject(stub, (home: Home) => home.loader.ctx.pi.compactionSources[0]?.())).toBeUndefined()
   })
 
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {
