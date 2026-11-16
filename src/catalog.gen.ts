@@ -73,7 +73,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "owner", "routes", "storage"],
+      permissions: ["conversations", "models", "owner", "routes", "storage"],
       contributes: {
         tools: [],
         ops: [
@@ -253,7 +253,12 @@ export const CATALOG: Catalog = {
     plugin: p14,
     title: "Goal rounds",
     description: "Continues an active goal with one automatic round each time a run ends.",
-    manifest: { api: 1, requires: [], permissions: ["conversations", "runtime"], contributes: { tools: [], ops: [] } },
+    manifest: {
+      api: 1,
+      requires: [],
+      permissions: ["conversations", "models", "runtime"],
+      contributes: { tools: [], ops: [] },
+    },
     local: true,
     source: "ingle-plugin-goals@0.1.0",
   },
@@ -450,7 +455,12 @@ export const CATALOG: Catalog = {
           "usage.alert.set",
           "usage.cap",
           "usage.cap.set",
+          "usage.cost",
+          "usage.crew",
+          "usage.feature.cap.set",
+          "usage.features",
           "usage.summary",
+          "usage.today",
         ],
       },
     },

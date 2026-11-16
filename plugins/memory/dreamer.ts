@@ -246,8 +246,10 @@ async function draft(
   const shown = new Set(notes.map((note) => note.id))
   const secrets = await liveSecrets(ports)
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    if ((await ports.models.admit("dreamer")).kind === "capped") return undefined
     const answer = await complete(runtime, model, prompt)
     if (answer === undefined) return undefined
+    await ports.models.charge("dreamer", runtime.conversationId, answer)
     const output = validateDreamerOutput(parseJson(textOf(answer)), shown, secrets)
     if (output !== undefined) return output
   }

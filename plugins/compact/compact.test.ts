@@ -70,13 +70,25 @@ const withDump = (stub: Stub): Promise<void> =>
       home.loader.ctx.pi.install(defineExtension({ name: "tool-compact-dump", tools: [dump] }))
   })
 
-const useUtility = (stub: Stub): Promise<void> =>
+const useUtility = (stub: Stub, utility: { provider: string; modelId: string } = DREAM_MODEL): Promise<void> =>
   runInDurableObject(stub, (home: Home) =>
     home.db.run(
       "INSERT INTO kv (key, value) VALUES ('owner.defaults', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-      JSON.stringify({ utility: DREAM_MODEL }),
+      JSON.stringify({ utility }),
     ),
   )
+
+const CHAT_COMPACTION = `compaction:${M8_MODEL.provider}/${M8_MODEL.modelId}`
+
+const chargedTokens = (stub: Stub): Promise<Record<string, number>> =>
+  runInDurableObject(stub, async (home: Home) => {
+    const usage = await home.harness.snapshot(UsageDoc, (await home.root()).id, context)
+    return Object.fromEntries(
+      Object.entries(usage?.models ?? {}).flatMap(([key, total]) =>
+        key.startsWith("compaction:") ? [[key, total.totalTokens]] : [],
+      ),
+    )
+  })
 
 const summaryRequests = (seen: readonly TranscriptContext[]): number =>
   seen.filter((request) => promptText(request.messages).includes(SUMMARY_ASK)).length
@@ -141,10 +153,10 @@ describe("compact", () => {
     const usage = await runInDurableObject(stub, async (home: Home) =>
       home.harness.snapshot(UsageDoc, (await home.root()).id, context),
     )
-    expect(usage?.models[`${DREAM_MODEL.provider}/${DREAM_MODEL.modelId}`]?.totalTokens).toBeGreaterThan(0)
+    expect(usage?.models[`compaction:${DREAM_MODEL.provider}/${DREAM_MODEL.modelId}`]?.totalTokens).toBeGreaterThan(0)
   }, 60_000)
 
-  it("leaves the summary to pi on the conversation's model without a utility default", async () => {
+  it("summarizes on the conversation's model, charged as compaction, without a utility default", async () => {
     const stub = fresh()
     const seen: TranscriptContext[] = []
     respond(chat(seen))
@@ -155,6 +167,38 @@ describe("compact", () => {
     expect(summaryRequests(seen)).toBe(1)
     expect(utilityRequests).toHaveLength(0)
     expect(summary).toContain("default summary")
+    expect(Object.keys(await chargedTokens(stub))).toEqual([CHAT_COMPACTION])
+    expect((await chargedTokens(stub))[CHAT_COMPACTION]).toBeGreaterThan(0)
+  }, 60_000)
+
+  it("summarizes once, charged as compaction, when the utility model is the conversation's model", async () => {
+    const stub = fresh()
+    const seen: TranscriptContext[] = []
+    respond(chat(seen))
+    scriptUtility([])
+    await useUtility(stub, M8_MODEL)
+
+    const summary = await thresholdCompaction(stub, `read the build log ${"notes ".repeat(8_000)}`)
+
+    expect(summaryRequests(seen)).toBe(1)
+    expect(utilityRequests).toHaveLength(0)
+    expect(summary).toContain("default summary")
+    expect(Object.keys(await chargedTokens(stub))).toEqual([CHAT_COMPACTION])
+  }, 60_000)
+
+  it("falls back to the conversation's model, charged as compaction, when the utility call fails", async () => {
+    const stub = fresh()
+    const seen: TranscriptContext[] = []
+    respond(chat(seen))
+    scriptUtility([fauxAssistantMessage("", { stopReason: "error", errorMessage: "utility down" })])
+    await useUtility(stub)
+
+    const summary = await thresholdCompaction(stub, `read the build log ${"notes ".repeat(8_000)}`)
+
+    expect(utilityRequests).toHaveLength(1)
+    expect(summaryRequests(seen)).toBe(1)
+    expect(summary).toContain("default summary")
+    expect((await chargedTokens(stub))[CHAT_COMPACTION]).toBeGreaterThan(0)
   }, 60_000)
 
   it("condenses an idle conversation and answers with the compaction id", async () => {
