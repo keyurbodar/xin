@@ -297,7 +297,12 @@ export class IngleLoader extends Loader {
     const bind: unknown = typeof value === "object" && value !== null ? Reflect.get(value, FOR_ROW) : undefined
     if (typeof bind === "function") return Object.freeze(Reflect.apply(bind, value, [id]))
     if (this.providerOf(caller, service) !== undefined) return providedFacade(value, caller)
-    return facade(value, caller, { id, permissions: this.permissions.get(id) ?? [] })
+    const credentials = this.composition.catalog[this.pluginOfRow(id) ?? ""]?.manifest?.credentials
+    return facade(value, caller, {
+      id,
+      permissions: this.permissions.get(id) ?? [],
+      ...(credentials === undefined ? {} : { credentials }),
+    })
   }
 
   /** Why a row may not register this tool or op: its plugin declares `contributes` and leaves the name out. */

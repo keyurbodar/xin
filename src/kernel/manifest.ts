@@ -70,6 +70,8 @@ export type Manifest = {
   readonly permissions: readonly Permission[]
   readonly contributes?: Contributes
   readonly slots: readonly Slot[]
+  /** The credential refs a `secrets` row may get and set, exactly or by a trailing `*`. Left out, it may use every ref. */
+  readonly credentials?: readonly string[]
 }
 
 export const DEFAULT_MANIFEST: Manifest = {
@@ -92,6 +94,7 @@ const ManifestSchema = obj({
   permissions: opt(arr(Name)),
   contributes: opt(obj({ tools: opt(arr(Name)), ops: opt(arr(Name)) })),
   slots: opt(arr(Name)),
+  credentials: opt(arr(Name)),
 })
 
 const manifestCheck = compile(ManifestSchema)
@@ -125,7 +128,7 @@ export function readManifest(value: unknown, where: string, firstParty?: FirstPa
     if (!isSlot(slot)) throw new Error(`${where}: slot ${slot} is not one of ${SLOTS.join(", ")}`)
     return slot
   })
-  const contributes = value.contributes
+  const { contributes, credentials } = value
   return Object.freeze({
     api: value.api ?? DEFAULT_MANIFEST.api,
     requires: Object.freeze([...(value.requires ?? [])]),
@@ -139,6 +142,7 @@ export function readManifest(value: unknown, where: string, firstParty?: FirstPa
           }),
         }),
     slots: Object.freeze(slots),
+    ...(credentials === undefined ? {} : { credentials: Object.freeze([...credentials]) }),
   })
 }
 

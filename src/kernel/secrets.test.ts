@@ -109,4 +109,18 @@ describe("credentials", () => {
       error: { code: "bad_args" },
     })
   })
+
+  it("holds a row that declares credentials to those refs, for get and set", async () => {
+    const stub = fresh()
+    await cmd(stub, "scoped-own", "secret.set", { ref: "SCOPED", value: "own-value" })
+    await cmd(stub, "scoped-token", "secret.set", { ref: "TOKEN", value: "token-value" })
+
+    const reply = await cmd(stub, "scoped-1", "s.scoped")
+    expect(reply.result).toEqual({
+      own: "own-value",
+      other: expect.stringContaining("uses credential TOKEN, which its manifest's credentials does not declare"),
+      overwrite: expect.stringContaining("uses credential TOKEN, which its manifest's credentials does not declare"),
+    })
+    expect(await turn(stub, "s_echo_len", "scoped-len")).toBe(`len=${"token-value".length}`)
+  })
 })

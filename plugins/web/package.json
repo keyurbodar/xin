@@ -2,16 +2,20 @@
   "name": "ingle-plugin-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Public web search and page fetch as built-in tools.",
+  "description": "Public web page fetch, and web search once a Brave Search key is set.",
   "type": "module",
   "ingle": {
     "plugins": {
       "tool-web": {
         "module": "./index.ts",
         "title": "Web tools",
-        "description": "Search the public web and fetch a page as readable text.",
+        "description": "Fetch a public page as readable text, and search the web once a Brave Search key is set.",
         "permissions": [
-          "network"
+          "network",
+          "secrets"
+        ],
+        "credentials": [
+          "brave_search"
         ],
         "contributes": {
           "tools": [
@@ -27,8 +31,7 @@
     "bundle": [
       {
         "id": "tool-web",
-        "plugin": "tool-web",
-        "disabled": true
+        "plugin": "tool-web"
       }
     ]
   }

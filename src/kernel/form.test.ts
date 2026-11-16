@@ -56,6 +56,9 @@ describe("settings form", () => {
     expect(hello?.version).toBe("0.1.0")
     expect(hello?.form.map((field) => field.key)).toEqual(["greeting"])
     const web = entries.find((entry) => entry.name === "tool-web")
-    expect(web?.permissions).toEqual([{ id: "network", title: "Connect to the internet" }])
+    expect(web?.permissions).toEqual([
+      { id: "network", title: "Connect to the internet" },
+      { id: "secrets", title: "Read your stored credentials" },
+    ])
   })
 })

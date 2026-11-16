@@ -84,6 +84,7 @@ function parse(
         permissions: field(entry, "permissions"),
         contributes: field(entry, "contributes"),
         slots: field(entry, "slots"),
+        credentials: field(entry, "credentials"),
       },
       `${pkg}: ingle.plugins.${name}`,
       local ? { pkg, dir: relative(ROOT, dirname(path)) } : undefined,

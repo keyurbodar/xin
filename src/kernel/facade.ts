@@ -1,7 +1,11 @@
 import { type Context, symbols } from "@deepseek-ai/cordis"
-import { grants, type Permission } from "./manifest.ts"
+import { covers, grants, type Permission } from "./manifest.ts"
 
-export type Caller = { readonly id: string; readonly permissions: readonly Permission[] }
+export type Caller = {
+  readonly id: string
+  readonly permissions: readonly Permission[]
+  readonly credentials?: readonly string[]
+}
 
 /** One member a plugin row may use: the permission it takes, a guard on each call, and a view of what comes back. */
 type Member = {
@@ -14,6 +18,12 @@ const method = (value: unknown, name: string): ((...args: unknown[]) => unknown)
   const member: unknown = typeof value === "object" && value !== null ? Reflect.get(value, name) : undefined
   if (typeof member !== "function") throw new Error(`${name} is not available`)
   return (...args) => Reflect.apply(member, value, args)
+}
+
+/** Refuses a credential ref outside the row's declared `credentials`; a row that declares none may use every ref. */
+const declaredRef = (caller: Caller, [ref]: readonly unknown[]): void => {
+  if (caller.credentials === undefined || (typeof ref === "string" && covers(caller.credentials, ref))) return
+  throw new Error(`${caller.id} uses credential ${String(ref)}, which its manifest's credentials does not declare`)
 }
 
 /** A model catalog without its credentials: lookups only, no `getAuth`, `login` or `logout`. */
@@ -97,7 +107,7 @@ const ALLOWED: Readonly<Record<string, Readonly<Record<string, Member>>>> = {
   },
   clock: { arm: {}, timer: {} },
   http: { route: {} },
-  secrets: { get: {}, set: {} },
+  secrets: { get: { guard: declaredRef }, set: { guard: declaredRef } },
   loader: {
     locate: {},
     composition: { needs: "plugins", view: frozenCopy },
