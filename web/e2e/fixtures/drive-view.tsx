@@ -54,12 +54,10 @@ const answer = (op: string, args: Record<string, unknown>): unknown => {
       return {
         path,
         current: { sha256: "c0ffee00aa", size: 40, type: "text/plain", at },
-        versions: Array.from({ length: 45 }, (_, index) => ({
-          sha256: `beef${String(index + 1).padStart(4, "0")}aa`,
-          size: 18 + index,
-          type: "text/plain",
-          at: at - (index + 1) * 86_400_000,
-        })),
+        versions: [
+          { sha256: "beef0001aa", size: 32, type: "text/plain", at: at - 86_400_000 },
+          { sha256: "beef0002aa", size: 18, type: "text/plain", at: at - 172_800_000 },
+        ],
       }
     case "drive.move": {
       const from = String(args.from)

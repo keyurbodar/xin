@@ -64,8 +64,6 @@ import { createPaneAction, EmptyState, ResourceError } from "../chat/ui.tsx"
 import { fileName as baseName, forgetProjectFiles, PANE_ROW } from "./bodies.tsx"
 import { DriveTree, FileIcon } from "./drive-tree.tsx"
 import { blobUrl } from "../../lib/attachments.ts"
-import { pageOf } from "../../lib/pages.ts"
-import { Pager } from "../ui/pager.tsx"
 import { Tile } from "../ui/tile.tsx"
 
 const CENTER_ROW = PANE_ROW.replace("items-start", "items-center")
@@ -665,7 +663,6 @@ function FileBody(props: { file: DriveFile }): JSX.Element {
 function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () => void }): JSX.Element {
   const [history, { refetch }] = createResource(() => props.path, (path) => drive.history(props.scope, path))
   const [viewing, setViewing] = createSignal<string | undefined>()
-  const [page, setPage] = createSignal(1)
   const [older] = createResource(viewing, (sha256) => drive.read(props.scope, props.path, sha256))
   const action = createPaneAction()
 
@@ -700,7 +697,7 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
                   on:valuechange={(event) => setViewing(typeof event.detail.value === "string" ? event.detail.value : undefined)}
                   class="flex flex-col outline-none"
                 >
-                  <For each={pageOf(data().versions, page())}>
+                  <For each={data().versions}>
                     {(entry) => (
                       <ui-listbox-item
                         value={entry.sha256}
@@ -715,7 +712,6 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
                     )}
                   </For>
                 </ui-listbox>
-                <Pager label="Earlier versions pages" total={data().versions.length} page={page()} onPage={setPage} />
               </Show>
             </>
           )}

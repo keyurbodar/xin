@@ -20,7 +20,6 @@ declare module "solid-js" {
       valuechange: UiChange
       pressedchange: UiChange<boolean>
       checkedchange: UiChange<boolean>
-      pagechange: UiChange<number>
     }
   }
 }
