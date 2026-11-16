@@ -22,7 +22,7 @@ Both tools are deferred: the prompt's `deferred-tools` index lists them and `too
 
 ## Search
 
-`web_search` calls the Brave Search API: `GET https://api.search.brave.com/res/v1/web/search?q=<query>&count=<maxResults>` with `X-Subscription-Token: <key>` and `Accept: application/json`. The key is the secret ref `brave_search`, which the owner sets with `secret.set`; the row reads it with `ctx.secrets.get`, as `tool-git` does. Each of `web.results[]` becomes a result: `title` and `description` have their tags stripped and entities decoded, `url` is kept. A non-2xx answer, a body over 1 MB or a shape other than `{ web?: { results: [...] } }` is a tool error, and so is an empty result set.
+`web_search` calls the Brave Search API: `GET https://api.search.brave.com/res/v1/web/search?q=<query>&count=<maxResults>` with `X-Subscription-Token: <key>` and `Accept: application/json`. The key is the secret ref `brave_search`, which the owner sets with `secret.set`; the row reads it with `ctx.secrets.get`, as `tool-git` does. Each of `web.results[]` becomes a result: `title` and `description` have their tags stripped and entities decoded, then the title is capped at 300 characters and the snippet at 1,000 (a cut ends in `…`). A result whose `url` is not http(s) is dropped. A non-2xx answer, a body over 1 MB or a shape other than `{ web?: { results: [...] } }` is a tool error, and so is an empty result set.
 
 Without the key, `web_search` is not installed at all: it is in no request and not in the deferred index. `secret.set` emits `credentials/updated`, and the row reinstalls its extension when the ref is `brave_search` (the way `tool-mcp` republishes on `mcp/changed`), so the next request carries it with no restart. There is one provider and no fallback; the earlier DuckDuckGo HTML scraping is removed.
 
@@ -41,6 +41,8 @@ The model sees one window of that text per call, 8,000 characters by default, be
 ## Row and scoping
 
 The feature is a native Cordis package, `plugins/web`, with one row, `tool-web`, in the `ingle-plugin-web` bundle. The row injects `pi`, `jobs` and `secrets` (manifest permissions `network` and `secrets`) and installs the `tool-web` extension. The bundle row ships enabled (`plugins/web/package.json`, carried into `src/catalog.gen.ts`). That is an exception to the scope rule that optional access rows ship off, decided by Bosun, 2026-11-16, under Keyur's standing authority, for Capy parity; `ingle-plugin-git` still ships disabled. `ingle.profile.json` names the bundle and carries no row state. The owner can still turn the row off with `plugin.enable`, and a preset can hide it for one scope.
+
+The `secrets` permission is coarse. The secrets facade (`src/kernel/facade.ts`) gives any row that declares it `get` and `set` on every ref, not only the refs it uses, so `tool-web` can read and overwrite every stored credential although it reads only `brave_search`. That was already true of `tool-git`, `mcp-server` and `deploy-hook`, but they ship off or are added by the owner; `tool-web` is the first row that holds it by default. Per-ref scoping is not built: `tool-web` and `tool-git` read fixed refs a manifest could declare, but `mcp-server` and `deploy-hook` read refs named in their owner-written config, so a limit needs both a manifest field and a config-derived list. As the manifest notes, rows run in the Home's isolate, so the check keeps honest code to its declaration and does not confine hostile code.
 
 ## Cost
 

@@ -11,6 +11,8 @@ const TIMEOUT_MS = 15_000
 const SEARCH_BYTES = 1_000_000
 const PAGE_BYTES = 2 * 1024 * 1024
 const DEFAULT_RESULTS = 5
+const MAX_TITLE = 300
+const MAX_SNIPPET = 1_000
 const DEFAULT_FETCH_CHARS = 8_000
 const MAX_FETCH_CHARS = 100_000
 const MAX_URL = 2_048
@@ -100,6 +102,30 @@ function cleanText(value: string): string {
 
 function stripTags(value: string): string {
   return cleanText(value)
+}
+
+const capped = (text: string, max: number): string => (text.length <= max ? text : `${text.slice(0, max - 1)}…`)
+
+const httpUrl = (raw: string): string | undefined => {
+  try {
+    const url = new URL(raw)
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Brave's `web.results[]` as search results: tags stripped, title and snippet capped, only http(s) URLs kept. */
+export function braveResults(response: unknown, limit: number): SearchResult[] {
+  if (!braveCheck.check(response)) throw new Error("the search provider answered in an unexpected shape")
+  return (response.web?.results ?? [])
+    .flatMap((result) => {
+      const url = httpUrl(result.url)
+      const title = capped(cleanText(result.title), MAX_TITLE)
+      if (url === undefined || title === "") return []
+      return [{ title, url, snippet: capped(cleanText(result.description ?? ""), MAX_SNIPPET) }]
+    })
+    .slice(0, limit)
 }
 
 export function extractHtml(html: string): { readonly title: string; readonly text: string } {
@@ -265,16 +291,7 @@ async function searchWeb(key: string, query: string, maxResults: number, signal:
   })
   const body = await readCapped(response, SEARCH_BYTES)
   if (body.truncated) throw new Error("the search response was too large")
-  const parsed: unknown = JSON.parse(decode(body.bytes, response.headers.get("content-type") ?? ""))
-  if (!braveCheck.check(parsed)) throw new Error("the search provider answered in an unexpected shape")
-  const results = (parsed.web?.results ?? [])
-    .map((result) => ({
-      title: cleanText(result.title),
-      url: result.url,
-      snippet: cleanText(result.description ?? ""),
-    }))
-    .filter((result) => result.title !== "")
-    .slice(0, maxResults)
+  const results = braveResults(JSON.parse(decode(body.bytes, response.headers.get("content-type") ?? "")), maxResults)
   if (results.length === 0) throw new Error("the search returned no results")
   return results
 }

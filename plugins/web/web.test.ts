@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest"
 import { respond } from "../../test/plugins/m8.ts"
 import { addThreads, cmd, fresh, loadDeferred, recordOffers, rowOf, type Stub, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
-import { extractHtml, publicUrl, SEARCH_KEY_REF } from "./web.ts"
+import { braveResults, extractHtml, publicUrl, SEARCH_KEY_REF } from "./web.ts"
 
 const BRAVE_KEY = "test-brave-key"
 
@@ -66,6 +66,28 @@ const fakeFetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit
 }) as typeof fetch
 
 describe("web parsing", () => {
+  it("keeps only http(s) Brave results and caps titles at 300 and snippets at 1,000 characters", () => {
+    const results = braveResults(
+      {
+        web: {
+          results: [
+            { title: "Script", url: "javascript:alert(1)", description: "dropped" },
+            { title: "File", url: "file:///etc/passwd" },
+            { title: "Broken", url: "not a url" },
+            { title: "x".repeat(400), url: "http://example.com/a", description: `<b>${"y".repeat(1_200)}</b>` },
+            { title: "Plain", url: "https://example.com/b" },
+          ],
+        },
+      },
+      10,
+    )
+    expect(results.map((result) => result.url)).toEqual(["http://example.com/a", "https://example.com/b"])
+    expect(results[0]?.title).toBe(`${"x".repeat(299)}…`)
+    expect(results[0]?.snippet).toBe(`${"y".repeat(999)}…`)
+    expect(results[1]).toEqual({ title: "Plain", url: "https://example.com/b", snippet: "" })
+    expect(() => braveResults({ web: { results: [{ url: "https://example.com" }] } }, 5)).toThrow()
+  })
+
   it("reduces an HTML page to a title and readable text", () => {
     expect(extractHtml(PAGE_HTML)).toEqual({ title: "Hello & world", text: "Hello\n\nOne & two\n\nSecond line" })
   })
