@@ -22,6 +22,8 @@ describe("provider retries", () => {
       "OpenAI Responses stream completed with an unfinished tool call: edit (call_1)",
       '529 {"type":"error"}',
       "HTTP 408",
+      "Unexpected token < in JSON at position 412",
+      "Could not parse SSE event after 431 bytes",
     ])
       expect(needsRetry(failed(text)), text).toBe(true)
   })
@@ -41,6 +43,8 @@ describe("provider retries", () => {
       "401 Unauthorized: invalid response from auth service",
       "404 Not Found: body is not valid json",
       "Your credit balance is too low. invalid response",
+      "Invalid response: upstream status 403 forbidden",
+      "malformed body, http 400",
     ])
       expect(needsRetry(failed(text)), text).toBe(false)
     expect(needsRetry(fauxAssistantMessage("Invalid response"))).toBe(false)

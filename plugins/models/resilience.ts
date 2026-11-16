@@ -32,9 +32,10 @@ const TRANSIENT = new RegExp(
 
 /**
  * Faults the same request would hit again, whatever transient wording they carry: a client status other than 408, 425
- * or 429 (a bad body, a bad key, a missing model), and an exhausted credit balance.
+ * or 429 (a bad body, a bad key, a missing model) leading the message or named as an HTTP status or code, and an
+ * exhausted credit balance. A 4xx-shaped offset or byte count elsewhere in the text is not a status.
  */
-const FINAL = /(?<![a-z0-9])4(?!08|25|29)\d\d(?![a-z0-9])|credit.?balance/i
+const FINAL = /^\s*4(?!08|25|29)\d\d\b|(?:http|status|code)\D{0,3}4(?!08|25|29)\d\d\b|credit.?balance/i
 
 /** The prefix that hands a reclassified failure to pi's durable retry; pi-ai treats this wording as transient. */
 export const TRANSIENT_PREFIX = "Provider returned an error: "
