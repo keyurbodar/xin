@@ -372,8 +372,7 @@ describe("dispatch push", () => {
 const hostOf = (home: Home, overrides: Partial<IntakeHost> = {}): IntakeHost => ({
   harness: home.harness,
   ledger: { processed: () => false, mark: () => undefined, forget: () => undefined, ids: () => [] },
-  readBytes: async () => undefined,
-  stat: async () => undefined,
+  readBlob: async () => undefined,
   vision: async () => false,
   arm: async () => undefined,
   push: () => undefined,
