@@ -159,7 +159,7 @@ async function runWork(
 }
 
 function jobRun(runtime: TaskRuntime<JobInput, JobState, JobSummary, object>): JobRun {
-  return { signal: runtime.signal }
+  return { signal: runtime.signal, conversationId: runtime.conversationId, jobId: runtime.taskId }
 }
 
 function missing(tool: string): JobSummary {

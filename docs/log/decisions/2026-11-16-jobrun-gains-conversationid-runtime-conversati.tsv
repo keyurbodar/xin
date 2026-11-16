@@ -1,0 +1,1 @@
+2026-11-16T13:00:00Z	browser	JobRun gains conversationId (runtime.conversationId of the job task) and jobId (runtime.taskId)	A job tool had no way to reach its conversation's documents; the browser keeps its session in a conversation doc and commits it through the harness	src/contracts/jobs.ts, plugins/jobs/jobs.ts; plugins/jobs/jobs.test.ts passes	shipped

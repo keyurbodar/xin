@@ -68,6 +68,11 @@ const PREBUNDLED = [
 ]
 
 const live = process.env.INGLE_LIVE === "1"
+const instabox = process.env.INSTABOX_API_KEY
+const instaboxLive = process.env.INSTABOX_LIVE === "1" && instabox !== undefined && instabox !== ""
+const instaboxBindings: Record<string, string> = instaboxLive
+  ? { INSTABOX_API_KEY: instabox, INSTABOX_LIVE: "1" }
+  : { INSTABOX_API_KEY: "ibk_fake" }
 const load = process.env.INGLE_LOAD === "1"
 
 export default defineConfig({
@@ -76,7 +81,7 @@ export default defineConfig({
       wrangler: { configPath: path("./test/wrangler.jsonc") },
       miniflare: {
         serviceBindings: { ECHO: () => new Response("pong") },
-        ...(live ? { bindings: liveBindings() } : {}),
+        bindings: { ...instaboxBindings, ...(live ? liveBindings() : {}) },
       },
     }),
   ],

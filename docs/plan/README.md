@@ -2,7 +2,7 @@
 
 Design v2, 6 November 2026.
 
-Ingle is a personal agent: a Cloudflare Worker in front of one Home Durable Object per owner, with file bytes in R2. It is built on pi-durable, pi-ai and pi-mcp 1.5.0, and exposes Projects, Spaces, Puck and threads. The first-party client is the web app in `web/`, a separate package the backend typechecks and the deploy serves as static assets. The shipped build works with files; the public web and read-only git are optional rows that ship disabled, and it runs no code: `exec()` answers `shell_unavailable`, so pi's bash is never installed. Code execution, browsers, VPS and computer access are allowed as optional plugins, off by default, and none is built yet (AGENTS.md, scope rules). No model is hard-coded: the catalog, the credentials and the per-conversation choice all come from the user's configuration at run time.
+Ingle is a personal agent: a Cloudflare Worker in front of one Home Durable Object per owner, with file bytes in R2. It is built on pi-durable, pi-ai and pi-mcp 1.5.0, and exposes Projects, Spaces, Puck and threads. The first-party client is the web app in `web/`, a separate package the backend typechecks and the deploy serves as static assets. The shipped build works with files; the public web, read-only git and a headless browser on Instabox machines are optional rows that ship disabled, and the Home runs no code: `exec()` answers `shell_unavailable`, so pi's bash is never installed. Code execution, VPS and computer access are allowed as optional plugins, off by default, and none of those is built yet (AGENTS.md, scope rules). No model is hard-coded: the catalog, the credentials and the per-conversation choice all come from the user's configuration at run time.
 ## Key invariants
 
 - **Arm the alarm before any call that can start work.** An early alarm is harmless. A missing alarm strands work forever (§1).
@@ -53,6 +53,7 @@ flowchart LR
 - [15 Web](./architecture/15-web.md): public web search and page fetch as built-in tools.
 - [16 Git](./architecture/16-git.md): read-only GitHub history tools scoped to a project.
 - [17 Issues](./architecture/17-issues.md): the shared work record, its wakes, scope and cost.
+- [18 Browser](./architecture/18-browser.md): a headless browser per conversation through agent-browser on Instabox machines.
 - [Provenance](./provenance.md): what came from pi-durable, pi-ai, t3code, kiko and the other sources.
 - [Milestones](./milestones.md): build order, each with its proof, dependencies and parallel work.
 - [Write a plugin](../plugins/README.md): the author docs: scaffold, the dev loop, client slots, permissions, publishing to a market.

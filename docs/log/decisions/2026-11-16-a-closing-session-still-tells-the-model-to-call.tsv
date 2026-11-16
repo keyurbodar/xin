@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	browser	A tool that finds closing still tells the model to call browser_open; no change	XIN-32 Low applied to the stop design, where open refused a stopping machine; after delete-on-idle, open takes generation+1 from closing at once while the old generation's delete finishes on its own	session.ts plan(): closing falls through to a new generation	shipped

@@ -5,4 +5,5 @@ export type Env = {
   readonly FILES: R2Bucket
   readonly OWNER_TOKEN: string
   readonly KEK: string
+  readonly INSTABOX_API_KEY?: string
 }
