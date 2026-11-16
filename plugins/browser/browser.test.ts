@@ -281,6 +281,21 @@ describe("browser tools", () => {
     })
   }, 30_000)
 
+  it("deletes a machine whose install failed when the model closes the browser", async () => {
+    const fake = fakeInstabox({ failInstalls: 1 })
+    await withFake(fake, async () => {
+      const { stub, root } = await browserHome()
+      respond([call("browser_open", { url: "https://example.com" }), call("browser_close"), done])
+      await turn(stub, "browser-install-fails-close", { text: "browse, then close" })
+      const texts = await toolTexts(stub)
+      expect(texts[0]).toContain("browser_open failed: Instabox answered 503 host_unavailable")
+      expect(texts.at(-1)).toBe("Closed the browser.")
+      expect(lifecycle(fake)).toEqual(["create 1", "delete 1"])
+      expect(fake.machines.size).toBe(0)
+      expect((await stateOf(stub, root))?.session).toBeUndefined()
+    })
+  }, 30_000)
+
   it("replays the create key to delete a machine whose id was never committed", async () => {
     const fake = fakeInstabox()
     await withFake(fake, async () => {
