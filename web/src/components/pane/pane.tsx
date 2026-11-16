@@ -10,6 +10,7 @@ import { projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { closePaneView, OVERVIEW, projectTabs, setPaneOpen, showPaneView } from "../../state/tabs.ts"
 import { Signal } from "../ui/signal.tsx"
 import { ICON_BUTTON } from "../shell/menu.ts"
+import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM, POPUP_LABEL, POPUP_SEPARATOR } from "../ui/surface.ts"
 import { paneEntry, paneView, paneViews, type PaneContext, type PaneEntry } from "./views.tsx"
 
@@ -139,6 +140,7 @@ export function ViewMenu(props: {
   onOpenThread: (id: number) => void
 }): JSX.Element {
   const [open, setOpen] = createSignal(false)
+  const { mounted, settle } = createOverlayMount(open)
   const threads = () => projectThreads(props.project)
   const views = () => props.views.filter((entry) => entry.id !== "threads")
   const all = () => props.views.filter((entry) => entry.id === "threads")
@@ -160,6 +162,7 @@ export function ViewMenu(props: {
         const next = event.detail.value
         queueMicrotask(() => setOpen(next))
       }}
+      on:openchangecomplete={settle}
     >
       <ui-popover-trigger>
         <button type="button" class={ICON_BUTTON} aria-label="Open a view">
@@ -167,7 +170,7 @@ export function ViewMenu(props: {
         </button>
       </ui-popover-trigger>
       <ui-popover-content side="bottom" align="start" side-offset="6" class={`${POPUP} w-[320px] p-0`}>
-        <Show when={open()}>
+        <Show when={mounted()}>
           <ui-command filter="contains" auto-highlight on:action={(event) => pick(event.detail.value)} class="flex flex-col">
             <div class="border-b border-line-1 px-3 pb-2 pt-2.5">
               <span class="text-mini text-ink-3">{props.project.name}</span>
@@ -180,7 +183,7 @@ export function ViewMenu(props: {
                 />
               </ui-command-input>
             </div>
-            <ui-command-empty class="block px-3 py-2 text-small text-ink-3">No match</ui-command-empty>
+            <ui-command-empty class="hidden px-3 py-2 text-small text-ink-3 data-[empty]:block">No match</ui-command-empty>
             <ui-command-list class="flex max-h-[420px] flex-col overflow-y-auto p-1">
               <For each={views()}>
                 {(entry) => (
