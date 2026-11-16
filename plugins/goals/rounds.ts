@@ -12,11 +12,12 @@ import {
 } from "@earendil-works/pi-durable"
 import type { IntakeService } from "../../src/contracts/intake.ts"
 import type { GoalsService, GoalView } from "../../src/contracts/goals.ts"
+import type { Admission } from "../../src/contracts/models.ts"
 import { messageSendTarget } from "../../src/contracts/message.ts"
 import type { Context, OpCall } from "../../src/kernel/index.ts"
 
 export const name = "goal-rounds"
-export const inject = ["pi", "goals", "intake", "clock", "harness", "host"]
+export const inject = ["pi", "goals", "intake", "clock", "harness", "host", "models"]
 
 export const ROUND_TASK = "xin.goal.round"
 export const ROUND_COMMAND = "goal:"
@@ -29,6 +30,7 @@ export type RoundsPorts = {
   readonly intake: IntakeService
   readonly harness: Harness
   readonly kv: SyncKvStorage
+  admit(): Promise<Admission>
   arm(): Promise<void>
 }
 
@@ -48,6 +50,7 @@ export function apply(ctx: Context): void {
     harness: ctx.harness,
     kv: ctx.host.state.storage.kv,
     arm: () => ctx.clock.arm(),
+    admit: () => ctx.models.admit("goal"),
   }
   const task = roundTask(ports)
 
@@ -58,6 +61,7 @@ export function apply(ctx: Context): void {
       hooks: [
         hook(GenerationTask, {
           afterRun: async (run, api) => {
+            if ((await ports.admit()).kind === "capped") return undefined
             const reservation = await ports.goals.reserve(api.conversationId)
             if (reservation === null) return undefined
             const commandId = commandIdOf(reservation.goal.id, reservation.round, run.last)

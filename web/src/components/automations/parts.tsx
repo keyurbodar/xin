@@ -282,19 +282,26 @@ export function DeleteAutomationDialog(props: {
   automation: Automation | undefined
   onClose: () => void
   onDelete: (automation: Automation) => Promise<boolean>
+  focusAfter?: ((automation: Automation) => HTMLElement | undefined) | undefined
 }): JSX.Element {
   const [busy, setBusy] = createSignal(false)
   const [kept, setKept] = createSignal<Automation>()
+  const [returnFocus, setReturnFocus] = createSignal<HTMLElement>()
   createEffect(() => {
-    if (props.automation !== undefined) setKept(props.automation)
+    if (props.automation === undefined) return
+    setKept(props.automation)
+    setReturnFocus(undefined)
   })
   const confirm = async (): Promise<void> => {
     const target = props.automation
     if (target === undefined || busy()) return
     setBusy(true)
+    const next = props.focusAfter?.(target)
     const done = await props.onDelete(target)
     setBusy(false)
-    if (done) props.onClose()
+    if (!done) return
+    setReturnFocus(next)
+    props.onClose()
   }
   return (
     <Dialog
@@ -303,6 +310,7 @@ export function DeleteAutomationDialog(props: {
       title="Delete automation"
       width="w-[440px]"
       busy={busy()}
+      returnFocus={returnFocus()}
       onSubmit={() => void confirm()}
       footer={
         <>
@@ -337,7 +345,11 @@ export function DeleteAutomationDialog(props: {
 /** The dialogs a list of rows opens: new, edit, run now and delete, plus where each row action goes. */
 export function createRowDialogs(
   actions: Pick<ReturnType<typeof createAutomationActions>, "toggle" | "remove">,
-  options: { project?: string | undefined; onDeleted?: (() => void) | undefined } = {},
+  options: {
+    project?: string | undefined
+    onDeleted?: (() => void) | undefined
+    focusAfter?: ((automation: Automation) => HTMLElement | undefined) | undefined
+  } = {},
 ): {
   readonly create: () => void
   readonly handle: (automation: Automation, action: RowAction) => void
@@ -392,6 +404,7 @@ export function createRowDialogs(
         <DeleteAutomationDialog
           automation={deleting()}
           onClose={() => setDeleting(undefined)}
+          focusAfter={options.focusAfter}
           onDelete={async (automation) => {
             const done = await actions.remove(automation)
             if (done) options.onDeleted?.()

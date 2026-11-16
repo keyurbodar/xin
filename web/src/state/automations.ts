@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createResource, createSignal, on, type Accessor, type Resource } from "solid-js"
 import { cmd } from "../lib/api.ts"
 import {
+  keepUnchanged,
   mergeRuns,
   parseAutomationDetail,
   parseAutomationList,
@@ -25,9 +26,9 @@ export type AutomationList = {
 const settled = <T,>(resource: Resource<T>): T | undefined => (resource.error === undefined ? resource.latest : undefined)
 
 export function createAutomationList(): AutomationList {
-  const [list, { refetch }] = createResource(
+  const [list, { refetch }] = createResource<readonly Automation[], number | false>(
     () => (homeLoaded() ? (homeAutomationsRevision() ?? 0) : false),
-    async () => parseAutomationList(await cmd("automation.list", {})),
+    async (_, { value }) => keepUnchanged(value, parseAutomationList(await cmd("automation.list", {}))),
   )
   return { list, value: () => settled(list), retry: () => void refetch() }
 }

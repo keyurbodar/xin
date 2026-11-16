@@ -17,7 +17,42 @@ export function trapTab(container: HTMLElement, event: KeyboardEvent): void {
   if (next !== undefined) stops[next]?.focus()
 }
 
+/** The row that takes focus when `removed` leaves the list: the one after it, else the one before, else none. */
+export function neighbourAfter(ids: readonly string[], removed: string): string | undefined {
+  const at = ids.indexOf(removed)
+  if (at < 0) return undefined
+  return ids[at + 1] ?? ids[at - 1]
+}
+
+/** The first control inside `container` that Tab would reach. */
+export function firstFocusable(container: ParentNode | null | undefined): HTMLElement | undefined {
+  return container?.querySelector<HTMLElement>(FOCUSABLE) ?? undefined
+}
+
 /** Where focus goes back when a dialog closes: the first candidate still in the document, latest first. */
 export function returnTarget<T extends { readonly isConnected: boolean }>(candidates: readonly (T | null | undefined)[]): T | undefined {
   return candidates.find((candidate): candidate is T => candidate !== null && candidate !== undefined && candidate.isConnected)
+}
+
+export type EditorExit = "key" | "button" | "blur"
+
+export type FocusReturn = {
+  readonly trigger: (element: { readonly focus: () => void }) => void
+  readonly exit: (how: EditorExit) => void
+}
+
+/**
+ * An inline editor swaps its trigger for an input. Leaving it by key or button puts focus back on the trigger that
+ * mounts in its place, once it has mounted; a blur leaves focus where the person moved it.
+ */
+export function createFocusReturn(defer: (run: () => void) => void = queueMicrotask): FocusReturn {
+  let trigger: { readonly focus: () => void } | undefined
+  return {
+    trigger: (element) => {
+      trigger = element
+    },
+    exit: (how) => {
+      if (how !== "blur") defer(() => trigger?.focus())
+    },
+  }
 }

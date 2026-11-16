@@ -2,6 +2,7 @@ import { createMemo, For, Show, type JSX } from "solid-js"
 import { Plus } from "lucide-solid"
 import { firstLoad } from "../../lib/loading.ts"
 import { describeTriggers, nextLabel } from "../../lib/automations.ts"
+import { firstFocusable, neighbourAfter } from "../../lib/focus.ts"
 import { createAutomationList } from "../../state/automations.ts"
 import type { ProjectSummary } from "../../state/home.ts"
 import { createAutomationActions, createRowDialogs, EnabledToggle, LastRun, RowMenu } from "../automations/parts.tsx"
@@ -12,15 +13,28 @@ import { EmptyState, ResourceError } from "./ui.tsx"
 export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element {
   const { list, value, retry } = createAutomationList()
   const actions = createAutomationActions(() => value())
-  const rows = createRowDialogs(actions, { project: props.project.id })
   const mine = createMemo(() =>
     (value() ?? []).filter((automation) => automation.project === props.project.id && !actions.removed(automation)),
   )
+  let heading!: HTMLHeadingElement
+  let rowList: HTMLDivElement | undefined
+  const rows = createRowDialogs(actions, {
+    project: props.project.id,
+    focusAfter: (automation) => {
+      const next = neighbourAfter(
+        mine().map((item) => item.id),
+        automation.id,
+      )
+      return next === undefined ? heading : firstFocusable(rowList?.querySelector(`[data-automation="${CSS.escape(next)}"]`))
+    },
+  })
 
   return (
     <div class="flex flex-col">
       <div class="flex h-9 items-center gap-2 border-b border-line-1 pl-3 pr-1.5">
-        <span class="min-w-0 flex-1 truncate text-sm text-ink-3">Runs land in this project's threads</span>
+        <h2 ref={heading} tabindex={-1} class="min-w-0 flex-1 truncate text-sm font-normal text-ink-3 outline-none">
+          Runs land in this project's threads
+        </h2>
         <button type="button" class={ICON_BUTTON} aria-label="New automation" title="New automation" onClick={rows.create}>
           <Plus size={16} stroke-width={1.5} />
         </button>
@@ -53,13 +67,13 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
             </Show>
           }
         >
-          <div class="im-stagger flex flex-col">
+          <div ref={rowList} class="im-stagger flex flex-col">
             <For each={mine()}>
               {(automation, index) => {
                 const enabled = (): boolean => actions.enabled(automation)
                 const busy = (): boolean => actions.busy() === automation.id
                 return (
-                  <div class="flex items-center gap-2.5 border-b border-line-1 py-2 pl-3 pr-1.5" style={{ "--i": index() }}>
+                  <div data-automation={automation.id} class="flex items-center gap-2.5 border-b border-line-1 py-2 pl-3 pr-1.5" style={{ "--i": index() }}>
                     <div class="min-w-0 flex-1">
                       <button
                         type="button"

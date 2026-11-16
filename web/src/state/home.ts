@@ -1,11 +1,13 @@
-import { createSignal } from "solid-js"
+import { batch, createSignal } from "solid-js"
 import type { Streams } from "../lib/api.ts"
 import { automationsRevisionOf, automationsTouchedOf } from "../lib/automations.ts"
+import { parseIssuesRev, parseStatesRev } from "../lib/issues.ts"
 import { trailing } from "../lib/trailing.ts"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
 import { route } from "../lib/router.ts"
 import { threadsOf } from "../lib/threads.ts"
 import { parseRequestList, type RequestRow } from "./conversation.ts"
+import { noteIssuesRev, noteStatesRev } from "./issues.ts"
 
 export type ThreadSummary = {
   readonly id: number
@@ -133,10 +135,14 @@ export function subscribeHome(streams: Streams): () => void {
   return streams.subscribe("home", {
     value: (value, next) => {
       rev = next
-      setProjects(parse(value))
-      setRequests(parseRequestList(value))
-      receiveRevision(automationsRevisionOf(value), automationsTouchedOf(value))
-      setLoaded(true)
+      batch(() => {
+        setProjects(parse(value))
+        setRequests(parseRequestList(value))
+        receiveRevision(automationsRevisionOf(value), automationsTouchedOf(value))
+        noteIssuesRev(parseIssuesRev(value))
+        noteStatesRev(parseStatesRev(value))
+        setLoaded(true)
+      })
     },
     delta: () => undefined,
     resume: { cursor: () => (rev === undefined ? undefined : { rev }), apply: () => undefined },

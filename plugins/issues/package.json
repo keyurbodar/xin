@@ -1,0 +1,40 @@
+{
+  "name": "ingle-plugin-issues",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Issues: a durable work record shared by people and agents, with states, links, a timeline and FTS search.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "issues": {
+        "module": "./index.ts",
+        "title": "Issues",
+        "description": "Issues with editable states, sub-issues, links, a timeline and search. Comments, state and assignee changes wake the owning thread."
+      },
+      "tool-issues": {
+        "module": "./tools.ts",
+        "title": "Issue tools",
+        "description": "The model-facing issue tool: create, read and update. Coordinators and Captains get it; delegated threads leave it out."
+      },
+      "tool-issue-comment": {
+        "module": "./comment.ts",
+        "title": "Issue comments",
+        "description": "The issue_comment tool, so any conversation, delegated threads included, can report on an issue."
+      }
+    },
+    "bundle": [
+      {
+        "id": "issues",
+        "plugin": "issues"
+      },
+      {
+        "id": "tool-issues",
+        "plugin": "tool-issues"
+      },
+      {
+        "id": "tool-issue-comment",
+        "plugin": "tool-issue-comment"
+      }
+    ]
+  }
+}

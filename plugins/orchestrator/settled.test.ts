@@ -86,4 +86,20 @@ describe("thread/settled", () => {
     const events = await runInDurableObject(stub, (_home, state) => Promise.resolve(directEvents(state)))
     expect(events[0]).toMatchObject({ projectId: project.id, status: "completed", result: "thread answer: do task 1" })
   }, 20_000)
+
+  it("settles a thread but does not wake a coordinator whose feature is capped", async () => {
+    const stub = fresh()
+    await setRow(stub, "settled", true)
+    const project = await makeProject(stub, "capped")
+    await chooseModel(stub, project.coordinatorId)
+    const sent = await cmd(stub, "capped-1", "message.send", { conv: project.coordinatorId, text: "delegate one" })
+    expect(sent.ok, JSON.stringify(sent)).toBe(true)
+    expect(await cmd(stub, "capped-cap", "usage.feature.cap.set", { feature: "chat", day: 0 })).toMatchObject({
+      ok: true,
+    })
+    await fireNow(stub)
+
+    await eventually(stub, async (_home, state) => recorded(state.storage).length === 1)
+    expect(await runInDurableObject(stub, (home: Home) => reportCount(home))).toBe(0)
+  }, 20_000)
 })

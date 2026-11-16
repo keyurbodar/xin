@@ -36,7 +36,7 @@ import type {
 } from "../../src/contracts/threads.ts"
 import type { CommandId, ProjectId } from "../../src/ids.ts"
 import { entryText, detailOf, textOf } from "../../src/transcript.ts"
-import { resolveModel as resolveRoleModel, type ModelsService } from "../../src/contracts/models.ts"
+import { capReason, resolveModel as resolveRoleModel, type ModelsService } from "../../src/contracts/models.ts"
 import { ThreadDoc, defaultSpaceOf, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
 import { canUseThread, projectByRef, scopeOf, type Scope } from "../../src/contracts/scope.ts"
 import { WorkspaceDoc, type ProjectState } from "../../src/contracts/workspace.ts"
@@ -245,6 +245,8 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
       callContext,
     )
     if (model.kind === "none") return { kind: "no_model", reason: model.reason }
+    const admission = await deps.models.admit("thread")
+    if (admission.kind === "capped") return { kind: "rejected", reason: capReason(admission) }
     const requestId = `delegate:${caller.conversationId}:${request.clientRequestId}`
     const created = await harness.commit(
       (tx: Tx) =>

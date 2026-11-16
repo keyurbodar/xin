@@ -1,7 +1,7 @@
 import { createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { CalendarClock, Check, Copy, Plus, RefreshCw, Timer, Webhook, X } from "lucide-solid"
 import { count } from "../../lib/format.ts"
-import { cronInWords, cronProblem, newTrigger, spentOnce, rotated, webhookUrl, type TriggerDraft } from "../../lib/automations.ts"
+import { CRON_MAX_LENGTH, cronInWords, cronProblem, newTrigger, spentOnce, rotated, webhookUrl, type TriggerDraft } from "../../lib/automations.ts"
 import { FIELD_INPUT } from "../ui/dialog.tsx"
 
 const ICON = { size: 14, "stroke-width": 1.5 } as const
@@ -91,6 +91,7 @@ function ScheduleFields(props: { trigger: Extract<TriggerDraft, { kind: "schedul
         class={`${FIELD_INPUT} h-8 font-mono text-sm`}
         value={props.trigger.cron}
         disabled={props.busy}
+        maxLength={CRON_MAX_LENGTH}
         placeholder="0 9 * * 1-5"
         aria-label="Cron"
         aria-invalid={problem() !== undefined}
