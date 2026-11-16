@@ -145,3 +145,11 @@ declare module "@deepseek-ai/cordis" {
     models: ModelsService
   }
 }
+
+/**
+ * Provider faults the same request would hit again, whatever transient wording they carry: a client status other than
+ * 408, 425 or 429 (a bad body, a bad key, a missing model) leading the message or named as an HTTP status or code, and
+ * an exhausted credit balance. A 4xx-shaped offset or byte count elsewhere in the text is not a status.
+ */
+export const FINAL_PROVIDER_ERROR =
+  /^\s*4(?!08|25|29)\d\d\b|(?:http|status|code)\D{0,3}4(?!08|25|29)\d\d\b|credit.?balance/i

@@ -72,7 +72,11 @@ export function resumer(deps: ResumeDeps, report: ReportFn): Resumer {
     const opened = await harness.commit(async (tx) => {
       const thread = await tx.doc(ThreadDoc, id)
       if (thread.resume?.run !== scheduled.run) return false
-      if (blocked !== undefined || thread.status !== "failed" || (thread.run ?? 1) !== scheduled.run) {
+      const workspace = await tx.doc(WorkspaceDoc)
+      const space = thread.spaceId === undefined ? undefined : workspace.spaces[thread.spaceId]
+      const archived =
+        thread.archived === true || space?.archived === true || workspace.projects[thread.projectId]?.archived === true
+      if (blocked !== undefined || archived || thread.status !== "failed" || (thread.run ?? 1) !== scheduled.run) {
         delete thread.resume
         return false
       }

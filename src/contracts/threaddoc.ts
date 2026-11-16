@@ -110,21 +110,6 @@ export function threadState(value: unknown): ThreadState | undefined {
   }
 }
 
-export const RESUME_DELAY_MS = 30_000
-
-/**
- * Schedules the one automatic resume of a run that failed for a transient reason. A run that was itself started by a
- * resume (`resumedRun`) is never resumed again, so a failure that persists reaches the coordinator after one retry.
- */
-export function scheduleResume(doc: ThreadDocState, now: number, reason: string): boolean {
-  const run = doc.run ?? 1
-  if (doc.resumedRun === run) return false
-  doc.resume = { run, at: now + RESUME_DELAY_MS, reason }
-  return true
-}
-
-export const RESUME_NOTE = " A resume is scheduled in 30 s."
-
 export type ThreadEvent = "done" | "ask_user" | "unanswered" | "abort" | "answer" | "thread_send"
 
 export type Transition =

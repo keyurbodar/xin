@@ -2,6 +2,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai"
 import { isContextOverflow } from "@earendil-works/pi-ai/utils/overflow"
 import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry"
 import { GenerationTask, hook, type HookRegistration } from "@earendil-works/pi-durable"
+import { FINAL_PROVIDER_ERROR } from "../../src/contracts/models.ts"
 
 /**
  * Transient failures pi-ai's retry classifier does not name: a stream or body the provider or a gateway mangled, and
@@ -30,13 +31,6 @@ const TRANSIENT = new RegExp(
   "i",
 )
 
-/**
- * Faults the same request would hit again, whatever transient wording they carry: a client status other than 408, 425
- * or 429 (a bad body, a bad key, a missing model) leading the message or named as an HTTP status or code, and an
- * exhausted credit balance. A 4xx-shaped offset or byte count elsewhere in the text is not a status.
- */
-const FINAL = /^\s*4(?!08|25|29)\d\d\b|(?:http|status|code)\D{0,3}4(?!08|25|29)\d\d\b|credit.?balance/i
-
 /** The prefix that hands a reclassified failure to pi's durable retry; pi-ai treats this wording as transient. */
 export const TRANSIENT_PREFIX = "Provider returned an error: "
 
@@ -47,7 +41,7 @@ export const TRANSIENT_PREFIX = "Provider returned an error: "
 export function needsRetry(message: AssistantMessage): boolean {
   if (message.stopReason !== "error" || message.errorMessage === undefined) return false
   if (isRetryableAssistantError(message) || isContextOverflow(message)) return false
-  if (!TRANSIENT.test(message.errorMessage) || FINAL.test(message.errorMessage)) return false
+  if (!TRANSIENT.test(message.errorMessage) || FINAL_PROVIDER_ERROR.test(message.errorMessage)) return false
   return isRetryableAssistantError({ ...message, errorMessage: `${TRANSIENT_PREFIX}${message.errorMessage}` })
 }
 

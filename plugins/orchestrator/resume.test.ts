@@ -1,20 +1,23 @@
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
+import { fauxAssistantMessage } from "@earendil-works/pi-ai"
 import { type ConversationId, LiveDoc } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { ThreadDoc, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
 import { M6_MODEL } from "../../test/plugins/m6.ts"
 import { cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
+import { resumableError } from "./threads.ts"
 
 const context = BACKGROUND_CONTEXT
 const NOTE = "A resume is scheduled in 30 s."
 const WATCHDOG_KIND = "xin.watchdog"
+/** pi retries a transient provider error inside the run first: six backoffs, about 122 s. */
+const RETRIED_RUN_MS = 160_000
 
 type Stub = ReturnType<typeof fresh>
 type Report = { readonly commandId: string; readonly body: string }
 
-/** Starts a thread on the faux model. pi retries a transient provider error inside the run first, about 14 s of backoff. */
 async function start(stub: Stub, slug: string, task: string): Promise<number> {
   const project = await cmd(stub, `create-${slug}`, "project.create", { slug, name: slug })
   expect(project.ok, JSON.stringify(project)).toBe(true)
@@ -42,14 +45,21 @@ const reportsIn = async (home: Home, threadId: number): Promise<Report[]> =>
 const reportsOf = (stub: Stub, threadId: number): Promise<Report[]> =>
   runInDurableObject(stub, (home: Home) => reportsIn(home, threadId))
 
-async function settled(stub: Stub, threadId: number, run: number, status: string, reports: number): Promise<void> {
-  for (const deadline = Date.now() + 25_000; Date.now() < deadline;) {
+async function settled(
+  stub: Stub,
+  threadId: number,
+  run: number,
+  status: string,
+  reports: number,
+  withinMs = 10_000,
+): Promise<void> {
+  for (const deadline = Date.now() + withinMs; Date.now() < deadline;) {
     const done = await runInDurableObject(stub, async (home: Home) => {
       const doc = await docIn(home, threadId)
       return doc?.run === run && doc.status === status && (await reportsIn(home, threadId)).length === reports
     })
     if (done) return
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await new Promise((resolve) => setTimeout(resolve, 100))
   }
   throw new Error(
     `thread ${threadId} did not settle run ${run} as ${status}: ${JSON.stringify(await docOf(stub, threadId))}`,
@@ -92,51 +102,57 @@ async function quiet(stub: Stub): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 200))
 }
 
+const failedWith = (errorMessage: string) => fauxAssistantMessage("", { stopReason: "error", errorMessage })
+
 describe("automatic resume", () => {
-  it("resumes a transient provider failure once and leaves the resumed run's failure alone", async () => {
-    const stub = fresh()
-    const threadId = await start(stub, "broken", "broken job")
-    await settled(stub, threadId, 1, "failed", 1)
-    const failed = await docOf(stub, threadId)
-    expect(failed?.resume).toMatchObject({ run: 1, reason: "broken: provider overloaded" })
-    expect(failed?.resume?.at).toBeGreaterThan(Date.now())
-    expect((await reportsOf(stub, threadId))[0]?.body).toContain(NOTE)
-
-    await fireResume(stub, threadId)
-    await settled(stub, threadId, 2, "failed", 2)
-    const second = await docOf(stub, threadId)
-    expect(second?.resumedRun).toBe(2)
-    expect(second?.resume).toBeUndefined()
-    const reports = await reportsOf(stub, threadId)
-    expect(reports.find((row) => row.commandId === `report:${threadId}:2`)?.body).not.toContain(NOTE)
-
-    await quiet(stub)
-    expect((await docOf(stub, threadId))?.run).toBe(2)
-  }, 60_000)
-
-  it("resumes exactly once across an eviction between the failure and the resume", async () => {
-    const stub = fresh()
-    const threadId = await start(stub, "flaky", "flaky job")
-    await settled(stub, threadId, 1, "failed", 1)
-    expect((await docOf(stub, threadId))?.resume?.run).toBe(1)
-
-    await evictDurableObject(stub)
-    await fireResume(stub, threadId)
-    await settled(stub, threadId, 2, "completed", 2)
-    expect((await docOf(stub, threadId))?.result).toBe(
-      "thread answer: Resume: the last run failed with provider overloaded. Continue where you stopped.",
-    )
-
-    await evictDurableObject(stub)
-    await quiet(stub)
-    const after = await docOf(stub, threadId)
-    expect(after?.run).toBe(2)
-    expect(after?.status).toBe("completed")
-    expect((await reportsOf(stub, threadId)).map((row) => row.commandId).toSorted()).toEqual([
-      `report:${threadId}:1`,
-      `report:${threadId}:2`,
+  it("resumes only provider errors that are transient and not final", () => {
+    for (const text of [
+      "503 Service Unavailable",
+      "provider overloaded",
+      "429 Too Many Requests",
+      "Provider returned an error: Unexpected end of JSON input",
     ])
-  }, 60_000)
+      expect(resumableError(failedWith(text)), text).toBe(true)
+    for (const text of [
+      "402 Provider returned error: insufficient credits",
+      "401 Unauthorized: upstream connect error",
+      "400 invalid_request_error: request timed out",
+      "Your credit balance is too low; servers are currently busy",
+      "invalid api key",
+    ])
+      expect(resumableError(failedWith(text)), text).toBe(false)
+  })
+
+  it(
+    "resumes a transient failure exactly once across an eviction, and never the resumed run's failure",
+    async () => {
+      const stub = fresh()
+      const threadId = await start(stub, "broken", "broken job")
+      await settled(stub, threadId, 1, "failed", 1, RETRIED_RUN_MS)
+      const failed = await docOf(stub, threadId)
+      expect(failed?.resume).toMatchObject({ run: 1, reason: "broken: provider overloaded" })
+      expect(failed?.resume?.at).toBeGreaterThan(Date.now())
+      expect((await reportsOf(stub, threadId))[0]?.body).toContain(NOTE)
+
+      await evictDurableObject(stub)
+      await fireResume(stub, threadId)
+      await settled(stub, threadId, 2, "failed", 2, RETRIED_RUN_MS)
+      const second = await docOf(stub, threadId)
+      expect(second?.resumedRun).toBe(2)
+      expect(second?.resume).toBeUndefined()
+      const reports = await reportsOf(stub, threadId)
+      expect(reports.find((row) => row.commandId === `report:${threadId}:2`)?.body).not.toContain(NOTE)
+
+      await evictDurableObject(stub)
+      await quiet(stub)
+      expect((await docOf(stub, threadId))?.run).toBe(2)
+      expect((await reportsOf(stub, threadId)).map((row) => row.commandId).toSorted()).toEqual([
+        `report:${threadId}:1`,
+        `report:${threadId}:2`,
+      ])
+    },
+    2 * RETRIED_RUN_MS + 30_000,
+  )
 
   it("does not resume a deterministic provider error", async () => {
     const stub = fresh()
@@ -144,7 +160,28 @@ describe("automatic resume", () => {
     await settled(stub, threadId, 1, "failed", 1)
     expect((await docOf(stub, threadId))?.resume).toBeUndefined()
     expect((await reportsOf(stub, threadId))[0]?.body).not.toContain(NOTE)
-  }, 60_000)
+  }, 30_000)
+
+  it("never resumes an archived thread", async () => {
+    const stub = fresh()
+    const threadId = await start(stub, "archived", "invalid job")
+    await settled(stub, threadId, 1, "failed", 1)
+    const pending = { run: 1, at: Date.now() + 30_000, reason: "provider overloaded" }
+    await edit(stub, threadId, (doc) => {
+      doc.resume = pending
+    })
+    const archived = await cmd(stub, "archive-1", "thread.archive", { threadId })
+    expect(archived.ok, JSON.stringify(archived)).toBe(true)
+    expect((await docOf(stub, threadId))?.resume).toBeUndefined()
+
+    await edit(stub, threadId, (doc) => {
+      doc.resume = { ...pending, at: Date.now() - 1 }
+    })
+    await quiet(stub)
+    const after = await docOf(stub, threadId)
+    expect(after).toMatchObject({ run: 1, status: "failed", archived: true })
+    expect(after?.resume).toBeUndefined()
+  }, 30_000)
 
   it("does not resume an overtime failure", async () => {
     const stub = fresh()
@@ -160,9 +197,9 @@ describe("automatic resume", () => {
     expect(doc?.result).toBe("stopped: deadline exceeded")
     expect(doc?.resume).toBeUndefined()
     expect((await reportsOf(stub, threadId))[0]?.body).not.toContain(NOTE)
-  }, 60_000)
+  }, 30_000)
 
-  it("schedules a resume for a stalled thread", async () => {
+  it("does not resume a stall, which a long healthy stream can look like", async () => {
     const stub = fresh()
     const threadId = await start(stub, "stall", "stuck job")
     await stuck(stub, threadId)
@@ -173,7 +210,27 @@ describe("automatic resume", () => {
     await settled(stub, threadId, 1, "failed", 1)
     const doc = await docOf(stub, threadId)
     expect(doc?.result).toBe("stopped: no progress for 2 min in stuck_tool")
-    expect(doc?.resume).toMatchObject({ run: 1, reason: "no progress for 2 min in stuck_tool" })
-    expect((await reportsOf(stub, threadId))[0]?.body).toContain(NOTE)
-  }, 60_000)
+    expect(doc?.resume).toBeUndefined()
+    expect((await reportsOf(stub, threadId))[0]?.body).not.toContain(NOTE)
+  }, 30_000)
+
+  it("keeps a run's late settle from overwriting the run that reopened the thread", async () => {
+    const stub = fresh()
+    const threadId = await start(stub, "late", "quick job")
+    await eventually(stub, async (home: Home) => {
+      const live = await home.harness.snapshot(LiveDoc, threadId as ConversationId, context)
+      return live?.tools?.some((slot) => slot.name === "quick_tool" && slot.status === "running") === true
+    })
+    await edit(stub, threadId, (doc) => {
+      doc.status = "failed"
+      doc.result = "failed: marked by the test"
+    })
+    const sent = await cmd(stub, "late-send", "thread.send", { threadId, text: "go on", mode: "queue" })
+    expect(sent.ok, JSON.stringify(sent)).toBe(true)
+    expect((await docOf(stub, threadId))?.run).toBe(2)
+
+    await settled(stub, threadId, 2, "completed", 1)
+    await quiet(stub)
+    expect((await reportsOf(stub, threadId)).map((row) => row.commandId)).toEqual([`report:${threadId}:2`])
+  }, 30_000)
 })

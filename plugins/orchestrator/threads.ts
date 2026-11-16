@@ -1,4 +1,4 @@
-import type { ModelThinkingLevel } from "@earendil-works/pi-ai"
+import type { AssistantMessage, ModelThinkingLevel } from "@earendil-works/pi-ai"
 import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Context, Draft } from "@earendil-works/chord"
@@ -20,6 +20,7 @@ import { bool, int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
   capReason,
+  FINAL_PROVIDER_ERROR,
   ModelChoiceSchema,
   type Admission,
   type Feature,
@@ -38,9 +39,7 @@ import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
   ThreadDoc,
   defaultSpaceOf,
-  RESUME_NOTE,
   RoleSchema,
-  scheduleResume,
   threadState,
   transition,
   type NewThread,
@@ -267,18 +266,36 @@ async function settle(
 }
 
 /**
- * Whether the run's last provider error is one pi-ai calls transient (overload, rate limit, 5xx, network). pi already
- * retried it inside the run, so reaching here means an outage outlasted those retries; a deterministic error (bad
- * request, auth, quota) would fail the same way again and is left to the coordinator.
+ * Whether a run that ended on `message` is worth one automatic resume: pi-ai calls the error transient (overload, rate
+ * limit, 5xx, network) and it is not a fault the same request would hit again (`FINAL_PROVIDER_ERROR`). pi already
+ * retried it inside the run, so reaching here means an outage outlasted those retries.
  */
+export function resumableError(message: AssistantMessage): boolean {
+  return isRetryableAssistantError(message) && !FINAL_PROVIDER_ERROR.test(message.errorMessage ?? "")
+}
+
 async function providerTransient(harness: Harness, threadId: number, run: Context): Promise<boolean> {
   const reader = await harness.conversation(threadId as ConversationId, run)
   const page = await reader?.entries({ order: "descending" }, 5, undefined, run)
   for (const entry of page?.items ?? []) {
     const failed = entry.model?.find((message) => message.role === "assistant" && message.stopReason === "error")
-    if (failed?.role === "assistant") return isRetryableAssistantError(failed)
+    if (failed?.role === "assistant") return resumableError(failed)
   }
   return false
+}
+
+const RESUME_DELAY_MS = 30_000
+const RESUME_NOTE = " A resume is scheduled in 30 s."
+
+/**
+ * Schedules the one automatic resume of a run that failed for a transient reason. A run that was itself started by a
+ * resume (`resumedRun`) is never resumed again, so a failure that persists reaches the coordinator after one retry.
+ */
+function scheduleResume(doc: ThreadDocState, now: number, reason: string): boolean {
+  const run = doc.run ?? 1
+  if (doc.resumedRun === run) return false
+  doc.resume = { run, at: now + RESUME_DELAY_MS, reason }
+  return true
 }
 
 async function projectIdOf(read: DocumentReader, threadId: number, run: Context): Promise<string | undefined> {
@@ -341,8 +358,8 @@ async function addThread(tx: Tx, thread: NewThread): Promise<ThreadState> {
 
 /**
  * Keeps a space's thread list bounded. Past `MAX_SPACE_THREADS` ids the oldest finished ones drop out of the list, so
- * the UI, the watchdog and the question list stop walking every thread a space ever ran. A working or waiting thread
- * is never dropped, and an id whose document this project did not load is left alone. A pruned thread's own document
+ * the UI, the watchdog and the question list stop walking every thread a space ever ran. A working or waiting thread,
+ * or one with a pending automatic resume (which boot finds through this list), is never dropped, and an id whose document this project did not load is left alone. A pruned thread's own document
  * and conversation stay, so it can still act in its own scope.
  */
 function trimThreadIds(
@@ -351,12 +368,13 @@ function trimThreadIds(
 ): void {
   const overflow = space.threadIds.length - MAX_SPACE_THREADS
   if (overflow <= 0) return
-  const status = new Map(docs.map(({ id, doc }) => [id, doc.status]))
+  const byId = new Map(docs.map(({ id, doc }) => [id, doc]))
   const dropped = new Set<number>()
   for (const id of [...space.threadIds].toSorted((left, right) => left - right)) {
     if (dropped.size >= overflow) break
-    const found = status.get(id)
-    if (found === undefined || found === "working" || found === "waiting") continue
+    const found = byId.get(id)
+    if (found === undefined || found.status === "working" || found.status === "waiting" || found.resume !== undefined)
+      continue
     dropped.add(id)
   }
   if (dropped.size > 0) space.threadIds = space.threadIds.filter((id) => !dropped.has(id))
@@ -647,8 +665,10 @@ export function lifecycle(deps: ThreadDeps): Threads {
       return api.harness.commit(async (tx) => {
         const thread = await tx.doc(ThreadDoc, threadId)
         const archived = args.archived ?? true
-        if (archived) thread.archived = true
-        else delete thread.archived
+        if (archived) {
+          thread.archived = true
+          delete thread.resume
+        } else delete thread.archived
         return { threadId: args.threadId, archived }
       }, context)
     },
