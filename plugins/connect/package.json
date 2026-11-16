@@ -1,0 +1,24 @@
+{
+  "name": "ingle-plugin-connect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A card that points the owner at the connectors page and reports back connected or declined.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "tool-connect": {
+        "module": "./tools.ts",
+        "title": "Connect card",
+        "description": "request_connection: a deferred tool that asks the owner to connect a service through the existing connectors and ends the turn; connected or declined starts the next run.",
+        "permissions": [
+          "conversations"
+        ],
+        "contributes": {
+          "tools": [
+            "request_connection"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -5,6 +5,7 @@ import { spaceRequests } from "./spaces.ts"
 
 const request = (id: string, conversationId: number): RequestRow => ({
   id,
+  kind: "ask_user",
   conversationId,
   projectId: "prj_1",
   projectName: "Atlas",

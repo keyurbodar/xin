@@ -79,6 +79,7 @@ export type ModelRefView = {
 
 export type RequestRow = {
   readonly id: string
+  readonly kind: string
   readonly conversationId: number
   readonly projectId: string
   readonly projectName: string
@@ -86,6 +87,15 @@ export type RequestRow = {
   readonly question: string
   readonly options: readonly string[]
   readonly askedAt: number
+}
+
+/** A request a thread keeps answered, as `request.list` returns it: what an interactive card shows once it is closed. */
+export type SettledRow = {
+  readonly id: string
+  readonly kind: string
+  readonly conversationId: number
+  readonly answer: string
+  readonly answeredAt: number
 }
 
 /** An answer this client sent; `request.list` lists only open requests, so the stamped card is local. */
@@ -341,6 +351,7 @@ export function parseRequestList(value: unknown): readonly RequestRow[] {
     if (id === undefined || conversationId === undefined || question === undefined || askedAt === undefined) continue
     rows.push({
       id,
+      kind: strOf(raw.kind) ?? "ask_user",
       conversationId,
       projectId: strOf(raw.projectId) ?? "",
       projectName: strOf(raw.projectName) ?? "",
@@ -349,6 +360,23 @@ export function parseRequestList(value: unknown): readonly RequestRow[] {
       options: stringsOf(raw.options),
       askedAt,
     })
+  }
+  return rows
+}
+
+export function parseSettledList(value: unknown): readonly SettledRow[] {
+  const list = recordOf(value)?.answered
+  if (!Array.isArray(list)) return []
+  const rows: SettledRow[] = []
+  for (const entry of list) {
+    const raw = recordOf(entry)
+    if (raw === undefined) continue
+    const id = strOf(raw.id)
+    const conversationId = numOf(raw.conversationId)
+    const answer = strOf(raw.answer)
+    const answeredAt = numOf(raw.answeredAt)
+    if (id === undefined || conversationId === undefined || answer === undefined || answeredAt === undefined) continue
+    rows.push({ id, kind: strOf(raw.kind) ?? "ask_user", conversationId, answer, answeredAt })
   }
   return rows
 }

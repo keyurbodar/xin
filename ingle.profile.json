@@ -33,7 +33,10 @@
     "ingle-plugin-outline",
     "ingle-plugin-standup",
     "ingle-plugin-appearance",
-    "ingle-plugin-explore"
+    "ingle-plugin-explore",
+    "ingle-plugin-approval",
+    "ingle-plugin-connect",
+    "ingle-plugin-secret-input"
   ],
   "patch": [
     {
@@ -50,6 +53,18 @@
     },
     {
       "id": "standup",
+      "disabled": true
+    },
+    {
+      "id": "tool-approval",
+      "disabled": true
+    },
+    {
+      "id": "tool-connect",
+      "disabled": true
+    },
+    {
+      "id": "tool-secret-input",
       "disabled": true
     }
   ]

@@ -1,15 +1,13 @@
 import { defineExtension } from "@earendil-works/pi-durable"
-import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search"
 import type { Context } from "../../src/kernel/index.ts"
 
 export const name = "tool-mcp"
 export const inject = ["pi", "mcp"]
 
 export function apply(ctx: Context): void {
-  const search = createToolSearchExtension()
   let stopSearch: (() => void) | undefined
 
-  /** `tool_search` is offered only while there is a deferred tool to find; with none it could only answer "no match". */
+  /** The shared `tool_search` is held only while there is an MCP tool to find. */
   const publish = (): void => {
     const tools = [...ctx.mcp.tools()]
     ctx.pi.install(defineExtension({ name: "tool-mcp", tools }))
@@ -18,7 +16,7 @@ export function apply(ctx: Context): void {
       stopSearch = undefined
       return
     }
-    stopSearch ??= ctx.pi.install(search)
+    stopSearch ??= ctx.pi.search()
   }
 
   publish()

@@ -15,6 +15,7 @@ const groups = (waiting: readonly number[], working: readonly number[] = []): Th
 })
 const request = (id: string, conversationId: number): RequestRow => ({
   id,
+  kind: "ask_user",
   conversationId,
   projectId: "p1",
   projectName: "Atlas",

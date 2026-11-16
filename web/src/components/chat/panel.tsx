@@ -7,6 +7,7 @@ import { openRequests, respondToQuestion } from "../../state/requests.ts"
 import { Loading, ThreadSkeleton } from "../ui/skeleton.tsx"
 import { Transcript } from "./transcript.tsx"
 import { SteerComposer } from "./composer.tsx"
+import { hasBlock } from "./blocks.tsx"
 import { OpenQuestionCard } from "./cards.tsx"
 
 /** A thread tab: the thread's own transcript in the centre column, with the steer composer under it. */
@@ -24,6 +25,7 @@ export function ThreadConversation(props: {
   const busy = (): boolean => state() === "working"
   const requests = (): readonly RequestRow[] =>
     openRequests().filter((request) => request.conversationId === props.thread.id)
+  const unshown = (): readonly RequestRow[] => requests().filter((request) => !hasBlock(`tool:${request.kind}`))
 
   createEffect(() => {
     void props.thread.id
@@ -79,7 +81,7 @@ export function ThreadConversation(props: {
         </Show>
       </Loading>
       <div class="mx-auto w-full max-w-[var(--w-column)]">
-        <For each={requests()}>
+        <For each={unshown()}>
           {(request) => (
             <div class="px-3 pt-3">
               <OpenQuestionCard

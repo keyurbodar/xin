@@ -14,6 +14,7 @@ import {
   type ToolRegistration,
 } from "@earendil-works/pi-durable"
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
+import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search"
 import { loaderRow } from "../contributions.ts"
 import { JournalStorage } from "./journal.ts"
 import { hidden } from "./hidden.ts"
@@ -46,6 +47,8 @@ export class Pi extends Service {
   readonly envSources: EnvProvider[] = []
   private storage: JournalStorage | undefined
   readonly compactionSources: (() => CompactionSettings | undefined)[] = []
+  readonly searchers = new Set<symbol>()
+  readonly toolSearch: Extension = createToolSearchExtension()
 
   constructor(ctx: Context) {
     super(ctx, "pi")
@@ -113,6 +116,22 @@ export class Pi extends Service {
         this.registry.uninstall(extension)
       }
     }, `pi.install(${extension.name})`)
+  }
+
+  /**
+   * Offers `tool_search` while at least one row holds this: a row whose deferred tools the model should find. One
+   * shared extension, so rows with deferred tools never collide on it and it leaves with the last of them.
+   */
+  search(): () => void {
+    const token = Symbol("search")
+    return this.ctx.effect(() => {
+      if (this.searchers.size === 0) this.registry.install(this.toolSearch)
+      this.searchers.add(token)
+      return () => {
+        if (!this.searchers.delete(token) || this.searchers.size > 0) return
+        this.registry.uninstall(this.toolSearch)
+      }
+    }, "pi.search")
   }
 
   models(source: () => Models): () => void {

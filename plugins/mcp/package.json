@@ -31,8 +31,7 @@
         "description": "The model-facing mcp tools. Disable to hide them; the mcp service keeps running.",
         "contributes": {
           "tools": [
-            "mcp_*",
-            "tool_search"
+            "mcp_*"
           ]
         }
       },

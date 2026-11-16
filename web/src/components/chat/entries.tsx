@@ -15,6 +15,7 @@ import {
 import { ToolRenderer } from "../../plugins/slots.tsx"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { SentAttachments } from "../composer/attachment-card.tsx"
+import { hasBlock, renderBlock } from "./blocks.tsx"
 import { Markdown } from "./markdown.tsx"
 import {
   FailureCard,
@@ -141,7 +142,8 @@ function QuestionItem(props: {
   const request = (): RequestRow | undefined => {
     const threadId = Number(props.row.threadId)
     return props.requests.find(
-      (candidate) => candidate.conversationId === threadId && candidate.question === props.row.text,
+      (candidate) =>
+        candidate.conversationId === threadId && candidate.question === props.row.text && candidate.kind === "ask_user",
     )
   }
   const thread = (): ThreadSummary | undefined =>
@@ -237,6 +239,27 @@ function EntryItemView(props: { item: EntryItem; context: ItemContext }): JSX.El
     case "tool": {
       const result = (): ToolResultView | undefined =>
         item.call.id === undefined ? undefined : props.context.results?.get(item.call.id)
+      const status = (): "running" | "done" | "error" =>
+        result() === undefined ? "running" : result()?.isError === true ? "error" : "done"
+      if (hasBlock(`tool:${item.call.name}`))
+        return (
+          <div class="pl-9" data-block={item.call.id}>
+            {renderBlock("tool", {
+              name: item.call.name,
+              callId: item.call.id ?? "",
+              args: item.call.arguments,
+              get output() {
+                return result()?.output
+              },
+              get details() {
+                return result()?.details
+              },
+              get status() {
+                return status()
+              },
+            })}
+          </div>
+        )
       return (
         <ToolRenderer
           class="pl-9"
