@@ -75,13 +75,17 @@ describe("issue project references", () => {
     const unknown = await call(stub, "issue.create", { title: "Nowhere", project: "nowhere" })
     expect(unknown.ok).toBe(false)
     expect(unknown.error).toMatchObject({ code: "bad_args" })
+    const unlisted = await call(stub, "issue.list", { project: "nowhere" })
+    expect(unlisted.ok).toBe(false)
+    expect(unlisted.error).toMatchObject({ code: "bad_args" })
     expect((await ok<IssuePage>(stub, "issue.list", {})).issues).toHaveLength(1)
   })
 
-  it("rewrites a legacy row that stored a slug to the project id at boot", async () => {
+  it("rewrites a legacy row that stored a slug to the project id on the first boot only", async () => {
     const stub = fresh()
     const ingle = await project(stub, "ingle")
     await storedRow(stub, "Legacy", "ingle")
+    await runInDurableObject(stub, (home: Home) => home.db.run("DELETE FROM issue_meta WHERE key = 'project_ids'"))
     const legacy = (await ok<IssuePage>(stub, "issue.list", {})).issues[0]
     if (legacy === undefined) throw new Error("no legacy row")
     expect(await storedProject(stub, legacy.id)).toBe("ingle")
@@ -89,6 +93,12 @@ describe("issue project references", () => {
     expect(await storedProject(stub, legacy.id)).toBe(ingle.id)
     const overview = await ok<IssuePage>(stub, "issue.list", { project: ingle.id, closed: false, limit: 200 })
     expect(overview.issues.map((found) => found.id)).toEqual([legacy.id])
+
+    await storedRow(stub, "After the pass", "ingle")
+    const late = (await ok<IssuePage>(stub, "issue.list", {})).issues.find((found) => found.title === "After the pass")
+    if (late === undefined) throw new Error("no late row")
+    await evictDurableObject(stub)
+    expect(await storedProject(stub, late.id)).toBe("ingle")
   })
 })
 

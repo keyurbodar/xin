@@ -549,10 +549,18 @@ const normalize = async (
   }
 }
 
-/** Rewrites issues that stored a project slug (before create resolved it) to that project's id, one indexed UPDATE per slug. */
-export async function adoptProjectIds(db: SqliteDatabase, projects: Iterable<readonly [id: string, slug: string]>) {
-  for (const [id, slug] of projects)
+/**
+ * Once per Home: rewrites issues that stored a project slug (before create resolved it) to that project's id, one indexed
+ * UPDATE per slug, then marks it done in issue_meta. The UPDATEs are idempotent, so a crash before the mark reruns them.
+ */
+export async function adoptProjectIds(
+  db: SqliteDatabase,
+  projects: () => Promise<Iterable<readonly [id: string, slug: string]>>,
+): Promise<void> {
+  if (await db.get("SELECT value FROM issue_meta WHERE key = 'project_ids'")) return
+  for (const [id, slug] of await projects())
     if (slug !== id) await db.run("UPDATE issues SET project = ? WHERE project = ?", id, slug)
+  await db.run("INSERT INTO issue_meta (key, value) VALUES ('project_ids', 1) ON CONFLICT (key) DO NOTHING")
 }
 
 export function createIssues(port: IssuesPort): IssuesService {
@@ -785,7 +793,9 @@ export function createIssues(port: IssuesPort): IssuesService {
       const scope = await scopeOf(actor)
       const project =
         scope?.project ??
-        (filter.project === undefined ? undefined : ((await port.projectId(filter.project)) ?? filter.project))
+        (filter.project === undefined
+          ? undefined
+          : ((await port.projectId(filter.project)) ?? fail(`no project ${filter.project}`)))
       const filters: string[] = []
       const params: SqliteValue[] = []
       if (filter.assignee !== undefined) {

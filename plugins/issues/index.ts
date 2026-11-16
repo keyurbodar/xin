@@ -69,10 +69,10 @@ export const LinkArgs = obj({ id: ID, kind: oneOf(LINK_KINDS), other: ID })
 
 export async function apply(ctx: Context): Promise<void> {
   await ctx.db.applySqliteMigrations("issues", MIGRATIONS)
-  const workspace = await ctx.harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
-  await adoptProjectIds(
-    ctx.db,
-    Object.entries(workspace?.projects ?? {}).map(([id, project]) => [id, project.slug] as const),
+  await adoptProjectIds(ctx.db, async () =>
+    Object.entries((await ctx.harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT))?.projects ?? {}).map(
+      ([id, project]) => [id, project.slug] as const,
+    ),
   )
   const issues = createIssues({
     db: ctx.db,
