@@ -13,7 +13,10 @@
         "permissions": [
           "conversations"
         ],
-        "contributes": {}
+        "contributes": {},
+        "requires": [
+          "jobs"
+        ]
       }
     }
   }

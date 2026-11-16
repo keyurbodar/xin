@@ -83,8 +83,8 @@ export const CATALOG: Catalog = {
       "Stored prompts that start an agent run when a cron schedule, a one-time trigger or a webhook fires, with webhook coalescing and run history.",
     manifest: {
       api: 1,
-      requires: [],
-      permissions: ["conversations", "models", "owner", "routes", "storage"],
+      requires: ["push"],
+      permissions: ["conversations", "files", "models", "owner", "routes", "storage"],
       contributes: {
         tools: [],
         ops: [
@@ -305,7 +305,7 @@ export const CATALOG: Catalog = {
     description: "One tool and one prompt: the smallest plugin that adds something you can see.",
     manifest: {
       api: 1,
-      requires: [],
+      requires: ["presets"],
       permissions: [],
       contributes: { tools: ["hello"], ops: [] },
       slots: ["palette.command"],
@@ -555,8 +555,8 @@ export const CATALOG: Catalog = {
     description: "Coordinator tools and threads.",
     manifest: {
       api: 1,
-      requires: [],
-      permissions: ["conversations", "models"],
+      requires: ["presets"],
+      permissions: ["conversations", "files", "models"],
       contributes: {
         tools: [],
         ops: ["captain.*", "thread.archive", "thread.create", "thread.send", "thread.side", "thread.stop"],
@@ -572,8 +572,8 @@ export const CATALOG: Catalog = {
     description: "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running.",
     manifest: {
       api: 1,
-      requires: [],
-      permissions: ["plugins"],
+      requires: ["jobs"],
+      permissions: ["conversations", "plugins"],
       contributes: {
         tools: [
           "capabilities",
@@ -691,7 +691,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["storage"],
+      permissions: ["files", "storage"],
       contributes: { tools: [], ops: ["skill.delete", "skill.list", "skill.put", "skill.read"] },
       slots: [],
     },
@@ -702,7 +702,13 @@ export const CATALOG: Catalog = {
     plugin: p39,
     title: "Skills tools",
     description: "The model-facing skills tools. Disable to hide them; the skills service keeps running.",
-    manifest: { api: 1, requires: [], permissions: ["plugins"], contributes: { tools: ["skill"], ops: [] }, slots: [] },
+    manifest: {
+      api: 1,
+      requires: ["presets"],
+      permissions: ["plugins"],
+      contributes: { tools: ["skill"], ops: [] },
+      slots: [],
+    },
     local: true,
     source: "ingle-plugin-skills@0.1.0",
   },
@@ -712,7 +718,7 @@ export const CATALOG: Catalog = {
     description: "A /standup prompt, with a palette command and a composer button that start it.",
     manifest: {
       api: 1,
-      requires: [],
+      requires: ["presets"],
       permissions: [],
       contributes: { tools: [], ops: [] },
       slots: ["palette.command", "composer.action"],
@@ -741,7 +747,13 @@ export const CATALOG: Catalog = {
     plugin: p43,
     title: "Watchdog",
     description: "Fails stalled threads and overdue jobs.",
-    manifest: { api: 1, requires: [], permissions: ["conversations"], contributes: { tools: [], ops: [] }, slots: [] },
+    manifest: {
+      api: 1,
+      requires: ["jobs"],
+      permissions: ["conversations"],
+      contributes: { tools: [], ops: [] },
+      slots: [],
+    },
     local: true,
     source: "ingle-plugin-watchdog@0.1.0",
   },
@@ -751,7 +763,7 @@ export const CATALOG: Catalog = {
     description: "Search the public web and fetch a page as readable text.",
     manifest: {
       api: 1,
-      requires: [],
+      requires: ["jobs"],
       permissions: ["network"],
       contributes: { tools: ["web_fetch", "web_search"], ops: [] },
       slots: [],

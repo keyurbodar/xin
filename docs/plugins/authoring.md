@@ -61,7 +61,7 @@ export function apply(ctx: Context, config: Config): void {
 ```
 
 - `name` is the plugin's name, the same word the manifest uses.
-- `inject` lists the kernel services the module reads. Every `ctx.<service>` you touch must be in it; the gate's lint fails otherwise.
+- `inject` lists the services the module reads. Every `ctx.<service>` you touch must be in it; the gate's lint fails otherwise. `prompts` comes from the `presets` plugin, so the template's manifest says `"requires": ["presets"]`: a service another plugin provides needs that, or the permission [permissions.md](permissions.md#services-other-plugins-provide) lists for it.
 - `Config` is validated settings with working defaults. The owner changes them with `plugin.configure` or the Extensions screen; the plugin does useful work before anyone configures it.
 - `apply` registers capabilities, and every registration is an effect: turning the plugin off or reconfiguring it unwinds exactly what it added.
 - The tool is model-facing; the prompt is the owner's slash command, listed by `prompt.list`.
@@ -113,7 +113,7 @@ Deploy the build the way you deploy Ingle (`wrangler deploy`, or your CI's deplo
 | `module` | the file that exports `name`, `inject` and `apply` |
 | `title`, `description` | what the owner sees in Extensions |
 | `api` | the plugin API the module is written against; `1` today, and a module written for another version fails alone, with the reason in `plugin.doctor` |
-| `requires` | other plugins it needs, as `name` or `name@range`; a missing or too-old one fails that plugin alone, not the Home |
+| `requires` | other plugins it needs, as `name` or `name@range`; a missing or too-old one fails that plugin alone, not the Home. It is also what lets a row read a service another plugin provides |
 | `permissions` | the guarded services it uses ([permissions.md](permissions.md)); a row that reaches past them fails at mount, at the access, or in `lint` |
 | `contributes` | `{ tools, ops }` it registers, a trailing `*` covering a prefix; a registration it leaves out fails the row |
 | `client`, `slots` | a web module and the shell slots it fills ([client.md](client.md)) |
@@ -133,7 +133,7 @@ Deploy the build the way you deploy Ingle (`wrangler deploy`, or your CI's deplo
 | op | `ctx.ops.define(op)` |
 | timer | `ctx.clock.timer({ due, fire })` |
 | route | `ctx.http.route("GET /path", handler)` |
-| service | `ctx.provide(key, value)`, for other plugins to `inject` |
+| service | `ctx.provide(key, value)`, for other plugins to `inject` and `requires` |
 
 A plugin that others call provides a service; one that only adds tools, prompts or ops provides none.
 

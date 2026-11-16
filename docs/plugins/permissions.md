@@ -15,7 +15,19 @@ A plugin declares the guarded services it uses in its manifest's `permissions`. 
 | `owner` | none: `ops.run` with you as the actor; only first-party Automations may declare it | Act as you: run any op you can, such as starting threads |
 | `runtime` | `host` | Full access to your Home: raw storage, keys and the file bucket |
 
-`runtime` reaches the raw SQLite, the encryption key and the R2 bucket, so it implies all the others but `owner`, and the checks below treat it that way. `owner` is never implied: only the first-party Automations package may declare it, the build refuses it from any other package, and a market refuses to install one that asks for it. Avoid `runtime` if a narrower service does the job: Drive, for one, reads and shares blobs through the `files` service and holds no `runtime`. Services outside this table, such as `pi`, `ops`, `prompts`, `clock` and `wire`, need no permission.
+`runtime` reaches the raw SQLite, the encryption key and the R2 bucket, so it implies all the others but `owner`, and the checks below treat it that way. `owner` is never implied: only the first-party Automations package may declare it, the build refuses it from any other package, and a market refuses to install one that asks for it. Avoid `runtime` if a narrower service does the job: Drive, for one, reads and shares blobs through the `files` service and holds no `runtime`. The kernel services outside this table, such as `pi`, `ops`, `clock` and `wire`, need no permission.
+
+## Services other plugins provide
+
+A service another plugin provides is refused by default. A row in the same package reads it freely, and `runtime` covers all of them. Otherwise:
+
+| Service | Needs |
+| --- | --- |
+| `drive` | `files` |
+| `intake`, `threads`, `watchdog`, `questions`, `memory` | `conversations` |
+| any other, such as `prompts`, `jobs`, `push` or `skills` | `requires` naming the providing plugin, such as `"requires": ["presets"]` for `prompts` |
+
+A row that reads one without that fails at the read with a message naming what is missing. What your row holds is a frozen object of the service's methods alone, with no data members and no prototype, so it can't read the service's state or replace a method other rows call.
 
 ## Where it is checked
 

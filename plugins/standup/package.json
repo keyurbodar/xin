@@ -16,6 +16,9 @@
         "slots": [
           "palette.command",
           "composer.action"
+        ],
+        "requires": [
+          "presets"
         ]
       }
     },
