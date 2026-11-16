@@ -1,13 +1,12 @@
 import { createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { Blocks, CalendarClock, Check, ChevronsUpDown, Flower2, HardDrive, Moon, Palette, PanelLeft, Plus, Search, Settings, SquarePen, Sun, X } from "lucide-solid"
-import { activeProjects, projectThreads, routeProject, routeThreadId, type ProjectSummary } from "../../state/home.ts"
+import { activeProjects, homeLoaded, projectThreads, routeProject, routeThreadId, type ProjectSummary } from "../../state/home.ts"
 import { homeCaptains, routeCaptain } from "../../state/captains.ts"
 import type { CaptainRow } from "../../lib/captains.ts"
 import { owner, ownerName } from "../../state/settings.ts"
 import { navigate, route } from "../../lib/router.ts"
 import { ago } from "../../lib/format.ts"
-import { stagger } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { theme } from "../../lib/theme.ts"
 import { loadOnIntent, replayWhenReady, uiSdkReady, warmUiSdk } from "../../lib/ui-sdk-lazy.ts"
@@ -55,8 +54,6 @@ const INDICATOR_AT: Readonly<Record<Section, string>> = {
 export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; drawer: boolean }): JSX.Element {
   onMount(() => void owner.reload())
   const first = (): string | undefined => route().parts[0]
-  let projects: HTMLDivElement | undefined
-  stagger(() => projects, () => activeProjects().length > 0)
 
   return (
     <aside class="flex h-full w-[var(--w-sidebar)] shrink-0 flex-col bg-bg">
@@ -111,8 +108,8 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
             <Plus {...ICON} />
           </button>
         </SectionHead>
-        <div ref={projects} class="flex flex-col gap-px px-2">
-          <For each={activeProjects()} fallback={<Empty>No projects yet</Empty>}>
+        <div class="flex flex-col gap-px px-2">
+          <For each={activeProjects()} fallback={<Show when={homeLoaded()}><Empty>No projects yet</Empty></Show>}>
             {(project) => <ProjectRow project={project} />}
           </For>
         </div>
@@ -215,6 +212,14 @@ function CaptainRowButton(props: { captain: CaptainRow }): JSX.Element {
   )
 }
 
+/** The project whose threads the sidebar lists: the one the address names, a Captain's own, else the first live one. */
+function listedProject(): ProjectSummary | undefined {
+  const named = routeProject()
+  if (named !== undefined || route().parts[0] === "p") return named
+  const captain = routeCaptain()
+  return captain === undefined ? activeProjects()[0] : activeProjects().find((project) => project.id === captain.projectId)
+}
+
 /** Threads or Captains, picked on a segmented control and remembered on this device. */
 function LowerSection(): JSX.Element {
   const initial = storedSection()
@@ -270,7 +275,7 @@ function LowerSection(): JSX.Element {
               classList={{ "bg-hover text-ink": searching() }}
               aria-label="Search threads"
               aria-pressed={searching()}
-              disabled={routeProject() === undefined}
+              disabled={listedProject() === undefined}
               onClick={() => {
                 setSearching((value) => !value)
                 setQuery("")
@@ -288,7 +293,7 @@ function LowerSection(): JSX.Element {
       <Show
         when={section() === "captains"}
         fallback={
-          <Show when={routeProject()} fallback={<Empty>Open a project to see its threads</Empty>}>
+          <Show when={listedProject()} fallback={<Show when={homeLoaded()}><Empty>Open a project to see its threads</Empty></Show>}>
             {(project) => (
               <ThreadList
                 project={project()}
@@ -331,9 +336,6 @@ function ThreadList(props: {
     openThreadTab(props.project.id, id)
     navigate(`/p/${props.project.slug}/t/${id}`)
   }
-  let list: HTMLDivElement | undefined
-  stagger(() => list, () => threads().length > 0)
-
   return (
     <>
       <Show when={props.searching}>
@@ -351,7 +353,7 @@ function ThreadList(props: {
           />
         </div>
       </Show>
-      <div ref={list} class="flex flex-col gap-px px-2">
+      <div class="flex flex-col gap-px px-2">
         <For each={threads()} fallback={<Empty>{props.query === "" ? "No threads in this project" : "No match"}</Empty>}>
           {(thread) => {
             const current = (): boolean => routeThreadId() === thread.id
