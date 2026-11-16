@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { arr, bool, int, lit, nullable, obj, oneOf, opt, str, union } from "@earendil-works/pi-schema"
-import { type Context, defineOp, OpRejected } from "../../src/kernel/index.ts"
+import { type Actor, type Context, defineOp, OpRejected } from "../../src/kernel/index.ts"
 import { projectInScope } from "../../src/contracts/threaddoc.ts"
 import {
   type Change,
@@ -18,6 +18,11 @@ export const name = "issues"
 export const inject = ["db", "harness", "ops", "wire", "intake", "clock"]
 
 const OWNER_ACTOR: IssueActor = { kind: "person", id: "owner" }
+const WRITERS = ["owner", "agent"] as const
+
+const actorOf = ({ actor }: { readonly actor: Actor }): IssueActor =>
+  actor.kind === "agent" ? { kind: "thread", id: actor.conversationId } : OWNER_ACTOR
+
 const ID = int({ minimum: 1 })
 const CONVERSATION = int({ minimum: 0 })
 
@@ -157,8 +162,8 @@ export async function apply(ctx: Context): Promise<void> {
     defineOp({
       name: "issue.create",
       args: obj({ ...FieldArgs, title: str({ minLength: 1, maxLength: 300 }), project: opt(str({ minLength: 1 })) }),
-      actors: ["owner"],
-      run: async (_api, args) => (await service.create(OWNER_ACTOR, args)).issue,
+      actors: WRITERS,
+      run: async (api, args) => (await service.create(actorOf(api), args)).issue,
     }),
     defineOp({
       name: "issue.get",
@@ -181,27 +186,27 @@ export async function apply(ctx: Context): Promise<void> {
     defineOp({
       name: "issue.update",
       args: obj({ id: ID, ...FieldArgs }),
-      actors: ["owner"],
-      run: async (_api, { id, ...fields }) => (await service.update(OWNER_ACTOR, id, fields)).issue,
+      actors: WRITERS,
+      run: async (api, { id, ...fields }) => (await service.update(actorOf(api), id, fields)).issue,
     }),
     defineOp({
       name: "issue.link",
       args: LinkArgs,
-      actors: ["owner"],
-      run: async (_api, args) => (await service.link(OWNER_ACTOR, args.id, args.kind, args.other, true)).issue,
+      actors: WRITERS,
+      run: async (api, args) => (await service.link(actorOf(api), args.id, args.kind, args.other, true)).issue,
     }),
     defineOp({
       name: "issue.unlink",
       args: LinkArgs,
-      actors: ["owner"],
-      run: async (_api, args) => (await service.link(OWNER_ACTOR, args.id, args.kind, args.other, false)).issue,
+      actors: WRITERS,
+      run: async (api, args) => (await service.link(actorOf(api), args.id, args.kind, args.other, false)).issue,
     }),
     defineOp({
       name: "issue.comment",
       args: CommentArgs,
-      actors: ["owner"],
-      run: async (_api, { id, ...input }) => {
-        const change = await service.comment(OWNER_ACTOR, id, input)
+      actors: WRITERS,
+      run: async (api, { id, ...input }) => {
+        const change = await service.comment(actorOf(api), id, input)
         return { issue: change.issue, event: change.events[0] ?? null }
       },
     }),

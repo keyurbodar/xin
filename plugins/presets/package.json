@@ -40,7 +40,8 @@
           "default": "full",
           "threadOmits": [
             "tool-automations",
-            "tool-goals"
+            "tool-goals",
+            "tool-issues"
           ]
         }
       },
