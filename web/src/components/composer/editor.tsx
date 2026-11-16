@@ -6,7 +6,7 @@ import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
 import { KIND, KindIcon } from "./kinds.tsx"
 import type { Sources, Suggestion } from "./sources.ts"
 import { loadUiSdk } from "../../lib/ui-sdk-lazy.ts"
-import { composerCodec, fromInputToken, toInputToken, type ComposerToken, type TokenKind } from "./tokens.ts"
+import { composerCodec, formatToken, fromInputToken, toInputToken, type ComposerToken, type TokenKind } from "./tokens.ts"
 
 /** What the composer, the + menu and plugin actions do to the draft. A prompt chip always goes first, replacing any other. */
 export type EditorHandle = {
@@ -69,6 +69,29 @@ function textBeforeCaret(editor: HTMLElement): string | undefined {
   return range.toString()
 }
 
+function selectText(editor: HTMLElement, range: { readonly start: number; readonly end: number }): void {
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+  const target = document.createRange()
+  let offset = 0
+  let placed = 0
+  for (let node = walker.nextNode(); node !== null && placed < 2; node = walker.nextNode()) {
+    const length = node.textContent?.length ?? 0
+    if (placed === 0 && range.start <= offset + length) {
+      target.setStart(node, range.start - offset)
+      placed = 1
+    }
+    if (placed === 1 && range.end <= offset + length) {
+      target.setEnd(node, range.end - offset)
+      placed = 2
+    }
+    offset += length
+  }
+  if (placed !== 2) return
+  const selection = document.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(target)
+}
+
 function recollapse(editor: HTMLElement): void {
   if (document.activeElement === editor) document.getSelection()?.collapse(editor, 0)
 }
@@ -90,22 +113,65 @@ export function ComposerEditor(props: {
   let root!: HTMLDivElement
   let input!: UiTokenInputElement
   let editor!: HTMLElement
+  let early: HTMLTextAreaElement | undefined
+  let typed = ""
 
   const text = (): string => input.api.getText(composerCodec)
   const kinds = (): readonly TokenKind[] => KINDS_FOR[trigger()] ?? []
   const groups = (): readonly (readonly [TokenKind, readonly Suggestion[]])[] =>
     kinds().map((kind) => [kind, props.sources.list(kind)] as const)
 
+  const replace = (start: number, end: number, value: string): void => {
+    typed = typed.slice(0, start) + value + typed.slice(end)
+    props.onChange(typed)
+    if (early === undefined) return
+    early.value = typed
+    early.setSelectionRange(start + value.length, start + value.length)
+  }
+  const caret = (): readonly [number, number] => (early === undefined ? [typed.length, typed.length] : [early.selectionStart, early.selectionEnd])
+  const plain: EditorHandle = {
+    insert: (token) => (token.kind === "prompt" ? plain.prepend(`${formatToken(token)} `) : plain.insertText(`${formatToken(token)} `)),
+    insertText: (value) => {
+      const [start, end] = caret()
+      const before = typed.slice(0, start)
+      replace(start, end, before === "" || /\s$/u.test(before) ? value : ` ${value}`)
+      early?.focus()
+    },
+    prepend: (value) => {
+      replace(0, 0, value)
+      early?.focus()
+    },
+    setText: (value) => replace(0, typed.length, value),
+    text: () => typed,
+    clear: () => replace(0, typed.length, ""),
+    focus: () => early?.focus(),
+  }
+  let live = plain
+  props.ref({
+    insert: (token) => live.insert(token),
+    insertText: (value) => live.insertText(value),
+    prepend: (value) => live.prepend(value),
+    setText: (value) => live.setText(value),
+    text: () => live.text(),
+    clear: () => live.clear(),
+    focus: () => live.focus(),
+  })
+
   const [load, setLoad] = createSignal<Load>({ kind: "waiting" })
-  let early: HTMLTextAreaElement | undefined
-  let typed = ""
-  let refocus = false
+  let composing = false
+  let landed = false
+  let carried: { readonly start: number; readonly end: number } | undefined
+  const upgrade = (): void => {
+    landed = false
+    carried = early !== undefined && document.activeElement === early ? { start: early.selectionStart, end: early.selectionEnd } : undefined
+    setLoad({ kind: "ready" })
+  }
   const start = (): void => {
     setLoad({ kind: "waiting" })
     loadUiSdk("editor").then(
       () => {
-        refocus = early !== undefined && document.activeElement === early
-        setLoad({ kind: "ready" })
+        if (composing) landed = true
+        else upgrade()
       },
       (error: unknown) => setLoad({ kind: "failed", error }),
     )
@@ -126,7 +192,7 @@ export function ComposerEditor(props: {
       { char: "@", type: "mention" },
       { char: "/", boundary: "start", type: "command" },
     ]
-    props.ref({
+    live = {
       insert: (token) => {
         if (token.kind === "prompt") {
           input.api.setValue(withPrompt(input.api.getValue(), token))
@@ -149,9 +215,14 @@ export function ComposerEditor(props: {
       text,
       clear: () => input.api.clear(),
       focus: () => input.api.focus({ at: "end" }),
-    })
+    }
     if (typed !== "") input.api.setValue([typed])
-    if (refocus) queueMicrotask(() => input.api.focus({ at: "end" }))
+    const selection = carried
+    if (selection === undefined) return
+    queueMicrotask(() => {
+      input.api.focus()
+      selectText(editor, selection)
+    })
   })
 
   const fallback = (): JSX.Element => (
@@ -165,6 +236,18 @@ export function ComposerEditor(props: {
       onInput={(event) => {
         typed = event.currentTarget.value
         props.onChange(typed)
+      }}
+      onCompositionStart={() => {
+        composing = true
+      }}
+      onCompositionEnd={() => {
+        composing = false
+        if (landed) upgrade()
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" || event.shiftKey || event.isComposing) return
+        event.preventDefault()
+        event.currentTarget.form?.requestSubmit()
       }}
       class={`${FIELD} resize-none bg-transparent placeholder:text-placeholder disabled:opacity-60`}
     />
@@ -245,6 +328,7 @@ export function ComposerEditor(props: {
             onRetry={() => {
               start()
               reset()
+              early?.focus()
             }}
             class="min-h-[48px] py-3"
           />

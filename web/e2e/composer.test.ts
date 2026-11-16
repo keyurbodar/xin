@@ -264,7 +264,25 @@ test("a plugin composer action inserts its text with a separating space after a 
 
 const editorChunk = (url: URL) => url.pathname.endsWith("/@ui-sdk_web_token-input.js")
 
-test("an editor chunk that fails shows the error and Try again, and Try again gives a working textbox", async () => {
+async function openHeld(): Promise<{ page: Page; release: () => void }> {
+  let release!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const page = await harness.open("composer", {
+    before: (page) =>
+      page.route(editorChunk, async (route) => {
+        await held
+        await route.continue()
+      }),
+  })
+  return { page, release }
+}
+
+const upgraded = (page: Page) => page.waitForFunction(() => customElements.get("ui-token-input-editor") !== undefined && document.querySelector("textarea") === null)
+const sends = async (page: Page): Promise<readonly string[]> => JSON.parse((await page.textContent("#sends")) ?? "[]")
+
+test("an editor chunk that fails shows the error and Try again, and Try again gives a focused, working textbox", async () => {
   let fail = true
   const page = await harness.open("composer", {
     expected: /Failed to load resource/,
@@ -277,9 +295,10 @@ test("an editor chunk that fails shows the error and Try again, and Try again gi
     expect(await editor(page).count()).toBe(0)
     fail = false
     await stopped.getByRole("button", { name: "Try again" }).click()
-    await page.locator("ui-token-input-editor").waitFor()
+    await upgraded(page)
     expect(await page.getByRole("alert").count()).toBe(0)
-    await editor(page).click()
+    await settled(page)
+    expect(await focused(page)).toBe("Message Ingle")
     await page.keyboard.type("back again")
     await page.keyboard.press("Enter")
     await settled(page)
@@ -289,31 +308,75 @@ test("an editor chunk that fails shows the error and Try again, and Try again gi
   }
 })
 
-test("before the editor chunk lands, the placeholder shows and what was typed is kept", async () => {
-  let release!: () => void
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  const page = await harness.open("composer", {
-    before: (page) =>
-      page.route(editorChunk, async (route) => {
-        await held
-        await route.continue()
-      }),
-  })
+test("before the editor chunk lands, the placeholder shows, and the text and selection carry into the editor", async () => {
+  const { page, release } = await openHeld()
   try {
     const early = editor(page)
     expect(await early.evaluate((element) => element.tagName)).toBe("TEXTAREA")
     expect(await early.getAttribute("placeholder")).toBe("Ask anything, / for commands, @ for context")
     await early.click()
-    await page.keyboard.type("hi there")
+    await page.keyboard.type("hello world")
+    await page.keyboard.press("Home")
+    for (let step = 0; step < 2; step += 1) await page.keyboard.press("ArrowRight")
+    for (let step = 0; step < 2; step += 1) await page.keyboard.press("Shift+ArrowRight")
     release()
-    await page.locator("ui-token-input-editor").waitFor()
-    await page.keyboard.type(" again")
-    expect(await editor(page).innerText()).toBe("hi there again")
+    await upgraded(page)
+    await settled(page)
+    await page.keyboard.type("X")
+    expect(await editor(page).innerText()).toBe("heXo world")
     await page.keyboard.press("Enter")
     await settled(page)
-    expect(await page.textContent("#sent")).toBe("hi there again")
+    expect(await sends(page)).toEqual(["heXo world+0"])
+  } finally {
+    release()
+    await page.close()
+  }
+})
+
+test("an input method composing when the editor chunk lands finishes in the textarea and carries over committed", async () => {
+  const { page, release } = await openHeld()
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    await editor(page).click()
+    await page.keyboard.type("abc ")
+    await cdp.send("Input.imeSetComposition", { text: "にほ", selectionStart: 2, selectionEnd: 2 })
+    release()
+    await page.waitForFunction(() => customElements.get("ui-token-input-editor") !== undefined)
+    await settled(page)
+    expect(await page.locator("textarea").count()).toBe(1)
+    await cdp.send("Input.imeSetComposition", { text: "にほん", selectionStart: 3, selectionEnd: 3 })
+    await cdp.send("Input.insertText", { text: "日本" })
+    await upgraded(page)
+    await settled(page)
+    expect(await editor(page).innerText()).toBe("abc 日本")
+    await page.keyboard.press("Enter")
+    await settled(page)
+    expect(await sends(page)).toEqual(["abc 日本+0"])
+  } finally {
+    release()
+    await cdp.detach()
+    await page.close()
+  }
+})
+
+test("before the editor chunk lands, Send sends an attachment and Enter sends the draft, each once", async () => {
+  const { page, release } = await openHeld()
+  try {
+    await page.locator("input[type=file].hidden").setInputFiles({ name: "plan.md", mimeType: "text/markdown", buffer: Buffer.from("# plan") })
+    await page.getByRole("button", { name: "Send message" }).click()
+    await settled(page)
+    expect(await sends(page)).toEqual(["+1"])
+    await editor(page).click()
+    await page.keyboard.type("early send")
+    await page.keyboard.press("Enter")
+    await settled(page)
+    expect(await sends(page)).toEqual(["+1", "early send+0"])
+    expect(await editor(page).inputValue()).toBe("")
+    release()
+    await upgraded(page)
+    await settled(page)
+    expect(await editor(page).innerText()).toBe("")
+    expect(await sends(page)).toEqual(["+1", "early send+0"])
   } finally {
     release()
     await page.close()
