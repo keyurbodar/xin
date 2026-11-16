@@ -18,6 +18,7 @@ export type ToolCall = {
   readonly name: string
   readonly args: Readonly<Record<string, unknown>>
   readonly output: string | undefined
+  readonly details: unknown
   readonly status: ToolStatus
 }
 
@@ -43,17 +44,18 @@ export type LivePart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "call"; readonly callId: string; readonly name: string; readonly args: Readonly<Record<string, unknown>> }
 
-export type LiveSlot = { readonly name: string; readonly status: "pending" | "running" | "done"; readonly output: string | undefined }
+export type LiveSlot = {
+  readonly name: string
+  readonly status: "pending" | "running" | "done"
+  readonly output: string | undefined
+  readonly details: unknown
+}
 
 export type LiveTimeline = {
   readonly busy: boolean
   readonly parts: readonly LivePart[]
   readonly slots: ReadonlyMap<string, LiveSlot>
 }
-
-export type TimedMessage = ChatMessage & { readonly timestamp?: number; readonly isError?: boolean }
-
-export type TimelineEntry = Omit<EntryView, "model"> & { readonly model: readonly TimedMessage[] }
 
 export type BuildOptions = {
   readonly hasBlock: (name: string) => boolean
@@ -231,16 +233,16 @@ export function liveTimelineOf(snapshot: Snapshot | undefined): LiveTimeline {
     const callId = strOf(slot?.callId)
     const name = strOf(slot?.name)
     if (callId === undefined || name === undefined) continue
-    slots.set(callId, { name, status: slotStatus(slot?.status), output: strOf(slot?.output) })
+    slots.set(callId, { name, status: slotStatus(slot?.status), output: strOf(slot?.output), details: slot?.details })
   }
   return { busy: live?.run !== undefined, parts: contentParts(message?.content), slots }
 }
 
 const INPUT_KINDS = new Set(["pi.user", "xin.batch"])
 
-type Turn = { readonly key: string; readonly entries: TimelineEntry[] }
+type Turn = { readonly key: string; readonly entries: EntryView[] }
 
-function turnsOf(entries: readonly TimelineEntry[]): readonly Turn[] {
+function turnsOf(entries: readonly EntryView[]): readonly Turn[] {
   const turns: Turn[] = []
   let answered = true
   for (const entry of entries) {
@@ -257,7 +259,7 @@ function turnsOf(entries: readonly TimelineEntry[]): readonly Turn[] {
   return turns
 }
 
-function messageText(message: TimedMessage): string {
+function messageText(message: ChatMessage): string {
   return contentParts(message.content)
     .flatMap((part) => (part.kind === "text" ? [part.text] : []))
     .join("\n")
@@ -279,7 +281,7 @@ const linkTo = (threadId: number, titles: ReadonlyMap<number, string>, fallback?
   label: titles.get(threadId) ?? fallback ?? `#${threadId}`,
 })
 
-function inputItems(entry: TimelineEntry, facts: TurnFacts, titles: ReadonlyMap<number, string>): void {
+function inputItems(entry: EntryView, facts: TurnFacts, titles: ReadonlyMap<number, string>): void {
   if (entry.kind === "pi.user") {
     for (const message of entry.model) if (message.timestamp !== undefined) facts.times.push(message.timestamp)
     const text = entry.model.map(messageText).join("\n").trim()
@@ -301,7 +303,7 @@ function inputItems(entry: TimelineEntry, facts: TurnFacts, titles: ReadonlyMap<
   }
 }
 
-function callStatus(callId: string, results: ReadonlyMap<string, TimedMessage>, slots: ReadonlyMap<string, LiveSlot>, live: boolean): ToolStatus {
+function callStatus(callId: string, results: ReadonlyMap<string, ChatMessage>, slots: ReadonlyMap<string, LiveSlot>, live: boolean): ToolStatus {
   const result = results.get(callId)
   if (result !== undefined) return result.isError === true ? "error" : "done"
   const slot = slots.get(callId)
@@ -337,7 +339,7 @@ function segmentItems(turnKey: string, segments: readonly Segment[], live: boole
 
 function turnItems(turn: Turn, live: LiveTimeline | undefined, options: BuildOptions): TurnFacts {
   const facts: TurnFacts = { items: [], finished: [], started: [], messaged: [], times: [], answered: false }
-  const results = new Map<string, TimedMessage>()
+  const results = new Map<string, ChatMessage>()
   const created = new Map<string, number>()
   const calls: { readonly callId: string; readonly name: string; readonly args: Readonly<Record<string, unknown>> }[] = []
   const order: ({ readonly kind: "text"; readonly text: string } | { readonly kind: "call"; readonly callId: string })[] = []
@@ -387,6 +389,7 @@ function turnItems(turn: Turn, live: LiveTimeline | undefined, options: BuildOpt
         call: {
           ...call,
           output: result === undefined ? slots.get(call.callId)?.output : messageText(result) || undefined,
+          details: result === undefined ? slots.get(call.callId)?.details : result.details,
           status: callStatus(call.callId, results, slots, live !== undefined),
         },
       },
@@ -394,7 +397,7 @@ function turnItems(turn: Turn, live: LiveTimeline | undefined, options: BuildOpt
   })
   for (const part of live?.parts ?? []) {
     if (part.kind === "text") segments.push({ kind: "text", text: part.text, streaming: true })
-    else segments.push({ kind: "call", call: { ...part, output: undefined, status: "streaming" } })
+    else segments.push({ kind: "call", call: { ...part, output: undefined, details: undefined, status: "streaming" } })
   }
   for (const call of calls) {
     if (call.name === "thread_send") {
@@ -410,7 +413,7 @@ function turnItems(turn: Turn, live: LiveTimeline | undefined, options: BuildOpt
   return { ...facts, answered: agent }
 }
 
-export function buildTimeline(entries: readonly TimelineEntry[], live: LiveTimeline, options: BuildOptions): readonly TimelineItem[] {
+export function buildTimeline(entries: readonly EntryView[], live: LiveTimeline, options: BuildOptions): readonly TimelineItem[] {
   const turns = turnsOf(entries)
   const items: TimelineItem[] = []
   let lastDay: string | undefined
@@ -435,7 +438,12 @@ export function buildTimeline(entries: readonly TimelineEntry[], live: LiveTimel
 const sameJson = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b)
 
 const sameCall = (a: ToolCall, b: ToolCall): boolean =>
-  a.callId === b.callId && a.name === b.name && a.status === b.status && a.output === b.output && sameJson(a.args, b.args)
+  a.callId === b.callId &&
+  a.name === b.name &&
+  a.status === b.status &&
+  a.output === b.output &&
+  sameJson(a.details, b.details) &&
+  sameJson(a.args, b.args)
 
 function reuseItem(before: TimelineItem | undefined, item: TimelineItem): TimelineItem {
   if (before === undefined || before.kind !== item.kind) return item

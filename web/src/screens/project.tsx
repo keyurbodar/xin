@@ -43,7 +43,8 @@ import { expandSlash } from "../lib/slash.ts"
 import { mediaQuery } from "../lib/media.ts"
 import { navigate, param } from "../lib/router.ts"
 import { Loading, ThreadSkeleton } from "../components/ui/skeleton.tsx"
-import { Transcript, type PendingMessage } from "../components/chat/transcript.tsx"
+import { Transcript } from "../components/chat/lazy-transcript.tsx"
+import type { PendingMessage } from "../components/chat/transcript.tsx"
 import { Composer } from "../components/chat/composer.tsx"
 import { ThreadConversation } from "../components/chat/panel.tsx"
 import { ConversationTabs, type ConversationAction } from "../components/shell/conversation-tabs.tsx"
@@ -65,6 +66,7 @@ export function ProjectChat(props: {
   active: boolean
   onOpenThread: (id: number) => void
 }): JSX.Element {
+  void Transcript.preload()
   const snapshot = (): Snapshot | undefined => props.snapshot
   const [optimistic, setOptimistic] = createSignal<readonly PendingMessage[]>([])
   const [answered, setAnswered] = createSignal<readonly AnsweredView[]>([])

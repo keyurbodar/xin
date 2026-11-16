@@ -5,7 +5,7 @@ import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { parseHistoryPage, type AnsweredView, type EntryView, type RequestRow, type Snapshot } from "../../state/conversation.ts"
 import { openRequests, respondToQuestion } from "../../state/requests.ts"
 import { Loading, ThreadSkeleton } from "../ui/skeleton.tsx"
-import { Transcript } from "./transcript.tsx"
+import { Transcript } from "./lazy-transcript.tsx"
 import { SteerComposer } from "./composer.tsx"
 import { OpenQuestionCard } from "./cards.tsx"
 
@@ -16,6 +16,7 @@ export function ThreadConversation(props: {
   snapshot: Snapshot | undefined
   onOpenThread: (id: number) => void
 }): JSX.Element {
+  void Transcript.preload()
   const [answered, setAnswered] = createSignal<readonly AnsweredView[]>([])
   const [older, setOlder] = createSignal<readonly EntryView[]>([])
   const [olderBefore, setOlderBefore] = createSignal<number | undefined>(undefined)

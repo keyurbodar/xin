@@ -1,47 +1,68 @@
 import "../../src/styles/app.css"
-import { createMemo, createSignal } from "solid-js"
+import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import { trackMotion } from "../../src/lib/motion.ts"
-import type { Snapshot } from "../../src/state/conversation.ts"
-import { ReportCard, SystemNotice } from "../../src/components/chat/cards.tsx"
-import { hasBlock, registerBlock } from "../../src/components/chat/timeline/blocks-port.ts"
-import {
-  buildTimeline,
-  liveTimelineOf,
-  waitTarget,
-  type TimedMessage,
-  type TimelineEntry,
-  type TimelineLink,
-} from "../../src/components/chat/timeline/model.ts"
-import { Timeline } from "../../src/components/chat/timeline/timeline.tsx"
+import type { Attachment, ChatMessage, EntryView, Snapshot } from "../../src/state/conversation.ts"
+import type { ProjectSummary, ThreadSummary } from "../../src/state/home.ts"
+import { registerBlock } from "../../src/components/chat/blocks.tsx"
+import { Transcript, type PendingMessage } from "../../src/components/chat/transcript.tsx"
 
 type Part = Readonly<Record<string, unknown>>
 type Slot = { readonly callId: string; readonly name: string; readonly status: string; readonly output?: string }
 type Live = { readonly busy: boolean; readonly content: readonly Part[]; readonly tools: readonly Slot[] }
 
-const NOW = new Date(2026, 10, 16, 9, 30).getTime()
+const NOW = new Date().setHours(9, 30, 0, 0)
 const YESTERDAY = NOW - 24 * 3600_000
-const TITLES = new Map([
-  [19, "Docs pass"],
-  [23, "Regression tests"],
-  [31, "Release notes"],
-])
 
 let nextId = 1
 const text = (value: string): Part => ({ type: "text", text: value })
 const call = (id: string, name: string, args: Part): Part => ({ type: "toolCall", id, name, arguments: args })
-const entry = (kind: string, model: readonly TimedMessage[], data?: unknown): TimelineEntry => ({ id: nextId++, kind, model, data })
-const user = (at: number, value: string): TimelineEntry =>
-  entry("xin.batch", [], [{ id: nextId, body: { kind: "user", text: value }, clientTs: at }])
-const assistant = (at: number, content: readonly Part[]): TimelineEntry => entry("pi.assistant", [{ role: "assistant", content, timestamp: at }])
-const result = (at: number, toolCallId: string, output: string, extra: Partial<TimedMessage> = {}): TimelineEntry =>
+const entry = (kind: string, model: readonly ChatMessage[], data?: unknown): EntryView => ({ id: nextId++, kind, model, data })
+const user = (at: number, value: string, attachments: readonly Attachment[] = []): EntryView =>
+  entry("xin.batch", [], [{ id: nextId, body: { kind: "user", text: value, attachments }, clientTs: at }])
+const assistant = (at: number, content: readonly Part[]): EntryView => entry("pi.assistant", [{ role: "assistant", content, timestamp: at }])
+const result = (at: number, toolCallId: string, output: string, extra: Partial<ChatMessage> = {}): EntryView =>
   entry("pi.tool-result", [{ role: "toolResult", toolCallId, content: [text(output)], timestamp: at, ...extra }])
+
+const SHOT = "a".repeat(64)
+const canvas = document.createElement("canvas")
+canvas.width = 320
+canvas.height = 200
+canvas.getContext("2d")!.fillRect(0, 0, 320, 200)
+const shot = await new Promise<Blob>((resolve) => canvas.toBlob((blob) => resolve(blob!), "image/png"))
+const requested: string[] = []
+const urls = new Set<string>()
+const create = URL.createObjectURL.bind(URL)
+const revoke = URL.revokeObjectURL.bind(URL)
+URL.createObjectURL = (object: Blob | MediaSource) => {
+  const url = create(object)
+  urls.add(url)
+  return url
+}
+URL.revokeObjectURL = (url: string) => {
+  urls.delete(url)
+  revoke(url)
+}
+const realFetch = window.fetch.bind(window)
+Object.assign(window, {
+  requested,
+  live: () => urls.size,
+  fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+    const sha = /\/blobs\/([0-9a-f]{64})$/u.exec(url)?.[1]
+    if (sha === undefined) return realFetch(input, init)
+    requested.push(sha)
+    return sha === SHOT ? new Response(shot, { headers: { "content-type": "application/octet-stream" } }) : new Response("not found", { status: 404 })
+  },
+})
 
 const LONG =
   "The refresh path reads the stored token, checks its expiry and, when it is close, asks the provider for a new one. Two tabs could both see an expiring token and both refresh; the provider rotates on each refresh, so the slower tab saved a token that was already revoked."
 
-const history: TimelineEntry[] = [
-  user(YESTERDAY, "Audit the auth flow and fix the token refresh bug people hit after lunch."),
+const history: EntryView[] = [
+  user(YESTERDAY, "Audit the auth flow and fix the token refresh bug people hit after lunch.", [
+    { path: "/projects/auth/attachments/error.png", name: "error.png", type: "image/png", size: 2048, sha256: SHOT },
+  ]),
   assistant(YESTERDAY + 4_000, [
     text("I'll read the auth module and the session store first."),
     call("c1", "read", { path: "src/auth.ts" }),
@@ -61,7 +82,7 @@ const history: TimelineEntry[] = [
     call("c6", "delegate_task", { title: "Regression tests", task: "Add a parallel refresh regression test." }),
   ]),
   result(YESTERDAY + 70_000, "c5", "Edited src/auth.ts"),
-  entry("pi.tool-result", [{ role: "toolResult", toolCallId: "c6", content: [text("Started thread 23")], threadId: 23, timestamp: YESTERDAY + 80_000 }]),
+  entry("pi.tool-result", [{ role: "toolResult", toolCallId: "c6", content: [text("Started thread 23")], threadId: 23, details: { threadId: 23 }, timestamp: YESTERDAY + 80_000 }]),
   assistant(YESTERDAY + 87_000, [text("The fix is in, and a thread is writing the regression test. I'll report back when it lands.")]),
   entry(
     "xin.batch",
@@ -79,16 +100,42 @@ const history: TimelineEntry[] = [
   assistant(NOW - 548_000, [text("I asked Release notes to draft the changelog entry.")]),
 ]
 
-const [entries, setEntries] = createSignal<readonly TimelineEntry[]>(history)
+const thread = (id: number, title: string, status: string): ThreadSummary => ({ id, title, status, run: 1 })
+const projectWith = (releaseStatus: string): ProjectSummary => ({
+  id: "p1",
+  slug: "auth",
+  name: "Auth",
+  archived: false,
+  coordinatorId: 1,
+  threads: {
+    working: releaseStatus === "working" ? [thread(31, "Release notes", "working")] : [],
+    waiting: [],
+    completed: [thread(19, "Docs pass", "completed"), thread(23, "Regression tests", "completed"), ...(releaseStatus === "working" ? [] : [thread(31, "Release notes", "completed")])],
+    failed: [],
+    cancelled: [],
+  },
+  openRequests: 0,
+  requestsRev: 0,
+  spaces: [],
+})
+
+const [entries, setEntries] = createSignal<readonly EntryView[]>(history)
 const [live, setLive] = createSignal<Live>({ busy: false, content: [], tools: [] })
-const [working, setWorking] = createSignal<readonly TimelineLink[]>([{ threadId: 31, label: "Release notes" }])
-const [pending, setPending] = createSignal<readonly { readonly key: string; readonly text: string }[]>([])
+const [project, setProject] = createSignal(projectWith("working"))
+const [pending, setPending] = createSignal<readonly PendingMessage[]>([])
+const [older, setOlder] = createSignal<readonly EntryView[]>([])
+const [hasOlder, setHasOlder] = createSignal(false)
+let pages: EntryView[][] = []
+const sameDay = (at: number, ask: string): EntryView[] => [
+  user(at, ask),
+  assistant(at + 4_000, [text("Everything is green: the last deploy finished and every check passed. Nothing needs you.")]),
+]
 
 const snapshot = (): Snapshot => {
   const now = live()
   return {
     id: 1,
-    entries: [],
+    entries: entries(),
     before: undefined,
     docs: {
       "pi.live": now.busy
@@ -98,7 +145,7 @@ const snapshot = (): Snapshot => {
   }
 }
 
-const commit = (...added: TimelineEntry[]): void => {
+const commit = (...added: EntryView[]): void => {
   setEntries((current) => [...current, ...added])
 }
 
@@ -163,7 +210,6 @@ Object.assign(window, {
         if (!next()) clearInterval(timer)
       }, ms)
     },
-    send: (value: string) => setPending((current) => [...current, { key: `p${current.length}`, text: value }]),
     blockVisuals: () =>
       registerBlock("tool:visualize", (payload) => (
         <div data-test-block={payload.callId} class="rounded-md bg-secondary px-3 py-2 text-small text-ink-2">
@@ -171,32 +217,42 @@ Object.assign(window, {
         </div>
       )),
     longer: () => commit(assistant(NOW + 90_000, [text(LONG)])),
-    stopWaiting: () => setWorking([]),
+    stopWaiting: () => setProject(projectWith("completed")),
+    reconnect: () => setEntries((current) => structuredClone(current)),
+    frames: (count: number) => {
+      for (let index = 0; index < count; index++) setLive((current) => ({ ...current }))
+    },
+    paginate: () => {
+      const today = history.findIndex((item) => item.kind === "xin.batch" && item.id > 1)
+      pages = [history.slice(0, today), sameDay(NOW - 3 * 3600_000, "Check the deploy status."), sameDay(NOW - 2 * 3600_000, "Is staging healthy?")]
+      setEntries(history.slice(today))
+      setHasOlder(true)
+    },
   },
 })
 
 function App() {
-  const items = createMemo(() => [
-    ...buildTimeline(entries(), liveTimelineOf(snapshot()), {
-      hasBlock: (name) => hasBlock(`tool:${name}`),
-      titles: TITLES,
-      now: NOW,
-    }),
-    ...pending().map((message) => ({ kind: "owner" as const, key: message.key, text: message.text, attachments: [] })),
-  ])
-  const waiting = () => waitTarget({ live: liveTimelineOf(snapshot()), asking: false, threads: working() })
+  const send = (text: string): void => {
+    setPending((current) => [...current, { key: `p${current.length}`, text, at: NOW, attachments: [] }])
+  }
   return (
     <main class="flex h-screen flex-col bg-bg">
-      <Timeline
-        items={items()}
-        waiting={waiting()}
-        renderPass={(item) =>
-          item.kind === "report" ? (
-            <ReportCard row={item.row} onOpenThread={() => undefined} />
-          ) : (
-            <SystemNotice text={item.kind === "notice" ? item.text : item.kind} />
-          )
-        }
+      <Transcript
+        snapshot={snapshot()}
+        project={project()}
+        optimistic={pending()}
+        older={older()}
+        hasOlder={hasOlder()}
+        requests={[]}
+        answered={[]}
+        onOpenThread={() => undefined}
+        onAnswer={async () => undefined}
+        onRetry={async () => undefined}
+        onLoadOlder={async () => {
+          const page = pages.pop() ?? []
+          setOlder((current) => [...page, ...current])
+          setHasOlder(pages.length > 0)
+        }}
       />
       <form
         class="mx-auto mb-4 flex w-full max-w-[var(--w-column)] px-6"
@@ -204,7 +260,7 @@ function App() {
           event.preventDefault()
           const field = event.currentTarget.elements.namedItem("message")
           if (!(field instanceof HTMLTextAreaElement) || field.value.trim() === "") return
-          setPending((current) => [...current, { key: `p${current.length}`, text: field.value }])
+          send(field.value)
           field.value = ""
         }}
       >

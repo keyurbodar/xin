@@ -10,22 +10,11 @@ import {
   type FailureData,
   type RequestRow,
   type ToolCallView,
-  type ToolResultView,
 } from "../../state/conversation.ts"
-import { ToolRenderer } from "../../plugins/slots.tsx"
-import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
+import type { ThreadSummary } from "../../state/home.ts"
 import { SentAttachments } from "../composer/attachment-card.tsx"
-import { Markdown } from "./markdown.tsx"
-import {
-  FailureCard,
-  JobCard,
-  OpenQuestionCard,
-  QuestionInboundCard,
-  ReportCard,
-  SystemNotice,
-  ThreadFan,
-} from "./cards.tsx"
-import { ProjectGlyph } from "./project-glyph.tsx"
+import { FailureCard, JobCard, OpenQuestionCard, QuestionInboundCard, ReportCard, SystemNotice } from "./cards.tsx"
+import type { PassItem } from "./timeline/model.ts"
 
 type EntryItemBody =
   | { readonly kind: "owner"; readonly text: string; readonly attachments: readonly Attachment[] }
@@ -93,18 +82,12 @@ export function itemsOf(entries: readonly EntryView[]): readonly EntryItem[] {
 }
 
 export type ItemContext = {
-  readonly project: ProjectSummary | undefined
   readonly threads: readonly ThreadSummary[]
-  readonly links: ReadonlyMap<string, number>
-  readonly results?: ReadonlyMap<string, ToolResultView>
   readonly requests: readonly RequestRow[]
-  readonly density: "chat" | "panel"
   readonly onOpenThread: (id: number) => void
   readonly onAnswer: (request: RequestRow, answer: string) => Promise<void>
   readonly onRetry: (entryId: number) => Promise<void>
 }
-
-const NO_LINKS: ReadonlyMap<string, number> = new Map()
 
 export function OwnerBubble(props: {
   text: string
@@ -162,109 +145,31 @@ function QuestionItem(props: {
   )
 }
 
-/** One item of a transcript, shared by the project chat and a thread's own body. */
-function EntryItemView(props: { item: EntryItem; context: ItemContext }): JSX.Element {
-  const glyph = (): JSX.Element => (
-    <Show when={props.context.project} fallback={<span class="h-6 w-6 shrink-0" />}>
-      {(project) => <ProjectGlyph slug={project().slug} name={project().name} goal={project().goal} class="mt-0.5" />}
-    </Show>
-  )
-  const fan = (calls: readonly ToolCallView[]): JSX.Element => (
-    <ThreadFan
-      calls={calls}
-      threads={props.context.threads}
-      links={props.context.links ?? NO_LINKS}
-      onOpenThread={props.context.onOpenThread}
-    />
-  )
-
+/** A card the timeline passes through: a thread's report, question or job, a failed turn, or a notice. */
+export function EntryCard(props: { item: PassItem; context: ItemContext }): JSX.Element {
   const item = props.item
   switch (item.kind) {
-    case "owner":
-      return <OwnerBubble text={item.text} attachments={item.attachments} density={props.context.density} />
-    case "assistant":
-      return (
-        <div class="flex gap-3">
-          {glyph()}
-          <div class="flex min-w-0 flex-1 flex-col gap-3">
-            <Show when={props.context.density === "chat"}>
-              <div class="font-mono text-2xs leading-none text-icon">Coordinator</div>
-            </Show>
-            <Show when={item.text !== ""}>
-              <Markdown small={props.context.density === "panel"} text={item.text} />
-            </Show>
-            <Show when={item.calls.length > 0}>{fan(item.calls)}</Show>
-          </div>
-        </div>
-      )
     case "report":
-      return (
-        <div class="flex gap-3">
-          {glyph()}
-          <div class="min-w-0 flex-1">
-            <ReportCard row={item.row} onOpenThread={props.context.onOpenThread} />
-          </div>
-        </div>
-      )
+      return <ReportCard row={item.row} onOpenThread={props.context.onOpenThread} />
     case "question":
       return (
-        <div class="flex gap-3">
-          {glyph()}
-          <div class="min-w-0 flex-1">
-            <QuestionItem
-              row={item.row}
-              threads={props.context.threads}
-              requests={props.context.requests}
-              onOpenThread={props.context.onOpenThread}
-              onAnswer={props.context.onAnswer}
-            />
-          </div>
-        </div>
+        <QuestionItem
+          row={item.row}
+          threads={props.context.threads}
+          requests={props.context.requests}
+          onOpenThread={props.context.onOpenThread}
+          onAnswer={props.context.onAnswer}
+        />
       )
     case "job":
-      return (
-        <div class="flex gap-3">
-          {glyph()}
-          <div class="min-w-0 flex-1">
-            <JobCard row={item.row} onOpenThread={props.context.onOpenThread} />
-          </div>
-        </div>
-      )
+      return <JobCard row={item.row} onOpenThread={props.context.onOpenThread} />
     case "failure":
       return <FailureCard failure={item.failure} onRetry={() => props.context.onRetry(item.entryId)} />
     case "notice":
       return <SystemNotice text={item.text} />
-    case "tool": {
-      const result = (): ToolResultView | undefined =>
-        item.call.id === undefined ? undefined : props.context.results?.get(item.call.id)
-      return (
-        <ToolRenderer
-          class="pl-9"
-          call={{
-            name: item.call.name,
-            args: item.call.arguments,
-            output: result()?.output,
-            details: result()?.details,
-            status: result() === undefined ? "running" : result()?.isError === true ? "error" : "done",
-          }}
-        />
-      )
-    }
     default: {
       const _exhaustive: never = item
       return _exhaustive
     }
   }
-}
-
-export function EntryList(props: { items: readonly EntryItem[]; context: ItemContext }): JSX.Element {
-  return (
-    <For each={props.items}>
-      {(item) => (
-        <div data-entry={item.entryId} class="contents">
-          <EntryItemView item={item} context={props.context} />
-        </div>
-      )}
-    </For>
-  )
 }

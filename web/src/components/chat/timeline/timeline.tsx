@@ -2,9 +2,9 @@ import { ArrowDown } from "lucide-solid"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
 import { count } from "../../../lib/format.ts"
 import { OwnerBubble } from "../entries.tsx"
-import { Markdown, renderBlock } from "./blocks-port.ts"
+import { Markdown } from "../markdown.tsx"
 import { DateDivider, plainLink, TurnSummary, WaitingLine, type RenderLink } from "./dividers.tsx"
-import { reuseItems, type PassItem, type TimelineItem, type WaitTarget } from "./model.ts"
+import { reuseItems, type PassItem, type TimelineItem, type ToolCall, type WaitTarget } from "./model.ts"
 import { ToolGroup } from "./tool-group.tsx"
 
 const PINNED_WITHIN = 32
@@ -26,6 +26,7 @@ function ItemView(props: {
   open: (key: string, live: boolean) => boolean
   onOpenChange: (key: string, open: boolean) => void
   renderPass: (item: PassItem) => JSX.Element
+  renderTool: (call: ToolCall) => JSX.Element
   renderLink: RenderLink
 }): JSX.Element {
   const first = untrack(props.item)
@@ -68,11 +69,7 @@ function ItemView(props: {
     }
     case "block": {
       const item = follow(props.item, first)
-      const block = (): JSX.Element => {
-        const { name, callId, args, output, status } = item().call
-        return renderBlock("tool", { name, callId, args: { ...args }, ...(output === undefined ? {} : { output }), status })
-      }
-      return <div data-block={item().call.callId}>{block()}</div>
+      return <div data-block={item().call.callId}>{props.renderTool(item().call)}</div>
     }
     case "summary": {
       const item = follow(props.item, first)
@@ -105,10 +102,16 @@ export function Timeline(props: {
   items: readonly TimelineItem[]
   waiting?: WaitTarget | undefined
   renderPass: (item: PassItem) => JSX.Element
+  renderTool: (call: ToolCall) => JSX.Element
   renderLink?: RenderLink | undefined
+  header?: JSX.Element
+  footer?: JSX.Element
+  hasOlder?: boolean | undefined
+  onLoadOlder?: (() => Promise<void>) | undefined
 }): JSX.Element {
   let scroller!: HTMLDivElement
   let content!: HTMLDivElement
+  const [loadingOlder, setLoadingOlder] = createSignal(false)
   const [choice, setChoice] = createSignal<ReadonlyMap<string, boolean>>(new Map())
   const [pinned, setPinned] = createSignal(true)
   const [seen, setSeen] = createSignal<{ readonly keys: ReadonlySet<string>; readonly revision: number }>()
@@ -144,7 +147,26 @@ export function Timeline(props: {
 
   const atEnd = (): boolean => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= PINNED_WITHIN
   let lastTop = 0
+  let anchor: { readonly element: Element; readonly offset: number } | undefined
+  const offsetOf = (element: Element): number => element.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+  const markAnchor = (): void => {
+    const top = scroller.getBoundingClientRect().top
+    const element = [...content.querySelectorAll(":scope > [data-item]")].find(
+      (candidate) => candidate.getBoundingClientRect().bottom > top,
+    )
+    anchor = element === undefined ? undefined : { element, offset: offsetOf(element) }
+  }
+  const holdAnchor = (): void => {
+    if (anchor === undefined || !anchor.element.isConnected) return markAnchor()
+    const shift = offsetOf(anchor.element) - anchor.offset
+    if (Math.abs(shift) >= 0.5) {
+      scroller.scrollTop = Math.round(scroller.scrollTop + shift)
+      lastTop = scroller.scrollTop
+    }
+    markAnchor()
+  }
   const settle = (): void => {
+    markAnchor()
     const top = scroller.scrollTop
     const now = atEnd() || (pinned() && top >= lastTop)
     lastTop = top
@@ -163,10 +185,28 @@ export function Timeline(props: {
     scroller.focus({ preventScroll: true })
   }
 
+  const loadOlder = async (): Promise<void> => {
+    const load = props.onLoadOlder
+    if (load === undefined || loadingOlder()) return
+    setLoadingOlder(true)
+    const fromEnd = scroller.scrollHeight - scroller.scrollTop
+    try {
+      await load()
+      requestAnimationFrame(() => {
+        scroller.scrollTop = Math.round(scroller.scrollHeight - fromEnd)
+        lastTop = scroller.scrollTop
+        markAnchor()
+      })
+    } finally {
+      setLoadingOlder(false)
+    }
+  }
+
   onMount(() => {
     toEnd()
     const observer = new ResizeObserver(() => {
       if (pinned()) toEnd()
+      else holdAnchor()
     })
     observer.observe(content)
     onCleanup(() => observer.disconnect())
@@ -179,20 +219,38 @@ export function Timeline(props: {
         tabindex="-1"
         data-timeline=""
         onScroll={settle}
-        class="min-h-0 flex-1 overflow-y-auto outline-none [overflow-anchor:auto]"
+        class="min-h-0 flex-1 overflow-y-auto outline-none [overflow-anchor:none]"
       >
         <div ref={content} class="mx-auto flex w-full max-w-[var(--w-column)] flex-col gap-4 px-6 pb-6 pt-7 text-reading">
+          <Show when={props.hasOlder === true}>
+            <div class="flex justify-center pb-1">
+              <button
+                type="button"
+                data-load-older=""
+                disabled={loadingOlder()}
+                onClick={() => void loadOlder()}
+                class="im-press im-hover im-focus h-[var(--h-control-sm)] rounded-sm px-2.5 text-small text-ink-2 shadow-[var(--shadow-ring)] outline-none hover:bg-hover disabled:text-icon"
+              >
+                {loadingOlder() ? "Loading" : "Load older messages"}
+              </button>
+            </div>
+          </Show>
+          {props.header}
           <For each={keys()}>
             {(key) => (
-              <ItemView
-                item={() => byKey().get(key)}
-                open={(group, live) => choice().get(group) ?? live}
-                onOpenChange={(group, open) => setChoice((current) => new Map(current).set(group, open))}
-                renderPass={props.renderPass}
-                renderLink={props.renderLink ?? plainLink}
-              />
+              <div data-item={key} class="min-w-0">
+                <ItemView
+                  item={() => byKey().get(key)}
+                  open={(group, live) => choice().get(group) ?? live}
+                  onOpenChange={(group, open) => setChoice((current) => new Map(current).set(group, open))}
+                  renderPass={props.renderPass}
+                  renderTool={props.renderTool}
+                  renderLink={props.renderLink ?? plainLink}
+                />
+              </div>
             )}
           </For>
+          {props.footer}
           <Show when={props.waiting}>
             {(target) => <WaitingLine target={target()} renderLink={props.renderLink ?? plainLink} />}
           </Show>

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import type { Snapshot } from "../../../state/conversation.ts"
+import type { ChatMessage, EntryView, Snapshot } from "../../../state/conversation.ts"
 import {
   buildTimeline,
   dayLabel,
@@ -11,8 +11,6 @@ import {
   waitPhrase,
   waitTarget,
   type LiveTimeline,
-  type TimedMessage,
-  type TimelineEntry,
   type ToolCall,
 } from "./model.ts"
 
@@ -20,13 +18,13 @@ const NOW = new Date(2026, 10, 16, 12, 0).getTime()
 const IDLE: LiveTimeline = { busy: false, parts: [], slots: new Map() }
 const OPTIONS = { hasBlock: () => false, titles: new Map([[7, "Docs pass"]]), now: NOW }
 
-const tool = (name: string, status: ToolCall["status"] = "done"): ToolCall => ({ callId: name, name, args: {}, output: undefined, status })
-const entry = (id: number, kind: string, model: readonly TimedMessage[], data?: unknown): TimelineEntry => ({ id, kind, model, data })
-const ask = (id: number, text: string, at: number): TimelineEntry =>
+const tool = (name: string, status: ToolCall["status"] = "done"): ToolCall => ({ callId: name, name, args: {}, output: undefined, details: undefined, status })
+const entry = (id: number, kind: string, model: readonly ChatMessage[], data?: unknown): EntryView => ({ id, kind, model, data })
+const ask = (id: number, text: string, at: number): EntryView =>
   entry(id, "xin.batch", [], [{ body: { kind: "user", text }, clientTs: at }])
-const answer = (id: number, at: number, ...content: unknown[]): TimelineEntry =>
+const answer = (id: number, at: number, ...content: unknown[]): EntryView =>
   entry(id, "pi.assistant", [{ role: "assistant", content, timestamp: at }])
-const output = (id: number, at: number, toolCallId: string, text: string, isError = false): TimelineEntry =>
+const output = (id: number, at: number, toolCallId: string, text: string, isError = false): EntryView =>
   entry(id, "pi.tool-result", [{ role: "toolResult", toolCallId, content: [{ type: "text", text }], timestamp: at, isError }])
 const call = (id: string, name: string, args: Record<string, unknown> = {}) => ({ type: "toolCall", id, name, arguments: args })
 
@@ -98,7 +96,7 @@ test("the live generation streams into the same keys it commits under", () => {
   const live: LiveTimeline = {
     busy: true,
     parts: [{ kind: "text", text: "Reading" }, { kind: "call", callId: "b", name: "bash", args: { command: "bun" } }],
-    slots: new Map([["a", { name: "read", status: "running", output: "partial" }]]),
+    slots: new Map([["a", { name: "read", status: "running", output: "partial", details: undefined }]]),
   }
   const streaming = buildTimeline(before, live, OPTIONS)
   expect(streaming.map((item) => [item.kind, item.key])).toEqual([
@@ -145,12 +143,12 @@ test("the live doc is read into parts and slots", () => {
   const live = liveTimelineOf(snapshot)
   expect(live.busy).toBe(true)
   expect(live.parts).toEqual([{ kind: "text", text: "Hi there" }, { kind: "call", callId: "x", name: "read", args: { path: "a" } }])
-  expect(live.slots.get("y")).toEqual({ name: "bash", status: "pending", output: undefined })
+  expect(live.slots.get("y")).toEqual({ name: "bash", status: "pending", output: undefined, details: undefined })
 })
 
 test("the agent waits on the person first, then a running tool, then working threads", () => {
   const threads = [{ threadId: 7, label: "Docs pass" }]
-  const running: LiveTimeline = { busy: true, parts: [], slots: new Map([["a", { name: "bash", status: "running", output: undefined }]]) }
+  const running: LiveTimeline = { busy: true, parts: [], slots: new Map([["a", { name: "bash", status: "running", output: undefined, details: undefined }]]) }
   expect(waitTarget({ live: running, asking: true, threads })).toEqual({ kind: "person" })
   expect(waitTarget({ live: running, asking: false, threads })).toEqual({ kind: "tool", name: "bash" })
   expect(waitTarget({ live: { ...running, parts: [{ kind: "text", text: "x" }] }, asking: false, threads })).toBeUndefined()
@@ -198,4 +196,18 @@ test("a streamed token rebuilds only the item it lands in", () => {
   const groups = finished.filter((item) => item.kind === "tools")
   const before = next.filter((item) => item.kind === "tools")
   expect(groups[0]).toBe(before[0])
+})
+
+test("a re-parsed snapshot with equal details keeps every item", () => {
+  const turn = (details: unknown) => [
+    ask(1, "Delegate it", NOW - 9_000),
+    answer(2, NOW - 8_000, call("a", "delegate_task", { title: "Docs" })),
+    entry(3, "pi.tool-result", [{ role: "toolResult", toolCallId: "a", content: [{ type: "text", text: "Started" }], details, timestamp: NOW - 7_000 }]),
+  ]
+  const options = { ...OPTIONS, hasBlock: (name: string) => name === "delegate_task" }
+  const first = buildTimeline(turn({ threadId: 7 }), IDLE, options)
+  const again = reuseItems(first, buildTimeline(turn({ threadId: 7 }), IDLE, options))
+  expect(again.every((item, index) => item === first[index])).toBe(true)
+  const moved = reuseItems(again, buildTimeline(turn({ threadId: 8 }), IDLE, options))
+  expect(moved.filter((item, index) => item !== again[index]).map((item) => item.kind)).toEqual(["block"])
 })
