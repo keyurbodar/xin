@@ -15,7 +15,7 @@ const threads: readonly ThreadSummary[] = [
 const project: ProjectSummary = {
   id: "p1",
   slug: "ingle",
-  name: "Ingle",
+  name: new URLSearchParams(location.search).get("project") ?? "Ingle",
   archived: false,
   coordinatorId: 1,
   threads: { working: [], waiting: [], completed: [], failed: [], cancelled: [] },

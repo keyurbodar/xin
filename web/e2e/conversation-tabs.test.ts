@@ -114,11 +114,11 @@ test("conversation-tabs.tsx imports no Ark", async () => {
 })
 
 test("at 390 the header fits the window and the current crumb keeps its width clear of the actions button, before and after the menu elements load", async () => {
-  const page = await harness.open("conversation-tabs", { width: 390, search: "#/p/ingle/t/14" })
+  const page = await harness.open("conversation-tabs", { width: 390, search: "?project=Ingle%20personal%20agent%20backend#/p/ingle/t/14" })
   const look = () =>
     page.evaluate(() => {
       const crumb = document.querySelector("nav[aria-label=Breadcrumb] a[aria-current=page]")?.getBoundingClientRect()
-      const actions = document.querySelector("button[aria-label='Ingle actions']")?.getBoundingClientRect()
+      const actions = document.querySelector("button[aria-label$=' actions']")?.getBoundingClientRect()
       return {
         overflow: document.documentElement.scrollWidth - window.innerWidth,
         width: Math.round(crumb?.width ?? 0),
