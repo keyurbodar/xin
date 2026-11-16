@@ -42,6 +42,7 @@
   --dur-grow: 200ms;
   --dur-grow-exit: 140ms;
   --dur-swap: 200ms;
+  --dur-crossfade: 150ms;
   --dur-morph: 160ms;
   --dur-arrive: 200ms;
   --dur-roll: 200ms;
@@ -313,6 +314,10 @@
 }
 .im-swap-icon > * { transition-duration: var(--dur-morph); }
 .im-swap-icon > :not([data-active]) { transform: scale(.6); }
+
+/* Lightbox image switch: a plain opacity crossfade, so reduced motion keeps it as is. */
+.im-crossfade > * { transition: opacity var(--dur-crossfade) var(--ease-out); }
+.im-crossfade > :not([data-active]) { opacity: 0; pointer-events: none; }
 
 /* ---------- 10. Signal (3×3 D-Grid) with dot-level state morph ---------- */
 
