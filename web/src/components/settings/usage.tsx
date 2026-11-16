@@ -1,3 +1,4 @@
+import "@ui-sdk/web/segmented-control"
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { money } from "../../lib/format.ts"
 import {
@@ -10,9 +11,9 @@ import {
   type UsageDay,
   type UsageSummary,
 } from "../../state/settings.ts"
-import { Button, Empty, Failure, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
+import { Button, Empty, Failure, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph, type GlyphName } from "../extensions/glyph.tsx"
-import { Group, Saved } from "./parts.tsx"
+import { Card, Group, Row as SettingRow, Saved } from "./parts.tsx"
 
 type Recorded = Extract<UsageSummary, { readonly recorded: true }>
 type Range = "7d" | "month" | "prev"
@@ -65,30 +66,34 @@ export function Usage(): JSX.Element {
   }
 
   return (
-    <div class="flex max-w-[900px] flex-col gap-6">
+    <>
       <div class="flex flex-wrap items-center gap-2">
-        <span class="label">Usage + cost</span>
-        <span class="text-sm text-ink-3">Billed by day, in UTC</span>
+        <span class="text-small text-ink-3">Billed by day, in UTC</span>
         <div class="ml-auto flex items-center gap-1">
-          <For each={RANGES}>
-            {(entry) => (
-              <button
-                type="button"
-                onClick={() => setRange(entry.key)}
-                class="rounded-sm px-2 py-1 text-sm"
-                classList={{
-                  "bg-secondary text-ink": range() === entry.key,
-                  "text-ink-3 hover:text-ink": range() !== entry.key,
-                }}
-              >
-                {entry.label}
-              </button>
-            )}
-          </For>
+          <ui-segmented-control
+            aria-label="Range"
+            prop:value={range()}
+            on:valuechange={(event) => {
+              const next = RANGES.find((entry) => entry.key === event.detail.value)
+              if (next !== undefined) setRange(next.key)
+            }}
+            class="flex h-[var(--h-control-sm)] items-center gap-0.5 rounded-sm bg-secondary p-0.5 shadow-ring"
+          >
+            <For each={RANGES}>
+              {(entry) => (
+                <ui-segmented-control-item
+                  value={entry.key}
+                  class="flex h-full cursor-default items-center rounded-xs px-2 text-small text-ink-3 outline-none transition-colors duration-100 focus-visible:shadow-[0_0_0_2px_var(--color-primary-soft)] hover:text-ink data-[checked]:bg-card data-[checked]:text-ink data-[checked]:shadow-ring"
+                >
+                  {entry.label}
+                </ui-segmented-control-item>
+              )}
+            </For>
+          </ui-segmented-control>
           <button
             type="button"
             onClick={() => setTable((shown) => !shown)}
-            class="rounded-sm px-2 py-1 text-sm text-ink-3 hover:text-ink"
+            class="im-press im-hover h-[var(--h-control-sm)] rounded-sm px-2 text-small text-ink-3"
           >
             {table() ? "Chart" : "Table"}
           </button>
@@ -118,7 +123,7 @@ export function Usage(): JSX.Element {
           const label = (): string => RANGES.find((entry) => entry.key === range())?.label ?? ""
           return (
             <>
-              <div class="grid grid-cols-2 overflow-hidden rounded-md border border-line-1 md:grid-cols-4">
+              <div class="grid grid-cols-2 overflow-hidden rounded-lg shadow-ring sm:grid-cols-4">
                 <Kpi label={`Spend · ${label()}`} value={money(spent())} detail="Model and tool cost" />
                 <Kpi label="Tokens" value={formatTokens(tokens())} detail="In this range" />
                 <Kpi label="Models used" value={String(summary().byModel.length)} detail="In this home" />
@@ -138,9 +143,7 @@ export function Usage(): JSX.Element {
                 </Show>
               </Group>
 
-              <div class="grid gap-6 lg:grid-cols-2">
-                <div class="min-w-0">
-                  <Group title="By project" detail="Sorted by cost">
+              <Group title="By project" detail="Sorted by cost">
                     <UsageTable
                       tokens={true}
                       empty="Projects appear here once they run."
@@ -157,10 +160,8 @@ export function Usage(): JSX.Element {
                           }),
                         )}
                     />
-                  </Group>
-                </div>
+              </Group>
 
-                <div class="min-w-0">
                   <Group title="By model" detail="Sorted by cost">
                     <UsageTable
                       empty="No model usage is recorded."
@@ -173,8 +174,6 @@ export function Usage(): JSX.Element {
                       }))}
                     />
                   </Group>
-                </div>
-              </div>
 
               <Group title="By tool" detail="Sorted by cost">
                 <UsageTable
@@ -200,16 +199,16 @@ export function Usage(): JSX.Element {
           )
         }}
       </Show>
-    </div>
+    </>
   )
 }
 
 function Kpi(props: { label: string; value: string; detail: string }): JSX.Element {
   return (
-    <div class="border-b border-r border-line-1 px-3.5 py-3 last:border-r-0">
-      <span class="label">{props.label}</span>
-      <span class="mt-2 block text-2xl font-light tracking-[-0.02em]">{props.value}</span>
-      <span class="mt-0.5 block text-xs text-ink-3">{props.detail}</span>
+    <div class="border-b border-r border-line-1 px-4 py-3 last:border-r-0">
+      <span class="block text-mini font-title text-ink-3">{props.label}</span>
+      <span class="mt-1 block text-title font-title tabular-nums text-ink">{props.value}</span>
+      <span class="mt-0.5 block text-mini text-ink-3">{props.detail}</span>
     </div>
   )
 }
@@ -220,17 +219,17 @@ function SpendChart(props: { days: readonly UsageDay[]; alert: number }): JSX.El
   const top = (): number => Math.max(0.01, Math.ceil(Math.max(peak(), props.alert) * 100) / 100)
   const alertAt = (): number => (1 - props.alert / top()) * 100
   return (
-    <Panel>
+    <Card>
       <Show
         when={peak() > 0 || props.alert > 0}
         fallback={
-          <p class="px-3.5 py-6 text-sm text-ink-3">
+          <p class="px-4 py-6 text-small text-ink-3">
             No spend in this range. The models that answered report no cost, so only tokens are recorded.
           </p>
         }
       >
-      <div class="flex gap-3 px-3.5 pt-3">
-        <div class="flex h-[132px] w-9 shrink-0 flex-col justify-between pb-5 text-right font-mono text-2xs text-icon">
+      <div class="flex gap-3 px-4 pt-3">
+        <div class="flex h-[132px] w-9 shrink-0 flex-col justify-between pb-5 text-right font-mono text-micro text-icon">
           <span>{money(top())}</span>
           <span>{money(top() / 2)}</span>
           <span>{money(0)}</span>
@@ -271,7 +270,7 @@ function SpendChart(props: { days: readonly UsageDay[]; alert: number }): JSX.El
               )}
             </For>
           </div>
-          <div class="mt-1 flex items-center justify-between font-mono text-2xs text-icon">
+          <div class="mt-1 flex items-center justify-between font-mono text-micro text-icon">
             <span>{props.days[0]?.day.slice(5)}</span>
             <span>{props.days.at(-1)?.day.slice(5)}</span>
           </div>
@@ -281,9 +280,9 @@ function SpendChart(props: { days: readonly UsageDay[]; alert: number }): JSX.El
                 class="pointer-events-none absolute bottom-[calc(100%-132px)] z-10 -translate-x-1/2 rounded-sm bg-panel px-2 py-1.5 shadow-[var(--shadow-popover)]"
                 style={{ left: `${((index() + 0.5) / props.days.length) * 100}%` }}
               >
-                <span class="block font-mono text-2xs text-ink-3">{props.days[index()]?.day}</span>
-                <span class="block text-sm text-ink">{money(props.days[index()]?.spend ?? 0)}</span>
-                <span class="block text-2xs text-ink-3">{formatTokens(props.days[index()]?.tokens ?? 0)} tokens</span>
+                <span class="block font-mono text-micro text-ink-3">{props.days[index()]?.day}</span>
+                <span class="block text-small text-ink">{money(props.days[index()]?.spend ?? 0)}</span>
+                <span class="block text-micro text-ink-3">{formatTokens(props.days[index()]?.tokens ?? 0)} tokens</span>
               </div>
             )}
           </Show>
@@ -291,7 +290,7 @@ function SpendChart(props: { days: readonly UsageDay[]; alert: number }): JSX.El
       </div>
       </Show>
       <div class="h-3" />
-    </Panel>
+    </Card>
   )
 }
 
@@ -376,64 +375,52 @@ function Limits(props: { summary: Recorded }): JSX.Element {
   }
 
   return (
-    <Panel>
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 pb-2.5 pt-3.5">
-        <span class="text-sm font-medium text-ink">Monthly cap</span>
-        <span class="text-xs text-ink-3">Threads pause at the cap and ask you</span>
-        <div class="ml-auto flex flex-wrap items-center gap-2">
-          <span class="font-mono text-xs text-ink-2">{capLabel()}</span>
-          <DollarField
-            label="Monthly cap in USD"
-            value={capText()}
-            onInput={setCapText}
-            onEnter={() => void saveCap()}
-          />
-          <Button size="sm" variant="primary" disabled={capBusy()} onClick={() => void saveCap()}>
-            {capBusy() ? "Saving" : "Set"}
-          </Button>
-          <Show when={cap() !== null}>
-            <Button size="sm" variant="quiet" disabled={capBusy()} onClick={() => void clearCap()}>
-              Clear
+    <Group title="Limits" detail="Spend is checked against these as it happens">
+      <Card>
+        <SettingRow title="Monthly cap" detail="Threads pause at the cap and ask you">
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <span class="font-mono text-mini text-ink-2">{capLabel()}</span>
+            <DollarField
+              label="Monthly cap in USD"
+              value={capText()}
+              onInput={setCapText}
+              onEnter={() => void saveCap()}
+            />
+            <Button size="sm" variant="primary" disabled={capBusy()} onClick={() => void saveCap()}>
+              {capBusy() ? "Saving" : "Set"}
             </Button>
-          </Show>
-          <Saved show={capSaved()} />
-        </div>
-      </div>
-
-      <div class="px-3.5 pb-3">
-        <div class="relative h-1.5 rounded-2xs bg-line-1">
-          <div class="h-full rounded-2xs bg-ink-2" style={{ width: `${share()}%` }} />
-          <Show when={cap() !== null}>
-            <span class="absolute -top-0.5 -bottom-0.5 w-px bg-ink-3" style={{ left: "80%" }} aria-hidden="true" />
-          </Show>
-        </div>
-      </div>
-
-      <Show when={capError()}>
-        {(message) => <p class="px-3.5 pb-3 text-xs text-failed">{message()}</p>}
-      </Show>
-
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line-1 px-3.5 py-3">
-        <span class="text-sm font-medium text-ink">Daily alert</span>
-        <span class="text-xs text-ink-3">The dashed line on the daily chart; $0 turns it off</span>
-        <div class="ml-auto flex flex-wrap items-center gap-2">
-          <DollarField
-            label="Daily alert in USD"
-            value={alertText()}
-            onInput={setAlertText}
-            onEnter={() => void saveAlert()}
-          />
-          <Button size="sm" variant="ghost" disabled={alertBusy()} onClick={() => void saveAlert()}>
-            {alertBusy() ? "Saving" : "Save"}
-          </Button>
-          <Saved show={alertSaved()} />
-        </div>
-      </div>
-
-      <Show when={alertError()}>
-        {(message) => <p class="px-3.5 pb-3 text-xs text-failed">{message()}</p>}
-      </Show>
-    </Panel>
+            <Show when={cap() !== null}>
+              <Button size="sm" variant="quiet" disabled={capBusy()} onClick={() => void clearCap()}>
+                Clear
+              </Button>
+            </Show>
+            <Saved show={capSaved()} />
+          </div>
+          <div class="relative mt-3 h-1.5 w-full rounded-full bg-line-1">
+            <div class="h-full rounded-full bg-ink-2" style={{ width: `${share()}%` }} />
+            <Show when={cap() !== null}>
+              <span class="absolute -top-0.5 -bottom-0.5 w-px bg-ink-3" style={{ left: "80%" }} aria-hidden="true" />
+            </Show>
+          </div>
+          <Show when={capError()}>{(message) => <p class="mt-2 w-full text-mini text-failed">{message()}</p>}</Show>
+        </SettingRow>
+        <SettingRow title="Daily alert" detail="The dashed line on the daily chart; $0 turns it off">
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <DollarField
+              label="Daily alert in USD"
+              value={alertText()}
+              onInput={setAlertText}
+              onEnter={() => void saveAlert()}
+            />
+            <Button size="sm" variant="ghost" disabled={alertBusy()} onClick={() => void saveAlert()}>
+              {alertBusy() ? "Saving" : "Save"}
+            </Button>
+            <Saved show={alertSaved()} />
+          </div>
+          <Show when={alertError()}>{(message) => <p class="mt-2 w-full text-mini text-failed">{message()}</p>}</Show>
+        </SettingRow>
+      </Card>
+    </Group>
   )
 }
 
@@ -444,21 +431,23 @@ function DollarField(props: {
   onEnter: () => void
 }): JSX.Element {
   return (
-    <label class="flex h-8 w-[104px] items-center gap-1 rounded-sm border border-line-2 bg-bg px-2 focus-within:border-line-3">
-      <span class="font-mono text-sm text-ink-3" aria-hidden="true">$</span>
-      <input
-        type="text"
-        inputmode="decimal"
-        aria-label={props.label}
-        placeholder="0"
-        value={props.value}
-        onInput={(event) => props.onInput(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") props.onEnter()
-        }}
-        class="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink outline-none placeholder:text-icon"
-      />
-    </label>
+    <ui-input-group class="flex h-[var(--h-control)] w-[104px] items-center gap-1 rounded-sm bg-bg px-2 shadow-ring focus-within:shadow-[0_0_0_1px_var(--color-primary),0_0_0_3px_var(--color-primary-soft)]">
+      <span class="font-mono text-small text-ink-3" aria-hidden="true">$</span>
+      <ui-input class="flex min-w-0 flex-1">
+        <input
+          type="text"
+          inputmode="decimal"
+          aria-label={props.label}
+          placeholder="0"
+          value={props.value}
+          onInput={(event) => props.onInput(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") props.onEnter()
+          }}
+          class="min-w-0 flex-1 bg-transparent font-mono text-small text-ink outline-none placeholder:text-icon"
+        />
+      </ui-input>
+    </ui-input-group>
   )
 }
 
@@ -473,27 +462,27 @@ function usdOf(text: string): number | undefined {
 function DayTable(props: { days: readonly UsageDay[] }): JSX.Element {
   const shown = (): readonly UsageDay[] => props.days.filter((day) => day.spend > 0 || day.tokens > 0)
   return (
-    <Panel>
-      <div class="grid grid-cols-[minmax(0,1fr)_72px_80px] items-center gap-2 border-b border-line-1 px-3.5 py-2">
+    <Card>
+      <div class="grid grid-cols-[minmax(0,1fr)_72px_80px] items-center gap-2 px-4 py-2">
         <span class="label">Day</span>
         <span class="label text-right">Tokens</span>
         <span class="label text-right">Spend</span>
       </div>
       <Show
         when={shown().length > 0}
-        fallback={<div class="px-3.5 py-3 text-sm text-ink-3">No spend is recorded in this range.</div>}
+        fallback={<div class="px-4 py-3 text-small text-ink-3">No spend is recorded in this range.</div>}
       >
         <For each={shown()}>
           {(day) => (
-            <div class="grid grid-cols-[minmax(0,1fr)_72px_80px] items-center gap-2 border-b border-line-1 px-3.5 py-2 text-sm last:border-0">
-              <span class="font-mono text-xs text-ink-2">{day.day}</span>
-              <span class="text-right font-mono text-xs text-ink-2">{formatTokens(day.tokens)}</span>
-              <span class="text-right font-mono text-xs text-ink-2">{money(day.spend)}</span>
+            <div class="grid grid-cols-[minmax(0,1fr)_72px_80px] items-center gap-2 px-4 py-2 text-small">
+              <span class="font-mono text-mini text-ink-2">{day.day}</span>
+              <span class="text-right font-mono text-mini text-ink-2">{formatTokens(day.tokens)}</span>
+              <span class="text-right font-mono text-mini text-ink-2">{money(day.spend)}</span>
             </div>
           )}
         </For>
       </Show>
-    </Panel>
+    </Card>
   )
 }
 
@@ -519,8 +508,8 @@ function UsageTable(props: { rows: readonly Row[]; empty: string; tokens?: boole
   const columns = (): string =>
     withTokens() ? "grid-cols-[minmax(0,1fr)_72px_64px_80px]" : "grid-cols-[minmax(0,1fr)_64px_80px]"
   return (
-    <Panel>
-      <div class={`grid ${columns()} items-center gap-2 border-b border-line-1 px-3.5 py-2`}>
+    <Card>
+      <div class={`grid ${columns()} items-center gap-2 px-4 py-2`}>
         <span class="label">Name</span>
         <Show when={withTokens()}>
           <span class="label text-right">Tokens</span>
@@ -528,10 +517,10 @@ function UsageTable(props: { rows: readonly Row[]; empty: string; tokens?: boole
         <span class="label">Share</span>
         <span class="label text-right">Cost</span>
       </div>
-      <Show when={props.rows.length > 0} fallback={<div class="px-3.5 py-3 text-sm text-ink-3">{props.empty}</div>}>
+      <Show when={props.rows.length > 0} fallback={<div class="px-4 py-3 text-small text-ink-3">{props.empty}</div>}>
         <For each={props.rows}>
           {(row) => (
-            <div class={`grid ${columns()} items-center gap-2 border-b border-line-1 px-3.5 py-2 text-sm last:border-0`}>
+            <div class={`grid ${columns()} items-center gap-2 px-4 py-2 text-small`}>
               <span class="flex min-w-0 items-center gap-1.5">
                 <Show when={row.glyph}>
                   {(glyph) => <Glyph name={glyph()} size={13} class="shrink-0 text-ink-3" />}
@@ -539,24 +528,24 @@ function UsageTable(props: { rows: readonly Row[]; empty: string; tokens?: boole
                 <span class="min-w-0">
                   <span class="block truncate text-ink">{row.name}</span>
                   <Show when={row.detail !== ""}>
-                    <span class="block truncate text-2xs text-ink-3">{row.detail}</span>
+                    <span class="block truncate text-micro text-ink-3">{row.detail}</span>
                   </Show>
                 </span>
               </span>
               <Show when={withTokens()}>
-                <span class="text-right font-mono text-xs text-ink-2">{formatTokens(row.tokens)}</span>
+                <span class="text-right font-mono text-mini text-ink-2">{formatTokens(row.tokens)}</span>
               </Show>
-              <span class="h-1.5 overflow-hidden rounded-2xs bg-line-1">
+              <span class="h-1.5 overflow-hidden rounded-full bg-line-1">
                 <span
-                  class="block h-full rounded-2xs bg-ink-2"
+                  class="block h-full rounded-full bg-ink-2"
                   style={{ width: `${Math.round((row.cost / max()) * 100)}%` }}
                 />
               </span>
-              <span class="text-right font-mono text-xs text-ink-2">{money(row.cost)}</span>
+              <span class="text-right font-mono text-mini text-ink-2">{money(row.cost)}</span>
             </div>
           )}
         </For>
       </Show>
-    </Panel>
+    </Card>
   )
 }

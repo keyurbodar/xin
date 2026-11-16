@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { exploreViewOf, pluginAction } from "./routes.ts"
+import { exploreViewOf, pluginAction, TAB_PATH, tabOf } from "./routes.ts"
 
 test("a plugin with an update is sent to Updates, never to an install the market would refuse", () => {
   expect(pluginAction("update-available")).toBe("review-update")
@@ -18,4 +18,12 @@ test("each plugin, skill and theme path is its own view, and unknown paths fall 
   expect(exploreViewOf(["skills"])).toEqual({ kind: "list", tab: "skills" })
   expect(exploreViewOf(["plugins", "%E0%A4%A"])).toEqual({ kind: "list", tab: "plugins" })
   expect(exploreViewOf([])).toEqual({ kind: "list", tab: "plugins" })
+})
+
+test("a tab value from the tabs maps back to its tab and route, and anything else maps to nothing", () => {
+  expect(tabOf("skills")).toBe("skills")
+  expect(TAB_PATH[tabOf("themes") ?? "plugins"]).toBe("/explore/themes")
+  expect(tabOf("plugins")).toBe("plugins")
+  expect(tabOf("Skills")).toBeUndefined()
+  expect(tabOf(null)).toBeUndefined()
 })
