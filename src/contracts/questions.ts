@@ -1,12 +1,17 @@
 import type { Context as ChordContext } from "@earendil-works/chord"
-import { defineDoc, type ConversationId, type ToolExecutionApi } from "@earendil-works/pi-durable"
-import { arr, compile, map, num, obj, opt, str, type Static } from "@earendil-works/pi-schema"
+import { defineDoc, type ConversationId, type ToolExecutionApi, type Tx } from "@earendil-works/pi-durable"
+import { arr, compile, map, num, obj, opt, str, union, type Static } from "@earendil-works/pi-schema"
+
+/** `ask_user` is a free question. Any other kind is a card: only the owner answers it, and only with one of its options. */
+export const ASK_KIND = "ask_user"
 
 export type AskInput = {
+  readonly kind: string
   readonly threadId: ConversationId
   readonly requestId: string
   readonly question: string
   readonly options?: readonly string[]
+  readonly subject?: RequestSubject
   readonly now: number
 }
 
@@ -31,22 +36,47 @@ export type RespondOutcome =
   | { readonly kind: "already_answered"; readonly answer: string }
   | { readonly kind: "refused"; readonly message: string }
 
+export type SettleOutcome =
+  | { readonly kind: "answered"; readonly run: number }
+  | { readonly kind: "already_answered"; readonly answer: string }
+
+/** Runs inside the answer's commit once every check has passed, before the request closes; throwing aborts the answer. */
+export type Admitted = (open: OpenRequest, tx: Tx) => Promise<void>
+
 export interface QuestionsService {
+  /** `ask_user` opens only in a thread; a card opens in any conversation: a thread, a coordinator or the root chat. */
   ask(input: AskInput, context: ChordContext): Promise<AskOutcome>
   open(conversationId: ConversationId): Promise<OpenOutcome>
   respond(api: ToolExecutionApi, threadId: number, requestId: string, answer: string): Promise<RespondOutcome>
+  /**
+   * Answers a card for the owner with any text, past its options: the plugin that owns the card decides the answer. The
+   * next run starts with `brief`, or the answer when it is omitted. `run` is the thread's run, 0 outside a thread.
+   */
+  settle(
+    conversationId: ConversationId,
+    requestId: string,
+    answer: string,
+    admitted?: Admitted,
+    brief?: string,
+  ): Promise<SettleOutcome>
 }
+
+/** What a card is about: a name, or the tool call an approval holds, its arguments as capped canonical JSON. */
+const SubjectSchema = union([str(), obj({ tool: str({ minLength: 1 }), arguments: str() })])
+export type RequestSubject = Static<typeof SubjectSchema>
 
 const RequestSchema = obj({
   kind: str({ minLength: 1 }),
   question: str(),
   options: opt(arr(str())),
+  subject: opt(SubjectSchema),
   at: num(),
 })
 export const AnsweredSchema = obj({
   kind: str({ minLength: 1 }),
   question: str(),
   options: opt(arr(str())),
+  subject: opt(SubjectSchema),
   at: num(),
   answer: str(),
   answeredAt: num(),
