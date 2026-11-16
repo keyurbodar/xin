@@ -14,7 +14,7 @@ import {
 import { compile, int, obj, opt, str } from "@earendil-works/pi-schema"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
-import type { FileEntry, FileGrant, FilesService } from "../../src/contracts/files.ts"
+import { type FileEntry, type FileGrant, type FilesService, isText } from "../../src/contracts/files.ts"
 import type { Env } from "../../src/env.ts"
 import type { Route } from "../../src/module.ts"
 import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
@@ -27,7 +27,6 @@ const SWEEP_EVERY_MS = 7 * 24 * 60 * 60_000
 const ORPHAN_GRACE_MS = 24 * 60 * 60_000
 const SWEEP_KEY = "files:sweep_at"
 /** Types the client can show as text; anything else comes back with `text: null`. */
-const PREVIEWABLE = /^(text\/|application\/(json|xml|.*\+json|.*\+xml)|image\/svg\+xml)/
 
 const Commit = obj({
   path: str({ minLength: 1 }),
@@ -166,6 +165,10 @@ export function create(deps: FilesPort): FilesPlugin {
       const object = await deps.env.FILES.get(row.r2_key)
       return object === null ? undefined : new Uint8Array(await object.arrayBuffer())
     },
+    readBlob: async (sha256) => {
+      const object = await deps.env.FILES.get(blobKey(sha256))
+      return object === null ? undefined : new Uint8Array(await object.arrayBuffer())
+    },
     stat: async (path) => {
       const row = await index.row(rootedPath(path))
       return row === undefined ? undefined : entryOf(row)
@@ -228,7 +231,7 @@ export function create(deps: FilesPort): FilesPlugin {
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       const entry = await files.stat(target)
       if (entry === undefined) throw new OpRejected("bad_args", `no file ${target}`)
-      const text = PREVIEWABLE.test(entry.type) ? await files.read(target) : undefined
+      const text = isText(entry.type) ? await files.read(target) : undefined
       const revisions = await index.revisions(target)
       return { ...entry, text: text ?? null, versions: revisions.length + 1 }
     },
@@ -247,7 +250,7 @@ export function create(deps: FilesPort): FilesPlugin {
       const found = (await index.revisions(target)).find((candidate) => candidate.sha256 === sha256)
       if (found === undefined) throw new OpRejected("bad_args", `no revision of ${target}`)
       const object = await deps.env.FILES.get(blobKey(sha256))
-      const text = object === null || !PREVIEWABLE.test(found.type) ? null : await object.text()
+      const text = object === null || !isText(found.type) ? null : await object.text()
       return { path: target, ...found, text }
     },
   })

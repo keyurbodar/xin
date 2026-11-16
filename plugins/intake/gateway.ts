@@ -47,8 +47,7 @@ export type BatchLedger = {
 export type IntakeHost = {
   readonly harness: Harness
   readonly ledger: BatchLedger
-  readBytes(path: string): Promise<Uint8Array | undefined>
-  stat(path: string): Promise<{ readonly size: number } | undefined>
+  readBlob(sha256: string): Promise<Uint8Array | undefined>
   vision(conversation: ConversationId): Promise<boolean>
   arm(wake?: Wake): Promise<void>
   push(): PushService | undefined
