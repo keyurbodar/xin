@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, expect, mock, test } from "bun:test"
+import { afterEach, beforeAll, beforeEach, expect, mock, test } from "bun:test"
 import { createComponent, createRoot } from "solid-js"
+import { stubGlobals } from "../../../test/globals.ts"
 import { insert, root, textOf } from "../../../test/universal.ts"
 import { invalidateReads } from "../../lib/api.ts"
 
@@ -15,14 +16,12 @@ const SKILL = {
   markdown: "---\nname: release-notes\n---\nWrite the notes.",
 }
 
-if (Reflect.get(globalThis, "document") === undefined)
-  Object.defineProperty(globalThis, "document", {
-    value: { documentElement: { setAttribute: () => undefined }, addEventListener: () => undefined },
-    configurable: true,
-    writable: true,
-  })
+stubGlobals({ document: { documentElement: { setAttribute: () => undefined }, addEventListener: () => undefined } })
 void mock.module("../extensions/glyph.tsx", () => ({ Glyph: () => undefined }))
-const { SkillDetail } = await import("./skill-detail.tsx")
+let SkillDetail: (typeof import("./skill-detail.tsx"))["SkillDetail"]
+beforeAll(async () => {
+  ;({ SkillDetail } = await import("./skill-detail.tsx"))
+})
 
 const realFetch = globalThis.fetch
 

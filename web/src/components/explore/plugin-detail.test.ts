@@ -1,20 +1,19 @@
-import { afterEach, beforeEach, expect, mock, test } from "bun:test"
+import { afterEach, beforeAll, beforeEach, expect, mock, test } from "bun:test"
 import { createComponent, createRoot, createSignal } from "solid-js"
+import { stubGlobals } from "../../../test/globals.ts"
 import { insert, root, textOf, type TestNode } from "../../../test/universal.ts"
 import { invalidateReads } from "../../lib/api.ts"
 
 type Frame = { readonly id: string; readonly op: string; readonly args: { readonly name?: string } }
 
 const realFetch = globalThis.fetch
-if (Reflect.get(globalThis, "window") === undefined)
-  Object.defineProperty(globalThis, "window", {
-    value: { location: { hash: "" }, addEventListener: () => undefined },
-    configurable: true,
-    writable: true,
-  })
+stubGlobals({ window: { location: { hash: "" }, addEventListener: () => undefined } })
 void mock.module("../extensions/install-sheet.tsx", () => ({ InstallSheet: (props: { name: string }) => `Install sheet for ${props.name}` }))
 void mock.module("../extensions/glyph.tsx", () => ({ Glyph: () => undefined }))
-const { PluginDetail } = await import("./plugin-detail.tsx")
+let PluginDetail: (typeof import("./plugin-detail.tsx"))["PluginDetail"]
+beforeAll(async () => {
+  ;({ PluginDetail } = await import("./plugin-detail.tsx"))
+})
 
 beforeEach(() => {
   invalidateReads()
