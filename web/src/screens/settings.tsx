@@ -15,8 +15,9 @@ import { Plugins } from "../components/settings/plugins.tsx"
 import { Members } from "../components/settings/members.tsx"
 import { Profile } from "../components/settings/profile.tsx"
 import { System } from "../components/settings/system.tsx"
+import { AppearanceSettings } from "../appearance/page.tsx"
 
-type Tab = "general" | "models" | "usage" | "notifications" | "plugins" | "members" | "profile" | "system"
+type Tab = "general" | "appearance" | "models" | "usage" | "notifications" | "plugins" | "members" | "profile" | "system"
 
 /** `terms` holds the page's section and row labels, so the nav can find a page by a setting it holds. */
 export type Entry = {
@@ -40,7 +41,6 @@ const GENERAL: Entry = {
     "Workspace",
     "Your name",
     "Time zone",
-    "Theme",
     "Reduce motion",
     "Instructions for every project",
   ],
@@ -51,6 +51,44 @@ export const SECTIONS: readonly { readonly title: string; readonly entries: read
     title: "Account",
     entries: [
       GENERAL,
+      {
+        id: "appearance",
+        label: "Appearance",
+        icon: "monitor",
+        about: "Theme, background, sizing and code display. Changes show as you make them.",
+        terms: [
+          "Mode",
+          "Appearance sync",
+          "Theme",
+          "Create theme",
+          "Download theme",
+          "Delete theme",
+          "Colors",
+          "Accent",
+          "Foreground",
+          "Background",
+          "Dashboard background",
+          "Background effect",
+          "Dither colour",
+          "Dot size",
+          "Effect intensity",
+          "Brightness",
+          "Blur",
+          "Image opacity",
+          "Bottom fade",
+          "Overlay opacity",
+          "Input opacity",
+          "Your wallpapers",
+          "Interface",
+          "Text size",
+          "Density",
+          "Sidebar width",
+          "Side pane width",
+          "Code",
+          "Code font size",
+          "Diff colors",
+        ],
+      },
       {
         id: "profile",
         label: "Profile + token",
@@ -246,7 +284,7 @@ export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"sett
         </nav>
       </div>
 
-      <section class="min-h-0 min-w-0 flex-1 overflow-y-auto" classList={{ "max-sm:hidden": !chosen() }}>
+      <section data-settings-content class="min-h-0 min-w-0 flex-1 overflow-y-auto" classList={{ "max-sm:hidden": !chosen() }}>
         <div class="mx-auto flex w-full max-w-[calc(var(--w-settings)+var(--page-gutter)*2)] flex-col gap-2 px-[var(--page-gutter)] pb-16 pt-6 sm:pt-12">
           <Show
             when={page()}
@@ -261,7 +299,7 @@ export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"sett
                 />
                 <h1 class="text-title font-title text-ink">{current().label}</h1>
                 <p class="text-body text-ink-3">{current().about}</p>
-                <Show when={query().trim() !== ""}>
+                <Show when={query().trim() !== "" && current().id !== "appearance"}>
                   <div class="flex items-center gap-2 text-small text-ink-3">
                     <span class="min-w-0 truncate">Showing settings that match “{query().trim()}”</span>
                     <button type="button" class="link shrink-0" onClick={() => setQuery("")}>
@@ -270,6 +308,7 @@ export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"sett
                   </div>
                 </Show>
                 <div class="mt-6">
+                  <Show when={current().id !== "appearance"} fallback={<AppearanceSettings />}>
                   <SearchablePage
                     query={query()}
                     empty={(text) => (
@@ -302,6 +341,7 @@ export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"sett
                       </Match>
                     </Switch>
                   </SearchablePage>
+                  </Show>
                 </div>
               </>
             }

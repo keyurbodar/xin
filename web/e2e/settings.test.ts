@@ -29,6 +29,13 @@ const visibleRows = (page: Page) =>
     [...document.querySelectorAll("[data-settings-row]")].filter((row) => row.checkVisibility()).map((row) => row.getAttribute("data-settings-row")),
   )
 
+const visibleLabels = (page: Page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll("[data-settings-content] h2, [data-settings-content] label")]
+      .filter((element) => element.checkVisibility())
+      .map((element) => element.textContent?.trim() ?? ""),
+  )
+
 async function open(path: string, width = 1280): Promise<Page> {
   const page = await harness.open("settings", { search: `#${path}`, width })
   await page.waitForSelector("section.settings-section")
@@ -42,7 +49,7 @@ test("the nav is grouped into Account, Agent and Workspace", async () => {
     [...document.querySelectorAll("nav[aria-label=Settings] [role=group]")].map((group) => group.getAttribute("aria-label")),
   )
   expect(groups).toEqual(["Account", "Agent", "Workspace"])
-  expect(await navLinks(page)).toEqual(["General", "Profile + token", "Notifications", "Models + providers", "Plugins", "Usage + cost", "Members", "System"])
+  expect(await navLinks(page)).toEqual(["General", "Appearance", "Profile + token", "Notifications", "Models + providers", "Plugins", "Usage + cost", "Members", "System"])
   expect(await page.locator("nav[aria-label=Settings] a[aria-current=page]").textContent()).toBe("General")
   await page.close()
 })
@@ -74,7 +81,7 @@ test("a search with no match says so in the nav and on the page", async () => {
   expect(await page.getByText("Nothing on General matches “zebra”.").isVisible()).toBe(true)
   await page.getByRole("button", { name: "Show all" }).click()
   await settled(page)
-  expect((await navLinks(page)).length).toBe(8)
+  expect((await navLinks(page)).length).toBe(9)
   await page.close()
 })
 
@@ -83,13 +90,16 @@ test("every section and row label on every page finds that page from the search"
   const entries = await page.evaluate(() =>
     [...document.querySelectorAll("nav[aria-label=Settings] a")].map((link) => ({ href: link.getAttribute("href") ?? "", label: link.textContent?.trim() ?? "" })),
   )
+  expect(entries.map((entry) => entry.label)).toContain("Appearance")
   const misses: string[] = []
   for (const entry of entries) {
     await page.evaluate((href) => {
       window.location.hash = href
     }, entry.href)
     await page.waitForTimeout(700)
-    const labels = [...(await visibleSections(page)), ...(await visibleRows(page))].filter((label): label is string => label !== null)
+    const labels = [...new Set([...(await visibleSections(page)), ...(await visibleRows(page)), ...(await visibleLabels(page))])].filter(
+      (label): label is string => label !== null && label !== "",
+    )
     for (const label of labels) {
       await page.getByLabel("Search settings").fill(label)
       await page.waitForTimeout(50)

@@ -16,8 +16,7 @@ import {
 } from "../../state/settings.ts"
 import { Failure, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Card, CardBlock, Group, Row, Saved, SelectField, TextField, type Choice } from "./parts.tsx"
-import { motionChoice, motionOf, setMotionChoice, theme } from "../../lib/theme.ts"
-import { applyTheme, themes } from "../../plugins/slots.tsx"
+import { motionChoice, motionOf, setMotionChoice } from "../../lib/theme.ts"
 
 const BLANK: OwnerSettings = { name: "", instructions: "" }
 
@@ -220,15 +219,6 @@ export function General(): JSX.Element {
           </Row>
           <Row title="Time zone" detail="Used by schedules and timestamps">
             <span class="font-mono text-small text-ink-2">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
-          </Row>
-          <Row title="Theme" detail="Built-in and plugin themes, on this device">
-            <SelectField
-              ariaLabel="Theme"
-              value={theme()}
-              required
-              onChange={applyTheme}
-              choices={themes().map((theme) => ({ value: theme.id, label: theme.label }))}
-            />
           </Row>
           <Row title="Reduce motion" detail="On this device. System follows the operating system’s setting">
             <SelectField
