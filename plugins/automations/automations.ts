@@ -52,9 +52,9 @@ export type OnceInput = { readonly kind: "once"; readonly at: string }
 export type RuleInput = {
   readonly when?: Readonly<Record<string, string>> | undefined
   readonly groupBy?: readonly string[] | undefined
-  readonly count?: number | undefined
-  readonly maxWaitSeconds?: number | undefined
-  readonly quietSeconds?: number | undefined
+  readonly count?: number | null | undefined
+  readonly maxWaitSeconds?: number | null | undefined
+  readonly quietSeconds?: number | null | undefined
 }
 export type WebhookInput = {
   readonly kind: "webhook"
@@ -201,15 +201,25 @@ export class Engine {
   readonly store: Store
   readonly #queue = serial()
   #deadline: Deadline | undefined
-  #revision = 0
+  #revision = Date.now()
+  readonly #touched = new Map<string, number>()
   #threads: Promise<Map<number, Set<string>>> | undefined
 
   constructor(private readonly port: EnginePort) {
     this.store = new Store(port.db)
   }
 
+  /**
+   * Clients only compare it for change, and it must never repeat across an eviction, so it floors at the wall
+   * clock: a new boot starts past every value the last one handed out, without a stored counter or a row write.
+   */
   get revision(): number {
     return this.#revision
+  }
+
+  /** The revision of each automation's latest change since boot, so one automation's page reloads only for its own changes. */
+  get touched(): Readonly<Record<string, number>> {
+    return Object.fromEntries(this.#touched)
   }
 
   /** The automations whose runs went to a conversation, from memory after the first call. */
@@ -255,7 +265,7 @@ export class Engine {
       await this.store.save(row, await this.#triggers(id, input.triggers, row.enabled === 1, now))
       return this.#view(row)
     })
-    await this.#changed()
+    await this.#changed([id])
     return view
   }
 
@@ -286,11 +296,27 @@ export class Engine {
           : enabledChanged
             ? (await this.store.triggers(row.id)).map((trigger) => rearmed(trigger, row.enabled === 1, now))
             : undefined
+      const flushed =
+        triggers === undefined || input.triggers === undefined ? [] : await this.#flushReplaced(row.id, triggers, now)
       await this.store.save(row, triggers)
-      return this.#view(row)
+      return { view: await this.#view(row), flushed }
     })
-    await this.#changed()
-    return view
+    if (view.flushed.length > 0) await this.port.arm()
+    for (const run of view.flushed) await this.#dispatch(run, now)
+    await this.#changed([input.id])
+    return view.view
+  }
+
+  /**
+   * A trigger set that drops or rotates a webhook would delete batches whose deliveries already got a 202, so they
+   * close into runs first. The run id derives from the batch, so a flush cut short by a crash never runs one twice.
+   */
+  async #flushReplaced(automationId: string, triggers: readonly NewTrigger[], now: number): Promise<string[]> {
+    const kept = new Set(triggers.map((trigger) => trigger.id))
+    const runs: string[] = []
+    for (const batch of await this.store.batches(automationId))
+      if (!kept.has(batch.trigger_id)) runs.push(await this.#closeBatch(batch, now))
+    return runs
   }
 
   async remove(id: string, caller: Caller): Promise<boolean> {
@@ -301,7 +327,7 @@ export class Engine {
       for (const ids of (await this.#runThreads()).values()) ids.delete(id)
       return true
     })
-    if (removed) await this.#changed()
+    if (removed) await this.#changed([id])
     return removed
   }
 
@@ -367,7 +393,7 @@ export class Engine {
     })
     await this.port.arm()
     await this.#dispatch(runId, now)
-    await this.#changed()
+    await this.#changed([id])
     const run = await this.store.run(runId)
     if (run === undefined) throw new AutomationError("not_found", `the run of ${id} was deleted`)
     return runView(run)
@@ -388,18 +414,19 @@ export class Engine {
     const at = await this.due()
     if (at === undefined || at > now) return
     const started = await this.#queue(async () => {
-      const ids: string[] = []
+      const ids = new Map<string, string>()
       for (const trigger of await this.store.dueTriggers(now)) {
         const id = await this.#fireTrigger(trigger, now)
-        if (id !== undefined) ids.push(id)
+        if (id !== undefined) ids.set(id, trigger.automation_id)
       }
-      for (const batch of await this.store.dueBatches(now)) ids.push(await this.#closeBatch(batch, now))
-      for (const run of await this.store.queuedRuns()) if (!ids.includes(run.id)) ids.push(run.id)
+      for (const batch of await this.store.dueBatches(now))
+        ids.set(await this.#closeBatch(batch, now), batch.automation_id)
+      for (const run of await this.store.queuedRuns()) if (!ids.has(run.id)) ids.set(run.id, run.automation_id)
       this.#deadline = undefined
       return ids
     })
-    for (const id of started) await this.#dispatch(id, now)
-    if (started.length > 0) await this.#changed()
+    for (const id of started.keys()) await this.#dispatch(id, now)
+    if (started.size > 0) await this.#changed([...started.values()])
   }
 
   async webhook(request: Request, now: number): Promise<Response> {
@@ -425,7 +452,7 @@ export class Engine {
       (run): run is string => run !== undefined,
     )
     for (const run of started) await this.#dispatch(run, now)
-    if (started.length > 0) await this.#changed()
+    if (started.length > 0) await this.#changed([trigger.automation_id])
     return Response.json(outcome, { status: 202 })
   }
 
@@ -446,7 +473,7 @@ export class Engine {
         event.status === "failed" ? clipTo(event.result ?? "the thread failed", 500) : null,
       )
     }
-    await this.#changed()
+    await this.#changed(running.map((run) => run.automation_id))
   }
 
   async #fireTrigger(trigger: TriggerRow, now: number): Promise<string | undefined> {
@@ -642,9 +669,10 @@ export class Engine {
     }
   }
 
-  async #changed(): Promise<void> {
+  async #changed(automationIds: readonly string[]): Promise<void> {
     this.#deadline = undefined
-    this.#revision += 1
+    this.#revision = Math.max(this.#revision + 1, Date.now())
+    for (const id of automationIds) this.#touched.set(id, this.#revision)
     await this.port.arm()
     await this.port.changed()
   }

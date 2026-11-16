@@ -272,7 +272,7 @@ export function ProviderStep(): JSX.Element {
 
       <div class="flex items-center gap-2 pt-1">
         <span class="mr-auto" />
-        <QuietButton label="Skip for now" onClick={() => skipStep(1)} />
+        <QuietButton label="Skip for now" onClick={() => void skipStep(1)} />
         <PrimaryButton
           label={saved() === undefined ? "Save key" : "Continue"}
           busy={busy()}

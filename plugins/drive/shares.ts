@@ -1,6 +1,5 @@
 import type { SqliteDatabase, SqliteMigration } from "@earendil-works/chord/sqlite"
 import type { FilesService } from "../../src/contracts/files.ts"
-import { toHex } from "../../src/r2env.ts"
 
 export const MIGRATIONS: readonly SqliteMigration[] = [
   {
@@ -26,8 +25,6 @@ export type Shares = {
   changed(path: string): Promise<void>
 }
 
-const nameOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1)
-
 export function createShares(port: SharesPort): Shares {
   let loaded: Promise<Map<string, string>> | undefined
   const byPath = (): Promise<Map<string, string>> => {
@@ -35,13 +32,6 @@ export function createShares(port: SharesPort): Shares {
       .all<{ path: string; id: string }>("SELECT path, id FROM drive_shares")
       .then((rows) => new Map(rows.map((row) => [row.path, row.id])))
     return loaded
-  }
-
-  const publish = async (path: string, id: string): Promise<boolean> => {
-    const entry = await port.files.stat(path)
-    if (entry === undefined) return false
-    await port.files.share(id, { sha256: entry.sha256, type: entry.type, name: nameOf(path) })
-    return true
   }
 
   const drop = async (path: string, id: string): Promise<void> => {
@@ -61,7 +51,7 @@ export function createShares(port: SharesPort): Shares {
   }
 
   const refresh = async (path: string, id: string): Promise<void> => {
-    if (!(await publish(path, id))) await drop(path, id)
+    if (!(await port.files.reshare(id, path))) await drop(path, id)
   }
 
   return {
@@ -69,8 +59,8 @@ export function createShares(port: SharesPort): Shares {
     share: async (path) => {
       const existing = (await byPath()).get(path)
       if (existing !== undefined) return existing
-      const id = toHex(crypto.getRandomValues(new Uint8Array(16)).buffer)
-      if (!(await publish(path, id))) return undefined
+      const id = await port.files.share(path)
+      if (id === undefined) return undefined
       await record(path, id)
       return id
     },
@@ -81,7 +71,7 @@ export function createShares(port: SharesPort): Shares {
       return true
     },
     carry: async (id, to) => {
-      if (await publish(to, id)) await record(to, id)
+      if (await port.files.reshare(id, to)) await record(to, id)
     },
     changed: async (path) => {
       const shares = await byPath()

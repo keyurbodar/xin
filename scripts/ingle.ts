@@ -11,6 +11,7 @@ import {
   specProblem,
   tarballProblem,
 } from "./pin.ts"
+import { assertUniquePackages } from "./discovery.ts"
 import { reachViolations } from "./reach.ts"
 import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
 
@@ -84,7 +85,7 @@ function parse(
         slots: field(entry, "slots"),
       },
       `${pkg}: ingle.plugins.${name}`,
-      local ? pkg : undefined,
+      local ? { pkg, dir: relative(ROOT, dirname(path)) } : undefined,
     )
     if ((client === undefined) !== (parsedManifest.slots.length === 0))
       throw new Error(`${pkg}: ingle.plugins.${name} needs both a client module and the slots it fills, or neither`)
@@ -145,6 +146,7 @@ function discover(): Found[] {
     const parsed = parse(manifest, path, path, false)
     if (parsed !== undefined) found.push(parsed)
   }
+  assertUniquePackages(found.map((entry) => ({ pkg: entry.pkg, at: relative(ROOT, entry.dir) })))
   const seen = new Map<string, string>()
   for (const entry of found)
     for (const name of Object.keys(entry.plugins)) {

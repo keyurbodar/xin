@@ -20,6 +20,20 @@ const method = (value: unknown, name: string): ((...args: unknown[]) => unknown)
 const modelsView = (models: unknown): unknown =>
   Object.freeze({ getModel: method(models, "getModel"), getAvailable: method(models, "getAvailable") })
 
+/**
+ * Loader state as a plugin row sees it: a frozen copy of the plain data, with functions such as plugin modules left
+ * out, so nothing the row changes reaches the kernel's own records or its access checks.
+ */
+const frozenCopy = (value: unknown): unknown => {
+  if (value instanceof Promise) return value.then(frozenCopy)
+  if (Array.isArray(value)) return Object.freeze(value.map(frozenCopy))
+  if (typeof value === "function") return undefined
+  if (typeof value !== "object" || value === null) return value
+  const prototype: unknown = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) return undefined
+  return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, frozenCopy(inner)])))
+}
+
 /** The pi registry for reading what is registered, never for registering. */
 const registryView = (registry: unknown): unknown => Object.freeze({ snapshot: method(registry, "snapshot") })
 
@@ -42,8 +56,9 @@ const ALLOWED: Readonly<Record<string, Readonly<Record<string, Member>>>> = {
   wire: { home: {}, publishHome: {}, announce: {} },
   pi: {
     install: {},
-    env: {},
+    env: { needs: "runtime" },
     extensions: {},
+    extensionsNamed: { needs: "plugins" },
     conversations: { needs: "conversations" },
     models: { needs: "models" },
     currentModels: { needs: "models", view: modelsView },
@@ -54,11 +69,11 @@ const ALLOWED: Readonly<Record<string, Readonly<Record<string, Member>>>> = {
   secrets: { get: {}, set: {} },
   loader: {
     locate: {},
-    composition: { needs: "plugins" },
+    composition: { needs: "plugins", view: frozenCopy },
+    permissionsOf: { needs: "plugins", view: frozenCopy },
     pluginOfRow: { needs: "plugins" },
-    permissionsOf: { needs: "plugins" },
-    rows: { needs: "plugins" },
-    state: { needs: "plugins" },
+    rows: { needs: "plugins", view: frozenCopy },
+    state: { needs: "plugins", view: frozenCopy },
   },
 }
 

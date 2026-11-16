@@ -26,6 +26,7 @@ import {
   type Permission,
 } from "./manifest.ts"
 import { sourcePackage, sourceVersion } from "./packages.ts"
+import { FOR_ROW } from "../contracts/rowbound.ts"
 import { facade } from "./facade.ts"
 import { readOwnerPatch, writeOwnerPatch } from "./patch.ts"
 import type { Runtime } from "./types.ts"
@@ -210,7 +211,7 @@ export class IngleLoader extends Loader {
   private indexRow(row: Row): void {
     const permissions = this.composition.catalog[pluginOf(row)]?.manifest?.permissions
     if (permissions === undefined) this.permissions.delete(row.id)
-    else this.permissions.set(row.id, permissions)
+    else this.permissions.set(row.id, Object.freeze([...permissions]))
   }
 
   /** The plugin row the code running in `fiber` belongs to, when that row's plugin has a manifest to hold it to. */
@@ -248,7 +249,10 @@ export class IngleLoader extends Loader {
    */
   private handOut(caller: Context, value: unknown): unknown {
     const id = this.pluginRow(caller.fiber)
-    return id === undefined ? value : facade(value, caller, { id, permissions: this.permissions.get(id) ?? [] })
+    if (id === undefined) return value
+    const bind: unknown = typeof value === "object" && value !== null ? Reflect.get(value, FOR_ROW) : undefined
+    if (typeof bind === "function") return Object.freeze(Reflect.apply(bind, value, [id]))
+    return facade(value, caller, { id, permissions: this.permissions.get(id) ?? [] })
   }
 
   /** Why a row may not register this tool or op: its plugin declares `contributes` and leaves the name out. */

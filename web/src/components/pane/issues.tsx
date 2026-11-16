@@ -1,17 +1,20 @@
 import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Popover } from "@ark-ui/solid/popover"
-import { MessagesSquare, Plus } from "lucide-solid"
+import { Archive, MessagesSquare, Plus } from "lucide-solid"
 import {
   assigneeName,
+  closedGroups,
   issueScope,
   dueLabel,
   localDay,
   newIssueArgs,
+  createCommandIds,
   openGroups,
   PRIORITIES,
   PRIORITY_LABEL,
   stateTone,
+  type IssueGroup,
   type IssueState,
   type IssueSummary,
   type Names,
@@ -27,6 +30,8 @@ import { ICON_BUTTON, MENU_CONTENT } from "../shell/menu.ts"
 import { PANE_ROW } from "./bodies.tsx"
 import { AssigneeChip, PriorityMark, StateMark } from "./issue-marks.tsx"
 import { Section, type PaneContext } from "./overview.tsx"
+
+export const mintCommandId = (): string => crypto.randomUUID()
 
 export function issueView(id: number): string {
   return `issue:${id}`
@@ -47,11 +52,20 @@ function issueProjectId(context: PaneContext): string {
 export function IssuesSection(props: PaneContext & { label: string }): JSX.Element {
   const [data] = createResource(
     () => [issueProjectId(props), issuesRev(), statesRev()] as const,
-    ([project, rev, states]) => projectIssueList(project, rev, states),
+    ([project, rev, states]) => projectIssueList(project, false, rev, states),
+  )
+  const [showClosed, setShowClosed] = createSignal(false)
+  const [closed] = createResource(
+    () => (showClosed() ? ([issueProjectId(props), issuesRev(), statesRev()] as const) : false),
+    ([project, rev, states]) => projectIssueList(project, true, rev, states),
   )
   const groups = createMemo(() => {
     const loaded = data.latest
     return loaded === undefined ? [] : openGroups(loaded.states, loaded.issues)
+  })
+  const closedRows = createMemo(() => {
+    const loaded = closed.latest
+    return !showClosed() || loaded === undefined ? [] : closedGroups(loaded.states, loaded.issues)
   })
   const total = (): number => groups().reduce((sum, group) => sum + group.issues.length, 0)
   const names = createMemo(() => issueNames(props.project))
@@ -65,30 +79,61 @@ export function IssuesSection(props: PaneContext & { label: string }): JSX.Eleme
     <Section
       label={props.label}
       count={total()}
-      action={<NewIssue project={props.project} projectId={issueProjectId(props)} states={data.latest?.states ?? []} />}
+      action={
+        <>
+          <button
+            type="button"
+            class={ICON_BUTTON}
+            classList={{ "bg-hover text-ink": showClosed() }}
+            aria-pressed={showClosed()}
+            aria-label={showClosed() ? "Hide closed issues" : "Show closed issues"}
+            title={showClosed() ? "Hide closed issues" : "Show closed issues"}
+            onClick={() => setShowClosed((value) => !value)}
+          >
+            <Archive size={14} stroke-width={1.5} />
+          </button>
+          <NewIssue project={props.project} projectId={issueProjectId(props)} states={data.latest?.states ?? []} />
+        </>
+      }
     >
       <For each={groups()} fallback={<span class="px-2 py-1.5 text-sm text-ink-3">{empty()}</span>}>
-        {(group) => (
-          <div class="flex flex-col">
-            <span class="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-xs text-ink-3">
-              {group.state.name}
-              <span class="font-mono text-2xs text-icon">{group.issues.length}</span>
+        {(group) => <IssueGroupRows group={group} project={props.project} names={names()} today={today} />}
+      </For>
+      <Show when={showClosed()}>
+        <For
+          each={closedRows()}
+          fallback={
+            <span class="px-2 py-1.5 text-sm text-ink-3">
+              {closed.error !== undefined ? "Couldn’t load closed issues" : closed.latest === undefined ? "Loading closed issues" : "No closed issues"}
             </span>
-            <For each={group.issues}>
-              {(issue) => (
-                <IssueRow
-                  issue={issue}
-                  state={group.state}
-                  names={names()}
-                  today={today}
-                  onOpen={() => showPaneView(props.project.id, issueView(issue.id))}
-                />
-              )}
-            </For>
-          </div>
+          }
+        >
+          {(group) => <IssueGroupRows group={group} project={props.project} names={names()} today={today} />}
+        </For>
+      </Show>
+    </Section>
+  )
+}
+
+function IssueGroupRows(props: { group: IssueGroup; project: ProjectSummary; names: Names; today: string }): JSX.Element {
+  return (
+    <div class="flex flex-col">
+      <span class="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-xs text-ink-3">
+        {props.group.state.name}
+        <span class="font-mono text-2xs text-icon">{props.group.issues.length}</span>
+      </span>
+      <For each={props.group.issues}>
+        {(issue) => (
+          <IssueRow
+            issue={issue}
+            state={props.group.state}
+            names={props.names}
+            today={props.today}
+            onOpen={() => showPaneView(props.project.id, issueView(issue.id))}
+          />
         )}
       </For>
-    </Section>
+    </div>
   )
 }
 
@@ -157,11 +202,18 @@ function NewIssue(props: { project: ProjectSummary; projectId: string; states: r
     setPriority(undefined)
     setState(undefined)
   }
+  const ids = createCommandIds(mintCommandId)
   const submit = (): void => {
     const body = args()
     if (body === undefined || action.busy() !== undefined) return
     void action.run("create", async () => {
-      await createIssue(body)
+      try {
+        await createIssue(body, ids.idFor(body))
+      } catch (problem) {
+        ids.settle(problem)
+        throw problem
+      }
+      ids.settle(undefined)
       reset()
       setOpen(false)
     })

@@ -43,9 +43,18 @@ export interface FilesService {
   grant(rule: FileGrant): () => void
   /** A stored version's text by its hash, current or earlier; null when its bytes are gone. */
   textOf(sha256: string): Promise<string | null>
-  /** Serves a version at a share id the Worker answers without the owner token. */
-  share(id: string, version: { readonly sha256: string; readonly type: string; readonly name: string }): Promise<void>
-  unshare(id: string): Promise<void>
+  /**
+   * Serves a file's current bytes at a new share id, minted here and owned by the calling row, which the Worker
+   * answers without the owner token. Undefined when the file is missing.
+   */
+  share(path: string): Promise<string | undefined>
+  /** Points a share the calling row owns at a path's current bytes. False when the file is missing; throws for a share another row owns. */
+  reshare(id: string, path: string): Promise<boolean>
+  /**
+   * Takes down a share the calling row owns. The id stays that row's, so a `reshare` can bring it back, as Drive does
+   * when a shared file moves. False when there is no such share; throws for a share another row owns.
+   */
+  unshare(id: string): Promise<boolean>
 }
 
 declare module "@deepseek-ai/cordis" {

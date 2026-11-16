@@ -30,8 +30,16 @@ describe("plugin manifest", () => {
     expect(() => readManifest({ permissions: ["root"] }, "x")).toThrow(/permission root/)
     expect(() => readManifest({ slots: ["header"] }, "x")).toThrow(/slot header/)
     expect(() => readManifest({ permissions: ["owner"] }, "x")).toThrow(/only first-party ingle-plugin-automations/)
-    expect(() => readManifest({ permissions: ["owner"] }, "x", "ingle-plugin-drive")).toThrow(/owner/)
-    expect(readManifest({ permissions: ["owner"] }, "x", "ingle-plugin-automations").permissions).toEqual(["owner"])
+    expect(() =>
+      readManifest({ permissions: ["owner"] }, "x", { pkg: "ingle-plugin-drive", dir: "plugins/drive" }),
+    ).toThrow(/owner/)
+    expect(() =>
+      readManifest({ permissions: ["owner"] }, "x", { pkg: "ingle-plugin-automations", dir: "plugins/evil" }),
+    ).toThrow(/at plugins\/automations/)
+    expect(
+      readManifest({ permissions: ["owner"] }, "x", { pkg: "ingle-plugin-automations", dir: "plugins/automations" })
+        .permissions,
+    ).toEqual(["owner"])
   })
 
   it("refuses a build whose plugin API differs from the one the module was written against", () => {
