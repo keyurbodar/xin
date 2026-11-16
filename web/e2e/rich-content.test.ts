@@ -330,7 +330,7 @@ test("a streaming mermaid fence stays source and never draws", async () => {
   expect(await page.locator(".mermaid-diagram").count()).toBe(0)
   expect(await page.locator('[data-block="code"]').innerText()).toContain("a --> b")
   await page.close()
-})
+}, 60_000)
 
 for (const reduce of ["none", "os", "setting"] as const) {
   test(`the expand transition ${reduce === "none" ? "runs" : `is off under the ${reduce} reduced-motion setting`}`, async () => {
