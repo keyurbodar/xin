@@ -8,11 +8,11 @@ type State<P extends Props> = { readonly kind: "waiting" } | { readonly kind: "l
 export type LazyView<P extends Props> = Component<P> & { readonly preload: () => Promise<unknown> }
 
 /**
- * A view whose module loads the first time it renders or `preload()` runs, showing `fallback` until then. Unlike
+ * A view whose module loads the first time it renders or `preload()` runs, showing `fallback` with the same props until then. Unlike
  * `lazy()` it never suspends, so the resources the view reads once loaded keep their own loading states instead of
  * reaching an outer Suspense boundary. A failed load throws to the nearest ErrorBoundary and loads again on its reset.
  */
-export function lazyView<P extends Props>(load: () => Promise<Component<P>>, fallback: () => JSX.Element): LazyView<P> {
+export function lazyView<P extends Props>(load: () => Promise<Component<P>>, fallback: (props: P) => JSX.Element): LazyView<P> {
   const [state, setState] = createSignal<State<P>>({ kind: "waiting" })
   let loading: Promise<unknown> | undefined
   const preload = (): Promise<unknown> => {
@@ -31,7 +31,7 @@ export function lazyView<P extends Props>(load: () => Promise<Component<P>>, fal
     const shown = (): JSX.Element => {
       const now = state()
       if (now.kind === "failed") throw now.error
-      return now.kind === "loaded" ? <Dynamic component={now.view} {...props} /> : fallback()
+      return now.kind === "loaded" ? <Dynamic component={now.view} {...props} /> : fallback(props)
     }
     return <>{shown()}</>
   }

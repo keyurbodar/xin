@@ -1,0 +1,1 @@
+2026-11-16T18:00:00Z	XIN-25	A tool with a #66 block or a #30 message.renderer, and delegate_task (thread fan), renders in its call's place instead of a step in the group	Keeps both registries' contracts and the thread fan, while plain tools fold into the summary	e2e "registered block" and "delegate_task renders as the thread fan"	adopted

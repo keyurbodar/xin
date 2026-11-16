@@ -13,6 +13,7 @@ import { Dynamic } from "solid-js/web"
 import { bytes } from "../../lib/format.ts"
 import { STATE_WORD, type SignalState } from "../../lib/status.ts"
 import { HoverCard } from "./hover-card.tsx"
+import { ChipFace, CHIP_ICON as ICON } from "./chip-face.tsx"
 import { Signal } from "./signal.tsx"
 import { Bar } from "./skeleton.tsx"
 
@@ -43,8 +44,6 @@ export type LinkChipProps = Common &
     | { kind: "file"; load: () => Promise<FileDetails> }
   )
 
-const ICON = { size: 14, "stroke-width": 1.5 } as const
-
 const PR_ICON = {
   open: GitPullRequest,
   draft: GitPullRequestDraft,
@@ -62,9 +61,6 @@ const PR_TONE: Readonly<Record<PrState, string>> = {
 const PR_WORD: Readonly<Record<PrState, string>> = { open: "Open", draft: "Draft", merged: "Merged", closed: "Closed" }
 
 const KIND_ICON = { thread: MessagesSquare, issue: CircleDot, commit: GitCommitHorizontal, file: File } as const
-
-const CHIP =
-  "im-focus inline-flex max-w-full items-baseline gap-1 rounded-xs text-primary-ink no-underline decoration-primary-ink/40 underline-offset-2 hover:underline"
 
 /**
  * An inline reference to a PR, thread, issue, commit or file. Its hover card loads the details through `load` while it is
@@ -84,12 +80,14 @@ export function LinkChip(props: LinkChipProps): JSX.Element {
     <HoverCard
       onSettledChange={setSettled}
       trigger={
-        <a href={props.href} class={CHIP} data-kind={props.kind}>
-          <span class={`shrink-0 self-center ${props.kind === "pr" ? PR_TONE[props.state] : "text-ink-3"}`}>
-            <Dynamic component={props.kind === "pr" ? PR_ICON[props.state] : KIND_ICON[props.kind]} {...ICON} />
-          </span>
-          <span class={`truncate ${mono() ? "font-mono" : ""}`}>{props.label}</span>
-        </a>
+        <ChipFace
+          href={props.href}
+          kind={props.kind}
+          label={props.label}
+          tone={props.kind === "pr" ? PR_TONE[props.state] : "text-ink-3"}
+          icon={props.kind === "pr" ? PR_ICON[props.state] : KIND_ICON[props.kind]}
+          mono={mono()}
+        />
       }
     >
       <div class="flex flex-col gap-1.5 p-2">

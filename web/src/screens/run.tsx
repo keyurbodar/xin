@@ -3,11 +3,12 @@ import { connect } from "../state/connection.ts"
 import { createConversationView } from "../state/conversation.ts"
 import type { ProjectSummary } from "../state/home.ts"
 import { navigate } from "../lib/router.ts"
-import { Transcript } from "../components/chat/transcript.tsx"
+import { Transcript } from "../components/chat/lazy-transcript.tsx"
 import { Loading, ThreadSkeleton } from "../components/ui/skeleton.tsx"
 
 /** A schedule's delivered run, read-only: the transcript the timer produced. */
 export function RunScreen(props: { project: ProjectSummary; conversationId: number; label?: string | undefined }): JSX.Element {
+  void Transcript.preload()
   const streams = connect()
   const snapshot = createConversationView(streams, () => props.conversationId)
   return (

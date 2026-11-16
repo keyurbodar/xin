@@ -1,7 +1,7 @@
 import "@ui-sdk/web/file-input"
 import "@ui-sdk/web/progress"
 import { CircleAlert, File as FileIcon, X } from "lucide-solid"
-import { For, Show, createContext, createEffect, createSignal, on, onCleanup, useContext, type JSX } from "solid-js"
+import { For, Show, createContext, createEffect, createMemo, createSignal, on, onCleanup, useContext, type JSX } from "solid-js"
 import { createBlobCache, type BlobCache } from "../../lib/blob-cache.ts"
 import { Tile } from "../ui/tile.tsx"
 import type { Lightbox as LightboxView, LightboxItem } from "../ui/lightbox.tsx"
@@ -198,7 +198,8 @@ const SentBlobs = createContext<BlobCache>()
  */
 export function SentBlobsScope(props: { scope: unknown; children: JSX.Element }): JSX.Element {
   const blobs = createBlobCache()
-  createEffect(on(() => props.scope, () => blobs.clear(), { defer: true }))
+  const scope = createMemo(() => props.scope)
+  createEffect(on(scope, () => blobs.clear(), { defer: true }))
   onCleanup(blobs.clear)
   return <SentBlobs.Provider value={blobs}>{props.children}</SentBlobs.Provider>
 }

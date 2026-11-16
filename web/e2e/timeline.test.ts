@@ -21,6 +21,11 @@ type Fixture = {
     readonly blockVisuals: () => void
     readonly longer: () => void
     readonly stopWaiting: () => void
+    readonly reconnect: () => void
+    readonly paginate: () => void
+    readonly frames: (count: number) => void
+    readonly bulk: (turns: number) => void
+    readonly stream: (turns: number, ms: number) => void
   }
 }
 
@@ -57,7 +62,7 @@ test("a group opens and closes from the keyboard, and so does each step", async 
 test("the summary counts each kind and marks a failed step", async () => {
   const page = await harness.open("timeline")
   const labels = await groupButtons(page).allInnerTexts()
-  expect(labels.slice(0, 3)).toEqual(["Searched 1 time, read 2 files, ran 1 command, 1 failed", "Made 1 edit, started 1 thread", "Sent 1 message"])
+  expect(labels.slice(0, 3)).toEqual(["Searched 1 time, read 2 files, ran 1 command, 1 failed", "Made 1 edit", "Sent 1 message"])
   expect(await page.locator("[data-tool-group][data-status=error]").count()).toBe(1)
   await page.close()
 })
@@ -179,11 +184,11 @@ test("pinned to the end, streaming follows the newest line", async () => {
 test("the waiting line names what the agent waits on", async () => {
   const page = await harness.open("timeline")
   const waiting = page.locator("[data-waiting]")
-  expect(await waiting.innerText()).toBe("Waiting on Release notes")
+  expect(await waiting.textContent()).toBe("Waiting on Release notes")
   expect(await waiting.getAttribute("role")).toBe("status")
   await tl(page, (fixture) => fixture.run(5))
   await settled(page)
-  expect(await waiting.innerText()).toBe("Waiting on bash")
+  expect(await waiting.textContent()).toBe("Waiting on bash")
   await tl(page, (fixture) => fixture.run(1))
   await tl(page, (fixture) => fixture.finish())
   await tl(page, (fixture) => fixture.stopWaiting())
@@ -196,5 +201,188 @@ test("dates divide the turns as separators", async () => {
   const page = await harness.open("timeline")
   const dividers = page.getByRole("separator")
   expect(await dividers.evaluateAll((items) => items.map((item) => item.getAttribute("aria-label")))).toEqual(["Yesterday", "Today"])
+  await page.close()
+})
+
+test("delegate_task renders as the thread fan in its place, and thread names are link chips", async () => {
+  const page = await harness.open("timeline")
+  expect(await page.locator("[data-block=c6]").innerText()).toContain("Regression tests")
+  expect(await page.locator("[data-step=c6]").count()).toBe(0)
+  const chip = page.locator("[data-turn-summary] a[data-kind=thread]").first()
+  expect(await chip.innerText()).toBe("Regression tests")
+  expect(await chip.getAttribute("href")).toBe("#/p/auth/t/23")
+  expect(await page.locator("[data-waiting] a[data-kind=thread]").innerText()).toBe("Release notes")
+  await page.close()
+})
+
+test("a reconnect that re-parses the same entries leaves the DOM, the blocks and the scroll alone", async () => {
+  const page = await harness.open("timeline")
+  await tl(page, (fixture) => fixture.blockVisuals())
+  await tl(page, (fixture) => fixture.run(8))
+  await page.evaluate(() => {
+    document.querySelector<HTMLElement>("[data-timeline]")!.scrollTop = 300
+    Object.assign(window, { held: [document.querySelector("[data-block=c6]")?.firstElementChild, document.querySelector("[data-test-block=l3]")] })
+  })
+  await settled(page)
+  await page.evaluate(() => {
+    const counts = { mutations: 0 }
+    new MutationObserver((records) => {
+      counts.mutations += records.filter((record) => record.target instanceof Element && record.target.closest("[data-item]") !== null).length
+    }).observe(document.querySelector("[data-timeline]")!, { subtree: true, childList: true, characterData: true, attributes: true })
+    Object.assign(window, { counts })
+  })
+  await tl(page, (fixture) => fixture.reconnect())
+  await settled(page)
+  expect(await page.evaluate(() => (window as unknown as { counts: { mutations: number } }).counts.mutations)).toBe(0)
+  expect(await scrollTop(page)).toBe(300)
+  expect(
+    await page.evaluate(() => {
+      const [fan, block] = (window as unknown as { held: (Element | null | undefined)[] }).held
+      return [fan?.isConnected, block?.isConnected, fan === document.querySelector("[data-block=c6]")?.firstElementChild]
+    }),
+  ).toEqual([true, true, true])
+  await page.close()
+})
+
+test("loading older pages of the same day keeps what was on screen where it was", async () => {
+  const page = await harness.open("timeline")
+  await page.setViewportSize({ width: 1280, height: 480 })
+  await tl(page, (fixture) => fixture.paginate())
+  await settled(page)
+  const marker = page.getByText("Added refresh.parallel.test.ts", { exact: false })
+  for (const round of [1, 2]) {
+    await page.evaluate(() => {
+      document.querySelector<HTMLElement>("[data-timeline]")!.scrollTop = 0
+    })
+    await settled(page)
+    const before = (await marker.boundingBox())!.y
+    await page.click("[data-load-older]")
+    await settled(page)
+    expect(await page.getByText("Everything is green", { exact: false }).count()).toBe(round)
+    expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(1)
+  }
+  expect(await page.getByRole("separator", { name: "Today" }).count()).toBe(1)
+  await page.close()
+})
+
+test("a sent image keeps its thumbnail across snapshot frames and opens with the one read it made", async () => {
+  const page = await harness.open("timeline")
+  await page.evaluate(() => document.querySelector<HTMLElement>("[data-timeline]")!.scrollTo({ top: 0 }))
+  await settled(page)
+  const opener = page.getByRole("button", { name: "Open error.png" })
+  await opener.waitFor()
+  for (let round = 0; round < 4; round++) {
+    await tl(page, (fixture) => fixture.frames(3))
+    await settled(page)
+  }
+  const thumbnail = page.locator("li", { hasText: "error.png" }).locator("[data-slot=tile][data-phase=shown] img")
+  expect(await thumbnail.count()).toBe(1)
+  expect(await thumbnail.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true)
+  expect(await page.evaluate(() => Reflect.get(window, "live")())).toBeGreaterThan(0)
+  await opener.click()
+  await settled(page)
+  expect(await page.getByRole("dialog").count()).toBe(1)
+  const reads: readonly string[] = await page.evaluate(() => Reflect.get(window, "requested"))
+  expect(reads).toEqual(["a".repeat(64)])
+  await page.keyboard.press("Escape")
+  await page.close()
+})
+
+const fromEnd = (page: Page) =>
+  page.evaluate(() => {
+    const scroller = document.querySelector<HTMLElement>("[data-timeline]")!
+    return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+  })
+
+const grow = (page: Page, selector: string, height: number) =>
+  page.evaluate(
+    ([selector, height]) => {
+      const spacer = document.createElement("div")
+      spacer.style.height = `${height}px`
+      document.querySelector(String(selector))!.prepend(spacer)
+    },
+    [selector, height] as const,
+  )
+
+const topOf = (page: Page, selector: string) =>
+  page.evaluate((selector) => document.querySelector(selector)!.getBoundingClientRect().top, selector)
+
+test("pinned to the end of a long transcript, turns streaming in keep it pinned, through a window that drops its oldest half", async () => {
+  const page = await harness.open("timeline")
+  await tl(page, (fixture) => fixture.bulk(200))
+  await settled(page)
+  expect(await fromEnd(page)).toBeLessThan(2)
+  await tl(page, (fixture) => fixture.stream(15, 16))
+  await page.waitForFunction(() => Reflect.get(window, "streaming") === false, undefined, { timeout: 30_000 })
+  await settled(page)
+  expect(await page.locator("[data-jump]").count()).toBe(0)
+  expect(await fromEnd(page)).toBeLessThan(2)
+  await page.close()
+})
+
+test("scrolled up, content growing above the view by fractions of a pixel leaves what is on screen in place, on a whole pixel", async () => {
+  const page = await harness.open("timeline")
+  await page.evaluate(() => {
+    document.querySelector<HTMLElement>("[data-timeline]")!.scrollTop = 400
+  })
+  await settled(page)
+  const watched = "[data-turn-summary]"
+  const before = await topOf(page, watched)
+  for (const height of [37.5, 12.25, 61.75]) {
+    await grow(page, "[data-item]", height)
+    await settled(page)
+  }
+  expect(Math.abs((await topOf(page, watched)) - before)).toBeLessThan(1)
+  expect(Number.isInteger(await scrollTop(page))).toBe(true)
+  expect(await page.locator("[data-jump]").count()).toBe(0)
+  await page.close()
+})
+
+test("scrolled up, growth inside the item that spans the top of the view, above it, leaves what is on screen in place", async () => {
+  const page = await harness.open("timeline")
+  const spanning = await page.evaluate(() => {
+    const scroller = document.querySelector<HTMLElement>("[data-timeline]")!
+    const tall = [...scroller.querySelectorAll<HTMLElement>("[data-item]")].find((item) => item.offsetHeight > 100)!
+    scroller.scrollTop = Math.round(tall.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop + 40)
+    return tall.dataset.item!
+  })
+  await settled(page)
+  const watched = `[data-item="${spanning}"] + [data-item]`
+  const before = await topOf(page, watched)
+  await grow(page, `[data-item="${spanning}"]`, 120)
+  await settled(page)
+  expect(Math.abs((await topOf(page, watched)) - before)).toBeLessThan(1)
+  await page.close()
+})
+
+test("loading older from a fractional scroll position restores the view on a whole pixel", async () => {
+  const page = await harness.open("timeline")
+  await tl(page, (fixture) => fixture.paginate())
+  await settled(page)
+  await page.evaluate(() => {
+    document.querySelector<HTMLElement>("[data-timeline]")!.scrollTop = 0.5
+  })
+  await settled(page)
+  await page.click("[data-load-older]")
+  await settled(page)
+  expect(Number.isInteger(await scrollTop(page))).toBe(true)
+  await page.close()
+})
+
+test("pinned, a scroll position read a pixel short while content grows keeps the view pinned", async () => {
+  const page = await harness.open("timeline")
+  await settled(page)
+  for (let round = 0; round < 3; round++) {
+    await page.evaluate(() => {
+      const scroller = document.querySelector<HTMLElement>("[data-timeline]")!
+      scroller.scrollTop -= 1
+      const spacer = document.createElement("div")
+      spacer.style.height = "120px"
+      document.querySelector("[data-item]:last-of-type")!.append(spacer)
+    })
+    await settled(page)
+  }
+  expect(await page.locator("[data-jump]").count()).toBe(0)
+  expect(await fromEnd(page)).toBeLessThan(2)
   await page.close()
 })

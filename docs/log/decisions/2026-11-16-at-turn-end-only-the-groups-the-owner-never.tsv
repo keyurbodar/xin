@@ -1,0 +1,1 @@
+2026-11-16T18:00:00Z	XIN-25	At turn end only the groups the owner never toggled fold; groups the owner opened stay open. Sending a message still folds every group	XIN-23's review of #68 overruled the brief's "always collapse at turn end": wiping an open group the owner is reading loses their place	e2e "keeping what the owner opened"	adopted

@@ -1,0 +1,1 @@
+2026-11-16T18:00:00Z	XIN-25	parseMessage keeps pi-ai's message timestamp	The turn summary's "worked for" spans the turn's message timestamps; without them it is left out	model.test.ts "worked for 1m 27s"	adopted
