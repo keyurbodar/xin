@@ -1,6 +1,7 @@
 import type { Token, TokenInputValue, UiTokenInputElement } from "@ui-sdk/web/token-input"
-import { For, Show, createSignal, onMount, type JSX } from "solid-js"
+import { ErrorBoundary, For, Show, createEffect, createSignal, type JSX } from "solid-js"
 import { render } from "solid-js/web"
+import { Stopped } from "../ui/stopped.tsx"
 import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
 import { KIND, KindIcon } from "./kinds.tsx"
 import type { Sources, Suggestion } from "./sources.ts"
@@ -22,6 +23,10 @@ const KINDS_FOR: Readonly<Record<string, readonly TokenKind[]>> = {
   "@": ["thread", "file"],
   "/": ["skill", "prompt"],
 }
+
+const FIELD = "block max-h-[320px] min-h-[48px] w-full overflow-y-auto whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-body text-ink outline-none"
+
+type Load = { readonly kind: "waiting" } | { readonly kind: "ready" } | { readonly kind: "failed"; readonly error: unknown }
 
 const CHIP = "inline-flex items-baseline gap-1 rounded-xs text-primary-ink data-[selected]:bg-primary-soft"
 
@@ -91,7 +96,24 @@ export function ComposerEditor(props: {
   const groups = (): readonly (readonly [TokenKind, readonly Suggestion[]])[] =>
     kinds().map((kind) => [kind, props.sources.list(kind)] as const)
 
-  onMount(() => void loadUiSdk("editor").then(() => {
+  const [load, setLoad] = createSignal<Load>({ kind: "waiting" })
+  let early: HTMLTextAreaElement | undefined
+  let typed = ""
+  let refocus = false
+  const start = (): void => {
+    setLoad({ kind: "waiting" })
+    loadUiSdk("editor").then(
+      () => {
+        refocus = early !== undefined && document.activeElement === early
+        setLoad({ kind: "ready" })
+      },
+      (error: unknown) => setLoad({ kind: "failed", error }),
+    )
+  }
+  start()
+
+  createEffect(() => {
+    if (load().kind !== "ready") return
     const foundInput = root.querySelector("ui-token-input")
     const foundEditor = root.querySelector("ui-token-input-editor")
     const menu = root.querySelector("ui-trigger-menu")
@@ -128,10 +150,27 @@ export function ComposerEditor(props: {
       clear: () => input.api.clear(),
       focus: () => input.api.focus({ at: "end" }),
     })
-  }))
+    if (typed !== "") input.api.setValue([typed])
+    if (refocus) queueMicrotask(() => input.api.focus({ at: "end" }))
+  })
 
-  return (
-    <div ref={root} class="contents">
+  const fallback = (): JSX.Element => (
+    <textarea
+      ref={early}
+      aria-label={props.label}
+      placeholder={props.placeholder}
+      disabled={props.disabled}
+      rows={1}
+      value={typed}
+      onInput={(event) => {
+        typed = event.currentTarget.value
+        props.onChange(typed)
+      }}
+      class={`${FIELD} resize-none bg-transparent placeholder:text-placeholder disabled:opacity-60`}
+    />
+  )
+
+  const connected = (): JSX.Element => (
     <ui-token-input
       disabled={props.disabled ? "" : undefined}
       on:valuechange={() =>
@@ -146,7 +185,7 @@ export function ComposerEditor(props: {
       <ui-token-input-editor
         aria-label={props.label}
         placeholder={props.placeholder}
-        class="block max-h-[320px] min-h-[48px] w-full overflow-y-auto whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-body text-ink outline-none data-[empty]:before:pointer-events-none data-[empty]:before:text-placeholder data-[empty]:before:content-[attr(aria-placeholder)] [&:not(:defined)]:before:text-placeholder [&:not(:defined)]:before:content-[attr(placeholder)] data-[disabled]:opacity-60"
+        class={`${FIELD} data-[empty]:before:pointer-events-none data-[empty]:before:text-placeholder data-[empty]:before:content-[attr(aria-placeholder)] data-[disabled]:opacity-60`}
       />
       <ui-trigger-menu
         on:openchange={(event) => {
@@ -188,6 +227,31 @@ export function ComposerEditor(props: {
         </ui-trigger-menu-content>
       </ui-trigger-menu>
     </ui-token-input>
+  )
+
+  const shown = (): JSX.Element => {
+    const now = load()
+    if (now.kind === "failed") throw now.error
+    return now.kind === "ready" ? connected() : fallback()
+  }
+
+  return (
+    <div ref={root} class="contents">
+      <ErrorBoundary
+        fallback={(error: unknown, reset) => (
+          <Stopped
+            title="The message box didn't load"
+            error={error}
+            onRetry={() => {
+              start()
+              reset()
+            }}
+            class="min-h-[48px] py-3"
+          />
+        )}
+      >
+        <>{shown()}</>
+      </ErrorBoundary>
     </div>
   )
 }

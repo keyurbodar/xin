@@ -261,3 +261,75 @@ test("a plugin composer action inserts its text with a separating space after a 
   expect(await page.textContent("#sent")).toBe("hello /standup today")
   await page.close()
 })
+
+const editorChunk = (url: URL) => url.pathname.endsWith("/@ui-sdk_web_token-input.js")
+
+test("an editor chunk that fails shows the error and Try again, and Try again gives a working textbox", async () => {
+  let fail = true
+  const page = await harness.open("composer", {
+    expected: /Failed to load resource/,
+    before: (page) => page.route(editorChunk, (route) => (fail ? route.abort() : route.continue())),
+  })
+  try {
+    const stopped = page.getByRole("alert")
+    await stopped.waitFor()
+    expect(await stopped.innerText()).toContain("The message box didn't load")
+    expect(await editor(page).count()).toBe(0)
+    fail = false
+    await stopped.getByRole("button", { name: "Try again" }).click()
+    await page.locator("ui-token-input-editor").waitFor()
+    expect(await page.getByRole("alert").count()).toBe(0)
+    await editor(page).click()
+    await page.keyboard.type("back again")
+    await page.keyboard.press("Enter")
+    await settled(page)
+    expect(await page.textContent("#sent")).toBe("back again")
+  } finally {
+    await page.close()
+  }
+})
+
+test("before the editor chunk lands, the placeholder shows and what was typed is kept", async () => {
+  let release!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const page = await harness.open("composer", {
+    before: (page) =>
+      page.route(editorChunk, async (route) => {
+        await held
+        await route.continue()
+      }),
+  })
+  try {
+    const early = editor(page)
+    expect(await early.evaluate((element) => element.tagName)).toBe("TEXTAREA")
+    expect(await early.getAttribute("placeholder")).toBe("Ask anything, / for commands, @ for context")
+    await early.click()
+    await page.keyboard.type("hi there")
+    release()
+    await page.locator("ui-token-input-editor").waitFor()
+    await page.keyboard.type(" again")
+    expect(await editor(page).innerText()).toBe("hi there again")
+    await page.keyboard.press("Enter")
+    await settled(page)
+    expect(await page.textContent("#sent")).toBe("hi there again")
+  } finally {
+    release()
+    await page.close()
+  }
+})
+
+test("Command registers with the composer at startup, so the + menu loads only Menu on intent", async () => {
+  const requested: string[] = []
+  const page = await harness.open("composer", { before: async (page) => page.on("request", (request) => requested.push(new URL(request.url()).pathname)) })
+  try {
+    expect(await page.evaluate(() => customElements.get("ui-command") !== undefined)).toBe(true)
+    const before = requested.length
+    await page.getByRole("button", { name: "Add" }).hover()
+    await page.waitForFunction(() => customElements.get("ui-menu") !== undefined)
+    expect(requested.slice(before).filter((path) => path.includes("ui-sdk_web_command"))).toEqual([])
+  } finally {
+    await page.close()
+  }
+})
