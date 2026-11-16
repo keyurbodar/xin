@@ -27,6 +27,7 @@
     "ingle-plugin-web",
     "ingle-plugin-workspace",
     "ingle-plugin-git-native",
+    "ingle-plugin-issues",
     "ingle-plugin-drive",
     "ingle-plugin-theme-pack",
     "ingle-plugin-outline",
