@@ -29,6 +29,11 @@ const failure = (script: string): string => {
   throw new Error(`expected ${script} to fail`)
 }
 
+const ditherChart = (props: string): Node =>
+  Visual.load(
+    `return ui.chart { type = "bar", ${props}, x = { "a" }, series = { { name = "n", values = { 1 } } } }`,
+    1,
+  ).render()
 const UPVALUES = Array.from({ length: 190 }, (_, index) => "v" + index)
 const CLOSURE_CHAIN =
   "local f while true do local " +
@@ -242,6 +247,26 @@ describe("visual runtime", () => {
     expect(failure(`return ui.canvas { height = 80, draw = function(g) g:line(0, 0, "x", 1) end }`)).toContain(
       "in a canvas draw",
     )
+  })
+
+  it("takes a dither variant and bloom on a chart and refuses them elsewhere", () => {
+    const plain = ditherChart(`dither = true`)
+    expect(plain.kind === "chart" && [plain.dither, plain.bloom]).toEqual(["gradient", "off"])
+    const glowing = ditherChart(`dither = "hatched", bloom = "aura"`)
+    expect(glowing.kind === "chart" && [glowing.dither, glowing.bloom]).toEqual(["hatched", "aura"])
+    const off = ditherChart(`dither = false`)
+    expect(off.kind === "chart" && off.dither).toBeUndefined()
+    expect(
+      failure(
+        `return ui.chart { type = "bar", dither = "plaid", x = { "a" }, series = { { name = "n", values = { 1 } } } }`,
+      ),
+    ).toContain("one of gradient")
+    expect(
+      failure(
+        `return ui.chart { type = "bar", bloom = "low", x = { "a" }, series = { { name = "n", values = { 1 } } } }`,
+      ),
+    ).toContain("needs dither")
+    expect(failure(`return ui.text { "x", dither = true }`)).toContain("has no 'dither'")
   })
 
   it("checks scenes and shaders without a GPU", () => {

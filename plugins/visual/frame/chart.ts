@@ -1,8 +1,10 @@
 // Ported from zeron (https://github.com/zeronsh/zeron), MIT, Copyright (c) 2026 Wing. See plugins/visual/LICENSE-zeron.
 
 import type { ChartNode, Series } from "../runtime/node.ts"
+import type { DitherVariant } from "../runtime/style.ts"
 import { formatNumber, niceTicks } from "../runtime/style.ts"
 import type { FrameTheme } from "./protocol.ts"
+import { type DitherLayer, ditherLayer, type Pixels, paintStrip } from "./dither.ts"
 import { cssColor, tokenCss } from "./theme.ts"
 import type { Widget, WidgetHost } from "./widget.ts"
 import { widthOf } from "./widget.ts"
@@ -81,6 +83,8 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
   element.className = "v-chart"
   const svg = el("svg", { role: "img" })
   element.append(svg)
+  let layer: { readonly bloom: ChartNode["bloom"]; readonly paint: DitherLayer } | undefined
+  let version = 0
 
   const categories = (): number =>
     node.type === "scatter" ? 0 : Math.max(node.x.length, ...node.series.map((s) => s.values.length))
@@ -139,6 +143,8 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
     svg.append(grid)
 
     const colorOf = (series: Series): string => cssColor(series.color, theme)
+    const variant = node.dither
+    const fills: ((pixels: Pixels, sx: number, sy: number) => void)[] = []
     const marks = el("g", {})
     const band = (horizontal ? frame.height : frame.width) / Math.max(1, count)
     const centerOf = (index: number): number => (horizontal ? frame.top : frame.left) + band * (index + 0.5)
@@ -208,12 +214,28 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
           const lo = Math.min(a, b)
           const size = Math.max(1, Math.abs(b - a))
           const dim = hover !== undefined && hover.index !== index
-          const rect = horizontal
-            ? el("rect", { x: lo, y: start, width: size, height: Math.max(1, thickness - 1), rx: 2 })
-            : el("rect", { x: start, y: lo, width: Math.max(1, thickness - 1), height: size, rx: 2 })
-          rect.setAttribute("fill", colorOf(series))
-          rect.setAttribute("fill-opacity", dim ? "0.45" : "1")
-          marks.append(rect)
+          const across = Math.max(1, thickness - 1)
+          if (variant === undefined) {
+            const rect = horizontal
+              ? el("rect", { x: lo, y: start, width: size, height: across, rx: 2 })
+              : el("rect", { x: start, y: lo, width: across, height: size, rx: 2 })
+            rect.setAttribute("fill", colorOf(series))
+            rect.setAttribute("fill-opacity", dim ? "0.45" : "1")
+            marks.append(rect)
+            return
+          }
+          const color = colorOf(series)
+          fills.push((pixels, sx, sy) => {
+            const laneScale = horizontal ? sy : sx
+            const alongScale = horizontal ? sx : sy
+            const first = Math.round(start * laneScale)
+            const end = Math.max(first + 1, Math.round((start + across) * laneScale))
+            for (let lane = first; lane < end; lane += 1)
+              paintStrip(pixels, horizontal ? "horizontal" : "vertical", lane, b * alongScale, a * alongScale, color, {
+                variant,
+                dim: dim ? 0.45 : 1,
+              })
+          })
         })
       }
       marks.append(
@@ -270,7 +292,9 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
               .toReversed()
               .map(([x, , y]) => `L${x.toFixed(2)},${y.toFixed(2)}`)
               .join("")
-            marks.append(el("path", { d: `${line}${back}Z`, fill: color, "fill-opacity": 0.18 }))
+            if (variant === undefined)
+              marks.append(el("path", { d: `${line}${back}Z`, fill: color, "fill-opacity": 0.18 }))
+            else fills.push((pixels, sx, sy) => paintBand(pixels, sx, sy, segment, color, variant))
           }
           marks.append(
             el("path", {
@@ -322,6 +346,21 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
     }
 
     header(svg, node, hover, width, theme, text, muted)
+    if (variant === undefined) {
+      layer?.paint.element.remove()
+      layer = undefined
+      return
+    }
+    if (layer?.bloom !== node.bloom) {
+      layer?.paint.element.remove()
+      layer = { bloom: node.bloom, paint: ditherLayer(node.bloom) }
+      element.prepend(layer.paint.element)
+    }
+    const dimmed = node.type === "bar" ? (hover?.index ?? -1) : -1
+    const key = `${version}|${width}|${node.height}|${dimmed}|${Object.values(theme.colors).join(",")}`
+    layer.paint.paint(width, node.height, key, (pixels) => {
+      for (const fill of fills) fill(pixels, pixels.cols / width, pixels.rows / node.height)
+    })
   }
 
   const hit = (target: SVGSVGElement, frame: Frame, pick: (x: number, y: number) => Hover): void => {
@@ -356,10 +395,36 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
     element,
     update(next) {
       node = next
+      version += 1
       draw()
     },
     repaint: draw,
     destroy: stopWidth,
+  }
+}
+
+/** Dither an area band column by column, interpolating its top and floor between the segment's points. */
+function paintBand(
+  pixels: Pixels,
+  sx: number,
+  sy: number,
+  segment: readonly (readonly [number, number, number])[],
+  color: string,
+  variant: DitherVariant,
+): void {
+  const first = segment[0]
+  const last = segment.at(-1)
+  if (first === undefined || last === undefined) return
+  let at = 0
+  for (let lane = Math.round(first[0] * sx); lane <= Math.round(last[0] * sx); lane += 1) {
+    const x = (lane + 0.5) / sx
+    while (at < segment.length - 2 && (segment[at + 1]?.[0] ?? x) < x) at += 1
+    const [x0, top0, floor0] = segment[at] ?? first
+    const [x1, top1, floor1] = segment[at + 1] ?? segment[at] ?? first
+    const mix = x1 === x0 ? 0 : Math.min(1, Math.max(0, (x - x0) / (x1 - x0)))
+    const top = top0 + (top1 - top0) * mix
+    const floor = floor0 + (floor1 - floor0) * mix
+    paintStrip(pixels, "vertical", lane, top * sy, floor * sy, color, { variant, dim: 1 })
   }
 }
 
