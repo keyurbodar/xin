@@ -83,8 +83,8 @@ test("the current thread is marked as the page and the thread filter clears on E
 
 test("the account chip names the owner and this home, and its menu runs on the keyboard", async () => {
   const page = await harness.open("sidebar")
-  const chip = page.locator("button[data-slot=menu-trigger]")
-  await page.waitForFunction(() => document.querySelector("button[data-slot=menu-trigger]")?.textContent?.includes("Ada Lovelace"))
+  const chip = page.locator("ui-menu-trigger > button")
+  await page.waitForFunction(() => document.querySelector("ui-menu-trigger > button")?.textContent?.includes("Ada Lovelace"))
   const host = await page.evaluate(() => location.host)
   expect(await chip.textContent()).toContain(host)
   await chip.focus()
@@ -106,6 +106,24 @@ test("the account chip names the owner and this home, and its menu runs on the k
   await page.keyboard.press("Enter")
   await page.waitForTimeout(100)
   expect(await page.evaluate(() => location.hash)).toBe("#/settings/general")
+  await page.close()
+})
+
+test("the owner menu loads on first use, and a cold keyboard open shows it with the first item focused", async () => {
+  const page = await harness.open("sidebar")
+  const chip = page.locator("ui-menu-trigger > button")
+  await page.waitForFunction(() => document.querySelector("ui-menu-trigger > button")?.textContent?.includes("Ada Lovelace"))
+  const before = await page.evaluate(() => ({
+    defined: customElements.get("ui-menu-content") !== undefined,
+    hidden: document.querySelector("ui-menu-content")?.hasAttribute("hidden"),
+    visible: (document.querySelector("ui-menu-content")?.getBoundingClientRect().height ?? 0) > 0,
+  }))
+  expect(before).toEqual({ defined: false, hidden: true, visible: false })
+  await chip.focus()
+  await page.keyboard.press("Enter")
+  await page.getByRole("menu").waitFor({ state: "visible", timeout: 5000 })
+  await page.waitForTimeout(100)
+  expect(await page.evaluate(() => document.activeElement?.textContent?.trim())).toBe("Settings")
   await page.close()
 })
 

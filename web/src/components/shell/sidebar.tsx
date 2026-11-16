@@ -1,4 +1,3 @@
-import "@ui-sdk/web/menu"
 import "@ui-sdk/web/segmented-control"
 import { createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
@@ -12,6 +11,7 @@ import { ago } from "../../lib/format.ts"
 import { stagger } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { theme } from "../../lib/theme.ts"
+import { loadUiSdk, uiSdkReady } from "../../lib/ui-sdk-lazy.ts"
 import { applyTheme, SlotList, themes } from "../../plugins/slots.tsx"
 import { openThreadTab, paneOpen, projectTabs, setSidebarDrawer, showPaneView } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
@@ -346,9 +346,22 @@ function ThreadList(props: {
   )
 }
 
-/** The account chip at the foot: the owner's monogram, name and this home's host; it opens the owner menu. */
+/**
+ * The account chip at the foot: the owner's monogram, name and this home's host; it opens the owner menu. The menu's
+ * elements load on the chip's first hover, focus or press, and a press that lands first is replayed once they have.
+ */
 function AccountChip(): JSX.Element {
   const initial = (): string => ownerName().trim().slice(0, 1).toUpperCase() || "O"
+  const warm = (): void => void loadUiSdk("menu")
+  const replay = (event: MouseEvent & { currentTarget: HTMLButtonElement }): void => {
+    if (uiSdkReady("menu")) return
+    event.preventDefault()
+    const button = event.currentTarget
+    const detail = event.detail
+    void loadUiSdk("menu").then(() =>
+      requestAnimationFrame(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail }))),
+    )
+  }
   return (
     <div class="shrink-0 border-t border-line-1 p-2">
       <ui-menu
@@ -359,6 +372,9 @@ function AccountChip(): JSX.Element {
         <ui-menu-trigger>
           <button
             type="button"
+            onPointerEnter={warm}
+            onFocus={warm}
+            onClick={replay}
             class="im-hover im-focus flex h-[var(--h-row-2)] w-full items-center gap-2.5 rounded-sm px-2 text-left data-[open]:bg-hover"
           >
             <span
@@ -376,7 +392,7 @@ function AccountChip(): JSX.Element {
             </span>
           </button>
         </ui-menu-trigger>
-        <ui-menu-content side="top" align="start" side-offset="6" class={`${POPUP} w-[var(--anchor-width)]`}>
+        <ui-menu-content hidden side="top" align="start" side-offset="6" class={`${POPUP} w-[var(--anchor-width)]`}>
           <ui-menu-item value="settings" class={POPUP_ITEM}>
             <span class="text-ink-3">
               <Settings {...ICON} />
