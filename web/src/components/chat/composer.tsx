@@ -178,6 +178,7 @@ export function Composer(props: {
         current.clear()
         setDraft("")
         attachments.clear()
+        current.focus()
       }
     } catch (failure) {
       setError({ message: errorText(failure), retry: "send" })

@@ -3,7 +3,8 @@ import { createSignal, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { Composer } from "../../src/components/chat/composer.tsx"
 import type { ThinkingLevel } from "../../src/lib/thinking.ts"
-import type { ProjectSummary, ThreadSummary } from "../../src/state/home.ts"
+import type { Streams } from "../../src/lib/api.ts"
+import { subscribeHome, type ProjectSummary, type ThreadSummary } from "../../src/state/home.ts"
 import type { ModelInfo } from "../../src/state/settings.ts"
 
 const REPLIES: Readonly<Record<string, unknown>> = {
@@ -12,7 +13,10 @@ const REPLIES: Readonly<Record<string, unknown>> = {
     { name: "make-a-deck", description: "Build a slide deck as one HTML file" },
     { name: "plan", description: "Explore first, then write a plan" },
   ],
-  "prompt.list": [{ name: "fix", description: "Fix the failing test", text: "Fix the failing test." }],
+  "prompt.list": [
+    { name: "fix", description: "Fix the failing test", text: "Fix the failing test." },
+    { name: "ship", description: "Ship the change", text: "Ship the change." },
+  ],
   "file.list": [{ path: "/projects/ingle/notes.md" }, { path: "/projects/ingle/docs/spec.md" }],
   "conv.context": {
     conversation: 1,
@@ -38,6 +42,17 @@ async function stub(input: RequestInfo | URL, init?: RequestInit): Promise<Respo
   return new Response(JSON.stringify(Array.isArray(body) ? acks : acks[0]), { headers: { "content-type": "application/json" } })
 }
 Object.defineProperty(window, "fetch", { value: stub })
+
+const enabledPlugin = new URLSearchParams(location.search).get("plugin")
+if (enabledPlugin !== null) {
+  const streams = {
+    subscribe: (_stream: string, subscription: { value: (value: unknown, rev: string) => void }) => {
+      subscription.value({ plugins: { [enabledPlugin]: "active" } }, "1")
+      return () => undefined
+    },
+  }
+  subscribeHome(streams as unknown as Streams)
+}
 
 const thread = (id: number, title: string, status: string): ThreadSummary => ({ id, title, status, run: 1 })
 const project: ProjectSummary = {

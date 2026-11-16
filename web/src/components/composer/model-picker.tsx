@@ -1,4 +1,3 @@
-import "@ui-sdk/web/combobox"
 import { ariaKeyshortcuts, formatShortcut } from "@ui-sdk/core"
 import { Check, ChevronDown, Star } from "lucide-solid"
 import { For, Show, createMemo, createSignal, type JSX } from "solid-js"
@@ -12,6 +11,9 @@ const FAVORITES = "favorites"
 const FAVORITE_SHORTCUT = "mod+d"
 
 type Entry = { readonly value: string; readonly model: ModelInfo }
+
+let combobox: Promise<unknown> | undefined
+const loadCombobox = (): Promise<unknown> => (combobox ??= import("@ui-sdk/web/combobox"))
 
 const refKey = (ref: ModelRef): string => `${ref.provider}/${ref.modelId}`
 
@@ -105,6 +107,7 @@ export function ModelPicker(props: {
       on:openchangecomplete={(event) => {
         settle(event)
         const active = document.activeElement
+        if (event.detail.value && active === trigger) content?.querySelector<HTMLInputElement>("input")?.focus()
         if (!event.detail.value && (active === document.body || content?.contains(active) === true)) trigger?.focus()
       }}
       on:querychange={(event) => props.onSearch(event.detail.value)}
@@ -119,7 +122,19 @@ export function ModelPicker(props: {
       }}
     >
       <ui-combobox-trigger>
-        <button ref={trigger} type="button" aria-label={`Model: ${props.label}`} class={TOOL}>
+        <button
+          ref={trigger}
+          type="button"
+          aria-label={`Model: ${props.label}`}
+          class={TOOL}
+          onPointerEnter={() => void loadCombobox()}
+          onFocus={() => void loadCombobox()}
+          onClick={(event) => {
+            if (customElements.get("ui-combobox") !== undefined) return
+            const button = event.currentTarget
+            void loadCombobox().then(() => button.click())
+          }}
+        >
           <Show when={props.current}>{(ref) => <ProviderMark provider={ref().provider} />}</Show>
           <span class="max-w-[220px] truncate">{props.label}</span>
           <ChevronDown size={14} stroke-width={1.5} class="text-icon" />

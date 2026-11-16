@@ -56,6 +56,19 @@ function renderChip(token: Token, host: HTMLElement): void {
   disposers.set(host, render(() => <Chip token={known} />, host))
 }
 
+function textBeforeCaret(editor: HTMLElement): string | undefined {
+  const selection = document.getSelection()
+  if (selection === null || selection.rangeCount === 0 || !editor.contains(selection.anchorNode)) return undefined
+  const range = document.createRange()
+  range.setStart(editor, 0)
+  range.setEnd(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset)
+  return range.toString()
+}
+
+function recollapse(editor: HTMLElement): void {
+  if (document.activeElement === editor) document.getSelection()?.collapse(editor, 0)
+}
+
 /**
  * The draft: text with atomic chips. `@` suggests threads and files, `/` at the start suggests skills and prompts,
  * and each choice becomes a chip that Backspace removes whole. Enter submits the form around it, Shift+Enter breaks
@@ -72,6 +85,7 @@ export function ComposerEditor(props: {
   const [trigger, setTrigger] = createSignal<string>("@")
   let root!: HTMLDivElement
   let input!: UiTokenInputElement
+  let editor!: HTMLElement
 
   const text = (): string => input.api.getText(composerCodec)
   const kinds = (): readonly TokenKind[] => KINDS_FOR[trigger()] ?? []
@@ -80,9 +94,11 @@ export function ComposerEditor(props: {
 
   onMount(() => {
     const foundInput = root.querySelector("ui-token-input")
+    const foundEditor = root.querySelector("ui-token-input-editor")
     const menu = root.querySelector("ui-trigger-menu")
-    if (foundInput === null || menu === null) throw new Error("composer editor did not render")
+    if (foundInput === null || foundEditor === null || menu === null) throw new Error("composer editor did not render")
     input = foundInput
+    editor = foundEditor
     input.codec = composerCodec
     input.renderToken = renderChip
     menu.triggers = [
@@ -100,7 +116,8 @@ export function ComposerEditor(props: {
         input.api.focus()
       },
       insertText: (value) => {
-        input.api.insert(value)
+        const before = textBeforeCaret(editor) ?? text()
+        input.api.insert(before === "" || /\s$/u.test(before) ? value : ` ${value}`)
         input.api.focus()
       },
       prepend: (value) => {
@@ -118,7 +135,13 @@ export function ComposerEditor(props: {
     <div ref={root} class="contents">
     <ui-token-input
       disabled={props.disabled ? "" : undefined}
-      on:valuechange={() => queueMicrotask(() => props.onChange(text()))}
+      on:valuechange={() =>
+        queueMicrotask(() => {
+          const current = text()
+          if (current === "") recollapse(editor)
+          props.onChange(current)
+        })
+      }
       class="block"
     >
       <ui-token-input-editor
