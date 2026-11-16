@@ -1,10 +1,11 @@
-import { Menu } from "@ark-ui/solid/menu"
+import "@ui-sdk/web/menu"
 import { Check, ChevronDown, Layers } from "lucide-solid"
-import { For, Show, type JSX } from "solid-js"
-import { Portal } from "solid-js/web"
+import { For, Show, createSignal, type JSX } from "solid-js"
 import { isThinkingLevel, type ThinkingLevel } from "../../lib/thinking.ts"
 import type { PresetRow } from "../../state/extensions.ts"
-import { GROUP_LABEL, ITEM, ITEM_ICON, SEPARATOR, SURFACE, TOOL } from "./styles.ts"
+import { createOverlayMount } from "../shell/presence.ts"
+import { POPUP, POPUP_ITEM, POPUP_LABEL, POPUP_SEPARATOR } from "../ui/surface.ts"
+import { TOOL } from "./styles.ts"
 
 const LEVEL_LABEL: Readonly<Record<ThinkingLevel, string>> = {
   off: "Off",
@@ -16,7 +17,15 @@ const LEVEL_LABEL: Readonly<Record<ThinkingLevel, string>> = {
   max: "Max",
 }
 
-/** Reasoning effort for a reasoning model, and the conversation's preset as its one real mode. */
+function Indicator(): JSX.Element {
+  return (
+    <ui-menu-item-indicator class="ml-auto grid w-4 place-items-center text-ink">
+      <Check size={14} stroke-width={1.5} />
+    </ui-menu-item-indicator>
+  )
+}
+
+/** Reasoning effort for a reasoning model, and the conversation's preset as its one real mode, as menu radio groups. */
 export function ReasoningMenu(props: {
   /** The levels the current model accepts; one or none means it has no reasoning to choose. */
   levels: readonly ThinkingLevel[]
@@ -27,6 +36,8 @@ export function ReasoningMenu(props: {
   onLevel: (level: ThinkingLevel) => void
   onPreset: (id: string) => void
 }): JSX.Element {
+  const [open, setOpen] = createSignal(false)
+  const { mounted, settle } = createOverlayMount(open)
   const reasoning = (): boolean => props.levels.length > 1
   const presetName = (): string =>
     props.presets.find((preset) => preset.id === props.presetId)?.name ?? props.presetId ?? "Preset"
@@ -35,68 +46,71 @@ export function ReasoningMenu(props: {
 
   return (
     <Show when={reasoning() || showModes()}>
-      <Menu.Root positioning={{ placement: "top-start", gutter: 8 }} lazyMount unmountOnExit>
-        <Menu.Trigger class={TOOL}>
-          <span>{label()}</span>
-          <ChevronDown size={14} stroke-width={1.5} class="text-icon" />
-        </Menu.Trigger>
-        <Portal>
-          <Menu.Positioner>
-            <Menu.Content class={`${SURFACE} w-[240px] p-1`}>
+      <ui-menu
+        prop:open={open()}
+        on:openchange={(event) => {
+          event.preventDefault()
+          const next = event.detail.value
+          queueMicrotask(() => setOpen(next))
+        }}
+        on:openchangecomplete={settle}
+      >
+        <ui-menu-trigger>
+          <button type="button" class={TOOL}>
+            <span>{label()}</span>
+            <ChevronDown size={14} stroke-width={1.5} class="text-icon" />
+          </button>
+        </ui-menu-trigger>
+        <ui-menu-content side="top" align="start" side-offset="8" class={`${POPUP} w-[240px]`}>
+          <Show when={mounted()}>
+            <Show when={reasoning()}>
+              <ui-menu-radio-group
+                prop:value={props.level ?? null}
+                on:valuechange={(event) => {
+                  const value = event.detail.value
+                  if (typeof value === "string" && isThinkingLevel(value)) props.onLevel(value)
+                }}
+              >
+                <ui-menu-group-label class={POPUP_LABEL}>Reasoning</ui-menu-group-label>
+                <For each={props.levels}>
+                  {(level) => (
+                    <ui-menu-radio-item value={level} class={POPUP_ITEM}>
+                      <span class="flex-1">{LEVEL_LABEL[level]}</span>
+                      <Indicator />
+                    </ui-menu-radio-item>
+                  )}
+                </For>
+              </ui-menu-radio-group>
+              <Show when={props.level === undefined}>
+                <div class="px-2 pb-1 text-mini text-ink-3">Using the model's own default</div>
+              </Show>
+            </Show>
+            <Show when={showModes()}>
               <Show when={reasoning()}>
-                <Menu.RadioItemGroup
-                  value={props.level ?? ""}
-                  onValueChange={(details) => {
-                    if (isThinkingLevel(details.value)) props.onLevel(details.value)
-                  }}
-                >
-                  <Menu.ItemGroupLabel class={GROUP_LABEL}>Reasoning</Menu.ItemGroupLabel>
-                  <For each={props.levels}>
-                    {(level) => (
-                      <Menu.RadioItem value={level} class={ITEM}>
-                        <Menu.ItemText class="flex-1">{LEVEL_LABEL[level]}</Menu.ItemText>
-                        <Menu.ItemIndicator>
-                          <Check size={14} stroke-width={1.5} />
-                        </Menu.ItemIndicator>
-                      </Menu.RadioItem>
-                    )}
-                  </For>
-                </Menu.RadioItemGroup>
-                <Show when={props.level === undefined}>
-                  <div class="px-2 pb-1 text-xs text-ink-3">Using the model's own default</div>
-                </Show>
+                <ui-menu-separator class={POPUP_SEPARATOR} />
               </Show>
-              <Show when={showModes()}>
-                <Show when={reasoning()}>
-                  <Menu.Separator class={SEPARATOR} />
-                </Show>
-                <Menu.RadioItemGroup
-                  value={props.presetId ?? ""}
-                  onValueChange={(details) => props.onPreset(details.value)}
-                >
-                  <Menu.ItemGroupLabel class={GROUP_LABEL}>Modes</Menu.ItemGroupLabel>
-                  <For each={props.presets}>
-                    {(preset) => (
-                      <Menu.RadioItem value={preset.id} disabled={props.presetLocked} class={ITEM}>
-                        <Layers size={16} stroke-width={1.5} class={ITEM_ICON} />
-                        <Menu.ItemText class="min-w-0 flex-1 truncate">{preset.name}</Menu.ItemText>
-                        <Menu.ItemIndicator>
-                          <Check size={14} stroke-width={1.5} />
-                        </Menu.ItemIndicator>
-                      </Menu.RadioItem>
-                    )}
-                  </For>
-                </Menu.RadioItemGroup>
-                <Show when={props.presetLocked}>
-                  <div class="px-2 pb-1 pt-0.5 text-xs leading-snug text-ink-3">
-                    The conversation has started, so its mode is fixed.
-                  </div>
-                </Show>
+              <ui-menu-radio-group prop:value={props.presetId ?? null} on:valuechange={(event) => {
+                const value = event.detail.value
+                if (typeof value === "string") props.onPreset(value)
+              }}>
+                <ui-menu-group-label class={POPUP_LABEL}>Modes</ui-menu-group-label>
+                <For each={props.presets}>
+                  {(preset) => (
+                    <ui-menu-radio-item value={preset.id} disabled={props.presetLocked ? "" : undefined} class={POPUP_ITEM}>
+                      <Layers size={16} stroke-width={1.5} class="shrink-0 text-icon" />
+                      <span class="min-w-0 flex-1 truncate">{preset.name}</span>
+                      <Indicator />
+                    </ui-menu-radio-item>
+                  )}
+                </For>
+              </ui-menu-radio-group>
+              <Show when={props.presetLocked}>
+                <div class="px-2 pb-1 pt-0.5 text-mini text-ink-3">The conversation has started, so its mode is fixed.</div>
               </Show>
-            </Menu.Content>
-          </Menu.Positioner>
-        </Portal>
-      </Menu.Root>
+            </Show>
+          </Show>
+        </ui-menu-content>
+      </ui-menu>
     </Show>
   )
 }
