@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, onCleanup, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js"
 import { highlight } from "sugar-high"
 import { lang } from "sugar-high/lang"
 import { MorphIcon } from "../ui/morph-icon.tsx"
@@ -47,7 +47,10 @@ export function CopyButton(props: { text: () => string; label: string; idle?: st
   )
 }
 
-function createHighlight(source: () => string, fence: () => string, streaming: () => boolean): () => string {
+function createHighlight(read: () => string, label: () => string, live: () => boolean): () => string {
+  const source = createMemo(read)
+  const fence = createMemo(label)
+  const streaming = createMemo(live)
   const [html, setHtml] = createSignal(markedUp(source(), fence()))
   let frame: number | undefined
   onCleanup(() => {

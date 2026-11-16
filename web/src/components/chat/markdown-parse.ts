@@ -63,6 +63,28 @@ function isBlockStart(line: string): boolean {
   )
 }
 
+function sameCells(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((cell, index) => cell === b[index])
+}
+
+export function settle(previous: MarkdownBlock | undefined, next: MarkdownBlock): MarkdownBlock {
+  if (previous === undefined) return next
+  if (previous.kind !== "table" || next.kind !== "table") return JSON.stringify(previous) === JSON.stringify(next) ? previous : next
+  const header = sameCells(previous.header, next.header) ? previous.header : next.header
+  const align = sameCells(previous.align, next.align) ? previous.align : next.align
+  const rows = next.rows.map((row, index) => {
+    const old = previous.rows[index]
+    return old !== undefined && sameCells(old, row) ? old : row
+  })
+  const unchanged =
+    header === previous.header &&
+    align === previous.align &&
+    next.streaming === previous.streaming &&
+    rows.length === previous.rows.length &&
+    rows.every((row, index) => row === previous.rows[index])
+  return unchanged ? previous : { ...next, header, align, rows }
+}
+
 export function parseBlocks(text: string, streaming = false): MarkdownBlock[] {
   const lines = text.replaceAll("\r\n", "\n").split("\n")
   const output: MarkdownBlock[] = []

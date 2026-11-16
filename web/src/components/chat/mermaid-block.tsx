@@ -1,13 +1,15 @@
-import { Match, Show, Switch, createEffect, createSignal, on, onCleanup, type JSX } from "solid-js"
+import { Match, Switch, createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js"
 import { CodeBlock, CopyButton } from "./code-block.tsx"
 import { BLOCK_LIMIT, Expandable, Fullscreen, FullscreenButton } from "./expandable.tsx"
+import { mermaidConfig } from "./mermaid-config.ts"
 import type { BlockPayloads } from "./registry.ts"
+import { cleanSvg } from "./svg-clean.ts"
 
 const SETTLE_MS = 160
 
 type Mermaid = (typeof import("mermaid"))["default"]
 
-type Drawing = { kind: "pending" } | { kind: "svg"; svg: string } | { kind: "error"; message: string }
+type Drawing = { kind: "pending" } | { kind: "svg"; svg: SVGSVGElement } | { kind: "error"; message: string }
 
 let loader: Promise<Mermaid> | undefined
 let ids = 0
@@ -18,7 +20,13 @@ let watching = false
 function watchTheme(): void {
   if (watching) return
   watching = true
-  new MutationObserver(() => setThemeTick((tick) => tick + 1)).observe(document.documentElement, {
+  let seen = JSON.stringify(themeVariables())
+  new MutationObserver(() => {
+    const next = JSON.stringify(themeVariables())
+    if (next === seen) return
+    seen = next
+    setThemeTick((tick) => tick + 1)
+  }).observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["data-theme", "class", "style"],
   })
@@ -84,10 +92,10 @@ async function draw(source: string): Promise<Drawing> {
   try {
     loader ??= import("mermaid").then((module) => module.default)
     const mermaid = await loader
-    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "base", themeVariables: themeVariables() })
+    mermaid.initialize(mermaidConfig(themeVariables()))
     await mermaid.parse(source)
-    const { svg } = await mermaid.render(id, source)
-    return { kind: "svg", svg }
+    const svg = cleanSvg((await mermaid.render(id, source)).svg)
+    return svg === undefined ? { kind: "error", message: "Diagram failed to render" } : { kind: "svg", svg }
   } catch (error) {
     return { kind: "error", message: shortError(error) }
   } finally {
@@ -95,12 +103,12 @@ async function draw(source: string): Promise<Drawing> {
   }
 }
 
-function Diagram(props: { svg: string; fit: boolean }): JSX.Element {
+function Diagram(props: { svg: SVGSVGElement; fit: boolean }): JSX.Element {
   let host!: HTMLDivElement
   createEffect(() => {
-    host.innerHTML = props.svg
-    const svg = host.querySelector("svg")
-    if (svg === null) return
+    const svg = props.svg.cloneNode(true)
+    if (!(svg instanceof SVGSVGElement)) return
+    host.replaceChildren(svg)
     svg.removeAttribute("height")
     svg.style.height = "auto"
     if (props.fit) return
@@ -119,8 +127,11 @@ export function MermaidBlock(props: BlockPayloads["mermaid"]): JSX.Element {
   watchTheme()
   onCleanup(() => clearTimeout(timer))
 
+  const text = createMemo(() => props.source)
+  const live = createMemo(() => props.streaming)
+
   createEffect(
-    on([() => props.source, () => props.streaming, themeTick], ([source, streaming]) => {
+    on([text, live, themeTick], ([source, streaming]) => {
       clearTimeout(timer)
       if (streaming) return
       run += 1
@@ -137,7 +148,7 @@ export function MermaidBlock(props: BlockPayloads["mermaid"]): JSX.Element {
     const current = drawing()
     return !props.streaming && current.kind === "error" ? current.message : undefined
   }
-  const picture = (): string | undefined => {
+  const picture = (): SVGSVGElement | undefined => {
     const current = drawing()
     return !props.streaming && current.kind === "svg" ? current.svg : undefined
   }
