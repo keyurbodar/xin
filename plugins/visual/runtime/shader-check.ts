@@ -45,10 +45,33 @@ export function stripComments(code: string): string {
 function loopEscape(code: string): string | undefined {
   if (/\\\r?\n/.test(code)) return "shader line continuations (a \\ at the end of a line) are not supported"
   if (code.includes("##")) return "shader token pasting (##) is not supported"
-  const macro = code.split("\n").find((line) => /^\s*#\s*define\b/.test(line) && /\b(for|while|do)\b/.test(line))
-  if (macro !== undefined) return "a shader #define cannot contain a loop; write the loop out where it runs"
+  const macros = code.split("\n").filter((line) => /^\s*#\s*define\b/.test(line))
+  if (macros.some((line) => /\b(for|while|do)\b/.test(line)))
+    return "a shader #define cannot contain a loop; write the loop out where it runs"
+  if (macros.some((line) => /^\s*#\s*define\s+\w+\(/.test(line)))
+    return "shader function-like macros (#define NAME(x) ...) are not supported; write a function instead"
+  if (macros.some((line) => /[;{}]/.test(line) || !balanced(line)))
+    return "a shader #define body can hold only an expression with balanced parentheses"
   if (/\/\*/.test(code)) return "a shader comment is not closed"
+  const loop = /\b(for|while)\b/g
+  for (let match = loop.exec(code); match !== null; match = loop.exec(code)) {
+    const open = code.slice(match.index + match[0].length).search(/\S/) + match.index + match[0].length
+    const close = code[open] === "(" ? closing(code, open) : -1
+    if (close < 0) return `a shader \`${match[1]}\` must be followed by its own parenthesized header`
+    if (match[1] === "for" && code.slice(open + 1, close).split(";").length !== 3)
+      return "a shader for loop header must be written out as (init; condition; step)"
+  }
   return undefined
+}
+
+function balanced(text: string): boolean {
+  let depth = 0
+  for (const char of text) {
+    if (char === "(") depth += 1
+    else if (char === ")") depth -= 1
+    if (depth < 0) return false
+  }
+  return depth === 0
 }
 
 export function validateShader(code: string, inputs: readonly string[]): string | undefined {
@@ -89,9 +112,7 @@ export function guardLoops(code: string): string {
     let header: string
     if (match[1] === "while") header = `(${inner}) && ingle_step()`
     else {
-      const parts = inner.split(";")
-      if (parts.length !== 3) continue
-      const [init, test, step] = parts
+      const [init, test, step] = inner.split(";")
       header = `${init}; (${test?.trim() === "" ? "true" : test}) && ingle_step();${step}`
     }
     out += `${code.slice(from, open + 1)}${header})`

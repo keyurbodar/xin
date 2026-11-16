@@ -4,7 +4,13 @@ declare module "fengari/src/fengaricore.js" {
 }
 
 declare module "fengari/src/lua.js" {
-  export type LuaMeter = { buffer(size: number): void; string(size: number): void; entry(): void }
+  export type LuaMeter = {
+    buffer(size: number): void
+    string(size: number): void
+    entry(): void
+    stack(slots: number): void
+    step(count: number): void
+  }
   export type LuaState = { readonly __lua: unique symbol; readonly l_G: { meter?: LuaMeter } }
   export const LUA_OK: number
   export const LUA_ERRRUN: number
