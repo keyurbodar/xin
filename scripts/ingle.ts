@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
+import { assertUniquePackages } from "./discovery.ts"
 import { reachViolations } from "./reach.ts"
 import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
 
@@ -63,7 +64,7 @@ function parse(path: string, specifier: (module: string) => string, local: boole
         contributes: field(entry, "contributes"),
       },
       `${pkg}: ingle.plugins.${name}`,
-      local ? pkg : undefined,
+      local ? { pkg, dir: relative(ROOT, dirname(path)) } : undefined,
     )
     plugins[name] = {
       module,
@@ -120,6 +121,7 @@ function discover(): Found[] {
     const parsed = parse(manifest, path, false)
     if (parsed !== undefined) found.push(parsed)
   }
+  assertUniquePackages(found.map((entry) => ({ pkg: entry.pkg, at: relative(ROOT, entry.dir) })))
   const seen = new Map<string, string>()
   for (const entry of found)
     for (const name of Object.keys(entry.plugins)) {

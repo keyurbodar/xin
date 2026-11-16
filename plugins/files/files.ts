@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { SqliteDatabase } from "@earendil-works/chord/sqlite"
+import type { SqliteDatabase, SqliteMigration } from "@earendil-works/chord/sqlite"
 import {
   AgentDoc,
   type ConversationId,
@@ -15,10 +15,11 @@ import { compile, int, obj, opt, str } from "@earendil-works/pi-schema"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { FileEntry, FileGrant, FilesService } from "../../src/contracts/files.ts"
+import { FOR_ROW, type RowBound } from "../../src/contracts/rowbound.ts"
 import type { Env } from "../../src/env.ts"
 import type { Route } from "../../src/module.ts"
 import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
-import { blobKey, FileIndex, type FileRow, normalizePath, putFile, R2Env, resolvePath } from "../../src/r2env.ts"
+import { blobKey, FileIndex, type FileRow, normalizePath, putFile, R2Env, resolvePath, toHex } from "../../src/r2env.ts"
 import { shareKey } from "../../src/share.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -53,8 +54,17 @@ export type FilesPort = {
 
 export type SweepPort = Pick<FilesPort, "state" | "env" | "db">
 
+const nameOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1)
+
+export const MIGRATIONS: readonly SqliteMigration[] = [
+  {
+    version: 1,
+    statements: ["CREATE TABLE file_shares (id TEXT PRIMARY KEY, path TEXT NOT NULL, row TEXT, at INTEGER NOT NULL)"],
+  },
+]
+
 export type FilesPlugin = {
-  readonly service: FilesService
+  readonly service: FilesService & RowBound<FilesService>
   readonly scope: Extension
   readonly ops: readonly Op[]
   readonly commit: Route
@@ -152,6 +162,52 @@ export function create(deps: FilesPort): FilesPlugin {
   const envFor = (cwd: string | undefined): R2Env =>
     new R2Env(deps.env.FILES, deps.db, { cwd: cwd ?? "/", dirs, onChange })
 
+  /** Writes the share manifest for a path's current bytes; false when the file is missing. */
+  const publish = async (id: string, path: string): Promise<boolean> => {
+    const row = await index.row(rootedPath(path))
+    if (row === undefined) return false
+    await deps.env.FILES.put(
+      shareKey(id),
+      JSON.stringify({ key: blobKey(row.sha256), type: row.type, name: nameOf(row.path) }),
+    )
+    return true
+  }
+
+  /** The share's recorded owner, checked against the caller: a plugin row may touch only its own, the kernel any. */
+  const owned = async (id: string, caller: string | undefined): Promise<boolean> => {
+    const share = await deps.db.get<{ row: string | null }>("SELECT row FROM file_shares WHERE id = ?", id)
+    if (share === undefined) return false
+    if (caller !== undefined && share.row !== caller)
+      throw new Error(`${caller} may not change share ${id}: another row owns it`)
+    return true
+  }
+
+  const sharesFor = (caller: string | undefined): Pick<FilesService, "share" | "reshare" | "unshare"> => ({
+    share: async (path) => {
+      const id = toHex(crypto.getRandomValues(new Uint8Array(16)).buffer)
+      if (!(await publish(id, path))) return undefined
+      await deps.db.run(
+        "INSERT INTO file_shares (id, path, row, at) VALUES (?, ?, ?, ?)",
+        id,
+        rootedPath(path),
+        caller ?? null,
+        Date.now(),
+      )
+      return id
+    },
+    reshare: async (id, path) => {
+      if (!(await owned(id, caller))) return false
+      if (!(await publish(id, path))) return false
+      await deps.db.run("UPDATE file_shares SET path = ? WHERE id = ?", rootedPath(path), id)
+      return true
+    },
+    unshare: async (id) => {
+      if (!(await owned(id, caller))) return false
+      await deps.env.FILES.delete(shareKey(id))
+      return true
+    },
+  })
+
   const files: FilesService = {
     env: (target) => envFor(target.cwd),
     list: async (prefix) => (await index.under(prefix ?? "/")).map(entryOf),
@@ -203,15 +259,7 @@ export function create(deps: FilesPort): FilesPlugin {
       const object = await deps.env.FILES.get(blobKey(sha256))
       return object === null ? null : object.text()
     },
-    share: async (id, version) => {
-      await deps.env.FILES.put(
-        shareKey(id),
-        JSON.stringify({ key: blobKey(version.sha256), type: version.type, name: version.name }),
-      )
-    },
-    unshare: async (id) => {
-      await deps.env.FILES.delete(shareKey(id))
-    },
+    ...sharesFor(undefined),
     grant: subscribe(grants),
   }
 
@@ -334,7 +382,7 @@ export function create(deps: FilesPort): FilesPlugin {
   }
 
   return {
-    service: files,
+    service: { ...files, [FOR_ROW]: (row: string) => ({ ...files, ...sharesFor(row) }) },
     scope: scoped(scope),
     ops: [list, remove, put, read, revision, revisions],
     commit,

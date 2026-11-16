@@ -1,5 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis"
-import { obj } from "@earendil-works/pi-schema"
+import { obj, opt, str } from "@earendil-works/pi-schema"
 import type { CommandId } from "../../src/ids.ts"
 import { DEFAULT_MANIFEST } from "../../src/kernel/manifest.ts"
 import type { Catalog } from "../../src/kernel/loader.ts"
@@ -116,6 +116,9 @@ const reach = {
             piModelSources: await attempt(() => field(ctx.pi, "modelSources")),
             piRegister: await attempt(() => field(ctx.pi, "registry", "install")),
             clockTimers: await attempt(() => field(ctx.clock, "timers")),
+            piExtensionObject: await attempt(() => field(ctx.pi.extensions(), "0", "extension")),
+            piExtensionsNamed: await attempt(() => call(ctx.pi, "extensionsNamed", ["tool-files"])),
+            piEnv: await attempt(() => call(ctx.pi, "env", () => undefined)),
             before,
           }
         },
@@ -131,12 +134,39 @@ const wide = {
     ctx.ops.define(
       defineOp({
         name: "k.reach-wide",
-        args: obj({}),
+        args: obj({ share: opt(str()) }),
         actors: ["owner"],
-        run: async () => ({
+        run: async (_api, { share }) => ({
           owner: await attempt(() => ctx.ops.run(command("k-reach-wide-owner", "plugin.list"), OWNER)),
           auth: await attempt(() => call(ctx.pi.currentModels(), "getAuth", "anthropic")),
           models: await attempt(() => call(ctx.pi.currentModels(), "getAvailable")),
+          unshareOther: await attempt(() => ctx.get("files")?.unshare(share ?? "")),
+          reshareOther: await attempt(() => ctx.get("files")?.reshare(share ?? "", "/k-reach.txt")),
+        }),
+      }),
+    )
+  },
+}
+
+const loaderState = {
+  name: "k-reach-plugins",
+  inject: ["ops", "kernel"],
+  apply(ctx: Context) {
+    ctx.ops.define(
+      defineOp({
+        name: "k.reach-plugins",
+        args: obj({}),
+        actors: ["owner"],
+        run: async () => ({
+          pushPermissions: await attempt(() => call(ctx.kernel.permissionsOf("k-reach-plugins"), "push", "secrets")),
+          pushComposition: await attempt(() =>
+            call(
+              field(ctx.kernel.composition, "catalog", "k-reach-plugins", "manifest", "permissions"),
+              "push",
+              "secrets",
+            ),
+          ),
+          granted: await attempt(() => ctx.get("secrets")?.get("probe")),
         }),
       }),
     )
@@ -162,9 +192,17 @@ export const catalog: Catalog = {
     },
     source: "test",
   },
+  "k-reach-plugins": {
+    plugin: loaderState,
+    title: "k-reach-plugins",
+    description: "test plugin that holds plugins and tries to grant itself more through the loader's state",
+    manifest: { ...DEFAULT_MANIFEST, permissions: ["plugins"], contributes: { tools: [], ops: ["k.reach-plugins"] } },
+    source: "test",
+  },
 }
 
 export const rows: readonly Row[] = [
   { id: "k-reach", name: "cordis:k-reach" },
   { id: "k-reach-wide", name: "cordis:k-reach-wide" },
+  { id: "k-reach-plugins", name: "cordis:k-reach-plugins" },
 ]

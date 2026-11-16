@@ -30,9 +30,9 @@ export type PresetConfig = {
   readonly threadOmits: readonly string[]
 }
 
-/** One installed pi extension and the plugin row that installed it. */
+/** One installed pi extension's name and the plugin whose row installed it. */
 export type InstalledExtension = {
-  readonly extension: Extension
+  readonly name: string
   readonly plugin: string | undefined
 }
 
@@ -40,6 +40,8 @@ export type PresetsPort = {
   readonly db: SqliteDatabase
   readonly harness: Harness
   extensions(): readonly InstalledExtension[]
+  /** The extension objects a conversation's `configure` removes by name. */
+  named(names: readonly string[]): readonly Extension[]
   readonly config: PresetConfig
 }
 
@@ -87,13 +89,13 @@ const removalsOf = (
   preset: PresetView | undefined,
   installed: readonly InstalledExtension[],
   omits: ReadonlySet<string>,
-): readonly Extension[] => {
+): readonly string[] => {
   const allowed = preset === undefined || preset.plugins === "all" ? undefined : new Set(preset.plugins)
   return installed
     .filter(
       ({ plugin }) => plugin !== undefined && (omits.has(plugin) || (allowed !== undefined && !allowed.has(plugin))),
     )
-    .map(({ extension }) => extension)
+    .map(({ name }) => name)
 }
 
 export async function createPresets(port: PresetsPort): Promise<PresetsFeature> {
@@ -143,13 +145,17 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
     const conversation = await port.harness.conversation(conversationId as ConversationId, context)
     if (conversation === undefined) return
     const removals = removalsOf(preset, installed, omits)
-    const removed = new Set(removals.map((extension) => extension.name))
-    const expected = names(
-      installed.filter(({ extension }) => !removed.has(extension.name)).map(({ extension }) => extension),
-    )
+    const removed = new Set(removals)
+    const expected = installed
+      .map(({ name }) => name)
+      .filter((name) => !removed.has(name))
+      .toSorted()
     const agent = await conversation.agent(context)
     if (sameNames(names(agent.extensions), expected)) return
-    await conversation.configure({ extensions: removals.length === 0 ? null : { remove: removals } }, context)
+    await conversation.configure(
+      { extensions: removals.length === 0 ? null : { remove: [...port.named(removals)] } },
+      context,
+    )
   }
 
   const reconcile = async (): Promise<WorkspaceState | undefined> => {
@@ -255,7 +261,7 @@ export async function createPresets(port: PresetsPort): Promise<PresetsFeature> 
   const service: PresetsService = {
     list,
     presetOf: (conversation) => resolved(conversation),
-    threadRemovals: (coordinator) => removalsOf(resolved(coordinator), port.extensions(), threadOmits),
+    threadRemovals: (coordinator) => port.named(removalsOf(resolved(coordinator), port.extensions(), threadOmits)),
     contribute,
   }
 
