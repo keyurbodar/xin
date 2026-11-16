@@ -99,10 +99,22 @@ export function PluginDetail(props: { name: string }): JSX.Element {
                           </span>
                         }
                       >
-                        <Button size="sm" variant="primary" onClick={() => setSheet(true)}>
-                          <Glyph name="plus" size={13} />
-                          {status() === "update-available" ? "Update" : "Add"}
-                        </Button>
+                        <Show
+                          when={status() !== "update-available"}
+                          fallback={
+                            <a
+                              href="#/extensions/updates"
+                              class="im-press inline-flex h-7 shrink-0 items-center rounded-sm px-2.5 text-sm text-ink shadow-ring"
+                            >
+                              Review update
+                            </a>
+                          }
+                        >
+                          <Button size="sm" variant="primary" onClick={() => setSheet(true)}>
+                            <Glyph name="plus" size={13} />
+                            Add
+                          </Button>
+                        </Show>
                       </Show>
                     </div>
                     <p class="mt-1.5 text-sm leading-relaxed text-ink-2">

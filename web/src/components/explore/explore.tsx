@@ -51,7 +51,9 @@ export function Explore(props: { view: ExploreView }): JSX.Element {
   return (
     <Switch>
       <Match when={props.view.kind === "list" && props.view}>{(view) => <ExploreList tab={view().tab} />}</Match>
-      <Match when={props.view.kind === "plugin" && props.view}>{(view) => <PluginDetail name={view().name} />}</Match>
+      <Match when={props.view.kind === "plugin" && props.view.name} keyed>
+        {(name) => <PluginDetail name={name} />}
+      </Match>
       <Match when={props.view.kind === "skill" && props.view}>{(view) => <SkillDetail name={view().name} />}</Match>
       <Match when={props.view.kind === "theme" && props.view}>{(view) => <ThemeDetail id={view().id} />}</Match>
     </Switch>
