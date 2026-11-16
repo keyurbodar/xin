@@ -201,13 +201,17 @@ export class Engine {
   readonly store: Store
   readonly #queue = serial()
   #deadline: Deadline | undefined
-  #revision = 0
+  #revision = Date.now()
   #threads: Promise<Map<number, Set<string>>> | undefined
 
   constructor(private readonly port: EnginePort) {
     this.store = new Store(port.db)
   }
 
+  /**
+   * Clients only compare it for change, and it must never repeat across an eviction, so it floors at the wall
+   * clock: a new boot starts past every value the last one handed out, without a stored counter or a row write.
+   */
   get revision(): number {
     return this.#revision
   }
@@ -644,7 +648,7 @@ export class Engine {
 
   async #changed(): Promise<void> {
     this.#deadline = undefined
-    this.#revision += 1
+    this.#revision = Math.max(this.#revision + 1, Date.now())
     await this.port.arm()
     await this.port.changed()
   }

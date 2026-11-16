@@ -1,18 +1,27 @@
 import type { Api, Model } from "@earendil-works/pi-ai"
-import { defineDoc, GenerationTask, hook, type HookRegistration } from "@earendil-works/pi-durable"
+import { defineDoc, GenerationTask, hook, type HookRegistration, type ModelRef } from "@earendil-works/pi-durable"
 
 export type Mode = "fast"
 
-/** A conversation's Fast mode; it applies only while the conversation's model lists `fast`. */
-export const FastDoc = defineDoc<{ on: boolean }>({
+/**
+ * The model a conversation turned Fast mode on for. It applies only while the conversation runs that model, so a
+ * switch by any path (a disable, `captain.update`, pi's own configure) leaves it inert.
+ */
+export const FastDoc = defineDoc<{ model: ModelRef | null }>({
   kind: "xin.fast",
   version: 1,
   scope: "conversation",
   history: "latest",
   fork: "initial",
-  initial: () => ({ on: false }),
+  initial: () => ({ model: null }),
   checkpointWhen: () => false,
 })
+
+export const fastOn = (doc: { readonly model: ModelRef | null } | undefined, model: ModelRef | undefined): boolean =>
+  doc?.model != null &&
+  model !== undefined &&
+  doc.model.provider === model.provider &&
+  doc.model.modelId === model.modelId
 
 /**
  * The faster tiers pi-ai can both send and price: OpenAI's priority `service_tier` on its own Responses endpoint, which
@@ -31,7 +40,8 @@ export function fastPayload(model: Pick<Model<Api>, "api" | "provider">, payload
 
 export const fastRequests: HookRegistration = hook(GenerationTask, {
   beforeProviderRequest: async (request, api, context) => {
-    if ((await api.snapshot(FastDoc, api.conversationId, context))?.on !== true) return undefined
+    const doc = await api.snapshot(FastDoc, api.conversationId, context)
+    if (!fastOn(doc, { provider: request.model.provider, modelId: request.model.id })) return undefined
     const payload = fastPayload(request.model, request.payload)
     return payload === undefined ? undefined : { payload }
   },
