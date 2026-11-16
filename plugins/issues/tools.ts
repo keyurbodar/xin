@@ -186,9 +186,9 @@ async function run(port: IssueToolPort, args: ToolArgs, api: ToolExecutionApi): 
       if (args.title === undefined) return fail("create needs a title")
       const { link } = args
       if (link?.remove === true) return fail("create cannot remove a link")
-      if (link !== undefined && (await issues.get(actor, link.other)) === undefined)
-        return fail(`no issue #${link.other} to link`)
-      const created = issueOf(await write(port, api, "issue.create", { ...fieldsOf(args), title: args.title }))
+      const fields = fieldsOf(args)
+      if (link !== undefined) await issues.linkable(actor, fields, link.other)
+      const created = issueOf(await write(port, api, "issue.create", { ...fields, title: args.title }))
       try {
         return `Created ${line(await withLink(port, api, created, link))}`
       } catch (error) {

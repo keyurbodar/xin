@@ -106,6 +106,8 @@ export type Change = { readonly issue: Issue; readonly events: IssueEvent[]; rea
 
 type Revs = { readonly rev: number; readonly statesRev: number }
 
+type CreateFields = IssueFields & { readonly project?: string }
+
 export interface IssuesService {
   states(): Promise<IssueState[]>
   createState(input: { readonly name: string; readonly closed: boolean }): Promise<IssueState>
@@ -119,10 +121,9 @@ export interface IssuesService {
     actor: IssueActor,
     input: { readonly id: string; readonly moveTo: string },
   ): Promise<{ readonly moved: number; readonly wakes: Wake[] }>
-  create(
-    actor: IssueActor,
-    fields: IssueFields & { readonly title: string; readonly project?: string },
-  ): Promise<Change>
+  create(actor: IssueActor, fields: CreateFields & { readonly title: string }): Promise<Change>
+  /** Refuses, before anything is written, a link from an issue `fields` would create to one it may not link. */
+  linkable(actor: IssueActor, fields: CreateFields, other: number): Promise<void>
   get(actor: IssueActor, id: number, before?: number): Promise<IssueDetail | undefined>
   list(actor: IssueActor, filter: IssueFilter): Promise<IssuePage>
   update(actor: IssueActor, id: number, fields: IssueFields): Promise<Change>
@@ -587,6 +588,12 @@ export function createIssues(port: IssuesPort): IssuesService {
     if (fields.threads !== undefined) await conversations(fields.threads, "thread", project, scope)
   }
 
+  /** The project an issue created from `input` lands in. */
+  const landing = async (input: CreateFields, scope: Scope): Promise<string | null> => {
+    const owner = input.threads?.[0]
+    return scope?.project ?? input.project ?? (owner === undefined ? undefined : await port.projectOf(owner)) ?? null
+  }
+
   const projectOfIssue = async (id: number): Promise<string | null> => (await row(db, id))?.project ?? null
 
   const linked = async (id: number): Promise<IssueDetail["links"]> => {
@@ -696,11 +703,15 @@ export function createIssues(port: IssuesPort): IssuesService {
       })
     },
 
+    linkable: async (actor, input, other) => {
+      const scope = await scopeOf(actor)
+      const target = await visible(db, other, scope)
+      if (apart(await landing(input, scope), target.project)) fail(`#${other} is in another project`)
+    },
+
     create: async (actor, input) => {
       const scope = await scopeOf(actor)
-      const owner = input.threads?.[0]
-      const project =
-        scope?.project ?? input.project ?? (owner === undefined ? undefined : await port.projectOf(owner)) ?? null
+      const project = await landing(input, scope)
       await checkConversations(input, project, scope)
       const at = port.now()
       return write(async (tx) => {

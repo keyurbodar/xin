@@ -15,7 +15,7 @@ import type { Home } from "../../test/worker.ts"
 import type { CommandId } from "../../src/ids.ts"
 import { commentTool } from "./comment.ts"
 import type { IssueDetail, IssuePage } from "./issues.ts"
-import { issueTool } from "./tools.ts"
+import { type IssueToolPort, issueTool } from "./tools.ts"
 
 const heldApi = (conversationId: number, taskId: number): ToolExecutionApi =>
   ({ taskId: taskId as TaskId, conversationId: conversationId as ConversationId }) as unknown as ToolExecutionApi
@@ -25,12 +25,18 @@ const textOf = (result: ToolExecutionResult): string =>
 
 type Tools = { readonly issue: ReturnType<typeof issueTool>; readonly comment: ReturnType<typeof commentTool> }
 
-const withTools = <T>(stub: Stub, work: (tools: Tools, root: number) => Promise<T>): Promise<T> =>
+type Run = IssueToolPort["run"]
+
+const withTools = <T>(
+  stub: Stub,
+  work: (tools: Tools, root: number) => Promise<T>,
+  wrap: (run: Run) => Run = (run) => run,
+): Promise<T> =>
   runInDurableObject(stub, async (home: Home) => {
     const issues = home.loader.ctx.get("issues")
     const ops = home.loader.ctx.get("ops")
     if (issues === undefined || ops === undefined) throw new Error("no issues or ops service")
-    const port = { issues, run: ops.run.bind(ops) }
+    const port = { issues, run: wrap(ops.run.bind(ops)) }
     return work({ issue: issueTool(port), comment: commentTool(port) }, (await home.root()).id)
   })
 
@@ -164,7 +170,7 @@ describe("issue tool replay keys", () => {
       textOf(await issue.execute(linkedCreate(1), heldApi(mine.coordinatorId, 41), BACKGROUND_CONTEXT)),
       textOf(await issue.execute(linkedCreate(99), heldApi(mine.coordinatorId, 42), BACKGROUND_CONTEXT)),
     ])
-    expect(texts).toEqual(["Not done: no issue #1 to link.", "Not done: no issue #99 to link."])
+    expect(texts).toEqual(["Not done: no issue #1.", "Not done: no issue #99."])
     const page = (await cmd(stub, "link-refused-list", "issue.list", {})).result as IssuePage
     expect(page.issues.map((found) => found.title)).toEqual(["Theirs"])
   })
@@ -177,11 +183,58 @@ describe("issue tool replay keys", () => {
       await issue.execute({ action: "create", with: { title: "Target" } }, heldApi(root, 52), BACKGROUND_CONTEXT)
       return [first, textOf(await issue.execute(call, heldApi(root, 53), BACKGROUND_CONTEXT))]
     })
-    expect(texts[0]).toBe("Not done: no issue #1 to link.")
+    expect(texts[0]).toBe("Not done: no issue #1.")
     expect(texts[1]).toMatch(/^Created #2 /)
     const page = (await cmd(stub, "retry-list", "issue.list", {})).result as IssuePage
     expect(page.issues.map((found) => found.title).toSorted()).toEqual(["Retry", "Target"])
     expect((await detail(stub, 2)).links.related.map((other) => other.id)).toEqual([1])
+  })
+
+  it("refuses a root agent's linked create that would land in another project, on every retry", async () => {
+    const stub = fresh()
+    const east = (await cmd(stub, "root-east", "project.create", { slug: "east", name: "east" })).result as {
+      readonly coordinatorId: number
+    }
+    const west = (await cmd(stub, "root-west", "project.create", { slug: "west", name: "west" })).result as {
+      readonly coordinatorId: number
+    }
+    await cmd(stub, "root-west-issue", "issue.create", { title: "West", threads: [west.coordinatorId] })
+    const call = {
+      action: "create",
+      with: { title: "East", threads: [east.coordinatorId], link: { kind: "blocks", other: 1 } },
+    } as const
+    const texts = await withTools(stub, async ({ issue }, root) => [
+      textOf(await issue.execute(call, heldApi(root, 61), BACKGROUND_CONTEXT)),
+      textOf(await issue.execute(call, heldApi(root, 62), BACKGROUND_CONTEXT)),
+    ])
+    expect(texts).toEqual(["Not done: #1 is in another project.", "Not done: #1 is in another project."])
+    const page = (await cmd(stub, "root-list", "issue.list", {})).result as IssuePage
+    expect(page.issues.map((found) => found.title)).toEqual(["West"])
+  })
+
+  it("reports a create whose link fails after the pre-check as created but not linked", async () => {
+    const stub = fresh()
+    const texts = await withTools(
+      stub,
+      async ({ issue }, root) => {
+        await issue.execute({ action: "create", with: { title: "Target" } }, heldApi(root, 71), BACKGROUND_CONTEXT)
+        return textOf(
+          await issue.execute(
+            { action: "create", with: { title: "Raced", link: { kind: "related", other: 1 } } },
+            heldApi(root, 72),
+            BACKGROUND_CONTEXT,
+          ),
+        )
+      },
+      (run) => async (command, actor) =>
+        command.op === "issue.link"
+          ? { kind: "rejected", code: "bad_args", message: "#1 was deleted meanwhile" }
+          : run(command, actor),
+    )
+    expect(texts).toMatch(/^Created #2 \[todo\] Raced, but not linked: #1 was deleted meanwhile\.$/)
+    const raced = await detail(stub, 2)
+    expect(raced.links.related).toEqual([])
+    expect(kinds(raced)).toEqual(["created"])
   })
 
   it("applies a link given to create, once, under its own key", async () => {
