@@ -4,6 +4,7 @@ import { errorMessage, putSkill, skills } from "../../state/extensions.ts"
 import { skillEntry, type SkillEntry } from "../../state/explore.ts"
 import { Button, Failure } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
+import { firstLoad, settled } from "../../lib/loading.ts"
 import { Card, DetailColumns, Fact, LoadFailed, Page, SkeletonRows } from "./parts.tsx"
 import { crumbsFor } from "./routes.ts"
 
@@ -20,7 +21,7 @@ const bodyOf = (markdown: string): string => markdown.replace(/^---\r?\n[\s\S]*?
 
 export function SkillDetail(props: { name: string }): JSX.Element {
   const [entry, { refetch }] = createResource(() => props.name, skillEntry)
-  const ready = () => (entry.state === "ready" || entry.state === "refreshing" ? entry.latest : undefined)
+  const ready = () => settled(entry)
   const [sheet, setSheet] = createSignal(false)
   onMount(() => void skills.reload())
   const added = createMemo(() => {
@@ -30,10 +31,10 @@ export function SkillDetail(props: { name: string }): JSX.Element {
 
   return (
     <Page crumbs={crumbsFor("skills", ready()?.title ?? props.name)} wide>
-      <Show when={entry.state === "pending"}>
+      <Show when={firstLoad(entry)}>
         <SkeletonRows count={4} />
       </Show>
-      <Show when={entry.state === "errored"}>
+      <Show when={entry.error !== undefined}>
         <LoadFailed what={props.name} message={errorMessage(entry.error)} onRetry={() => void refetch()} />
       </Show>
       <Show when={ready()}>

@@ -13,10 +13,7 @@ import { Button, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { InstallSheet } from "../extensions/install-sheet.tsx"
 import { Card, DetailColumns, ExternalLink, Fact, LoadFailed, LogoTile, Page, SkeletonRows } from "./parts.tsx"
-import { crumbsFor, logoOf, statusWord } from "./routes.ts"
-
-const installedStatus = (status: MarketStatus | undefined): boolean =>
-  status === "installed" || status === "different-version" || status === "provided"
+import { crumbsFor, logoOf, pluginAction, statusWord } from "./routes.ts"
 
 /** Plain-sentence permissions from what the index declares; the consent sheet asks for the exact list at install. */
 function permissionLines(detail: MarketDetail): readonly string[] {
@@ -91,7 +88,7 @@ export function PluginDetail(props: { name: string }): JSX.Element {
                     <div class="flex items-start justify-between gap-3">
                       <h1 class="min-w-0 text-xl font-normal text-ink">{title()}</h1>
                       <Show
-                        when={!installedStatus(status())}
+                        when={pluginAction(status()) !== "installed"}
                         fallback={
                           <span class="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm px-2.5 text-sm text-ink-2 shadow-ring">
                             <Glyph name="check" size={13} />
@@ -100,7 +97,7 @@ export function PluginDetail(props: { name: string }): JSX.Element {
                         }
                       >
                         <Show
-                          when={status() !== "update-available"}
+                          when={pluginAction(status()) === "add"}
                           fallback={
                             <a
                               href="#/extensions/updates"
@@ -213,7 +210,7 @@ export function PluginDetail(props: { name: string }): JSX.Element {
                   </ul>
                 </Fact>
                 <div class="flex flex-col items-start gap-2 pt-1">
-                  <Show when={installedStatus(status())}>
+                  <Show when={pluginAction(status()) === "installed"}>
                     <button type="button" onClick={() => navigate("/extensions/customize")} class="text-sm text-primary-ink hover:underline">
                       Configure
                     </button>

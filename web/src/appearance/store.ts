@@ -13,6 +13,7 @@ import {
   ROSE,
   parseAppearance,
   pickedInMenu,
+  withCatalogTheme,
   tokensOf,
   variantOf,
   type Appearance,
@@ -146,14 +147,8 @@ export function palettesOf(id: string): { readonly dark: Palette; readonly light
 
 /** Explore's theme kind: adds a copy to your themes (once) and applies it with its background. */
 export function addCatalogTheme(entry: CustomTheme): void {
-  const known = appearance_().custom.find((theme) => theme.source !== undefined && theme.source === entry.source)
-  const theme = known ?? { ...entry, id: newThemeId(entry.label) }
-  update((current) => ({
-    ...current,
-    theme: `${CUSTOM_PREFIX}${theme.id}`,
-    custom: known === undefined ? [...current.custom, theme] : current.custom,
-    background: theme.background ?? current.background,
-  }))
+  const freshId = newThemeId(entry.label)
+  update((current) => withCatalogTheme(current, entry, freshId))
 }
 
 export function isCatalogThemeAdded(source: string): boolean {

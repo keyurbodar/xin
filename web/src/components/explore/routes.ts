@@ -68,6 +68,23 @@ export function statusWord(status: MarketStatus): string | undefined {
   }
 }
 
+export type PluginAction = "add" | "review-update" | "installed"
+
+/** What a plugin's detail page offers: an update is reviewed on Updates, because `market.install` refuses a package that is already installed. */
+export function pluginAction(status: MarketStatus | undefined): PluginAction {
+  switch (status) {
+    case undefined:
+    case "not-installed":
+      return "add"
+    case "update-available":
+      return "review-update"
+    case "installed":
+    case "different-version":
+    case "provided":
+      return "installed"
+  }
+}
+
 export function themePalette(theme: ExploreTheme): Palette {
   return theme.scheme === "dark" ? theme.dark : theme.light
 }

@@ -292,3 +292,15 @@ export function withoutWallpaper(current: Appearance, url: string): Appearance {
     wallpapers: current.wallpapers.filter((entry) => entry.url !== url),
   }
 }
+
+/** A catalogue theme added once, keyed by `source`, and applied with its background; adding it again only reapplies it. */
+export function withCatalogTheme(current: Appearance, entry: CustomTheme, freshId: string): Appearance {
+  const known = current.custom.find((theme) => theme.source !== undefined && theme.source === entry.source)
+  const theme = known ?? { ...entry, id: freshId }
+  return {
+    ...current,
+    theme: `${CUSTOM_PREFIX}${theme.id}`,
+    custom: known === undefined ? [...current.custom, theme] : current.custom,
+    background: theme.background ?? current.background,
+  }
+}
