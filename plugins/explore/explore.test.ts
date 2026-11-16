@@ -33,7 +33,7 @@ describe("explore", () => {
     })
   })
 
-  it("searches by kind, query and category, without bodies in skill results", async () => {
+  it("lists every entry of a kind, without bodies in skill results", async () => {
     const stub = fresh()
     const skills = (await cmd(stub, "explore-s1", "explore.search", { kind: "skill" })).result
     expect(skills).toMatchObject({
@@ -42,25 +42,16 @@ describe("explore", () => {
     })
     expect(JSON.stringify(skills)).not.toContain("---\nname:")
 
-    const warm = (await cmd(stub, "explore-s2", "explore.search", { kind: "theme", category: "Warm" })).result
-    expect(warm).toMatchObject({
-      entries: THEMES.filter((theme) => theme.category === "Warm").map(({ id }) => expect.objectContaining({ id })),
-    })
-
-    const found = (await cmd(stub, "explore-s3", "explore.search", { kind: "skill", query: "RELEASE" })).result
-    expect(found).toEqual({ kind: "skill", entries: [expect.objectContaining({ name: "release-notes" })] })
-
-    const none = (await cmd(stub, "explore-s4", "explore.search", { kind: "theme", query: "zzz-nothing" })).result
-    expect(none).toEqual({ kind: "theme", entries: [] })
+    const themes = (await cmd(stub, "explore-s2", "explore.search", { kind: "theme" })).result
+    expect(themes).toEqual({ kind: "theme", entries: THEMES })
   })
 
-  it("returns an entry with its pinned sha256, and refuses an unknown one", async () => {
+  it("returns an entry, and refuses an unknown one", async () => {
     const stub = fresh()
     const theme = await cmd(stub, "explore-e1", "explore.entry", { kind: "theme", name: "fjord" })
     expect(theme.result).toEqual({
       kind: "theme",
       entry: THEMES.find((entry) => entry.id === "fjord"),
-      sha256: SHA256["theme:fjord"],
     })
     const missing = await cmd(stub, "explore-e2", "explore.entry", { kind: "skill", name: "nope" })
     expect(missing).toMatchObject({ ok: false })

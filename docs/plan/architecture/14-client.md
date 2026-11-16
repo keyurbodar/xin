@@ -175,6 +175,15 @@ Settings → Appearance (`web/src/appearance/`) holds one document per home: mod
 - **Contrast is derived.** A custom theme is three colours per variant. `tokensOf` derives every other token and pushes ink, secondary text and accent text to WCAG AA against the background.
 - **Wallpapers are unlisted share links.** An upload goes to `/me/appearance/wallpapers/` in Drive and gets a `drive.share` link, which other devices and the canvas can load because it is same-origin. Anyone who has the link can open it, and the page says so. Remove revokes the link and deletes the file. A wallpaper URL must be one of this home's `/s/` links or an inline `data:image/` URL, so a synced document cannot make devices fetch from a third party.
 
+## Explore
+
+Explore (`web/src/components/explore/`, at `#/explore`) is one catalogue with three kinds: plugins, skills and themes. It replaces the old Discover tab and package page.
+
+- **Plugins come from the market** (`market.search`, §12), and installing one goes through #35's `InstallSheet` and its consent and integrity flow. There is no second install path.
+- **Skills and themes come from a bundled first-party catalogue** in `plugins/explore`. Its `explore.search {kind}` lists a kind and `explore.entry {kind, name}` returns one entry. Neither op reads or writes storage or touches the network. The client searches and filters the listed entries in memory. `lock.ts` pins a sha256 for every entry, and a test fails the build when content and pin disagree. The pin guards the build, not the wire: both come from the same Worker.
+- **Adding** a skill calls `skill.put` behind a consent sheet that lists what the skill can do. Adding a theme calls the appearance store's `addCatalogTheme`, which adds a copy only once (keyed by `source`) and applies it.
+- **Not yet:** market indexes cannot carry skills or themes until the index format grows a kind, and there is no "Recently added" because `market.search` returns no publish time.
+
 ## Decisions taken from the review frame's open questions
 
 1. **Owner token is the only sign-in.** The backend authenticates one owner; members would need their own auth, which does not exist.

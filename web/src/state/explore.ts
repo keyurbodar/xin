@@ -86,36 +86,15 @@ export const exploreThemes: RemoteHandle<readonly ExploreTheme[]> = remote(
   (value) => entriesOf(value).flatMap((item) => themeOf(item) ?? []),
 )
 
-async function sha256(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
-}
-
-/** The same canonical form the explore plugin pins: keys sorted at every level, no whitespace. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`
-  if (isRecord(value))
-    return `{${Object.keys(value)
-      .toSorted()
-      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
-      .join(",")}}`
-  return JSON.stringify(value)
-}
-
-/** Fetches one entry and refuses it unless its content hashes to the sha256 the catalogue pinned. */
-async function verifiedEntry(kind: "skill" | "theme", name: string): Promise<Readonly<Record<string, unknown>>> {
+async function catalogueEntry(kind: "skill" | "theme", name: string): Promise<Readonly<Record<string, unknown>>> {
   const value = await cmd<unknown>("explore.entry", { kind, name })
   const entry = isRecord(value) ? value["entry"] : undefined
-  const pinned = isRecord(value) ? strOf(value["sha256"]) : undefined
-  if (!isRecord(entry) || pinned === undefined) throw new Error(`Explore returned no ${kind} ${name}`)
-  const markdown = strOf(entry["markdown"])
-  const actual = await sha256(kind === "skill" ? (markdown ?? "") : canonical(entry))
-  if (actual !== pinned) throw new Error(`${name} failed its integrity check, so it was not added`)
+  if (!isRecord(entry)) throw new Error(`Explore returned no ${kind} ${name}`)
   return entry
 }
 
 export async function skillEntry(name: string): Promise<SkillEntry> {
-  const entry = await verifiedEntry("skill", name)
+  const entry = await catalogueEntry("skill", name)
   const skill = skillOf(entry)
   const markdown = strOf(entry["markdown"])
   if (skill === undefined || markdown === undefined) throw new Error(`Explore returned a malformed skill ${name}`)
@@ -126,7 +105,7 @@ export const themeSource = (id: string): string => `explore:${id}`
 
 /** A copy for your themes; it keeps your wallpaper and settings and only switches the effect to the theme's. */
 export async function catalogTheme(id: string, current: Background): Promise<CustomTheme> {
-  const theme = themeOf(await verifiedEntry("theme", id))
+  const theme = themeOf(await catalogueEntry("theme", id))
   if (theme === undefined) throw new Error(`Explore returned a malformed theme ${id}`)
   return {
     id: theme.id,

@@ -20,6 +20,7 @@ const bodyOf = (markdown: string): string => markdown.replace(/^---\r?\n[\s\S]*?
 
 export function SkillDetail(props: { name: string }): JSX.Element {
   const [entry, { refetch }] = createResource(() => props.name, skillEntry)
+  const ready = () => (entry.state === "ready" || entry.state === "refreshing" ? entry.latest : undefined)
   const [sheet, setSheet] = createSignal(false)
   onMount(() => void skills.reload())
   const added = createMemo(() => {
@@ -28,14 +29,14 @@ export function SkillDetail(props: { name: string }): JSX.Element {
   })
 
   return (
-    <Page crumbs={crumbsFor("skills", entry.latest?.title ?? props.name)} wide>
-      <Show when={entry.loading && entry.latest === undefined}>
+    <Page crumbs={crumbsFor("skills", ready()?.title ?? props.name)} wide>
+      <Show when={entry.state === "pending"}>
         <SkeletonRows count={4} />
       </Show>
-      <Show when={entry.error !== undefined && entry.latest === undefined}>
+      <Show when={entry.state === "errored"}>
         <LoadFailed what={props.name} message={errorMessage(entry.error)} onRetry={() => void refetch()} />
       </Show>
-      <Show when={entry.latest}>
+      <Show when={ready()}>
         {(skill) => (
           <DetailColumns
             main={
@@ -81,7 +82,7 @@ export function SkillDetail(props: { name: string }): JSX.Element {
                 <Card title="1 version">
                   <div class="flex items-center gap-3 px-4 py-2.5">
                     <span class="font-mono text-sm text-ink">1</span>
-                    <span class="text-xs text-ink-2">Bundled with this build, checked by sha256 before it is added</span>
+                    <span class="text-xs text-ink-2">Bundled with this build and pinned by sha256 when the build is made</span>
                   </div>
                 </Card>
               </>
@@ -108,7 +109,7 @@ export function SkillDetail(props: { name: string }): JSX.Element {
           />
         )}
       </Show>
-      <Show when={sheet() && entry.latest}>{(skill) => <SkillSheet skill={skill()} onClose={() => setSheet(false)} />}</Show>
+      <Show when={sheet() && ready()}>{(skill) => <SkillSheet skill={skill()} onClose={() => setSheet(false)} />}</Show>
     </Page>
   )
 }
@@ -221,7 +222,7 @@ function SkillSheet(props: { skill: SkillEntry; onClose: () => void }): JSX.Elem
                 )}
               </For>
             </div>
-            <p class="mt-3 text-xs text-ink-2">Its content is checked against the catalogue's sha256 before it is saved.</p>
+            <p class="mt-3 text-xs text-ink-2">It ships inside this build, and its content is pinned by sha256 when the build is made.</p>
             <Show when={error()}>{(message) => <div class="mt-3"><Failure message={message()} /></div>}</Show>
           </Show>
         </div>

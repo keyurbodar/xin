@@ -1,6 +1,5 @@
-import { obj, oneOf, opt, str } from "@earendil-works/pi-schema"
+import { obj, oneOf, str } from "@earendil-works/pi-schema"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
-import { SHA256 } from "./lock.ts"
 import { SKILLS, type CatalogSkill } from "./skills.ts"
 import { THEMES, type CatalogTheme } from "./themes.ts"
 
@@ -29,40 +28,17 @@ export async function sha256(text: string): Promise<string> {
 
 const keyOf = (kind: Kind, id: string): string => `${kind}:${id}`
 
-const matches = (query: string | undefined, fields: readonly string[]): boolean => {
-  const text = query?.trim().toLowerCase() ?? ""
-  return text === "" || fields.some((field) => field.toLowerCase().includes(text))
-}
-
 const skillSummary = ({ markdown, ...summary }: CatalogSkill) => ({ ...summary, lines: markdown.split("\n").length })
 
-/** Zero storage reads or writes: the catalogue ships in the bundle and every op answers from it. */
+/** Zero storage reads or writes: the catalogue ships in the bundle, pinned by sha256 in lock.ts at build time, and every op answers from it. */
 export function exploreOps(): readonly Op[] {
   const search = defineOp({
     name: "explore.search",
     read: true,
-    args: obj({ kind: oneOf(KINDS), query: opt(str({ maxLength: 200 })), category: opt(str({ maxLength: 80 })) }),
+    args: obj({ kind: oneOf(KINDS) }),
     actors: ["owner"],
-    run: async (_api, { kind, query, category }) => {
-      const inCategory = (value: string): boolean => category === undefined || category === value
-      if (kind === "skill")
-        return {
-          kind,
-          entries: SKILLS.filter(
-            (skill) =>
-              inCategory(skill.category) &&
-              matches(query, [skill.name, skill.title, skill.description, skill.author, skill.category]),
-          ).map(skillSummary),
-        }
-      return {
-        kind,
-        entries: THEMES.filter(
-          (theme) =>
-            inCategory(theme.category) &&
-            matches(query, [theme.id, theme.label, theme.description, theme.author, theme.category, theme.effect]),
-        ),
-      }
-    },
+    run: async (_api, { kind }) =>
+      kind === "skill" ? { kind, entries: SKILLS.map(skillSummary) } : { kind, entries: THEMES },
   })
 
   const entry = defineOp({
@@ -73,9 +49,8 @@ export function exploreOps(): readonly Op[] {
     run: async (_api, { kind, name }) => {
       const found =
         kind === "skill" ? SKILLS.find((skill) => skill.name === name) : THEMES.find((theme) => theme.id === name)
-      const pinned = SHA256[keyOf(kind, name)]
-      if (found === undefined || pinned === undefined) throw new OpRejected("bad_args", `no ${kind} ${name} in Explore`)
-      return { kind, entry: found, sha256: pinned }
+      if (found === undefined) throw new OpRejected("bad_args", `no ${kind} ${name} in Explore`)
+      return { kind, entry: found }
     },
   })
 
