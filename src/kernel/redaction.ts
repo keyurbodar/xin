@@ -3,7 +3,7 @@ import { defineExtension, type Extension, hook, type ToolExecutionResult, ToolTa
 
 const REDACTED = "[redacted]"
 
-const redact = (text: string, secrets: readonly string[]): string => {
+export const redact = (text: string, secrets: readonly string[]): string => {
   let redacted = text
   for (const secret of secrets) redacted = redacted.split(secret).join(REDACTED)
   return redacted

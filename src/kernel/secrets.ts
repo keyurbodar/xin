@@ -5,7 +5,7 @@ import { FragmentId } from "../rowid.ts"
 import { Sealer } from "../seal.ts"
 import { hidden } from "./hidden.ts"
 import type { IngleLoader } from "./loader.ts"
-import { redactionExtension } from "./redaction.ts"
+import { redact, redactionExtension } from "./redaction.ts"
 import { CredentialStore } from "./sealed.ts"
 
 type State = { readonly own: Context; store: CredentialStore | undefined }
@@ -54,6 +54,11 @@ export class Secrets extends Service {
   async set(ref: string, value: string): Promise<void> {
     await sealed(this).set(ref, value)
     this.ctx.emit("credentials/updated", ref)
+  }
+
+  /** `text` with every stored credential value replaced by `[redacted]`, so a row can redact without reading a value. */
+  redact(text: string): string {
+    return redact(text, sealed(this).values())
   }
 
   /** Every plaintext value, for redaction. A plugin row's facade refuses this; a kernel row is refused here. */

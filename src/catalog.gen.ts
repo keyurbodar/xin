@@ -647,7 +647,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "plugins"],
+      permissions: ["conversations", "plugins", "secrets"],
       contributes: { tools: [], ops: ["tool.policy.read", "tool.policy.set"] },
       slots: [],
     },

@@ -18,6 +18,7 @@ import {
   turn,
 } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
+import { RequestsDoc } from "../../src/contracts/questions.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import { canonical } from "./policy.ts"
@@ -252,4 +253,30 @@ describe("tool policy", () => {
     })
     expect(results.filter((text) => text.includes("quick done"))).toHaveLength(1)
   }, 20_000)
+
+  it("redacts a stored secret out of the approval preview before capping it", async () => {
+    const stub = fresh()
+    const secret = "sk-live-0123456789abcdef"
+    expect(await cmd(stub, "policy-secret", "secret.set", { ref: "TOKEN", value: secret })).toMatchObject({ ok: true })
+    await setMode(stub, "ask")
+    const text = `${"x".repeat(470)}${secret} tail`
+    respond([
+      fauxAssistantMessage([fauxToolCall("remember", { scope: "me", text }, { id: "call-secret" })], {
+        stopReason: "toolUse",
+      }),
+    ])
+    await turn(stub, "policy-secret-ask")
+    const [row] = await listed(stub)
+    expect(row?.id).toBe("approval:call-secret")
+    const preview = String(field(row?.subject, "arguments"))
+    expect(preview).toContain("[redac")
+    expect(preview.length).toBeLessThanOrEqual(500)
+    const stored = await runInDurableObject(stub, async (home: Home) =>
+      JSON.stringify(await home.harness.snapshot(RequestsDoc, ROOT_CONVERSATION_ID, context)),
+    )
+    for (const seen of [JSON.stringify(row), stored]) {
+      expect(seen).not.toContain(secret)
+      expect(seen).not.toContain(secret.slice(0, 8))
+    }
+  })
 })

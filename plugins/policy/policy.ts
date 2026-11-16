@@ -77,6 +77,7 @@ const parseRespond = compile(obj({ threadId: int({ minimum: 0 }), requestId: str
 export type PolicyPort = {
   readonly harness: Harness
   readonly questions: Pick<QuestionsService, "ask" | "settle">
+  redact(text: string): string
   registry(): RegistrySnapshot
   pluginOf(extension: string): string | undefined
 }
@@ -290,7 +291,7 @@ export function createPolicy(port: PolicyPort): Policy {
         requestId,
         question: `Allow ${tool} to run?`,
         options: APPROVAL_OPTIONS,
-        subject: { tool, arguments: preview(args) },
+        subject: { tool, arguments: preview(port.redact(args)) },
         now: Date.now(),
       },
       context,

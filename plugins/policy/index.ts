@@ -2,12 +2,13 @@ import type { Context } from "../../src/kernel/index.ts"
 import { createPolicy } from "./policy.ts"
 
 export const name = "policy"
-export const inject = ["harness", "ops", "pi", "kernel", "questions"]
+export const inject = ["harness", "ops", "pi", "kernel", "questions", "secrets"]
 
 export async function apply(ctx: Context): Promise<void> {
   const policy = createPolicy({
     harness: ctx.harness,
     questions: ctx.questions,
+    redact: (text) => ctx.secrets.redact(text),
     registry: () => ctx.pi.registry.snapshot(),
     pluginOf: (extension) => {
       const row = ctx.pi.extensions().find((installed) => installed.name === extension)?.row

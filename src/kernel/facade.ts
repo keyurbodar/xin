@@ -97,7 +97,7 @@ const ALLOWED: Readonly<Record<string, Readonly<Record<string, Member>>>> = {
   },
   clock: { arm: {}, timer: {} },
   http: { route: {} },
-  secrets: { get: {}, set: {} },
+  secrets: { get: {}, set: {}, redact: {} },
   loader: {
     locate: {},
     composition: { needs: "plugins", view: frozenCopy },
