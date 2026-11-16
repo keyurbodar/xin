@@ -47,7 +47,7 @@ The queue is one session document, `xin.intake` (§02), not a host table: `enque
 - **Any other file** is the reference line alone.
 - A recorded blob R2 no longer holds is listed as `no longer stored`.
 - An item queued before `message.send` recorded blobs (no `sha256`) keeps its files and lists them by path alone.
-- Nothing a file brings can forge the markup: names, types and paths are escaped (`&`, `<`, `>`, control characters folded to spaces, and `"` in the path attribute), an inlined file's own `<file`, `</file`, `<attachments` and `</attachments` tags are escaped, and an image whose bytes do not start with its type's signature is listed as `not shown, its bytes are not image/png` instead of being sent.
+- Nothing a file brings can forge the markup: names, types and paths are escaped (`&`, `<`, `>`, control characters and line or paragraph separators (U+2028, U+2029) and bidi controls (`\p{Bidi_Control}`, so `invoice\u202Efdp.exe` cannot read as a PDF) folded to spaces; other format characters such as an emoji's zero-width joiner are kept, and `"` in the path attribute), an inlined file's own `<file`, `</file`, `<attachments` and `</attachments` tags are escaped, and an image whose bytes do not start with its type's signature is listed as `not shown, its bytes are not image/png` instead of being sent.
 
 Budgets are spent against the recorded size before any bytes are read, so a file that does not fit never enters the isolate and the stored entry stays far under a Durable Object row.
 
