@@ -25,7 +25,7 @@ function base64(bytes: Uint8Array): string {
 
 const plain = (value: string): string =>
   value
-    .replace(/\p{Cc}+/gu, " ")
+    .replace(/[\p{Cc}\p{Zl}\p{Zp}\p{Bidi_Control}]+/gu, " ")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import {
+  blobUrl,
   createAttachments,
   isBlobType,
   kindLabel,
@@ -94,4 +95,39 @@ test("only octet-stream or image bytes count as a blob", () => {
   expect(isBlobType("image/png")).toBe(true)
   expect(isBlobType("text/html; charset=utf-8")).toBe(false)
   expect(isBlobType("")).toBe(false)
+})
+
+test("adding a failed file again aborts its old request and revokes its old preview", async () => {
+  const signals: AbortSignal[] = []
+  const { store, revoked } = harness((_file, _progress, signal) => {
+    signals.push(signal)
+    return signals.length === 1 ? Promise.reject(new Error("shot.png: HTTP 500")) : new Promise(() => undefined)
+  })
+  store.add([file(10, "shot.png")])
+  await settle()
+  expect(revoked).toEqual([])
+  store.add([file(10, "shot.png")])
+  expect(signals[0]?.aborted).toBe(true)
+  expect(revoked).toEqual(["blob:test/shot.png"])
+})
+
+async function blobWith(response: Response, sha256: string) {
+  const original = globalThis.fetch
+  URL.createObjectURL = () => "blob:test/thumb"
+  globalThis.fetch = Object.assign(async () => response, { preconnect: original.preconnect })
+  try {
+    return await blobUrl(sha256, "image/png").then(
+      (url) => ({ url }),
+      (failure: unknown) => ({ failure: String(failure) }),
+    )
+  } finally {
+    globalThis.fetch = original
+  }
+}
+
+test("blobUrl refuses a page served in place of the bytes, like a dev server's index.html", async () => {
+  const html = new Response("<!doctype html>", { headers: { "content-type": "text/html; charset=utf-8" } })
+  expect(await blobWith(html, "c".repeat(64))).toEqual({ failure: expect.stringContaining("not file bytes") })
+  const bytes = new Response(new Uint8Array([0x89, 0x50]), { headers: { "content-type": "application/octet-stream" } })
+  expect(await blobWith(bytes, "d".repeat(64))).toEqual({ url: "blob:test/thumb" })
 })

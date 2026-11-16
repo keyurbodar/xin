@@ -1,6 +1,6 @@
+import "@ui-sdk/web/menu"
+import "@ui-sdk/web/switch"
 import { createEffect, createSignal, Show, type Accessor, type JSX } from "solid-js"
-import { Portal } from "solid-js/web"
-import { Menu } from "@ark-ui/solid/menu"
 import { Ellipsis, History, Pause, Pencil, Play, SkipForward, Trash2 } from "lucide-solid"
 import { attemptFor, runNowArgs, runSignal, type Attempt, type Automation } from "../../lib/automations.ts"
 import { isDefinitive } from "../../lib/api.ts"
@@ -9,8 +9,9 @@ import { navigate } from "../../lib/router.ts"
 import { STATE_WORD } from "../../lib/status.ts"
 import { deleteAutomation, runAutomation, setAutomationEnabled } from "../../state/automations.ts"
 import { homeProjects } from "../../state/home.ts"
-import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from "../shell/menu.ts"
-import { Toggle } from "../extensions/chrome.tsx"
+import { ICON_BUTTON } from "../shell/menu.ts"
+import { createOverlayMount } from "../shell/presence.ts"
+import { POPUP, POPUP_ITEM, POPUP_SEPARATOR } from "../ui/surface.ts"
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
 import { Signal } from "../ui/signal.tsx"
 import { AutomationDialog } from "./dialog.tsx"
@@ -79,14 +80,39 @@ export function createAutomationActions(list: Accessor<readonly Automation[] | u
   }
 }
 
+type SwitchElement = HTMLElement & {
+  readonly api: { readonly setChecked: (checked: boolean, details: { readonly reason: "imperative" }) => boolean }
+}
+
+const isSwitch = (node: HTMLElement): node is SwitchElement => "api" in node
+
+/**
+ * A ui-sdk Switch saved on toggle: a press is refused and handed to the toggle action, and the action's answer
+ * moves `on`, which reaches the switch through `api.setChecked` once it is enabled again: a disabled switch ignores it.
+ */
 export function EnabledToggle(props: { automation: Automation; on: boolean; busy: boolean; onToggle: () => void }): JSX.Element {
+  let element: SwitchElement | undefined
+  createEffect(() => {
+    const on = props.on
+    if (!props.busy) element?.api.setChecked(on, { reason: "imperative" })
+  })
   return (
-    <Toggle
-      on={props.on}
-      label={props.on ? `Pause ${props.automation.title}` : `Resume ${props.automation.title}`}
-      disabled={props.busy}
-      onChange={props.onToggle}
-    />
+    <ui-switch
+      ref={(node: HTMLElement) => {
+        if (isSwitch(node)) element = node
+      }}
+      default-checked={props.on ? "" : undefined}
+      disabled={props.busy ? "" : undefined}
+      aria-label={props.on ? `Pause ${props.automation.title}` : `Resume ${props.automation.title}`}
+      on:checkedchange={(event) => {
+        if (event.detail.reason === "imperative") return
+        event.preventDefault()
+        queueMicrotask(props.onToggle)
+      }}
+      class="im-switch relative block h-4 w-7 shrink-0 cursor-default rounded-sm bg-line-2 outline-none focus-visible:ring-2 focus-visible:ring-primary-soft data-[checked]:bg-ink data-[disabled]:opacity-40"
+    >
+      <ui-switch-thumb class="absolute left-0.5 top-0.5 block h-3 w-3 rounded-2xs bg-ink-3 data-[checked]:bg-bg" />
+    </ui-switch>
   )
 }
 
@@ -138,56 +164,63 @@ export function RowMenu(props: {
   withHistory?: boolean
   onAction: (action: RowAction) => void
 }): JSX.Element {
+  const [open, setOpen] = createSignal(false)
+  const content = createOverlayMount(open)
   return (
-    <Menu.Root
-      positioning={{ placement: "bottom-end", gutter: 4 }}
-      lazyMount
-      unmountOnExit
-      onSelect={(details) => {
-        if (isRowAction(details.value)) props.onAction(details.value)
+    <ui-menu
+      on:openchange={(event) => setOpen(event.detail.value)}
+      on:openchangecomplete={content.settle}
+      on:action={(event) => {
+        const value = event.detail.value
+        if (isRowAction(value)) props.onAction(value)
       }}
     >
-      <Menu.Trigger class={ICON_BUTTON} aria-label={`${props.automation.title} actions`} disabled={props.busy}>
-        <Ellipsis {...ICON} />
-      </Menu.Trigger>
-      <Portal>
-        <Menu.Positioner>
-          <Menu.Content class={MENU_CONTENT}>
-            <Menu.Item value="run" class={MENU_ITEM}>
+      <ui-menu-trigger>
+        <button
+          type="button"
+          class={`${ICON_BUTTON} aria-expanded:bg-hover aria-expanded:text-ink`}
+          aria-label={`${props.automation.title} actions`}
+          disabled={props.busy}
+        >
+          <Ellipsis {...ICON} />
+        </button>
+      </ui-menu-trigger>
+      <ui-menu-content side="bottom" align="end" side-offset="4" class={`${POPUP} w-[200px]`}>
+        <Show when={content.mounted()}>
+          <ui-menu-item value="run" class={POPUP_ITEM}>
+            <span class="text-ink-3">
+              <SkipForward {...ICON} />
+            </span>
+            Run now…
+          </ui-menu-item>
+          <ui-menu-item value="edit" class={POPUP_ITEM}>
+            <span class="text-ink-3">
+              <Pencil {...ICON} />
+            </span>
+            Edit…
+          </ui-menu-item>
+          <Show when={props.withHistory !== false}>
+            <ui-menu-item value="open" class={POPUP_ITEM}>
               <span class="text-ink-3">
-                <SkipForward {...ICON} />
+                <History {...ICON} />
               </span>
-              Run now…
-            </Menu.Item>
-            <Menu.Item value="edit" class={MENU_ITEM}>
-              <span class="text-ink-3">
-                <Pencil {...ICON} />
-              </span>
-              Edit…
-            </Menu.Item>
-            <Show when={props.withHistory !== false}>
-              <Menu.Item value="open" class={MENU_ITEM}>
-                <span class="text-ink-3">
-                  <History {...ICON} />
-                </span>
-                Run history
-              </Menu.Item>
-            </Show>
-            <Menu.Item value="toggle" class={MENU_ITEM}>
-              <span class="text-ink-3">{props.enabled ? <Pause {...ICON} /> : <Play {...ICON} />}</span>
-              {props.enabled ? "Pause" : "Resume"}
-            </Menu.Item>
-            <Menu.Separator class={MENU_SEPARATOR} />
-            <Menu.Item value="delete" class={`${MENU_ITEM} data-[highlighted]:text-failed`}>
-              <span class="text-ink-3">
-                <Trash2 {...ICON} />
-              </span>
-              Delete…
-            </Menu.Item>
-          </Menu.Content>
-        </Menu.Positioner>
-      </Portal>
-    </Menu.Root>
+              Run history
+            </ui-menu-item>
+          </Show>
+          <ui-menu-item value="toggle" label={props.enabled ? "Pause" : "Resume"} class={POPUP_ITEM}>
+            <span class="text-ink-3">{props.enabled ? <Pause {...ICON} /> : <Play {...ICON} />}</span>
+            {props.enabled ? "Pause" : "Resume"}
+          </ui-menu-item>
+          <ui-menu-separator class={POPUP_SEPARATOR} />
+          <ui-menu-item value="delete" class={`${POPUP_ITEM} data-[highlighted]:text-failed`}>
+            <span class="text-ink-3">
+              <Trash2 {...ICON} />
+            </span>
+            Delete…
+          </ui-menu-item>
+        </Show>
+      </ui-menu-content>
+    </ui-menu>
   )
 }
 
@@ -253,7 +286,7 @@ export function RunNowDialog(props: { automation: Automation | undefined; onClos
           <button
             type="submit"
             disabled={busy()}
-            class="im-press flex h-8 items-center gap-1.5 rounded-sm bg-primary px-3 text-sm font-medium text-on-primary disabled:opacity-40"
+            class="im-press flex h-8 items-center gap-1.5 rounded-sm bg-primary px-3 text-sm font-title text-on-primary disabled:opacity-40"
           >
             {busy() ? "Starting…" : "Run now"}
             <span class="kbd border-on-primary/30 text-on-primary">⌘↵</span>
@@ -327,7 +360,7 @@ export function DeleteAutomationDialog(props: {
           <button
             type="submit"
             disabled={busy()}
-            class="im-press h-8 rounded-sm border border-failed/40 bg-failed-soft px-3 text-sm font-medium text-failed hover:border-failed disabled:opacity-50"
+            class="im-press h-8 rounded-sm border border-failed/40 bg-failed-soft px-3 text-sm font-title text-failed hover:border-failed disabled:opacity-50"
           >
             {busy() ? "Deleting…" : "Delete"}
           </button>
@@ -335,7 +368,7 @@ export function DeleteAutomationDialog(props: {
       }
     >
       <p class="text-base text-ink-2">
-        Delete <span class="font-medium text-ink">{kept()?.title}</span>? Its triggers, open batches and run history go with it. Threads it
+        Delete <span class="font-title text-ink">{kept()?.title}</span>? Its triggers, open batches and run history go with it. Threads it
         already started stay.
       </p>
     </Dialog>

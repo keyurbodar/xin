@@ -1,3 +1,4 @@
+import "@ui-sdk/web/collapsible"
 import { createMemo, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { CalendarClock, ChevronLeft, ChevronRight, Pencil, SkipForward, Timer, Webhook } from "lucide-solid"
 import {
@@ -17,10 +18,11 @@ import {
 import { count, money } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import { STATE_WORD } from "../../lib/status.ts"
-import { createAutomationHistory } from "../../state/automations.ts"
+import { createAutomationHistory, RUNS_PAGE } from "../../state/automations.ts"
 import { homeProjects } from "../../state/home.ts"
 import { EmptyState, ResourceError } from "../chat/ui.tsx"
 import { ICON_BUTTON } from "../shell/menu.ts"
+import { createOverlayMount } from "../shell/presence.ts"
 import { Loading, RowSkeleton } from "../ui/skeleton.tsx"
 import { Signal } from "../ui/signal.tsx"
 import { createAutomationActions, createRowDialogs, EnabledToggle, RowMenu } from "./parts.tsx"
@@ -29,6 +31,9 @@ import { WebhookUrl } from "./triggers.tsx"
 const ICON = { size: 14, "stroke-width": 1.5 } as const
 
 const RUN_GRID = "grid grid-cols-[20px_minmax(0,1fr)_88px_64px_64px_16px] items-center gap-3 md:grid-cols-[20px_minmax(0,1fr)_96px_72px_80px_80px_16px]"
+
+const PAGER_BUTTON =
+  "im-press h-7 rounded-sm px-2 text-small text-ink-2 enabled:hover:bg-hover enabled:hover:text-ink disabled:text-icon"
 
 const when = (iso: string): string =>
   new Date(iso).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
@@ -53,7 +58,7 @@ function Section(props: { title: string; meta?: string | undefined; children: JS
   return (
     <section class="flex flex-col gap-2">
       <div class="flex h-6 items-baseline gap-2 px-1">
-        <h2 class="text-sm font-medium text-ink-2">{props.title}</h2>
+        <h2 class="text-small font-title text-ink-2">{props.title}</h2>
         <Show when={props.meta}>{(meta) => <span class="font-mono text-xs tabular-nums text-ink-3">{meta()}</span>}</Show>
       </div>
       {props.children}
@@ -139,17 +144,18 @@ function Batches(props: { batches: readonly Batch[] }): JSX.Element {
 
 function RunRow(props: { run: AutomationRun; slug: string | undefined }): JSX.Element {
   const [open, setOpen] = createSignal(false)
+  const detail = createOverlayMount(open)
   const thread = (): string | undefined =>
     props.run.threadId === null || props.slug === undefined ? undefined : `/p/${props.slug}/run/${props.run.threadId}`
   const state = () => runSignal(props.run.status)
   return (
-    <div class="border-b border-line-1 last:border-0">
-      <button
-        type="button"
-        aria-expanded={open()}
-        onClick={() => setOpen((value) => !value)}
-        class={`im-hover h-11 w-full px-4 text-left ${RUN_GRID}`}
-      >
+    <ui-collapsible
+      class="block border-b border-line-1 last:border-0"
+      on:openchange={(event) => setOpen(event.detail.value)}
+      on:openchangecomplete={detail.settle}
+    >
+      <ui-collapsible-trigger>
+        <button type="button" class={`im-hover h-[var(--h-list-row)] w-full px-4 text-left ${RUN_GRID}`}>
         <Signal state={state()} size={14} />
         <span class="min-w-0 truncate text-sm text-ink">
           {when(props.run.createdAt)}
@@ -161,12 +167,14 @@ function RunRow(props: { run: AutomationRun; slug: string | undefined }): JSX.El
         <span class="font-mono text-xs tabular-nums text-ink-3">{props.run.inputs > 1 ? `×${props.run.inputs}` : ""}</span>
         <span class="hidden font-mono text-xs tabular-nums text-ink-3 md:block">{runDuration(props.run) ?? "—"}</span>
         <span class="text-right font-mono text-xs tabular-nums text-ink-2">{props.run.cost === null ? "—" : money(props.run.cost)}</span>
-        <span class="im-chevron text-ink-3" data-open={open() ? "" : undefined}>
+        <span class="im-chevron text-ink-3" data-open={open() ? "" : undefined} aria-hidden="true">
           <ChevronRight {...ICON} />
         </span>
-      </button>
-      <div class="im-grow" data-open={open() ? "" : undefined}>
+        </button>
+      </ui-collapsible-trigger>
+      <ui-collapsible-panel class="im-grow">
         <div>
+          <Show when={detail.mounted()}>
           <div class="flex flex-col gap-3 px-4 pb-4 pl-12">
             <Show when={props.run.error}>
               {(error) => (
@@ -195,9 +203,10 @@ function RunRow(props: { run: AutomationRun; slug: string | undefined }): JSX.El
               <span class="ml-auto font-mono text-xs text-ink-3">{props.run.id}</span>
             </div>
           </div>
+          </Show>
         </div>
-      </div>
-    </div>
+      </ui-collapsible-panel>
+    </ui-collapsible>
   )
 }
 
@@ -212,6 +221,15 @@ export function AutomationHistoryView(props: { id: string }): JSX.Element {
   const rows = createRowDialogs(actions, { onDeleted: () => navigate("/automations") })
   const slug = (): string | undefined => homeProjects().find((item) => item.id === automation()?.project)?.slug
   const missing = (): boolean => history.detail.error !== undefined
+  const [wanted, setPage] = createSignal(0)
+  const pages = (): number => Math.max(1, Math.ceil(history.runs().length / RUNS_PAGE))
+  const page = (): number => Math.min(wanted(), pages() - 1)
+  const pageRuns = (): readonly AutomationRun[] => history.runs().slice(page() * RUNS_PAGE, (page() + 1) * RUNS_PAGE)
+  const canNext = (): boolean => page() + 1 < pages() || history.hasOlder()
+  const next = async (): Promise<void> => {
+    if (page() + 1 >= pages()) await history.loadOlder()
+    if (page() + 1 < pages()) setPage(page() + 1)
+  }
 
   return (
     <>
@@ -223,14 +241,14 @@ export function AutomationHistoryView(props: { id: string }): JSX.Element {
           Automations
         </button>
         <span class="text-ink-3">/</span>
-        <h1 class="min-w-0 truncate text-base font-medium text-ink">{automation()?.title ?? ""}</h1>
+        <h1 class="min-w-0 truncate text-body font-title text-ink">{automation()?.title ?? ""}</h1>
         <Show when={automation()}>
           {(current) => (
             <span class="ml-auto flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => rows.handle(current(), "run")}
-                class="im-press flex h-7 items-center gap-1.5 rounded-sm bg-primary px-2.5 text-sm font-medium text-on-primary hover:opacity-90"
+                class="im-press flex h-7 items-center gap-1.5 rounded-sm bg-primary px-2.5 text-sm font-title text-on-primary hover:opacity-90"
               >
                 <SkipForward {...ICON} />
                 Run now
@@ -317,21 +335,28 @@ export function AutomationHistoryView(props: { id: string }): JSX.Element {
                             <span class="text-right">Cost</span>
                             <span />
                           </div>
-                          <For each={history.runs()}>{(run) => <RunRow run={run} slug={slug()} />}</For>
+                          <For each={pageRuns()}>{(run) => <RunRow run={run} slug={slug()} />}</For>
                         </div>
-                        <div class="flex items-center justify-center gap-3 pt-1">
-                          <Show when={history.olderFailed()}>{(text) => <span class="text-sm text-failed">{text()}</span>}</Show>
-                          <Show when={history.hasOlder()} fallback={<span class="text-xs text-ink-3">That's every run.</span>}>
-                            <button
-                              type="button"
-                              disabled={history.loadingOlder()}
-                              onClick={() => void history.loadOlder()}
-                              class="im-press h-7 rounded-sm border border-line-2 bg-card px-3 text-sm text-ink-2 hover:border-line-3 hover:text-ink disabled:opacity-50"
-                            >
-                              {history.loadingOlder() ? "Loading…" : "Load older runs"}
+                        <Show when={history.runs().length >= RUNS_PAGE} fallback={<span class="pt-1 text-center text-mini text-ink-3">That's every run.</span>}>
+                          <nav aria-label="Run pages" class="flex items-center justify-center gap-1 pt-1">
+                            <button type="button" class={PAGER_BUTTON} disabled={page() === 0} onClick={() => setPage(page() - 1)}>
+                              Previous
                             </button>
-                          </Show>
-                        </div>
+                            <span class="text-icon" aria-hidden="true">
+                              ·
+                            </span>
+                            <span aria-live="polite" data-testid="run-page" class="px-1 text-small tabular-nums text-ink-3">
+                              {history.hasOlder() ? `Page ${page() + 1}` : `${page() + 1} of ${pages()}`}
+                            </span>
+                            <span class="text-icon" aria-hidden="true">
+                              ·
+                            </span>
+                            <button type="button" class={PAGER_BUTTON} disabled={!canNext() || history.loadingOlder()} onClick={() => void next()}>
+                              {history.loadingOlder() ? "Loading…" : "Next"}
+                            </button>
+                          </nav>
+                        </Show>
+                        <Show when={history.olderFailed()}>{(text) => <span class="text-center text-sm text-failed">{text()}</span>}</Show>
                       </Show>
                     </Section>
                   </div>
