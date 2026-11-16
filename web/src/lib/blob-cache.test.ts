@@ -44,6 +44,24 @@ test("the byte limit evicts the oldest blobs but never the newest, however large
   expect(revoked).toEqual([a, b, only])
 })
 
+test("a large blob that lands after a newer request is kept, and the older loaded blob goes instead", async () => {
+  let release = (): void => {}
+  const cache = createBlobCache(
+    async (sha256) => {
+      if (sha256 === "big") await new Promise<void>((resolve) => (release = resolve))
+      return new Blob([new Uint8Array(sha256 === "big" ? 5000 : 10)])
+    },
+    { entries: 10, bytes: 1000 },
+  )
+  const big = cache.url("big", "image/png")
+  const small = await cache.url("small", "image/png")
+  expect(revoked).toEqual([])
+  release()
+  const href = await big
+  expect(revoked).toEqual([small])
+  expect(await cache.url("big", "image/png")).toBe(href)
+})
+
 test("clear revokes every URL, and one still loading is revoked when it lands", async () => {
   let release = (): void => {}
   const cache = createBlobCache(async (sha256) => {

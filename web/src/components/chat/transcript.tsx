@@ -12,6 +12,7 @@ import {
   type Snapshot,
 } from "../../state/conversation.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
+import { SentBlobsScope } from "../composer/attachment-card.tsx"
 import { LinkChip } from "../ui/link-chip.tsx"
 import { Thinking } from "../ui/loaders.tsx"
 import { hasBlock, renderBlock } from "./blocks.tsx"
@@ -152,6 +153,7 @@ export function Transcript(props: {
   }
 
   return (
+    <SentBlobsScope scope={props.snapshot.id}>
     <Timeline
       items={items()}
       waiting={waiting()}
@@ -178,5 +180,6 @@ export function Transcript(props: {
         </>
       }
     />
+    </SentBlobsScope>
   )
 }

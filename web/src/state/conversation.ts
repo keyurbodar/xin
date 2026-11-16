@@ -53,6 +53,7 @@ export type Attachment = {
   readonly name: string
   readonly type: string
   readonly size: number | undefined
+  readonly sha256?: string | undefined
 }
 
 export type BatchRow = {
@@ -235,6 +236,8 @@ export function toolResultsOf(entries: readonly EntryView[]): ReadonlyMap<string
   return results
 }
 
+const SHA256 = /^[0-9a-f]{64}$/u
+
 function parseAttachments(value: unknown): readonly Attachment[] {
   return listOf(value).flatMap((entry) => {
     const raw = recordOf(entry)
@@ -242,7 +245,8 @@ function parseAttachments(value: unknown): readonly Attachment[] {
     const name = strOf(raw?.name)
     const type = strOf(raw?.type)
     if (path === undefined || name === undefined || type === undefined) return []
-    return [{ path, name, type, size: numOf(raw?.size) }]
+    const sha256 = strOf(raw?.sha256)
+    return [{ path, name, type, size: numOf(raw?.size), sha256: sha256 !== undefined && SHA256.test(sha256) ? sha256 : undefined }]
   })
 }
 

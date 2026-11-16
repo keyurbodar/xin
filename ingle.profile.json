@@ -31,7 +31,9 @@
     "ingle-plugin-drive",
     "ingle-plugin-theme-pack",
     "ingle-plugin-outline",
-    "ingle-plugin-standup"
+    "ingle-plugin-standup",
+    "ingle-plugin-appearance",
+    "ingle-plugin-explore"
   ],
   "patch": [
     {
