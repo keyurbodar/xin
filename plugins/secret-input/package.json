@@ -1,0 +1,38 @@
+{
+  "name": "ingle-plugin-secret-input",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A masked secret card: the owner's value goes straight to the secret store, and the model only learns its name.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "secret-input": {
+        "module": "./index.ts",
+        "title": "Secret input",
+        "description": "secret.provide: stores the owner's value for an open secret card and answers it with the name only.",
+        "permissions": [
+          "conversations",
+          "secrets"
+        ],
+        "contributes": {
+          "ops": [
+            "secret.provide"
+          ]
+        }
+      },
+      "tool-secret-input": {
+        "module": "./tools.ts",
+        "title": "Secret input tools",
+        "description": "request_secret: a deferred tool that shows the owner a masked input and ends the turn. Disable to hide it; secret.provide keeps answering open cards.",
+        "permissions": [
+          "conversations"
+        ],
+        "contributes": {
+          "tools": [
+            "request_secret"
+          ]
+        }
+      }
+    }
+  }
+}

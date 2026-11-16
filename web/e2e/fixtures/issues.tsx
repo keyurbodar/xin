@@ -141,6 +141,8 @@ const answer = (op: string, args: Record<string, unknown>): unknown => {
       issue.updatedAt += 100
       return issue
     }
+    case "captain.get":
+      return { ...captain, model: null, thinking: null, notes: "", rules: "", crewRules: "", crew: [] }
     case "captain.crew.add":
     case "captain.crew.remove":
       return {}

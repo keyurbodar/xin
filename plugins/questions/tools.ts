@@ -1,7 +1,7 @@
 import type { JsonValue } from "@earendil-works/chord"
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
 import { arr, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema"
-import type { OpenQuestion, QuestionsService } from "../../src/contracts/questions.ts"
+import { ASK_KIND, type OpenQuestion, type QuestionsService } from "../../src/contracts/questions.ts"
 import { type Context, textResult } from "../../src/kernel/index.ts"
 
 export const name = "tool-questions"
@@ -45,6 +45,7 @@ function tools(questions: QuestionsService) {
     execute: async (args, api, context) => {
       const asked = await questions.ask(
         {
+          kind: ASK_KIND,
           threadId: api.conversationId,
           requestId: `q:${api.taskId}`,
           question: args.question,

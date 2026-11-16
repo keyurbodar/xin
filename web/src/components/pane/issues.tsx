@@ -173,23 +173,17 @@ const ISSUE_ROW =
 
 export type NewIssueProps = { readonly project: ProjectSummary; readonly projectId: string; readonly states: readonly IssueState[] }
 
+const [newIssuePopover, setNewIssuePopover] = createSignal<Component<NewIssueProps & { id: string }>>()
+
+/** new-issue.tsx hands its popover over while it evaluates, so the view is in the page before a held press replays. */
+export const provideNewIssuePopover = (view: Component<NewIssueProps & { id: string }>): void => void setNewIssuePopover(() => view)
+
 /**
  * The + stays a plain trigger until first intent; then the popover's module and elements load, the popover renders
  * beside it under the same id, and a click that came first is replayed.
  */
 function NewIssue(props: NewIssueProps): JSX.Element {
   const id = `new-issue-${createUniqueId()}`
-  const [popover, setPopover] = createSignal<Component<NewIssueProps & { id: string }>>()
-  let loading: Promise<void> | undefined
-  const load = (): Promise<void> =>
-    (loading ??= import("./new-issue.tsx").then(
-      (module) => void setPopover(() => module.NewIssuePopover),
-      (error: unknown) => {
-        loading = undefined
-        throw error
-      },
-    ))
-  const warm = (): void => void load().catch(() => undefined)
   return (
     <>
       <ui-popover-trigger attr:for={id}>
@@ -198,22 +192,12 @@ function NewIssue(props: NewIssueProps): JSX.Element {
           class={`${ICON_BUTTON} aria-expanded:bg-hover aria-expanded:text-ink`}
           aria-label="New issue"
           title="New issue"
-          onPointerEnter={warm}
-          onPointerDown={warm}
-          onFocus={warm}
-          onClick={(event) => {
-            if (popover() !== undefined) return
-            const button = event.currentTarget
-            void load().then(
-              () => requestAnimationFrame(() => button.click()),
-              () => undefined,
-            )
-          }}
+          {...loadOnIntent("new-issue")}
         >
           <Plus size={14} stroke-width={1.5} />
         </button>
       </ui-popover-trigger>
-      <Show when={popover()}>{(view) => <Dynamic component={view()} id={id} {...props} />}</Show>
+      <Show when={newIssuePopover()}>{(view) => <Dynamic component={view()} id={id} {...props} />}</Show>
     </>
   )
 }
