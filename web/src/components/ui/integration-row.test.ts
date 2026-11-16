@@ -1,20 +1,22 @@
-import { afterEach, beforeEach, expect, mock, test } from "bun:test"
+import { afterEach, beforeAll, beforeEach, expect, mock, test } from "bun:test"
 import { createComponent, createRoot } from "solid-js"
+import { stubGlobals } from "../../../test/globals.ts"
 import { insert, root, textOf, type TestNode } from "../../../test/universal.ts"
 import { invalidateReads } from "../../lib/api.ts"
 
 type Frame = { readonly id: string; readonly op: string }
 
 const realFetch = globalThis.fetch
-if (Reflect.get(globalThis, "window") === undefined)
-  Object.defineProperty(globalThis, "window", {
-    value: { location: { hash: "" }, addEventListener: () => undefined },
-    configurable: true,
-  })
+stubGlobals({ window: { location: { hash: "" }, addEventListener: () => undefined } })
 void mock.module("../extensions/glyph.tsx", () => ({ Glyph: () => undefined }))
-const { Connectors } = await import("../extensions/customize-connectors.tsx")
-const { Models } = await import("../settings/models.tsx")
-const { servers } = await import("../../state/extensions.ts")
+let Connectors: (typeof import("../extensions/customize-connectors.tsx"))["Connectors"]
+let Models: (typeof import("../settings/models.tsx"))["Models"]
+let servers: (typeof import("../../state/extensions.ts"))["servers"]
+beforeAll(async () => {
+  ;({ Connectors } = await import("../extensions/customize-connectors.tsx"))
+  ;({ Models } = await import("../settings/models.tsx"))
+  ;({ servers } = await import("../../state/extensions.ts"))
+})
 
 const REPLIES: Readonly<Record<string, unknown>> = {
   "mcp.list": [
