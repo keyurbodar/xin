@@ -11,6 +11,8 @@ import {
 } from "../../state/settings.ts"
 import { Button, Chip, Failure, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
+import { IntegrationRow } from "../ui/integration-row.tsx"
+import { providerDetail, providerStatus } from "../../lib/integrations.ts"
 import { Card, CheckboxField, Group, SelectField, TextField } from "./parts.tsx"
 
 const APIS: readonly { readonly value: string; readonly label: string }[] = [
@@ -130,23 +132,22 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
 
   return (
     <div class="px-4 py-3">
-      <div class="flex flex-wrap items-center gap-3">
-        <span class="grid h-[var(--h-control)] w-[var(--h-control)] shrink-0 place-items-center rounded-sm bg-secondary font-mono text-small uppercase text-ink-2 shadow-ring">
-          {props.provider.id.slice(0, 1)}
-        </span>
-        <div class="min-w-[120px] flex-1">
-          <span class="block truncate text-small font-title text-ink">{props.provider.id}</span>
-          <span class="flex items-center gap-1.5 text-mini text-ink-3">
-            <span class="h-1.5 w-1.5 rounded-full bg-done" />
-            Connected · {props.provider.models.length} {props.provider.models.length === 1 ? "model" : "models"}
+      <IntegrationRow
+        mark={
+          <span class="grid h-[var(--h-control)] w-[var(--h-control)] shrink-0 place-items-center rounded-sm bg-secondary font-mono text-small uppercase text-ink-2 shadow-ring">
+            {props.provider.id.slice(0, 1)}
           </span>
-        </div>
-        <span class="font-mono text-micro text-icon max-sm:hidden">stored sealed</span>
-        <Show when={!confirming()}>
-          <Button size="sm" variant="quiet" onClick={() => setEditing((open) => !open)}>Edit</Button>
-          <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>Remove</Button>
-        </Show>
-      </div>
+        }
+        name={props.provider.id}
+        detail={providerDetail(props.provider)}
+        status={providerStatus(error())}
+        actions={
+          <Show when={!confirming()}>
+            <Button size="sm" variant="quiet" onClick={() => setEditing((open) => !open)}>Edit</Button>
+            <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>Remove</Button>
+          </Show>
+        }
+      />
 
       <Show when={error()}>
         {(message) => (
