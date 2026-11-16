@@ -1,4 +1,7 @@
 const API = "https://api.instabox.sh"
+const CALL_TIMEOUT_MS = 40_000
+const SETTLE_TIMEOUT_MS = 5 * 60_000
+const UNSETTLED = new Set(["queued", "pending", "running"])
 
 export type Spec = { readonly vcpus: number; readonly memMiB: number }
 export type Machine = {
@@ -7,6 +10,12 @@ export type Machine = {
   readonly state: string
   readonly createdAt: string
   readonly metadata?: Record<string, string>
+}
+export type Snapshot = {
+  readonly id: string
+  readonly name: string
+  readonly status: string
+  readonly createdAt: string
 }
 export type Exec = {
   readonly exitCode: number
@@ -18,8 +27,6 @@ type Operation = {
   readonly id: string
   readonly state: string
   readonly machineId?: string
-  readonly snapshotId?: string
-  readonly snapshot?: { readonly id: string }
   readonly error?: { readonly code?: string; readonly message?: string } | null
 }
 type Failure = { code?: string; message?: string; retryable?: boolean; retryAfterSeconds?: number }
@@ -46,6 +53,7 @@ export function instabox(key: string) {
         method,
         headers: { "X-API-Key": key, "Content-Type": "application/json", ...headers },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
       }).catch(() => undefined)
       if (response?.ok) return (response.status === 204 ? undefined : await response.json()) as T
       const failure: Failure = response
@@ -62,14 +70,18 @@ export function instabox(key: string) {
     call<Operation>(method, path, body, { "Idempotency-Key": crypto.randomUUID(), ...headers })
 
   async function settle(first: Operation): Promise<Operation> {
+    const deadline = Date.now() + SETTLE_TIMEOUT_MS
     let op = first
     while (op.state !== "succeeded") {
-      if (op.state === "failed")
-        throw new InstaboxError(0, op.error?.code ?? "operation_failed", op.error?.message ?? op.id)
+      if (!UNSETTLED.has(op.state))
+        throw new InstaboxError(0, op.error?.code ?? `operation_${op.state}`, op.error?.message ?? op.id)
+      if (Date.now() > deadline) throw new InstaboxError(0, "operation_timeout", op.id)
       op = await call<Operation>("GET", `/v1/operations/${op.id}?wait=25s`)
     }
     return op
   }
+
+  const snapshots = async () => (await call<{ snapshots: Snapshot[] }>("GET", "/v1/snapshots")).snapshots
 
   return {
     async create(options: {
@@ -79,7 +91,6 @@ export function instabox(key: string) {
       readonly metadata: Record<string, string>
       readonly deleteAfterSeconds: number
       readonly autoSuspendAfterSeconds?: number
-      readonly envSecrets?: readonly string[]
     }): Promise<string> {
       const op = await settle(
         await change("POST", "/v1/machines", {
@@ -91,7 +102,7 @@ export function instabox(key: string) {
           deleteAfterSeconds: options.deleteAfterSeconds,
           autoSuspendAfterSeconds: options.autoSuspendAfterSeconds ?? 1800,
           secrets: [],
-          envSecrets: options.envSecrets ?? [],
+          envSecrets: [],
           vault: false,
         }),
       )
@@ -130,6 +141,7 @@ export function instabox(key: string) {
     async read(id: string, path: string): Promise<string> {
       const response = await fetch(`${API}/v1/machines/${id}/files/content?path=${encodeURIComponent(path)}`, {
         headers: { "X-API-Key": key },
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
       })
       if (response.status === 404) return ""
       if (!response.ok) throw new InstaboxError(response.status, "read_failed", path)
@@ -138,30 +150,27 @@ export function instabox(key: string) {
     async write(id: string, path: string, body: string, mode = "0644"): Promise<void> {
       const response = await fetch(
         `${API}/v1/machines/${id}/files?path=${encodeURIComponent(path)}&mode=${mode}&parents=true`,
-        { method: "PUT", headers: { "X-API-Key": key, "Content-Type": "application/octet-stream" }, body },
+        {
+          method: "PUT",
+          headers: { "X-API-Key": key, "Content-Type": "application/octet-stream" },
+          body,
+          signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+        },
       )
       if (!response.ok) throw new InstaboxError(response.status, "write_failed", `${path}: ${await response.text()}`)
     },
     async snapshot(id: string, name: string): Promise<string> {
       await change("POST", `/v1/machines/${id}/snapshots`, { name })
-      for (;;) {
-        const { snapshots } = await call<{ snapshots: { id: string; name: string; status: string }[] }>(
-          "GET",
-          "/v1/snapshots",
-        )
-        const saved = snapshots.find((snapshot) => snapshot.name === name)
+      const deadline = Date.now() + SETTLE_TIMEOUT_MS
+      while (Date.now() < deadline) {
+        const saved = (await snapshots()).find((snapshot) => snapshot.name === name)
         if (saved?.status === "ready") return saved.id
         if (saved?.status === "failed") throw new InstaboxError(0, "snapshot_failed", name)
         await Bun.sleep(2000)
       }
+      throw new InstaboxError(0, "snapshot_timeout", name)
     },
-    snapshots: async () =>
-      (
-        await call<{ snapshots: { id: string; name: string; state: string; createdAt: string }[] }>(
-          "GET",
-          "/v1/snapshots",
-        )
-      ).snapshots,
+    snapshots,
     removeSnapshot: (id: string) =>
       call("DELETE", `/v1/snapshots/${id}`, undefined, {
         "Idempotency-Key": crypto.randomUUID(),
@@ -170,7 +179,6 @@ export function instabox(key: string) {
     lease: (id: string, task: string, ttlSeconds: number) =>
       call("PUT", `/v1/machines/${id}/activity-leases/${task}`, { ttlSeconds }),
     release: (id: string, task: string) => call("DELETE", `/v1/machines/${id}/activity-leases/${task}`),
-    usage: (id: string) => call<{ costUSD?: number }>("GET", `/v1/machines/${id}/usage`),
   }
 }
 

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto"
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { instabox } from "./instabox.ts"
 
@@ -70,7 +70,7 @@ async function deploy() {
     await box.write(machine, APP + "/" + file, readFileSync(join(import.meta.dirname, file), "utf8"))
   const vars = [
     "INSTABOX_API_KEY=" + env("INSTABOX_API_KEY"),
-    "GH_TOKEN=" + env("GH_TOKEN"),
+    "CI_STATUS_TOKEN=" + env("CI_STATUS_TOKEN"),
     "CI_WEBHOOK_SECRET=" + secret,
     "CI_PUBLIC_URL=" + url,
     "CI_MACHINE_ID=" + machine,
@@ -127,6 +127,7 @@ async function deploy() {
     ),
     { mode: 0o600 },
   )
+  chmodSync(SECRETS, 0o600)
   console.log("dispatcher " + machine + " at " + url + ", webhook " + hook.id)
 }
 

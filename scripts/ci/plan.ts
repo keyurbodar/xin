@@ -41,7 +41,10 @@ export function plan(testFiles: readonly string[], durations: ReadonlyMap<string
     jobs: [
       { name: "fmt", script: "bun run fmt:check" },
       { name: "lint", script: "bun run lint" },
-      { name: "types", script: "bunx tsgo --noEmit -p tsconfig.json" },
+      {
+        name: "types",
+        script: "bunx tsgo --noEmit -p tsconfig.json && bunx tsgo --noEmit -p scripts/ci/tsconfig.json",
+      },
       { name: "bundle", script: "bun run bundle" },
       { name: "bench", script: "INGLE_LOAD=1 bun run test" },
       { name: "web-types", script: "cd web && bun run typecheck" },

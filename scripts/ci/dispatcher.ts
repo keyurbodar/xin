@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite"
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { type Instabox, instabox, type Machine } from "./instabox.ts"
+import { type Instabox, instabox } from "./instabox.ts"
 import { isVitestFile, type Job, plan, RUNNERS_PER_RUN, TEST_WORKERS, VITEST_INCLUDE } from "./plan.ts"
 
 const REPO = "keyurbodar/xin"
@@ -14,15 +14,20 @@ const POOL = 10
 const RUNNER_SPEC = { vcpus: 8, memMiB: 16384 }
 const JOB_TIMEOUT_S = 300
 const RUN_TIMEOUT_MS = 8 * 60_000
+const OVERDUE_MS = RUN_TIMEOUT_MS + 60_000
 const STALE_MS = RUN_TIMEOUT_MS + 2 * 60_000
+const GITHUB_TIMEOUT_MS = 15_000
 const BUN_VERSION = "1.4.4"
 const IMAGE = "xin-runner"
 const TRUSTED = new Set(["OWNER", "MEMBER", "COLLABORATOR"])
+const GONE = new Set(["deleting", "deleted", "error", "failed"])
 const USD_PER_S = (RUNNER_SPEC.vcpus * 0.004 + (RUNNER_SPEC.memMiB / 1024) * 0.00225) / 3600
 const ROLLUP = "ci"
+const SHA = /^[0-9a-f]{40}$/
 
 type Trigger = { readonly sha: string; readonly ref: string; readonly receivedAt: number }
 type Outcome = "success" | "failure" | "error"
+type Active = { readonly trigger: Trigger; readonly controller: AbortController; reason?: string }
 
 const env = (name: string) => {
   const value = process.env[name]
@@ -44,7 +49,7 @@ db.run("CREATE TABLE IF NOT EXISTS passed (tree TEXT PRIMARY KEY, sha TEXT)")
 db.run("CREATE TABLE IF NOT EXISTS pending (sha TEXT, context TEXT, since INTEGER, PRIMARY KEY (sha, context))")
 
 const box: Instabox = instabox(env("INSTABOX_API_KEY"))
-const ghToken = env("GH_TOKEN")
+const ghToken = env("CI_STATUS_TOKEN")
 const webhookSecret = env("CI_WEBHOOK_SECRET")
 
 async function github<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -53,12 +58,11 @@ async function github<T>(method: string, path: string, body?: unknown): Promise<
       method,
       headers: { authorization: "Bearer " + ghToken, accept: "application/vnd.github+json", "user-agent": "xin-ci" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
     }).catch(() => undefined)
     if (response?.ok) return (await response.json()) as T
-    if (attempt >= 3 || (response !== undefined && response.status < 500 && response.status !== 429))
-      throw new Error(
-        "github " + method + " " + path + ": " + (response?.status ?? "network") + " " + (await response?.text()),
-      )
+    if (attempt >= 2 || (response !== undefined && response.status < 500 && response.status !== 429))
+      throw new Error("github " + method + " " + path + ": " + (response?.status ?? "network or timeout"))
     await Bun.sleep(1000 * 2 ** attempt)
   }
 }
@@ -90,7 +94,7 @@ async function finalizeOpen(sha: string, description: string) {
 
 async function treeOf(sha: string) {
   const commit = await github<{ tree: { sha: string } }>("GET", "/repos/" + REPO + "/git/commits/" + sha)
-  const listing = await github<{ tree: { path: string; type: string; sha: string }[]; truncated: boolean }>(
+  const listing = await github<{ tree: { path: string; type: string }[]; truncated: boolean }>(
     "GET",
     "/repos/" + REPO + "/git/trees/" + commit.tree.sha + "?recursive=1",
   )
@@ -144,7 +148,7 @@ async function stream(machine: string, cmd: string, log: string, signal: AbortSi
     method: "POST",
     headers: { "X-API-Key": env("INSTABOX_API_KEY"), "Content-Type": "application/json", Accept: "text/event-stream" },
     body: JSON.stringify({ cmd, timeoutSeconds: JOB_TIMEOUT_S, noHistory: true }),
-    signal,
+    signal: AbortSignal.any([signal, AbortSignal.timeout((JOB_TIMEOUT_S + 30) * 1000)]),
   })
   if (!response.ok || response.body === null) throw new Error("exec " + response.status + " " + (await response.text()))
   const decoder = new TextDecoder()
@@ -171,55 +175,84 @@ async function stream(machine: string, cmd: string, log: string, signal: AbortSi
   throw new Error("exec stream ended without an exit event")
 }
 
+const members = new Map<string, "idle" | "busy" | "retiring">()
 const idle: string[] = []
-const busy = new Set<string>()
-const queue: (() => void)[] = []
+const waiting: (() => void)[] = []
+let creating = 0
+let refilling: Promise<void> | undefined
 
-async function pool(): Promise<void> {
-  const machines = (await box.list()).filter((machine: Machine) => machine.metadata?.["xin-ci"] === "runner")
-  for (const machine of machines) if (!busy.has(machine.id) && !idle.includes(machine.id)) idle.push(machine.id)
+function makeIdle(id: string) {
+  if (members.get(id) === "idle") return
+  members.set(id, "idle")
+  idle.push(id)
+  waiting.shift()?.()
+}
+
+async function refill(): Promise<void> {
+  const listed = (await box.list()).filter(
+    (machine) => machine.metadata?.["xin-ci"] === "runner" && !GONE.has(machine.state),
+  )
+  const live = new Set(listed.map((machine) => machine.id))
+  for (const id of live) if (!members.has(id)) makeIdle(id)
+  for (const [id, state] of members)
+    if (state === "idle" && !live.has(id)) {
+      members.delete(id)
+      idle.splice(idle.indexOf(id), 1)
+    }
   const image = (await box.snapshots()).find((snapshot) => snapshot.name === IMAGE && snapshot.status === "ready")
   if (image === undefined) return
-  const missing = POOL - machines.length
+  const missing = POOL - members.size - creating
   await Promise.all(
     Array.from({ length: Math.max(0, missing) }, async () => {
-      const id = await box.create({
-        name: "xin-ci-runner-" + crypto.randomUUID().slice(0, 8),
-        source: { snapshotId: image.id },
-        spec: RUNNER_SPEC,
-        metadata: { "xin-ci": "runner" },
-        deleteAfterSeconds: 0,
-        autoSuspendAfterSeconds: 300,
-      })
-      idle.push(id)
-      queue.shift()?.()
+      creating++
+      try {
+        makeIdle(
+          await box.create({
+            name: "xin-ci-runner-" + crypto.randomUUID().slice(0, 8),
+            source: { snapshotId: image.id },
+            spec: RUNNER_SPEC,
+            metadata: { "xin-ci": "runner" },
+            deleteAfterSeconds: 0,
+            autoSuspendAfterSeconds: 300,
+          }),
+        )
+      } finally {
+        creating--
+      }
     }),
   )
 }
 
+function pool(): Promise<void> {
+  refilling ??= refill().finally(() => {
+    refilling = undefined
+  })
+  return refilling
+}
+
 async function lease(count: number, signal: AbortSignal): Promise<string[]> {
   while (idle.length < count) {
-    if (signal.aborted) throw new Error("cancelled while queued")
+    if (signal.aborted) throw new Error("cancelled while waiting for runners")
     await new Promise<void>((resolve) => {
-      queue.push(resolve)
+      waiting.push(resolve)
       setTimeout(resolve, 5000)
     })
   }
   const picked = idle.splice(0, count)
-  for (const id of picked) busy.add(id)
+  for (const id of picked) members.set(id, "busy")
   return picked
 }
 
 async function retire(id: string, broken: boolean) {
-  busy.delete(id)
+  members.set(id, "retiring")
   if (broken) {
     await box.remove(id).catch(() => undefined)
+    members.delete(id)
     void pool().catch((error: unknown) => console.error("pool", error))
     return
   }
   await box.exec(id, 'pkill -9 -f "$HOME/xin/" || true', 30).catch(() => undefined)
-  idle.push(id)
-  queue.shift()?.()
+  makeIdle(id)
 }
 
 function recordDurations(json: string, planned: readonly string[], wallMs: number) {
@@ -231,45 +264,90 @@ function recordDurations(json: string, planned: readonly string[], wallMs: numbe
   const missing = planned.filter((file) => !ran.some((result) => result.file === file))
   if (missing.length > 0) throw new Error("planned test files did not run: " + missing.join(", "))
   const scale = wallMs / Math.max(1, ran.reduce((sum, result) => sum + result.ms, 0) / TEST_WORKERS)
-  for (const { file, ms } of ran.map((result) => ({ file: result.file, ms: result.ms * scale })))
+  for (const { file, ms } of ran)
     db.run("INSERT INTO durations VALUES (?, ?) ON CONFLICT(file) DO UPDATE SET ms = (ms + excluded.ms) / 2", [
       file,
-      ms,
+      ms * scale,
     ])
 }
 
-type Active = { readonly sha: string; readonly controller: AbortController }
-const active = new Map<string, Active>()
+const running = new Map<string, Active>()
+const heads = new Map<string, string>()
+
+function abort(run: Active, reason: string) {
+  run.reason ??= reason
+  run.controller.abort()
+}
+
+function aborted(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    if (signal.aborted) reject(new Error("aborted"))
+    signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })
+  })
+}
+
+async function currentHead(ref: string): Promise<string | undefined> {
+  const pull = /^pull\/(\d+)$/.exec(ref)
+  if (pull !== null)
+    return (await github<{ head: { sha: string } }>("GET", "/repos/" + REPO + "/pulls/" + pull[1])).head.sha
+  if (ref === "refs/heads/main")
+    return (await github<{ object: { sha: string } }>("GET", "/repos/" + REPO + "/git/ref/heads/main")).object.sha
+  return undefined
+}
+
+async function accept(trigger: Trigger): Promise<string> {
+  const head = await currentHead(trigger.ref)
+  if (head !== undefined && head !== trigger.sha) return "ignored: " + trigger.ref + " head is now " + head.slice(0, 7)
+  if (!trigger.ref.startsWith("rerun/")) {
+    const previous = heads.get(trigger.ref)
+    heads.set(trigger.ref, trigger.sha)
+    const older = previous === undefined || previous === trigger.sha ? undefined : running.get(previous)
+    if (older !== undefined && ![...heads.values()].includes(older.trigger.sha))
+      abort(older, "superseded by " + trigger.sha.slice(0, 7))
+  }
+  if (running.has(trigger.sha)) return "already running " + trigger.sha
+  void runSha(trigger)
+  return "queued " + trigger.sha
+}
 
 async function runSha(trigger: Trigger): Promise<void> {
-  const previous = active.get(trigger.ref)
-  if (previous?.sha === trigger.sha) return
-  previous?.controller.abort()
-  const current: Active = { sha: trigger.sha, controller: new AbortController() }
-  active.set(trigger.ref, current)
-  const signal = AbortSignal.any([current.controller.signal, AbortSignal.timeout(RUN_TIMEOUT_MS)])
-  const selfLease = "run-" + trigger.sha.slice(0, 12)
-  if (SELF_MACHINE !== "") void box.lease(SELF_MACHINE, selfLease, RUN_TIMEOUT_MS / 1000).catch(() => undefined)
-  mkdirSync(join(HOME, "logs", trigger.sha), { recursive: true })
+  const { sha } = trigger
+  const current: Active = { trigger, controller: new AbortController() }
+  running.set(sha, current)
+  const signal = current.controller.signal
+  const deadline = setTimeout(
+    () => abort(current, "timed out after " + RUN_TIMEOUT_MS / 60_000 + " min"),
+    RUN_TIMEOUT_MS,
+  )
+  const selfLease = "run-" + sha.slice(0, 12)
+  if (SELF_MACHINE !== "") void box.lease(SELF_MACHINE, selfLease, OVERDUE_MS / 1000).catch(() => undefined)
+  mkdirSync(join(HOME, "logs", sha), { recursive: true })
   db.run("INSERT OR REPLACE INTO runs VALUES (?, ?, '', 'running', ?, NULL, NULL, NULL, '')", [
-    trigger.sha,
+    sha,
     trigger.ref,
     trigger.receivedAt,
   ])
-  let runners: string[] = []
+  const runners: string[] = []
   const broken = new Set<string>()
   let costUsd = 0
-  try {
-    await status(trigger.sha, ROLLUP, "pending", "planning", runUrl(trigger.sha))
-    const tree = await treeOf(trigger.sha)
-    const cached = db.query<{ sha: string }, [string]>("SELECT sha FROM passed WHERE tree = ?").get(tree.tree)
+  let tree = ""
+  let state = "error"
+  let detail = ""
+  const post = (context: string, outcome: "pending" | Outcome, description: string, url: string) =>
+    signal.aborted ? Promise.resolve() : status(sha, context, outcome, description, url)
+
+  const work = async () => {
+    await post(ROLLUP, "pending", "planning", runUrl(sha))
+    const listing = await treeOf(sha)
+    tree = listing.tree
+    const cached = db.query<{ sha: string }, [string]>("SELECT sha FROM passed WHERE tree = ?").get(tree)
     if (cached !== null) {
-      const note = "same tree passed on " + cached.sha.slice(0, 7)
-      await status(trigger.sha, ROLLUP, "success", note, runUrl(cached.sha))
-      finish(trigger, tree.tree, "cached", Date.now() - trigger.receivedAt, 0, note)
+      detail = "same tree passed on " + cached.sha.slice(0, 7)
+      await post(ROLLUP, "success", detail, runUrl(cached.sha))
+      state = "cached"
       return
     }
-    if (!(await includeUnchanged(trigger.sha)))
+    if (!(await includeUnchanged(sha)))
       throw new Error("vitest.config.ts include changed; update VITEST_INCLUDE and isVitestFile in scripts/ci/plan.ts")
     const durations = new Map(
       db
@@ -277,36 +355,27 @@ async function runSha(trigger: Trigger): Promise<void> {
         .all()
         .map((row) => [row.file, row.ms]),
     )
-    const layout = plan(tree.paths.filter(isVitestFile), durations)
+    const layout = plan(listing.paths.filter(isVitestFile), durations)
     const jobs = layout.flatMap((runner) => runner.jobs)
-    await Promise.all(
-      jobs.map((job) => status(trigger.sha, job.name, "pending", "queued", logUrl(trigger.sha, job.name))),
-    )
-    await status(
-      trigger.sha,
-      ROLLUP,
-      "pending",
-      "running " + jobs.length + " jobs on " + RUNNERS_PER_RUN + " VMs",
-      runUrl(trigger.sha),
-    )
-    runners = await lease(RUNNERS_PER_RUN, signal)
+    await Promise.all(jobs.map((job) => post(job.name, "pending", "queued", logUrl(sha, job.name))))
+    await post(ROLLUP, "pending", "running " + jobs.length + " jobs on " + RUNNERS_PER_RUN + " VMs", runUrl(sha))
+    runners.push(...(await lease(RUNNERS_PER_RUN, signal)))
     const results = await Promise.all(
       layout.map(async (runner, index) => {
         const machine = runners[index] ?? ""
         const leased = Date.now()
-        const prepare = logPath(trigger.sha, "checkout-" + (index + 1))
         let ready: Error | undefined
         try {
           await box.resume(machine).catch(() => box.start(machine).catch(() => undefined))
-          const code = await stream(machine, checkout(trigger.sha), prepare, signal)
+          const code = await stream(machine, checkout(sha), logPath(sha, "checkout-" + (index + 1)), signal)
           if (code !== 0) throw new Error("checkout exited " + code)
         } catch (error) {
           ready = error instanceof Error ? error : new Error(String(error))
-          broken.add(machine)
+          if (!signal.aborted) broken.add(machine)
         }
         const outcomes = await Promise.all(
           runner.jobs.map(async (job) => {
-            const log = logPath(trigger.sha, job.name)
+            const log = logPath(sha, job.name)
             writeFileSync(
               log,
               "ci: " +
@@ -324,31 +393,21 @@ async function runSha(trigger: Trigger): Promise<void> {
             try {
               if (ready !== undefined) throw ready
               const code = await stream(machine, jobScript(job), log, signal)
-              const shardNumber = job.name.startsWith("test-") ? job.name.slice(5) : ""
               if (code === 0 && job.files !== undefined)
                 recordDurations(
-                  await box.read(machine, "/data/home/vitest-" + shardNumber + ".json"),
+                  await box.read(machine, "/data/home/" + job.name + ".json"),
                   job.files,
                   Date.now() - started,
                 )
-              if (code === 0 && job.name === "bench")
-                db.run("INSERT OR REPLACE INTO durations VALUES (?, ?)", ["test/load.bench.ts", Date.now() - started])
               outcome = code === 0 ? "success" : "failure"
             } catch (error) {
               appendFileSync(log, "\nci: " + String(error) + "\n")
             }
             const ms = Date.now() - started
             appendFileSync(log, "\nci: " + outcome + " in " + seconds(ms) + "\n")
-            const superseded = current.controller.signal.aborted
-            await status(
-              trigger.sha,
-              job.name,
-              outcome,
-              superseded ? "cancelled: superseded by a newer push" : outcome + " in " + seconds(ms),
-              logUrl(trigger.sha, job.name),
-            )
+            await post(job.name, outcome, outcome + " in " + seconds(ms), logUrl(sha, job.name))
             db.run("INSERT OR REPLACE INTO jobs VALUES (?, ?, ?, ?, ?, ?)", [
-              trigger.sha,
+              sha,
               trigger.receivedAt,
               job.name,
               outcome,
@@ -362,49 +421,62 @@ async function runSha(trigger: Trigger): Promise<void> {
         return outcomes
       }),
     )
+    if (signal.aborted) return
     const flat = results.flat()
     const failed = flat.filter((result) => result.outcome !== "success").map((result) => result.job.name)
     const verdict: Outcome =
       failed.length === 0 ? "success" : flat.some((result) => result.outcome === "failure") ? "failure" : "error"
     const wall = Date.now() - trigger.receivedAt
-    const summary =
+    detail =
       failed.length === 0
         ? flat.length + " jobs passed, " + seconds(wall) + " from push"
         : "failed: " + failed.join(", ")
-    await status(trigger.sha, ROLLUP, verdict, summary, runUrl(trigger.sha))
-    if (verdict === "success") db.run("INSERT OR REPLACE INTO passed VALUES (?, ?)", [tree.tree, trigger.sha])
-    finish(trigger, tree.tree, verdict, wall, costUsd, summary)
+    await post(ROLLUP, verdict, detail, runUrl(sha))
+    if (verdict === "success") db.run("INSERT OR REPLACE INTO passed VALUES (?, ?)", [tree, sha])
+    state = verdict
+  }
+
+  try {
+    await Promise.race([work(), aborted(signal)])
   } catch (error) {
-    appendFileSync(logPath(trigger.sha, "run"), "ci: " + String(error) + "\n")
-    finish(trigger, "", "error", Date.now() - trigger.receivedAt, costUsd, String(error))
+    detail = current.reason ?? String(error)
+    appendFileSync(logPath(sha, "run"), "ci: " + detail + "\n")
   } finally {
-    await finalizeOpen(
-      trigger.sha,
-      current.controller.signal.aborted
-        ? "cancelled: superseded by a newer push"
-        : "run ended without a result; see the run log",
-    )
+    clearTimeout(deadline)
     for (const id of runners) void retire(id, broken.has(id))
-    if (active.get(trigger.ref) === current) active.delete(trigger.ref)
+    await finalizeOpen(
+      sha,
+      current.reason === undefined ? "run ended without a result; see the run log" : "cancelled: " + current.reason,
+    )
+    db.run(
+      "UPDATE runs SET tree = ?, state = ?, finished_at = ?, wall_ms = ?, cost_usd = ?, detail = ? WHERE sha = ? AND received_at = ?",
+      [
+        tree,
+        current.reason === undefined ? state : "cancelled",
+        Date.now(),
+        Date.now() - trigger.receivedAt,
+        costUsd,
+        detail,
+        sha,
+        trigger.receivedAt,
+      ],
+    )
+    console.log(
+      JSON.stringify({ sha, ref: trigger.ref, state, wall_ms: Date.now() - trigger.receivedAt, cost_usd: costUsd }),
+    )
+    if (running.get(sha) === current) running.delete(sha)
     if (SELF_MACHINE !== "") void box.release(SELF_MACHINE, selfLease).catch(() => undefined)
   }
 }
 
-function finish(trigger: Trigger, tree: string, state: string, wall: number, cost: number, detail: string) {
-  db.run(
-    "UPDATE runs SET tree = ?, state = ?, finished_at = ?, wall_ms = ?, cost_usd = ?, detail = ? WHERE sha = ? AND received_at = ?",
-    [tree, state, Date.now(), wall, cost, detail, trigger.sha, trigger.receivedAt],
-  )
-  console.log(JSON.stringify({ sha: trigger.sha, ref: trigger.ref, state, wall_ms: wall, cost_usd: cost }))
-}
-
 async function watchdog() {
-  const live = new Set([...active.values()].map((run) => run.sha))
+  for (const run of running.values())
+    if (Date.now() - run.trigger.receivedAt > OVERDUE_MS) abort(run, "watchdog: run overdue")
   const stale = db
     .query<{ sha: string }, [number]>("SELECT DISTINCT sha FROM pending WHERE since < ?")
     .all(Date.now() - STALE_MS)
   for (const { sha } of stale)
-    if (!live.has(sha)) await finalizeOpen(sha, "run died: no result within " + STALE_MS / 60_000 + " min")
+    if (!running.has(sha)) await finalizeOpen(sha, "run died: no result within " + STALE_MS / 60_000 + " min")
 }
 
 function verified(body: string, signature: string | null): boolean {
@@ -501,6 +573,8 @@ function page(sha: string): string {
 }
 
 const authorized = (request: Request) => request.headers.get("authorization") === "Bearer " + webhookSecret
+const text = (body: string, code = 200) =>
+  new Response(body, { status: code, headers: { "content-type": "text/plain; charset=utf-8" } })
 
 Bun.serve({
   port: PORT,
@@ -510,52 +584,52 @@ Bun.serve({
     if (request.method === "POST" && url.pathname === "/github") {
       const receivedAt = Date.now()
       const body = await request.text()
-      if (!verified(body, request.headers.get("x-hub-signature-256")))
-        return new Response("bad signature", { status: 401 })
+      if (!verified(body, request.headers.get("x-hub-signature-256"))) return text("bad signature", 401)
       const trigger = triggerOf(request.headers.get("x-github-event"), JSON.parse(body), receivedAt)
-      if (trigger !== undefined) void runSha(trigger)
-      return new Response(trigger === undefined ? "ignored" : "queued " + trigger.sha)
+      if (trigger !== undefined)
+        void accept(trigger).then(console.log, (error: unknown) => console.error("accept", error))
+      return text(trigger === undefined ? "ignored" : "received " + trigger.sha)
     }
-    if (request.method === "POST" && url.pathname === "/rerun") {
-      if (!authorized(request)) return new Response("unauthorized", { status: 401 })
+    if (request.method === "POST" && (url.pathname === "/rerun" || url.pathname === "/image")) {
+      if (!authorized(request)) return text("unauthorized", 401)
       const { sha, fresh } = (await request.json()) as { sha: string; fresh?: boolean }
-      if (!/^[0-9a-f]{40}$/.test(sha)) return new Response("sha must be 40 hex characters", { status: 400 })
+      if (!SHA.test(sha)) return text("sha must be 40 hex characters", 400)
+      if (url.pathname === "/image") {
+        void buildImage(sha)
+          .then(() => pool())
+          .catch((error: unknown) => appendFileSync(join(HOME, "logs", "image.log"), "\nci: " + String(error) + "\n"))
+        return text("building " + IMAGE + " from " + sha)
+      }
       if (fresh === true) db.run("DELETE FROM passed WHERE sha = ?", [sha])
-      void runSha({ sha, ref: "rerun/" + sha, receivedAt: Date.now() })
-      return new Response("queued " + sha)
-    }
-    if (request.method === "POST" && url.pathname === "/image") {
-      if (!authorized(request)) return new Response("unauthorized", { status: 401 })
-      const { sha } = (await request.json()) as { sha: string }
-      void buildImage(sha)
-        .then(() => pool())
-        .catch((error: unknown) => appendFileSync(join(HOME, "logs", "image.log"), "\nci: " + String(error) + "\n"))
-      return new Response("building " + IMAGE + " from " + sha)
+      return text(await accept({ sha, ref: "rerun/" + sha, receivedAt: Date.now() }))
     }
     if (url.pathname === "/runs.json")
       return Response.json(db.query("SELECT * FROM runs ORDER BY received_at DESC LIMIT 200").all())
     const logs = /^\/logs\/([0-9a-f]{40})\/([a-z0-9-]+)$/.exec(url.pathname)
     if (logs !== null) {
       const file = logPath(logs[1] ?? "", logs[2] ?? "")
-      return existsSync(file)
-        ? new Response(readFileSync(file), { headers: { "content-type": "text/plain; charset=utf-8" } })
-        : new Response("no log", { status: 404 })
+      return existsSync(file) ? text(readFileSync(file, "utf8")) : text("no log", 404)
     }
-    if (url.pathname === "/logs/image")
-      return new Response(
-        existsSync(join(HOME, "logs", "image.log")) ? readFileSync(join(HOME, "logs", "image.log")) : "no image log",
-      )
+    if (url.pathname === "/logs/image") {
+      const file = join(HOME, "logs", "image.log")
+      return text(existsSync(file) ? readFileSync(file, "utf8") : "no image log")
+    }
     const runs = /^\/runs\/([0-9a-f]{40})$/.exec(url.pathname)
-    if (runs !== null)
-      return new Response(page(runs[1] ?? ""), { headers: { "content-type": "text/plain; charset=utf-8" } })
+    if (runs !== null) return text(page(runs[1] ?? ""))
     if (url.pathname === "/health")
-      return Response.json({ ok: true, idle: idle.length, busy: busy.size, active: [...active.keys()] })
-    return new Response("not found", { status: 404 })
+      return Response.json({
+        ok: true,
+        idle: idle.length,
+        members: members.size,
+        creating,
+        active: [...running.keys()],
+      })
+    return text("not found", 404)
   },
 })
 
-const startup = db.query<{ sha: string }, []>("SELECT DISTINCT sha FROM pending").all()
-for (const { sha } of startup) void finalizeOpen(sha, "dispatcher restarted mid-run; push again or rerun")
+for (const { sha } of db.query<{ sha: string }, []>("SELECT DISTINCT sha FROM pending").all())
+  void finalizeOpen(sha, "dispatcher restarted mid-run; push again or rerun")
 db.run("UPDATE runs SET state = 'error', detail = 'dispatcher restarted' WHERE state = 'running'")
 void pool().catch((error: unknown) => console.error("pool", error))
 setInterval(() => void watchdog().catch((error: unknown) => console.error("watchdog", error)), 60_000)

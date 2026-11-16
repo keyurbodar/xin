@@ -10,9 +10,9 @@ CI for keyurbodar/xin runs on Instabox VMs. GitHub Actions' `gate.yml` is disabl
   - **checks runner:** `fmt`, `lint`, `types` (`bunx tsgo --noEmit -p tsconfig.json`), `bundle`, `bench` (`INGLE_LOAD=1 bun run test`), `web-types`, `web-test` (web's `bun test src`, the old `prebuild`) and `web-build` (`vite build`).
   - **test runners 1-4:** `bun run test` on a set of test files with `VITEST_MAX_WORKERS=6`. That is 6 workers on 8 vCPU, which leaves room for import work, so the default 5 s test timeout behaves as it does on Actions (2 workers on 4 vCPU).
 - **Sharding.** Test files are split across runners by recorded duration (largest first, each to the lightest runner). Every passing shard records each file's time, scaled so it includes import overhead, and the next run plans from those times. A shard fails if any file it was given did not run. The run errors if the `include` in `vitest.config.ts` stops matching `VITEST_INCLUDE` in `scripts/ci/plan.ts`, so new test locations can't slip out of CI unnoticed.
-- **Statuses.** Every job posts `instabox/<job>`, and `instabox/ci` is the rollup. **Green means `instabox/ci` is success.** Every context a run opens goes final: the run's `finally` block errors anything still open, a watchdog errors pending contexts older than 10 min every minute, and startup errors whatever a crashed process left open.
+- **Statuses.** Every job posts `instabox/<job>`, and `instabox/ci` is the rollup. **Green means `instabox/ci` is success.** Every context a run opens goes final. The whole run is raced against its abort signal, so its `finally` always runs. That block frees the runners first, then errors anything still open. Every GitHub call times out after 15 s and every Instabox call after 40 s, and Instabox operations stop waiting after 5 min. A watchdog runs every minute: it aborts runs older than 9 min and errors pending contexts older than 10 min. Startup errors whatever a crashed process left open.
 - **Same tree, no rerun.** When a SHA's git tree already passed, for example a squash merge of an up-to-date PR, the run posts `instabox/ci` success at once with "same tree passed on <sha>".
-- **Cancellation and limits.** A new push to the same PR, or to main, cancels the older run, whose contexts read "cancelled: superseded". Each job can run for at most 300 s and each run for at most 8 min. Runs wait for free runners, so at most 2 run at once.
+- **Cancellation and limits.** A run only starts when its SHA is still the ref's head, so a redelivered or out-of-order webhook is ignored. A new push to the same PR, or to main, cancels the older run, whose contexts read "cancelled: superseded by <sha>". A SHA already running on another ref, or from a rerun, attaches to that run instead of starting a second one. Each job can run for at most 300 s and each run for at most 8 min. Runs wait for free runners, so at most 2 run at once.
 - **Trust.** Only PRs from this repo, or by an owner, member or collaborator, run. Fork PRs from anyone else don't.
 
 ## Read logs
@@ -32,7 +32,9 @@ Logs live on the dispatcher's `/data` disk, so they outlive every runner.
 `CI_URL`, the webhook secret and the hook id are in `~/.capy/work/secrets/instabox-ci.env` (mode 600). The Instabox key is in `~/.capy/work/secrets/instabox.env`.
 
 ```bash
-set -a; . ~/.capy/work/secrets/instabox.env; set +a; export GH_TOKEN=$(gh auth token)
+set -a; . ~/.capy/work/secrets/instabox.env; set +a
+export GH_TOKEN=$(gh auth token)              # deploy and hook only: hook admin on the repo
+export CI_STATUS_TOKEN=<fine-grained token>    # deploy only: the token the dispatcher keeps
 bun scripts/ci/ctl.ts rerun <sha>            # run a SHA again (a cached tree answers at once)
 bun scripts/ci/ctl.ts rerun <sha> --fresh    # forget the tree cache for that SHA and run it for real
 bun scripts/ci/ctl.ts runs                   # recent runs as JSON
@@ -48,7 +50,7 @@ bun scripts/ci/ctl.ts hook on|off            # turn the repo webhook on or off
 ## Rotate keys
 
 - **Instabox key:** make a new key in the Instabox dashboard (API keys) and write it to `~/.capy/work/secrets/instabox.env`. Run `deploy`, then revoke the old key.
-- **GitHub token:** the dispatcher uses `GH_TOKEN` to post statuses and read the git tree and `vitest.config.ts`. A fine-grained token with Commit statuses (write) and Contents (read) on keyurbodar/xin is enough. Export it as `GH_TOKEN`, then run `deploy`.
+- **GitHub tokens:** the dispatcher keeps only `CI_STATUS_TOKEN`, which it uses to post statuses and to read the PR head, the git tree and `vitest.config.ts`. Use a fine-grained token on keyurbodar/xin with Commit statuses (write), Contents (read) and Pull requests (read). `GH_TOKEN` stays on build; `ctl` uses it only to create or update the webhook (`deploy`, `hook`). To rotate, export the new `CI_STATUS_TOKEN` and run `deploy`.
 - **Webhook secret:** remove `CI_WEBHOOK_SECRET` from `~/.capy/work/secrets/instabox-ci.env` and run `deploy`. Deploy generates a new secret and updates both the dispatcher and the GitHub hook.
 
 ## If Instabox is down
