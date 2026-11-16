@@ -10,6 +10,7 @@ import {
   UsageDoc,
 } from "@earendil-works/pi-durable"
 import type { IntakeService } from "../../src/contracts/intake.ts"
+import { capReason, FeatureDoc, type Admission } from "../../src/contracts/models.ts"
 import type { PushService } from "../../src/contracts/push.ts"
 import { projectByRef, scopeOf } from "../../src/contracts/scope.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
@@ -183,6 +184,8 @@ export type EnginePort = {
   readonly notify: Pick<PushService, "notify" | "prefs">
   readonly arm: () => Promise<void>
   readonly changed: () => Promise<void>
+  readonly admit: () => Promise<Admission>
+  readonly admitConversation: (conversation: ConversationId) => Promise<Admission>
 }
 
 /** Who asked: the owner, or the conversation an agent runs in, which supplies the default project and thread. */
@@ -549,6 +552,8 @@ export class Engine {
     try {
       const automation = await this.store.automation(run.automation_id)
       if (automation === undefined) return await this.store.failed(id, "the automation was deleted", now)
+      const admission = await this.port.admit()
+      if (admission.kind === "capped") return await this.store.failed(id, capReason(admission), now)
       const text = taskText(automation.prompt, run.input)
       const command = commandId(run.id.startsWith(LEGACY_RUN) ? run.id : `automation:${run.id}`)
       if (automation.target === "same" && automation.thread_id !== null) {
@@ -568,6 +573,9 @@ export class Engine {
       const threadId = numberField(outcome.result, "threadId")
       if (threadId === undefined) return await this.store.failed(id, "thread.create returned no thread", now)
       if (automation.target === "same") await this.store.setThread(automation.id, threadId)
+      await this.port.harness.commit(async (tx) => {
+        ;(await tx.doc(FeatureDoc, threadId as ConversationId)).feature = "automation"
+      }, context)
       await this.store.started(id, "running", threadId, now, { cost: 0, tokens: 0 })
       await this.#ranOn(threadId, automation.id)
       await this.#notify(automation, run)
@@ -599,6 +607,11 @@ export class Engine {
         await this.store.started(run.id, "running", threadId, now, base)
         await this.#ranOn(threadId, automation.id)
       }
+      return true
+    }
+    const admission = await this.port.admitConversation(conversationId)
+    if (admission.kind === "capped") {
+      await this.store.failed(run.id, capReason(admission), now)
       return true
     }
     await this.port.intake.enqueue({
