@@ -4,7 +4,7 @@ import { runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { respond } from "../../test/plugins/m8.ts"
-import { fresh, recordOffers, turn, type Stub } from "../../test/support.ts"
+import { fresh, loadDeferred, recordOffers, type Stub, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import * as goalsRow from "./index.ts"
 import * as toolsRow from "./tools.ts"
@@ -53,6 +53,7 @@ async function toolResults(stub: Stub): Promise<Result[]> {
 }
 
 async function invoke(stub: Stub, name: string, args: JsonObject): Promise<Result> {
+  await loadDeferred(stub, [name])
   respond([call(name, args), fauxAssistantMessage("done")])
   await turn(stub, `tools-${crypto.randomUUID()}`)
   const results = await toolResults(stub)
@@ -79,7 +80,7 @@ describe("goal tools", () => {
     respond([offers.step("ok")])
     await turn(stub, `offers-${crypto.randomUUID()}`)
 
-    expect(offers.latest().tools).toEqual(expect.arrayContaining(["create_goal", "get_goal", "update_goal"]))
+    expect(offers.latest().available).toEqual(expect.arrayContaining(["create_goal", "get_goal", "update_goal"]))
     expect(offers.latest().system).toContain(POLICY)
   })
 

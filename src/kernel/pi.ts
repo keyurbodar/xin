@@ -6,14 +6,18 @@ import {
   type CompactionSettings,
   createRegistry,
   type Cursor,
+  defineExtension,
   type EnvTarget,
   type Extension,
   Harness,
   type Registry,
   type Report,
+  type PromptInput,
+  section,
   type ToolRegistration,
 } from "@earendil-works/pi-durable"
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
+import { createToolSearchTool } from "@earendil-works/pi-durable/tool-search"
 import { loaderRow } from "../contributions.ts"
 import { JournalStorage } from "./journal.ts"
 import { hidden } from "./hidden.ts"
@@ -32,6 +36,41 @@ export type InstalledName = {
 type EnvProvider = (target: EnvTarget) => ExecutionEnv | undefined
 
 const own = hidden<Pi, Context>()
+
+const TOOL_SEARCH = "tool-search"
+/** MCP tools come and go as servers connect, so listing them would rewrite the prompt; `tool_search` names them. */
+const UNLISTED = new Set([TOOL_SEARCH, "tool-mcp"])
+const SUMMARY_CHARS = 120
+
+const summary = (description: string): string => {
+  const first = description.trim().split(/\r?\n/)[0] ?? ""
+  const sentence = /^.*?[.!?](?=\s|$)/.exec(first)?.[0] ?? first
+  return sentence.length <= SUMMARY_CHARS ? sentence : `${sentence.slice(0, SUMMARY_CHARS - 1)}…`
+}
+
+/**
+ * Every deferred tool the conversation may use, loaded or not, in extension order, so the text stays the same after
+ * `tool_search` loads one and the cached prompt prefix survives. A tool its `modelTools` removes is left out.
+ */
+const deferredIndex = (input: PromptInput): string | undefined => {
+  const usable = new Set([...input.agent.tools, ...input.agent.deferred].map((tool) => tool.name))
+  const lines = input.agent.extensions
+    .filter((extension) => !UNLISTED.has(extension.name))
+    .flatMap((extension) => extension.tools ?? [])
+    .filter((tool) => tool.deferred === true && usable.has(tool.name))
+    .map((tool) => `- ${tool.name}: ${summary(tool.description)}`)
+  if (lines.length === 0) return undefined
+  return [
+    "Load any of these with tool_search (its name or what you need); it is offered from your next call.",
+    ...lines,
+  ].join("\n")
+}
+
+const toolSearch = defineExtension({
+  name: TOOL_SEARCH,
+  tools: [createToolSearchTool()],
+  sections: [section("deferred-tools", deferredIndex)],
+})
 
 const refuseHandle = async (): Promise<never> => {
   throw new Error("a tool handle names a tool for configure and cannot run")
@@ -107,12 +146,32 @@ export class Pi extends Service {
     return this.ctx.effect(() => {
       this.registry.install(extension)
       this.installed.set(extension.name, { extension, owner, row })
+      this.offerSearch()
       return () => {
         if (this.installed.get(extension.name)?.extension !== extension) return
         this.installed.delete(extension.name)
         this.registry.uninstall(extension)
+        this.offerSearch()
       }
     }, `pi.install(${extension.name})`)
+  }
+
+  /**
+   * `tool_search` is offered only while some extension carries a deferred tool; with none it could only say "no match".
+   * It is listed as a kernel extension, so presets keep it and see the registry they compare against.
+   */
+  private offerSearch(): void {
+    const wanted = [...this.installed.values()].some(({ extension }) =>
+      (extension.tools ?? []).some((tool) => tool.deferred === true),
+    )
+    if (wanted === this.installed.has(TOOL_SEARCH)) return
+    if (wanted) {
+      this.registry.install(toolSearch)
+      this.installed.set(TOOL_SEARCH, { extension: toolSearch, owner: null, row: undefined })
+      return
+    }
+    this.installed.delete(TOOL_SEARCH)
+    this.registry.uninstall(toolSearch)
   }
 
   models(source: () => Models): () => void {
