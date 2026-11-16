@@ -1,4 +1,5 @@
 import { createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { settled } from "../../lib/loading.ts"
 import { addServer, errorMessage, isRecord, readMcpTools, removeServer, servers, type McpServer } from "../../state/extensions.ts"
 import { Button, Empty, Failure, MONO_INPUT, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
@@ -188,7 +189,7 @@ function ToolsList(props: { name: string }): JSX.Element {
       <Show when={tools.loading}>
         <Pending label="Reading the tool list" />
       </Show>
-      <Show when={tools()}>
+      <Show when={settled(tools)}>
         {(list) => (
           <Show
             when={list().length > 0}

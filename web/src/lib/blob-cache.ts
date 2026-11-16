@@ -14,7 +14,7 @@ export type BlobCache = {
 
 /**
  * Object URLs for stored blobs, least recently used first out: past `entries` URLs or `bytes` of blobs the oldest
- * loaded ones are revoked, never the newest, so one large picture still shows.
+ * loaded ones are revoked, never the one that just arrived, so one large picture still shows.
  */
 export function createBlobCache(
   load: (sha256: string, type: string) => Promise<Blob> = fetchBlob,
@@ -29,11 +29,10 @@ export function createBlobCache(
     if (slot.href !== undefined) URL.revokeObjectURL(slot.href)
   }
 
-  const evict = (): void => {
-    const newest = [...slots.keys()].at(-1)
+  const evict = (keep: Slot): void => {
     for (const [sha256, slot] of slots) {
       if (slots.size <= limits.entries && held <= limits.bytes) return
-      if (sha256 !== newest && slot.href !== undefined) drop(sha256, slot)
+      if (slot !== keep && slot.href !== undefined) drop(sha256, slot)
     }
   }
 
@@ -55,7 +54,7 @@ export function createBlobCache(
           slot.href = href
           slot.bytes = blob.size
           held += blob.size
-          evict()
+          evict(slot)
           return href
         },
         (failure: unknown) => {
@@ -65,7 +64,7 @@ export function createBlobCache(
       )
       const slot: Slot = { url, bytes: 0 }
       slots.set(sha256, slot)
-      evict()
+      evict(slot)
       return url
     },
     clear: () => {
