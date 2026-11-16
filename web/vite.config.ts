@@ -11,6 +11,7 @@ export default defineConfig({
     alias: { "@ingle/sdk": fileURLToPath(new URL("./src/plugins/sdk.ts", import.meta.url)) },
     dedupe: ["solid-js"],
   },
+  optimizeDeps: { exclude: ["@ui-sdk/core"] },
   server: {
     proxy: {
       "/v1": { target: backend, changeOrigin: true, ws: true },

@@ -23,11 +23,11 @@
   transition-duration: var(--dur-press), var(--dur-hover-in), var(--dur-hover-in);
 }
 
-.im-sheet[data-side="left"][data-state="open"] {
+.im-sheet[data-side="left"]:is([data-state="open"], [data-open]) {
   animation-name: im-sheet-left-in;
 }
 
-.im-sheet[data-side="left"][data-state="closed"] {
+.im-sheet[data-side="left"]:is([data-state="closed"], [data-ending-style]) {
   animation-name: im-sheet-left-out;
 }
 
@@ -62,11 +62,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .im-sheet[data-side="left"][data-state="open"] {
+  .im-sheet[data-side="left"]:is([data-state="open"], [data-open]) {
     animation-name: im-fade-in;
   }
 
-  .im-sheet[data-side="left"][data-state="closed"] {
+  .im-sheet[data-side="left"]:is([data-state="closed"], [data-ending-style]) {
     animation-name: im-fade-out;
   }
 
@@ -89,11 +89,11 @@
 }
 
 :root[data-motion="reduce"] {
-  .im-sheet[data-side="left"][data-state="open"] {
+  .im-sheet[data-side="left"]:is([data-state="open"], [data-open]) {
     animation-name: im-fade-in;
   }
 
-  .im-sheet[data-side="left"][data-state="closed"] {
+  .im-sheet[data-side="left"]:is([data-state="closed"], [data-ending-style]) {
     animation-name: im-fade-out;
   }
 
