@@ -10,7 +10,7 @@ import type {
 } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { respond } from "../../test/plugins/m8.ts"
-import { addThreads, cmd, fresh, recordOffers, type Stub, turn } from "../../test/support.ts"
+import { addThreads, cmd, fresh, loadDeferred, recordOffers, type Stub, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { commentTool } from "./comment.ts"
 import type { IssueDetail, IssuePage } from "./issues.ts"
@@ -23,6 +23,7 @@ describe("issue tool rows", () => {
   it("let an agent create, update, comment on and read an issue as itself", async () => {
     const stub = fresh()
     const offers = recordOffers()
+    await loadDeferred(stub, ["issue"])
     respond([
       call("issue", { action: "create", with: { title: "Agent filed", priority: "high", labels: ["agent"] } }),
       call("issue", { action: "update", id: 1, with: { state: "in-progress" } }),

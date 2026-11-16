@@ -122,8 +122,7 @@ describe("tool-mcp row", () => {
     script([offers.step("no tools for me")])
     await turn(stub, "row-turn-2", { text: "what can you do now", model: MCP_MODEL })
 
-    expect(offers.at(0).tools).not.toContain("tool_search")
-    expect(offers.at(0).tools).not.toContain("mcp__demo__echo")
+    expect(offers.at(0).available).not.toContain("mcp__demo__echo")
 
     expect(await cmd(stub, "row-enable", "plugin.enable", { id: "tool-mcp", enabled: true })).toMatchObject({
       ok: true,
@@ -144,24 +143,26 @@ describe("tool-mcp row", () => {
   }, 30_000)
 })
 
-describe("tool_search without a deferred tool", () => {
-  it("offers no search tool while no server has connected, and offers it once one has", async () => {
+describe("the deferred-tools index", () => {
+  it("leaves MCP tools out, so a server connecting does not rewrite the prompt", async () => {
     const stub = fresh()
     serve()
     const offers = recordOffers()
 
-    script([offers.step("nothing to find")])
-    await turn(stub, "search-empty", { text: "find something", model: MCP_MODEL })
-    expect(offers.at(0).tools).not.toContain("tool_search")
+    script([offers.step("before")])
+    await turn(stub, "index-empty", { text: "find something", model: MCP_MODEL })
+    const before = offers.at(0).system
 
-    expect(await cmd(stub, "search-add", "mcp.add", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
+    expect(await cmd(stub, "index-add", "mcp.add", { name: "demo", url: "https://mcp.test/mcp" })).toMatchObject({
       ok: true,
       result: { name: "demo", tools: 1 },
     })
 
     offers.seen.length = 0
-    script([offers.step("found it")])
-    await turn(stub, "search-full", { text: "find something again", model: MCP_MODEL })
+    script([offers.step("after")])
+    await turn(stub, "index-full", { text: "find something again", model: MCP_MODEL })
     expect(offers.at(0).tools).toContain("tool_search")
+    expect(offers.at(0).system).not.toContain("mcp__demo__echo")
+    expect(offers.at(0).system).toBe(before)
   }, 30_000)
 })

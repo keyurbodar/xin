@@ -9,7 +9,7 @@ describe("tool-models row", () => {
 
     respond([offers.step("first")])
     await turn(stub, "row-turn-1", { text: "hello" })
-    expect(offers.at(0).tools).toContain("set_model")
+    expect(offers.at(0).available).toContain("set_model")
 
     expect(await cmd(stub, "row-disable", "plugin.enable", { id: "tool-models", enabled: false })).toMatchObject({
       ok: true,
@@ -26,7 +26,7 @@ describe("tool-models row", () => {
     offers.seen.length = 0
     respond([offers.step("second")])
     await turn(stub, "row-turn-2", { text: "what models are there" })
-    expect(offers.at(0).tools).not.toContain("set_model")
+    expect(offers.at(0).available).not.toContain("set_model")
 
     expect(await cmd(stub, "row-enable", "plugin.enable", { id: "tool-models", enabled: true })).toMatchObject({
       ok: true,
@@ -36,6 +36,6 @@ describe("tool-models row", () => {
     offers.seen.length = 0
     respond([offers.step("third")])
     await turn(stub, "row-turn-3", { text: "switch models" })
-    expect(offers.at(0).tools).toContain("set_model")
+    expect(offers.at(0).available).toContain("set_model")
   }, 30_000)
 })
