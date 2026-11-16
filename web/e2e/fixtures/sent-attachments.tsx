@@ -1,6 +1,8 @@
 import "../../src/styles/app.css"
+import { For, Show, createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import { OwnerBubble } from "../../src/components/chat/entries.tsx"
+import { SentBlobsScope } from "../../src/components/composer/attachment-card.tsx"
 import type { Attachment } from "../../src/state/conversation.ts"
 
 async function swatch(token: string, width: number, height: number): Promise<Blob> {
@@ -19,14 +21,37 @@ async function swatch(token: string, width: number, height: number): Promise<Blo
 const SHOT = "a".repeat(64)
 const DIAGRAM = "b".repeat(64)
 const GONE = "c".repeat(64)
+const PAGE = "f".repeat(64)
+const LOGO = "9".repeat(64)
+const longSha = (index: number) => `e${index.toString(16).padStart(63, "0")}`
+const LONG = 34
+
+const shot = await swatch("--color-primary", 640, 400)
 const blobs = new Map<string, Blob>([
-  [SHOT, await swatch("--color-primary", 640, 400)],
+  [SHOT, shot],
   [DIAGRAM, await swatch("--color-ink-3", 480, 480)],
+  [PAGE, new Blob(["<html><script>window.pwned=1</script></html>"])],
+  [LOGO, new Blob(['<svg xmlns="http://www.w3.org/2000/svg" onload="window.pwned=2"/>'])],
+  ...Array.from({ length: LONG }, (_, index) => [longSha(index), shot] as const),
 ])
+
 const requested: string[] = []
+const live = new Set<string>()
+const create = URL.createObjectURL.bind(URL)
+const revoke = URL.revokeObjectURL.bind(URL)
+URL.createObjectURL = (object: Blob | MediaSource) => {
+  const url = create(object)
+  live.add(url)
+  return url
+}
+URL.revokeObjectURL = (url: string) => {
+  live.delete(url)
+  revoke(url)
+}
 const realFetch = window.fetch.bind(window)
 Object.assign(window, {
   requested,
+  live: () => live.size,
   fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
     const sha = /\/blobs\/([0-9a-f]{64})$/u.exec(url)?.[1]
@@ -40,25 +65,48 @@ Object.assign(window, {
 })
 
 const path = (name: string) => `/projects/demo/attachments/${name}`
-const attachments: readonly Attachment[] = [
+const first: readonly Attachment[] = [
   { path: path("screenshot.png"), name: "screenshot.png", type: "image/png", size: 215 * 1024, sha256: SHOT },
   { path: path("brief.md"), name: "brief.md", type: "text/markdown", size: 26, sha256: "d".repeat(64) },
   { path: path("diagram.png"), name: "diagram.png", type: "image/png", size: 1_363_149, sha256: DIAGRAM },
   { path: path("old.png"), name: "old.png", type: "image/png", size: 900, sha256: undefined },
   { path: path("gone.png"), name: "gone.png", type: "image/png", size: 4096, sha256: GONE },
+  { path: path("page.png"), name: "page.png", type: "image/png", size: 44, sha256: PAGE },
+  { path: path("logo.svg"), name: "logo.svg", type: "image/svg+xml", size: 66, sha256: LOGO },
+]
+const thread = (index: number): readonly Attachment[] => [
+  { path: path(`step-${index}.png`), name: `step-${index}.png`, type: "image/png", size: 4096, sha256: longSha(index) },
 ]
 
-const density = new URLSearchParams(location.search).get("density") === "panel" ? "panel" : "chat"
+const params = new URLSearchParams(location.search)
+const density = params.get("density") === "panel" ? "panel" : "chat"
+const long = params.get("long") === "1"
 
-render(
-  () => (
+function App() {
+  const [current, setCurrent] = createSignal("a")
+  return (
     <main class="mx-auto flex w-full max-w-[760px] flex-col gap-6 p-6">
-      <button id="before" type="button" class="self-start">
-        Before
-      </button>
-      <OwnerBubble text="Here are the screenshots from the review." attachments={attachments} density={density} />
+      <div class="flex gap-2 self-start">
+        <button id="before" type="button">
+          Before
+        </button>
+        <button id="switch" type="button" onClick={() => setCurrent("b")}>
+          Other thread
+        </button>
+      </div>
+      <SentBlobsScope scope={current()}>
+        <Show when={current() === "a"} fallback={<OwnerBubble text="A thread with no files." density={density} />}>
+          <OwnerBubble text="Here are the screenshots from the review." attachments={first} density={density} />
+          <Show when={long}>
+            <For each={Array.from({ length: LONG }, (_, index) => index)}>
+              {(index) => <OwnerBubble text={`Step ${index}`} attachments={thread(index)} density={density} />}
+            </For>
+          </Show>
+        </Show>
+      </SentBlobsScope>
     </main>
-  ),
-  document.getElementById("app")!,
-)
+  )
+}
+
+render(() => <App />, document.getElementById("app")!)
 document.body.dataset.ready = "1"

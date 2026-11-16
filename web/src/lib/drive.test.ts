@@ -5,6 +5,9 @@ import {
   createRetryIds,
   failureText,
   folderOf,
+  hasThumbnail,
+  hasTreeThumbnail,
+  TREE_THUMBNAIL_BYTES,
   isStale,
   moveTarget,
   pickScope,
@@ -158,4 +161,15 @@ test("a rename refuses empty names, slashes, dot names and a sibling's name in a
   expect(renameProblem("notes.TXT", "plan.md", siblings)).toBe("Notes.txt is already in this folder.")
   expect(renameProblem("Plan.md", "plan.md", siblings)).toBeUndefined()
   expect(renameProblem("roadmap.md", "plan.md", siblings)).toBeUndefined()
+})
+
+test("raster images get a thumbnail, other files keep their icon", () => {
+  expect(["image/png", "image/jpeg", "image/webp", "image/gif", "image/avif"].every(hasThumbnail)).toBe(true)
+  expect(["image/svg+xml", "text/markdown", "application/pdf", "image/png-ish"].some(hasThumbnail)).toBe(false)
+})
+
+test("the tree shows an image's own thumbnail only up to 1 MB", () => {
+  const image = (size: number) => ({ path: "a.png", size, type: "image/png", sha256: "a", updated_at: 0 })
+  expect(hasTreeThumbnail(image(TREE_THUMBNAIL_BYTES))).toBe(true)
+  expect(hasTreeThumbnail(image(TREE_THUMBNAIL_BYTES + 1))).toBe(false)
 })
