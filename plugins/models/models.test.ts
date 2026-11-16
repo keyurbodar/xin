@@ -825,6 +825,42 @@ describe("models", () => {
     }
   })
 
+  it("keeps a custom provider's endpoint when its key alone is edited", async () => {
+    const original = globalThis.fetch
+    const seen: string[] = []
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(`${String(input)} ${new Headers(init?.headers).get("authorization") ?? ""}`)
+      return new Response(JSON.stringify({ object: "list", data: [{ id: "stub-1", object: "model" }] }), {
+        headers: { "content-type": "application/json" },
+      })
+    }
+    try {
+      const created = await cmd("edit-custom-1", "credential.set", {
+        provider: "edited",
+        custom: { baseUrl: "https://edited.test/v1", key: "first-key", api: "openai-completions" },
+      })
+      expect(created).toMatchObject({ ok: true })
+      const edited = await cmd("edit-custom-2", "credential.set", { provider: "edited", key: "second-key" })
+      expect(edited).toMatchObject({ ok: true, result: { provider: "edited", custom: false } })
+
+      seen.length = 0
+      const listed = (await cmd("edit-custom-3", "models.catalog", {})) as {
+        result: { providers: { id: string; custom: boolean; keyed: boolean }[] }
+      }
+      const providers = listed.result.providers
+      expect(providers.find((provider) => provider.id === "edited")).toMatchObject({ custom: true, keyed: true })
+      const accepted = await cmd("edit-custom-4", "owner.defaults", {
+        role: "chat",
+        model: { provider: "edited", modelId: "stub-1" },
+      })
+      expect(accepted).toMatchObject({ ok: true })
+      expect(seen.some((line) => line.startsWith("https://edited.test/v1/") && line.endsWith("second-key"))).toBe(true)
+    } finally {
+      globalThis.fetch = original
+      await cmd("edit-custom-5", "credential.delete", { provider: "edited" })
+    }
+  })
+
   it("confines an agent's model changes to itself or its own project's threads", async () => {
     const stub = fresh()
     const created = await call(stub, "scope-project", "project.create", { slug: "scope", name: "Scope" })
