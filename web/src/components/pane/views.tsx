@@ -1,16 +1,25 @@
-import { For, Show, type JSX } from "solid-js"
+import { For, lazy, Show, Suspense, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { Brain, CalendarClock, CircleDot, HardDrive, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
 import { activeConversation, host, PluginBoundary, slotItems } from "../../plugins/slots.tsx"
 import { Icon, isIconName } from "../ui/icon.tsx"
-import { MemoryTab } from "../chat/memory.tsx"
-import { AutomationsTab } from "../chat/automations.tsx"
 import { JobsView, ThreadsView } from "./bodies.tsx"
 import { CrewSection, CrewView } from "./crew.tsx"
-import { DriveView } from "./drive.tsx"
-import { IssueView } from "./issue.tsx"
 import { IssuesSection } from "./issues.tsx"
 import { DriveSection, InProgressSection, NeedsYouSection, ThreadsSection, type PaneContext } from "./overview.tsx"
+import { PaneSkeleton } from "../ui/skeleton.tsx"
+
+const MemoryTab = lazy(() => import("../chat/memory.tsx").then((module) => ({ default: module.MemoryTab })))
+const AutomationsTab = lazy(() => import("../chat/automations.tsx").then((module) => ({ default: module.AutomationsTab })))
+const DriveView = lazy(() => import("./drive.tsx").then((module) => ({ default: module.DriveView })))
+const IssueView = lazy(() => import("./issue.tsx").then((module) => ({ default: module.IssueView })))
+
+/** Starts every lazy pane view's chunk, for the moment the pane's tabs or its + menu are about to be used. */
+export function preloadPaneViews(): void {
+  for (const view of [MemoryTab, AutomationsTab, DriveView, IssueView]) void view.preload()
+}
+
+const later = (body: () => JSX.Element): JSX.Element => <Suspense fallback={<PaneSkeleton rows={6} />}>{body()}</Suspense>
 
 export type { PaneContext }
 
@@ -87,29 +96,28 @@ export const PANE_VIEWS: readonly PaneEntry[] = [
     id: "files",
     label: "Drive",
     icon: HardDrive,
-    render: (context) => (
-      <DriveView
-        conversationId={context.conversationId}
-        prefer={context.captain === undefined ? { kind: "project", id: context.project.id } : { kind: "captain", id: context.captain.id }}
-        projectSlug={context.project.slug}
-      />
-    ),
+    render: (context) =>
+      later(() => (
+        <DriveView
+          conversationId={context.conversationId}
+          prefer={context.captain === undefined ? { kind: "project", id: context.project.id } : { kind: "captain", id: context.captain.id }}
+          projectSlug={context.project.slug}
+        />
+      )),
   },
   {
     id: "memory",
     label: "Memory",
     icon: Brain,
     scope: "project",
-    render: (context) => (
-      <MemoryTab conversationId={context.project.coordinatorId} scope={`project:${context.project.id}`} />
-    ),
+    render: (context) => later(() => <MemoryTab conversationId={context.project.coordinatorId} scope={`project:${context.project.id}`} />),
   },
   {
     id: "automations",
     label: "Automations",
     icon: CalendarClock,
     scope: "project",
-    render: (context) => <AutomationsTab project={context.project} />,
+    render: (context) => later(() => <AutomationsTab project={context.project} />),
   },
   { id: "jobs", label: "Jobs", icon: Timer, render: () => <JobsView /> },
   { id: "threads", label: "All threads", icon: ListTree, render: (context) => <ThreadsView {...context} /> },
@@ -150,7 +158,7 @@ function issueEntry(id: string): PaneEntry | undefined {
     id,
     label: `Issue #${issue}`,
     icon: CircleDot,
-    render: (context: PaneContext) => <IssueView {...context} id={issue} />,
+    render: (context: PaneContext) => later(() => <IssueView {...context} id={issue} />),
   }
   issueEntries.set(id, entry)
   return entry

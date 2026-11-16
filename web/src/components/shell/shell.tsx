@@ -1,4 +1,4 @@
-import { createEffect, createSignal, ErrorBoundary, Match, onCleanup, onMount, Show, Switch, type JSX } from "solid-js"
+import { createEffect, createSignal, ErrorBoundary, lazy, Match, onCleanup, onMount, Show, Suspense, Switch, type JSX } from "solid-js"
 import { Menu as MenuIcon } from "lucide-solid"
 import { navigate, route } from "../../lib/router.ts"
 import { owner } from "../../state/settings.ts"
@@ -9,14 +9,31 @@ import { CommandPalette } from "./palette.tsx"
 import { NewThreadDialog } from "./new-thread.tsx"
 import { ICON_BUTTON } from "./menu.ts"
 import { ProjectScreen } from "../../screens/project.tsx"
-import { ExtensionsScreen } from "../../screens/extensions.tsx"
-import { SettingsScreen } from "../../screens/settings.tsx"
-import { AutomationsScreen } from "../../screens/automations.tsx"
 import { CaptainScreen } from "../../screens/captain.tsx"
 import { NewCaptainDialog } from "../captain/captain-dialog.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
 import { Toasts } from "../ui/toast.tsx"
+import { RowSkeleton } from "../ui/skeleton.tsx"
+
+const ExtensionsScreen = lazy(() => import("../../screens/extensions.tsx").then((module) => ({ default: module.ExtensionsScreen })))
+const SettingsScreen = lazy(() => import("../../screens/settings.tsx").then((module) => ({ default: module.SettingsScreen })))
+const AutomationsScreen = lazy(() => import("../../screens/automations.tsx").then((module) => ({ default: module.AutomationsScreen })))
+
+/**
+ * The lazy screens by the label of the sidebar row that opens each one. sidebar.tsx gives its rows no route of their
+ * own (another lane owns it), so the shell matches a hovered or focused row by its text to start the chunk early.
+ */
+const PREFETCH: Readonly<Record<string, () => void>> = {
+  Automations: () => void AutomationsScreen.preload(),
+  Extensions: () => void ExtensionsScreen.preload(),
+  Settings: () => void SettingsScreen.preload(),
+}
+
+function prefetch(event: Event): void {
+  const row = event.target instanceof Element ? event.target.closest("button, [role=menuitem]") : null
+  PREFETCH[row?.textContent?.trim() ?? ""]?.()
+}
 
 export function Shell(): JSX.Element {
   const first = () => route().parts[0]
@@ -53,7 +70,7 @@ export function Shell(): JSX.Element {
   }
 
   return (
-    <div class="flex h-full overflow-hidden bg-bg text-ink">
+    <div class="flex h-full overflow-hidden bg-bg text-ink" onPointerOver={prefetch} onFocusIn={prefetch}>
       <Show when={wide() && !sidebarHidden()}>
         <Sidebar drawer={false} onSearch={search} onCollapse={toggleSidebar} />
       </Show>
@@ -106,6 +123,7 @@ export function Shell(): JSX.Element {
                       </button>
                     </div>
                   </Show>
+                  <Suspense fallback={<RowSkeleton rows={8} />}>
                   <Switch>
                     <Match when={first() === "extensions"}>
                       <ExtensionsScreen />
@@ -117,6 +135,7 @@ export function Shell(): JSX.Element {
                       <AutomationsScreen />
                     </Match>
                   </Switch>
+                  </Suspense>
                 </section>
               }
             >
