@@ -273,12 +273,13 @@ export const CATALOG: Catalog = {
   "tool-files": {
     plugin: p13,
     title: "Files tools",
-    description: "The model-facing files tools. Disable to hide them; the files service keeps running.",
+    description:
+      "The model-facing files tools: read, write, edit, ls, find and grep. Disable to hide them; the files service keeps running.",
     manifest: {
       api: 1,
       requires: [],
       permissions: ["files"],
-      contributes: { tools: ["edit", "read", "write"], ops: [] },
+      contributes: { tools: ["edit", "find", "grep", "ls", "read", "write"], ops: [] },
       slots: [],
     },
     local: true,

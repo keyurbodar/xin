@@ -49,6 +49,8 @@ export type R2EnvOptions = {
   readonly cwd?: string
   readonly dirs?: Set<string>
   readonly onChange?: FileChange
+  /** Whether a listing may show a path; a directory is asked as `path/`. Everything is shown without it. */
+  readonly visible?: (path: string) => Promise<boolean>
 }
 
 const ROW_COLUMNS = "path, r2_key, size, type, sha256, project, updated_at"
@@ -155,6 +157,15 @@ export class FileIndex {
       prefix,
       pastPrefix(prefix),
       limit,
+    )
+  }
+
+  /** The first row in [from, end), or in (from, end) when `after`: one row read. */
+  first(from: string, end: string, after = false): Promise<FileRow | undefined> {
+    return this.db.get<FileRow>(
+      `SELECT ${ROW_COLUMNS} FROM files WHERE path ${after ? ">" : ">="} ? AND path < ? ORDER BY path LIMIT 1`,
+      from,
+      end,
     )
   }
 
@@ -301,6 +312,7 @@ export class R2Env implements ExecutionEnv {
   cwd: string
   readonly #dirs: Set<string>
   readonly #index: FileIndex
+  readonly #visible: (path: string) => Promise<boolean>
 
   constructor(
     private readonly bucket: R2Bucket,
@@ -310,6 +322,7 @@ export class R2Env implements ExecutionEnv {
     this.cwd = normalizePath("/", options.cwd ?? "/") ?? "/"
     this.#dirs = options.dirs ?? new Set(["/"])
     this.#index = new FileIndex(db, options.onChange)
+    this.#visible = options.visible ?? (async () => true)
   }
 
   async absolutePath(path: string, context: Context): Promise<Result<string, FileError>> {
@@ -509,8 +522,8 @@ export class R2Env implements ExecutionEnv {
       return err(new FileError("not_directory", "not a directory", resolved.value))
     if (!(await this.#isDir(resolved.value))) return this.#missing(resolved.value)
     const opened = resolved.value
-    let entries: FileInfo[] | undefined
-    let index = 0
+    const children = this.#children(opened)
+    let done = false
     let closed = false
     return ok({
       next: async (maxEntries, ctx) => {
@@ -519,13 +532,17 @@ export class R2Env implements ExecutionEnv {
           return invalid("maxEntries must be a positive integer", opened)
         const stopped = aborted<{ entries: FileInfo[]; done: boolean }>(ctx)
         if (stopped !== undefined) return stopped
-        entries ??= await this.#entries(opened)
-        const page = entries.slice(index, index + maxEntries)
-        index += page.length
-        return ok({ entries: page, done: index >= entries.length })
+        const entries: FileInfo[] = []
+        while (!done && entries.length < maxEntries) {
+          const step = await children.next()
+          if (step.done === true) done = true
+          else entries.push(step.value)
+        }
+        return ok({ entries, done })
       },
       close: async () => {
         closed = true
+        await children.return(undefined)
       },
     })
   }
@@ -562,8 +579,9 @@ export class R2Env implements ExecutionEnv {
     if (await this.#index.drop(target)) return ok(undefined)
     if (await this.#isDir(target)) {
       const prefix = target === "/" ? "/" : `${target}/`
-      const children = await this.#entries(target)
-      if (children.length > 0 && options?.recursive !== true)
+      const occupied =
+        (await this.#index.hasUnder(prefix)) || [...this.#dirs].some((dir) => dir !== target && dir.startsWith(prefix))
+      if (occupied && options?.recursive !== true)
         return err(new FileError("invalid", "directory is not empty", target))
       await this.#index.dropUnder(prefix)
       for (const dir of this.#dirs) if (dir.startsWith(prefix)) this.#dirs.delete(dir)
@@ -643,23 +661,36 @@ export class R2Env implements ExecutionEnv {
   }
 
   async #entries(dir: string): Promise<FileInfo[]> {
+    const found: FileInfo[] = []
+    for await (const entry of this.#children(dir)) found.push(entry)
+    return found.toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  }
+
+  /**
+   * The direct children of `dir`, one index row each: after a subdirectory the scan jumps past every row under it, so
+   * a listing reads one row per entry however large the subtree, and a walk reads each row about once.
+   */
+  async *#children(dir: string): AsyncGenerator<FileInfo> {
     const prefix = dir === "/" ? "/" : `${dir}/`
-    const found = new Map<string, FileInfo>()
-    for (const row of await this.#index.under(prefix)) {
-      const relative = row.path.slice(prefix.length)
-      const slash = relative.indexOf("/")
+    const end = pastPrefix(prefix)
+    const seen = new Set<string>()
+    let row = await this.#index.first(prefix, end)
+    while (row !== undefined) {
+      const slash = row.path.indexOf("/", prefix.length)
       if (slash === -1) {
-        found.set(row.path, file(row))
+        if (await this.#visible(row.path)) yield file(row)
+        row = await this.#index.first(row.path, end, true)
         continue
       }
-      const child = `${dir === "/" ? "" : dir}/${relative.slice(0, slash)}`
-      found.set(child, directory(child, 0))
+      const child = row.path.slice(0, slash)
+      seen.add(child)
+      if (await this.#visible(`${child}/`)) yield directory(child, 0)
+      row = await this.#index.first(pastPrefix(`${child}/`), end)
     }
     for (const known of this.#dirs) {
-      if (known === dir || !known.startsWith(prefix)) continue
+      if (known === dir || seen.has(known) || !known.startsWith(prefix)) continue
       if (known.slice(prefix.length).includes("/")) continue
-      found.set(known, directory(known, 0))
+      if (await this.#visible(`${known}/`)) yield directory(known, 0)
     }
-    return [...found.values()].toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   }
 }

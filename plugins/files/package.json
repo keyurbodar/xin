@@ -29,13 +29,16 @@
       "tool-files": {
         "module": "./tools.ts",
         "title": "Files tools",
-        "description": "The model-facing files tools. Disable to hide them; the files service keeps running.",
+        "description": "The model-facing files tools: read, write, edit, ls, find and grep. Disable to hide them; the files service keeps running.",
         "permissions": [
           "files"
         ],
         "contributes": {
           "tools": [
             "edit",
+            "find",
+            "grep",
+            "ls",
             "read",
             "write"
           ]
