@@ -459,6 +459,8 @@ export const CATALOG: Catalog = {
           "models.enable",
           "models.favorite",
           "models.list",
+          "owner.compaction",
+          "owner.compaction.set",
           "owner.defaults",
           "usage.alert",
           "usage.alert.set",
