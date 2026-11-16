@@ -1,0 +1,1 @@
+2026-11-16T05:00:00Z	AMA-15	A cron time in a spring-forward gap runs at the first valid minute after the gap that day; /hooks/* answers a bare 503 while boot has failed	match cronie; anonymous callers must not read boot failures	cron.test.ts, src/host.test.ts	pass

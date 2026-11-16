@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	plugins	reach.ts also refuses ctx aliased, destructured or read with a computed key, and cordis.original or symbols.original	XIN-23 low: those spellings slipped past the build check	test/reach.test.ts covers each	fixed in #19

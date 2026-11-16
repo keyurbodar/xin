@@ -1,0 +1,1 @@
+2026-11-06T16:59:30Z	P1	XinLoader takes composition, owner patch and persist as constructor config; row state is read from the fiber on demand (async), no errors cache	two-phase mutable loader state hid a still-mounting mode and a stale errors map	thermo review finding 11	loader.ts

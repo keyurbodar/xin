@@ -1,0 +1,1 @@
+2026-11-16T22:30:00Z	plugins	Changed frames are coalesced: one per HTTP batch, and one per tick for writes outside a batch	XIN-23 #19: each agent write sent its own frame	cmd.test: three remembers in one tick send one frame	fixed in #19

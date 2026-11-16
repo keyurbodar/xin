@@ -1,0 +1,1 @@
+2026-11-06T16:30:00Z	M6	the watchdog checks jobs only for overtime and counts only working threads plus jobs without a result	jobs never beat so a 2 min stall rule killed every job; a waiting thread has no run and needs no watchdog	plugins/watchdog/watchdog.test.ts: a three-minute job survives, a waiting-only home finishes the watchdog; request.respond arms it	adopted
