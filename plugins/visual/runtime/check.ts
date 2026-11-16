@@ -1,5 +1,6 @@
 // Ported from zeron (https://github.com/zeronsh/zeron), MIT, Copyright (c) 2026 Wing. See plugins/visual/LICENSE-zeron.
 
+import { Meter, PER_CHECK } from "./limits.ts"
 import { Scene, SCENE_METHODS } from "./scene.ts"
 import { validateShader } from "./shader-check.ts"
 import { type HandlerArg, type SceneTarget, Visual } from "./lua.ts"
@@ -131,7 +132,7 @@ function handlerAt(root: Node, path: readonly number[]): HandlerId | undefined {
 
 /** Run a script the way the reader's browser will: setup, the first render, every draw, then each control once with a render after it. */
 export function check(source: string, seed: number): Report {
-  const visual = Visual.load(source, seed)
+  const visual = Visual.load(source, seed, new Meter(PER_CHECK, "lifetime"))
   const tree = visual.render()
   const count = { nodes: 0 }
   exercise(visual, tree, count)

@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest"
 import { check, children } from "./check.ts"
 import { seedFor, Visual } from "./lua.ts"
-import { guardLoops, MAX_LOOP_STEPS, shaderProgram } from "./shader-check.ts"
+import { guardLoops, MAX_LOOP_STEPS, shaderProgram, stripComments } from "./shader-check.ts"
 import type { Node } from "./node.ts"
 
 function textOf(node: Node): string {
@@ -79,6 +79,13 @@ describe("visual runtime", () => {
     expect(failure("return function() while true do pcall(pcall, function() while true do end end) end end")).toContain(
       "time budget",
     )
+    expect(failure(`xpcall(function() error("x") end, function(e) while true do end end)`)).toContain("time budget")
+    expect(failure(`xpcall(function() while true do end end, function(e) while true do end end)`)).toContain(
+      "time budget",
+    )
+    expect(
+      textOf(Visual.load(`return ui.text { select(2, xpcall(error, function(e) return "handled" end)) }`, 1).render()),
+    ).toBe("handled")
   })
 
   it("bounds memory: string doubling, text churn and table fills stop with a reason", () => {
@@ -89,6 +96,24 @@ describe("visual runtime", () => {
       "table.concat",
     )
     expect(failure(`local s = "x" while true do pcall(function() s = s .. s end) end`)).toContain("over 1 MB")
+    expect(
+      failure(`local big = string.rep("x", 1 << 20) local t = {} for i = 1, 3000 do t[i] = big:sub(2) end`),
+    ).toContain("too much text")
+    expect(failure(`local s = string.rep("x", 1100) local r = s:gsub("x", s)`)).toContain("over 1 MB")
+    expect(failure(`for i = 1, 1e7 do _G["k" .. i] = true end`)).toContain("too many entries")
+  }, 30_000)
+
+  it("counts memory across the whole check, since every call shares one state", () => {
+    const buttons = Array.from(
+      { length: 24 },
+      (_, index) =>
+        `ui.button { label = "b${index}", on_click = function() for i = 1, 30 do keep[#keep + 1] = big:sub(i) end end }`,
+    ).join(",\n")
+    expect(
+      failure(`keep = {}
+      big = string.rep("x", 1 << 20)
+      return function() return ui.column { ${buttons} } end`),
+    ).toContain("too much text")
   })
 
   it("starts each call with a fresh allowance", () => {
@@ -178,7 +203,20 @@ describe("visual runtime", () => {
   })
 })
 
+const shader = (body: string): string =>
+  failure(`return ui.shader { height = 200, code = [[void mainImage(out vec4 c, in vec2 p) {
+${body}
+c = vec4(1.0); }]] }`)
+
 describe("shader loop guard", () => {
+  it("refuses forms that would hide a loop from the guard", () => {
+    expect(shader("#define LOOP for\nLOOP (int i = 0; i < 9; i++) {}")).toContain("#define cannot contain a loop")
+    expect(shader("#define F(x) for(x)\nF(int i = 0; i < 9; i++) {}")).toContain("#define cannot contain a loop")
+    expect(shader("#define W wh ## ile\n")).toContain("token pasting")
+    expect(shader("#define L \\\nfor\n")).toContain("line continuations")
+    expect(guardLoops(stripComments("for/**/(int i = 0; i < 9; i++) {}"))).toContain("ingle_step()")
+  })
+
   it("adds a step to every loop condition without adding lines", () => {
     const code = [
       "void mainImage(out vec4 c, in vec2 p) {",

@@ -1,0 +1,56 @@
+diff --git a/src/lauxlib.js b/src/lauxlib.js
+index 2b8a5bf7ef5423c533d65c8a63e0c5366dbe3dc7..e4986d85a0dcf77f7b3dd27d4ccba64624887be7 100644
+--- a/src/lauxlib.js
++++ b/src/lauxlib.js
+@@ -459,6 +459,7 @@ const luaL_prepbuffsize = function(B, sz) {
+     let newend = B.n + sz;
+     if (B.b.length < newend) {
+         let newsize = Math.max(B.b.length * 2, newend);  /* double buffer size */
++        if (B.L.l_G.meter) B.L.l_G.meter.buffer(newsize);
+         let newbuff = new Uint8Array(newsize);  /* create larger buffer */
+         newbuff.set(B.b);  /* copy original content */
+         B.b = newbuff;
+diff --git a/src/lstring.js b/src/lstring.js
+index 4769866c3e21a38d9c8161a3627f8a3b07c550eb..f57c7bad981643833d501c4811ae549bccda2352 100644
+--- a/src/lstring.js
++++ b/src/lstring.js
+@@ -11,6 +11,7 @@ const { lua_assert } = require("./llimits.js");
+ class TString {
+ 
+     constructor(L, str) {
++        if (L && L.l_G.meter) L.l_G.meter.string(str.length);
+         this.hash = null;
+         this.realstring = str;
+     }
+diff --git a/src/ltable.js b/src/ltable.js
+index fdc34bf21da2dd2be8e9086ffee8caefe3f0303c..2485cf79d1eb6d9024316477f7dfe890ca68c746 100644
+--- a/src/ltable.js
++++ b/src/ltable.js
+@@ -104,6 +104,7 @@ const table_hash = function(L, key) {
+ class Table {
+     constructor(L) {
+         this.id = L.l_G.id_counter++;
++        this.l_G = L.l_G;
+         this.strong = new Map();
+         this.dead_strong = new Map();
+         this.dead_weak = void 0; /* initialised when needed */
+@@ -119,6 +120,7 @@ const invalidateTMcache = function(t) {
+ };
+ 
+ const add = function(t, hash, key, value) {
++    if (t.l_G.meter) t.l_G.meter.entry();
+     t.dead_strong.clear();
+     t.dead_weak = void 0;
+     let prev = null;
+diff --git a/src/lvm.js b/src/lvm.js
+index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..296b3a9e636fad7a3c7b39fd445042e010aea0a5 100644
+--- a/src/lvm.js
++++ b/src/lvm.js
+@@ -1061,6 +1061,7 @@ const luaV_concat = function(L, total) {
+                 let l = L.stack[top - n - 1].vslen();
+                 tl += l;
+             }
++            if (L.l_G.meter) L.l_G.meter.buffer(tl);
+             let buff = new Uint8Array(tl);
+             copy2buff(L, top, n, buff);
+             let ts = luaS_bless(L, buff);

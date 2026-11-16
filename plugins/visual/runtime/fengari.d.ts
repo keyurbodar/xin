@@ -4,7 +4,8 @@ declare module "fengari/src/fengaricore.js" {
 }
 
 declare module "fengari/src/lua.js" {
-  export type LuaState = { readonly __lua: unique symbol }
+  export type LuaMeter = { buffer(size: number): void; string(size: number): void; entry(): void }
+  export type LuaState = { readonly __lua: unique symbol; readonly l_G: { meter?: LuaMeter } }
   export const LUA_OK: number
   export const LUA_ERRRUN: number
   export const LUA_ERRSYNTAX: number
@@ -35,6 +36,7 @@ declare module "fengari/src/lua.js" {
   export function lua_pushliteral(L: LuaState, value: string): void
   export function lua_pushvalue(L: LuaState, index: number): void
   export function lua_insert(L: LuaState, index: number): void
+  export function lua_replace(L: LuaState, index: number): void
   export function lua_pushjsfunction(L: LuaState, fn: (L: LuaState) => number): void
   export function lua_newtable(L: LuaState): void
   export function lua_createtable(L: LuaState, narr: number, nrec: number): void

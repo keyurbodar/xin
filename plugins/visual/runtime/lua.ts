@@ -10,7 +10,7 @@ import * as lua from "fengari/src/lua.js"
 import { luaopen_utf8 } from "fengari/src/lutf8lib.js"
 import { type DrawCmd, Graphics, GRAPHICS_METHODS, type Pointer } from "./draw.ts"
 import { type HandlerId, type Node, Parser } from "./node.ts"
-import { Meter, metered } from "./limits.ts"
+import { Meter, PER_CALL } from "./limits.ts"
 import { PRELUDE } from "./prelude.lua.ts"
 import { formatNumber, niceTicks, VisualError } from "./style.ts"
 import { type LuaFunction, type LuaTable, type LuaValue, type Plain, plain } from "./value.ts"
@@ -84,19 +84,18 @@ export class Visual {
     this.L = L
   }
 
-  static load(source: string, seed: number): Visual {
+  static load(source: string, seed: number, meter = new Meter(PER_CALL, "call")): Visual {
     if (new TextEncoder().encode(source).length > MAX_SCRIPT_BYTES)
       throw new VisualError(`the script is over ${MAX_SCRIPT_BYTES / 1024} KB`)
-    const meter = new Meter()
-    return metered(meter, () => {
-      const L = lauxlib.luaL_newstate()
-      const visual = new Visual(L, seed, meter)
-      visual.install()
-      const status = lauxlib.luaL_loadbuffer(L, s(source), null, s("=visual"))
-      if (status !== lua.LUA_OK) throw new VisualError(message(L))
-      visual.runSetup()
-      return visual
-    })
+    const L = lauxlib.luaL_newstate()
+    L.l_G.meter = meter
+    const visual = new Visual(L, seed, meter)
+    meter.reset()
+    visual.install()
+    const status = lauxlib.luaL_loadbuffer(L, s(source), null, s("=visual"))
+    if (status !== lua.LUA_OK) throw new VisualError(message(L))
+    visual.runSetup()
+    return visual
   }
 
   private install(): void {
@@ -119,9 +118,14 @@ export class Visual {
       lua.lua_getglobal(L, s(name))
       const raw = lauxlib.luaL_ref(L, lua.LUA_REGISTRYINDEX)
       lua.lua_pushjsfunction(L, (state) => {
-        lua.lua_rawgeti(state, lua.LUA_REGISTRYINDEX, raw)
-        lua.lua_insert(state, 1)
-        lua.lua_call(state, lua.lua_gettop(state) - 1, lua.LUA_MULTRET)
+        const handler = name === "xpcall" && lua.lua_gettop(state) >= 2 ? this.guardHandler(state) : undefined
+        try {
+          lua.lua_rawgeti(state, lua.LUA_REGISTRYINDEX, raw)
+          lua.lua_insert(state, 1)
+          lua.lua_call(state, lua.lua_gettop(state) - 1, lua.LUA_MULTRET)
+        } finally {
+          if (handler !== undefined) lauxlib.luaL_unref(state, lua.LUA_REGISTRYINDEX, handler)
+        }
         if (this.meter.failure !== undefined) return lauxlib.luaL_error(state, s(this.meter.failure))
         return lua.lua_gettop(state)
       })
@@ -198,14 +202,34 @@ export class Visual {
       L,
       (state) => {
         this.ticks += HOOK_EVERY
-        if (this.ticks > this.limit && this.meter.failure === undefined)
-          this.meter.failure =
-            "the script ran past its time budget (an endless loop, or too much work per render; precompute data at the top level)"
+        if (this.ticks > this.limit)
+          this.meter.fail(
+            "the script ran past its time budget (an endless loop, or too much work per render; precompute data at the top level)",
+          )
         if (this.meter.failure !== undefined) lauxlib.luaL_error(state, s(this.meter.failure))
       },
       lua.LUA_MASKCOUNT,
       HOOK_EVERY,
     )
+  }
+
+  /** Replace xpcall's message handler with one that skips it once the meter has tripped: a budget error raised from the hook runs the handler with hooks off, so a looping handler would never be stopped. */
+  private guardHandler(L: LuaState): number {
+    lua.lua_pushvalue(L, 2)
+    const handler = lauxlib.luaL_ref(L, lua.LUA_REGISTRYINDEX)
+    lua.lua_pushjsfunction(L, (state) => {
+      if (this.meter.failure !== undefined) {
+        lua.lua_pushstring(state, s(this.meter.failure))
+        return 1
+      }
+      const top = lua.lua_gettop(state)
+      lua.lua_rawgeti(state, lua.LUA_REGISTRYINDEX, handler)
+      lua.lua_insert(state, 1)
+      lua.lua_call(state, top, 1)
+      return 1
+    })
+    lua.lua_replace(L, 2)
+    return handler
   }
 
   private runSetup(): void {
@@ -241,11 +265,9 @@ export class Visual {
   private protect(push: () => number, nresults: number): void {
     const L = this.L
     const base = lua.lua_gettop(L) - 1
-    const failure = metered(this.meter, () => {
-      const status = lua.lua_pcall(L, push(), nresults, 0)
-      const raised = status === lua.LUA_OK ? undefined : message(L)
-      return this.meter.failure ?? raised
-    })
+    const status = lua.lua_pcall(L, push(), nresults, 0)
+    const raised = status === lua.LUA_OK ? undefined : message(L)
+    const failure = this.meter.failure ?? raised
     if (failure === undefined) return
     lua.lua_settop(L, base)
     throw new VisualError(failure)

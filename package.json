@@ -31,5 +31,8 @@
     "oxlint": "^1.92.0",
     "vitest": "4.1.12",
     "wrangler": "^4.158.0"
+  },
+  "patchedDependencies": {
+    "fengari@0.1.5": "patches/fengari@0.1.5.patch"
   }
 }

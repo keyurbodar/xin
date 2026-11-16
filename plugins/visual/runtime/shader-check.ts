@@ -37,8 +37,24 @@ export function validInputName(name: string): boolean {
   )
 }
 
+/** Blank out comments, keeping every newline, so a comment can neither hide a loop from the guard nor shift a line number. */
+export function stripComments(code: string): string {
+  return code.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (comment) => comment.replace(/[^\n]/g, " "))
+}
+
+function loopEscape(code: string): string | undefined {
+  if (/\\\r?\n/.test(code)) return "shader line continuations (a \\ at the end of a line) are not supported"
+  if (code.includes("##")) return "shader token pasting (##) is not supported"
+  const macro = code.split("\n").find((line) => /^\s*#\s*define\b/.test(line) && /\b(for|while|do)\b/.test(line))
+  if (macro !== undefined) return "a shader #define cannot contain a loop; write the loop out where it runs"
+  if (/\/\*/.test(code)) return "a shader comment is not closed"
+  return undefined
+}
+
 export function validateShader(code: string, inputs: readonly string[]): string | undefined {
   if (new TextEncoder().encode(code).length > MAX_SHADER_BYTES) return `a shader is at most ${MAX_SHADER_BYTES} bytes`
+  const escape = loopEscape(stripComments(code))
+  if (escape !== undefined) return escape
   if (!code.includes("mainImage")) return "a shader defines void mainImage(out vec4 fragColor, in vec2 fragCoord)"
   const bad = inputs.find((name) => !validInputName(name))
   if (bad !== undefined) return `ui.shader input '${bad}' is not a usable GLSL name`
@@ -46,7 +62,7 @@ export function validateShader(code: string, inputs: readonly string[]): string 
   return undefined
 }
 
-export const MAX_LOOP_STEPS = 4096
+export const MAX_LOOP_STEPS = 1024
 
 function closing(code: string, open: number): number {
   let depth = 0
@@ -110,7 +126,7 @@ export function shaderProgram(code: string, inputs: readonly string[]): { source
     "int ingle_steps = 0;",
     `bool ingle_step() { ingle_steps += 1; return ingle_steps <= ${MAX_LOOP_STEPS}; }`,
   ]
-  const body = guardLoops(code)
+  const body = guardLoops(stripComments(code))
     .split("\n")
     .map((line) => (/^\s*(precision\s|#version\s)/.test(line) ? "" : line))
     .join("\n")

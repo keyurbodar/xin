@@ -389,19 +389,18 @@ An extension that carries tools is named `tool-*`; the registry refuses one that
 
 ## Model-written code: the `visual` plugin
 
-`plugins/visual` ports zeron's `show_visual`. The model writes a Lua 5.3 script (fengari, pure JS), the DO checks it with the same runtime the browser runs, and the web app draws it in a sandboxed `srcdoc` iframe (no `allow-same-origin`, CSP with no network). It ships disabled. The script is hostile by assumption, so the runtime bounds every resource per call (setup, render, handler, draw), in both the DO check and the frame:
+`plugins/visual` ports zeron's `show_visual`. The model writes a Lua 5.3 script (fengari, pure JS), the DO checks it with the same runtime the browser runs, and the web app draws it in a sandboxed `srcdoc` iframe (no `allow-same-origin`, CSP with no network). It ships disabled. The script is hostile by assumption, so the runtime bounds every resource for each call (setup, render, handler, draw), in both the DO check and the frame:
 
 | Resource | Bound | Where |
 | --- | --- | --- |
 | Instructions | 5M per call, 1.5M per draw, counted by a hook every 1000 | `runtime/lua.ts` |
-| Escaping the budget | the failure is sticky: the hook raises it again until the call returns, and `pcall`/`xpcall` re-raise it | `runtime/lua.ts` |
-| One allocation | 1 MB (strings and string buffers) | `runtime/limits.ts` |
-| Bytes allocated | 32 MB per call | same |
-| Table entries added | 100k per call | same |
-| Shader loops | 4096 condition checks per pixel, injected into every `for`/`while` | `runtime/shader-check.ts` |
+| Escaping the budget | the failure is sticky: the hook raises it again until the call returns, `pcall`/`xpcall` re-raise it, and an `xpcall` message handler is skipped once it is set | `runtime/lua.ts` |
+| One allocation | 1 MB (strings and string buffers) | `runtime/limits.ts`, called by fengari through `patches/fengari@0.1.5.patch` |
+| Bytes and table entries | 32 MB and 100k per call in the frame; 48 MB and 300k for the whole DO check, since its calls share one state | same |
+| Shader loops | 1024 condition checks per pixel across all loops, injected into every `for`/`while` after comments are blanked; `#define` bodies with a loop, `##` and line continuations are refused | `runtime/shader-check.ts` |
 | Frame height | 0 to 10,000 px | `web/src/components/chat/visual-block.tsx` |
 
-fengari has no allocator hook, and test pools and bundlers do not share its module objects, so for the length of each call `runtime/limits.ts` swaps the globals fengari allocates through for counting versions: `Uint8Array` (every Lua string and buffer) and `Map` (every Lua table). They are restored when the call returns. Bounds are per call, so state that grows a little on every frame of an animation is limited only by how long the visual stays open; the frame's own page is the blast radius. No I/O library is opened, but fengari's `lualib` still bundles `liolib`, `loslib` and `loadlib`, which costs the Worker about 122 KB gzipped.
+fengari has no allocator hook, so a four-line `bun patch` adds one: before it allocates a string buffer (`luaL_prepbuffsize`, `luaV_concat`), makes a string (`TString`) or adds a table entry, it calls the meter stored on the state's `l_G`. The meter lives on the state rather than on a module object because test pools and bundlers do not always share fengari's module instances. In the frame the bounds are per call, so state that grows a little on every frame of an animation is limited only by how long the visual stays open, and since a `srcdoc` frame shares the page's renderer process, the page is the blast radius. Moving the frame to its own origin would put it in its own process. The DO check counts all its calls together, so it stays inside the isolate's memory. No I/O library is opened, but fengari's `lualib` still bundles `liolib`, `loslib` and `loadlib`, which costs the Worker about 122 KB gzipped.
 
 ## Slices
 

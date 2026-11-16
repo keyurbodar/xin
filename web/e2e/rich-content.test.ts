@@ -123,6 +123,55 @@ test("diff lines draw from the diff colour tokens, so the Appearance choice appl
   await page.close()
 }, 60_000)
 
+for (const theme of ["dark", "light"] as const) {
+  test(`diff signs keep 4.5:1 contrast on their tint in ${theme}`, async () => {
+    const page = await open("code", { theme })
+    await page.evaluate(() => window.harness.set("```diff\n-old\n+new\n```", false))
+    await page.locator(".sh__line--diff-add").waitFor({ timeout: 15_000 })
+    const ratios = await page.evaluate(() => {
+      const canvas = document.createElement("canvas")
+      canvas.width = 1
+      canvas.height = 1
+      const context = canvas.getContext("2d", { willReadFrequently: true })
+      if (context === null) return []
+      const paint = (...colors: string[]): number[] => {
+        context.clearRect(0, 0, 1, 1)
+        for (const color of colors) {
+          context.fillStyle = color
+          context.fillRect(0, 0, 1, 1)
+        }
+        return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)]
+      }
+      const luminance = (rgb: number[]): number => {
+        const [r = 0, g = 0, b = 0] = rgb.map((value) => {
+          const c = value / 255
+          return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+        })
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+      }
+      return [".sh__line--diff-add", ".sh__line--diff-remove"].map((selector) => {
+        const line = document.querySelector(selector)
+        const block = line?.closest(".code-block")
+        if (line === null || block === null || block === undefined) return 0
+        let base = "rgb(255, 255, 255)"
+        for (let node: Element | null = block; node !== null; node = node.parentElement) {
+          const fill = getComputedStyle(node).backgroundColor
+          if (fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
+            base = fill
+            break
+          }
+        }
+        const back = luminance(paint(base, getComputedStyle(line).backgroundColor))
+        const sign = luminance(paint(base, getComputedStyle(line, "::before").color))
+        return (Math.max(back, sign) + 0.05) / (Math.min(back, sign) + 0.05)
+      })
+    })
+    expect(ratios).toHaveLength(2)
+    for (const ratio of ratios) expect(ratio).toBeGreaterThanOrEqual(4.5)
+    await page.close()
+  }, 60_000)
+}
+
 test("full screen opens, Esc closes it and focus returns to the opener", async () => {
   const page = await open("code")
   const opener = page.getByRole("button", { name: "Open code full screen" })
