@@ -19,7 +19,7 @@ describe("appearance", () => {
 
   it("refuses a save from a tab that read an older revision", async () => {
     const stub = fresh()
-    await cmd(stub, id(), "appearance.set", { doc: '{"theme":"light"}' })
+    await cmd(stub, id(), "appearance.set", { doc: '{"theme":"light"}', rev: 0 })
     const stale = await cmd(stub, id(), "appearance.set", { doc: '{"theme":"rose"}', rev: 0 })
     expect(stale.ok).toBe(false)
     expect(stale.error?.code).toBe("busy")
@@ -27,10 +27,20 @@ describe("appearance", () => {
     expect(read).toMatchObject({ result: { doc: '{"theme":"light"}', rev: 1 } })
   })
 
+  it("refuses a save that does not name the revision it read", async () => {
+    const stub = fresh()
+    await cmd(stub, id(), "appearance.set", { doc: '{"theme":"light"}', rev: 0 })
+    const blind = await cmd(stub, id(), "appearance.set", { doc: '{"theme":"rose"}' })
+    expect(blind.ok).toBe(false)
+    expect(blind.error?.code).toBe("bad_args")
+    const read = await cmd(stub, id(), "appearance.read")
+    expect(read).toMatchObject({ result: { doc: '{"theme":"light"}', rev: 1 } })
+  })
+
   it("refuses a doc that is not a JSON object", async () => {
     const stub = fresh()
     for (const doc of ["[1,2]", "nope", '"text"']) {
-      const reply = await cmd(stub, id(), "appearance.set", { doc })
+      const reply = await cmd(stub, id(), "appearance.set", { doc, rev: 0 })
       expect(reply.ok).toBe(false)
       expect(reply.error?.code).toBe("bad_args")
     }

@@ -40,12 +40,21 @@ const TEXT_TOKENS: readonly (readonly [string, number])[] = [
   ["--text-title-lg", 28],
 ]
 
+const LEGACY_THEME_KEY = "ingle.theme"
+
+/** The saved document, or on the first load after upgrading, the theme the old picker stored. */
 function stored(): Appearance {
-  try {
-    return parseAppearance(JSON.parse(localStorage.getItem(KEY) ?? "{}"))
-  } catch {
-    return DEFAULT_APPEARANCE
+  const saved = localStorage.getItem(KEY)
+  if (saved !== null) {
+    try {
+      return parseAppearance(JSON.parse(saved))
+    } catch {
+      return DEFAULT_APPEARANCE
+    }
   }
+  const legacy = localStorage.getItem(LEGACY_THEME_KEY)
+  if (legacy === null || legacy === "dark") return DEFAULT_APPEARANCE
+  return parseAppearance(legacy === "light" ? { ...DEFAULT_APPEARANCE, mode: "light" } : { ...DEFAULT_APPEARANCE, theme: legacy })
 }
 
 const [appearance_, setAppearance_] = createSignal<Appearance>(stored())
@@ -57,33 +66,56 @@ export const appearance = appearance_
 export const saveState = saving
 export const variant = (): Variant => variantOf(appearance_().mode, systemDark())
 
-let rev: number | undefined
+type Change = (current: Appearance) => Appearance
+type Home = { readonly doc: string | null; readonly rev: number }
+
+let home: { readonly rev: number; readonly doc: Appearance | undefined } | undefined
+let pending: readonly Change[] = []
 let timer: ReturnType<typeof setTimeout> | undefined
 const channel = typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel("ingle.appearance")
 
-function persistLocal(next: Appearance): void {
+function show(next: Appearance): void {
+  setAppearance_(next)
   localStorage.setItem(KEY, JSON.stringify(next))
 }
 
-type Message = { readonly kind: "doc"; readonly doc: unknown } | { readonly kind: "rev"; readonly rev: number }
+const replay = (onto: Appearance, changes: readonly Change[]): Appearance =>
+  changes.reduce((doc, change) => parseAppearance(change(doc)), onto)
 
-const save = (next: Appearance): Promise<{ readonly rev: number }> =>
-  cmd<{ readonly rev: number }>("appearance.set", { doc: JSON.stringify(next), ...(rev === undefined ? {} : { rev }) })
+async function readHome(): Promise<NonNullable<typeof home>> {
+  const reply = await cmd<Home>("appearance.read")
+  home = { rev: reply.rev, doc: reply.doc === null ? undefined : parseAppearance(JSON.parse(reply.doc)) }
+  return home
+}
 
-/** A save that lost the race to another tab or device re-reads the revision and saves again, so the newest edit wins instead of vanishing. */
+/**
+ * Saves the edits made since the home's copy was last seen, replayed on top of that copy, so an edit
+ * never overwrites newer settings from another tab or device. A save that lost the race re-reads and replays.
+ */
 async function pushRemote(): Promise<void> {
-  const next = appearance_()
-  if (next.sync !== "synced") return
+  if (appearance_().sync !== "synced") {
+    pending = []
+    return
+  }
   setSaving("saving")
   try {
-    const reply = await save(next).catch(async (problem: unknown) => {
-      if (!(problem instanceof OpError && problem.code === "busy")) throw problem
-      rev = (await cmd<{ readonly rev: number }>("appearance.read")).rev
-      return save(next)
-    })
-    rev = reply.rev
-    channel?.postMessage({ kind: "rev", rev: reply.rev } satisfies Message)
-    setSaving("saved")
+    for (let attempt = 0; ; attempt += 1) {
+      const known = home ?? (await readHome())
+      const included = pending
+      const next = known.doc === undefined ? appearance_() : replay(known.doc, included)
+      try {
+        const reply = await cmd<{ readonly rev: number }>("appearance.set", { doc: JSON.stringify(next), rev: known.rev })
+        home = { rev: reply.rev, doc: next }
+        pending = pending.slice(included.length)
+        show(replay(next, pending))
+        channel?.postMessage({ kind: "saved", rev: reply.rev, doc: next })
+        setSaving("saved")
+        return
+      } catch (problem) {
+        if (!(problem instanceof OpError && problem.code === "busy") || attempt >= 2) throw problem
+        home = undefined
+      }
+    }
   } catch {
     setSaving("failed")
   }
@@ -98,43 +130,37 @@ function schedule(): void {
   }, SAVE_DELAY_MS)
 }
 
-export function update(change: (current: Appearance) => Appearance): void {
+export function update(change: Change): void {
+  pending = [...pending, change]
   const next = parseAppearance(change(appearance_()))
-  setAppearance_(next)
-  persistLocal(next)
-  channel?.postMessage({ kind: "doc", doc: next } satisfies Message)
+  show(next)
+  channel?.postMessage({ kind: "doc", doc: next })
   schedule()
 }
 
-/** The home's copy wins on load and on focus, unless this device opted out of sync. */
+/** The home's copy wins on load and on focus, with this tab's unsaved edits replayed on top, unless this device opted out of sync. */
 export async function pullRemote(): Promise<void> {
-  if (timer !== undefined) return
-  try {
-    const reply = await cmd<{ readonly doc: string | null; readonly rev: number }>("appearance.read")
-    rev = reply.rev
-    const local = appearance_()
-    if (reply.doc === null) {
-      if (local.sync === "synced" && JSON.stringify(local) !== JSON.stringify(DEFAULT_APPEARANCE)) schedule()
-      return
-    }
-    const remote = parseAppearance(JSON.parse(reply.doc))
-    if (local.sync === "device") {
-      rev = reply.rev
-      return
-    }
-    if (JSON.stringify(remote) === JSON.stringify(local)) return
-    setAppearance_(remote)
-    persistLocal(remote)
-  } catch {
+  const known = await readHome().catch(() => undefined)
+  if (known === undefined) return
+  const local = appearance_()
+  if (local.sync === "device") return
+  if (known.doc === undefined) {
+    if (local.sync === "synced" && JSON.stringify(local) !== JSON.stringify(DEFAULT_APPEARANCE)) schedule()
     return
   }
+  const next = replay(known.doc, pending)
+  if (JSON.stringify(next) !== JSON.stringify(local)) show(next)
 }
 
 channel?.addEventListener("message", (event: MessageEvent<unknown>) => {
   const data = event.data
-  if (typeof data !== "object" || data === null || !("kind" in data)) return
-  if (data.kind === "rev" && "rev" in data && typeof data.rev === "number") rev = Math.max(rev ?? 0, data.rev)
-  if (data.kind === "doc" && "doc" in data) setAppearance_(parseAppearance(data.doc))
+  if (typeof data !== "object" || data === null || !("kind" in data) || !("doc" in data)) return
+  const doc = parseAppearance(data.doc)
+  if (data.kind === "saved" && "rev" in data && typeof data.rev === "number" && data.rev > (home?.rev ?? -1)) {
+    home = { rev: data.rev, doc }
+    setAppearance_(replay(doc, pending))
+  }
+  if (data.kind === "doc" && pending.length === 0) setAppearance_(doc)
 })
 
 document.addEventListener("visibilitychange", () => {
@@ -232,7 +258,9 @@ createRoot(() => {
       (picked) => {
         const expected = registryId(appearance_(), variant())
         if (picked === expected) return
-        update((current) => ({ ...current, theme: picked === "dark" || picked === "light" ? "ingle" : picked }))
+        update((current) =>
+          picked === "dark" || picked === "light" ? { ...current, mode: picked, theme: "ingle" } : { ...current, theme: picked },
+        )
       },
       { defer: true },
     ),
