@@ -3,8 +3,8 @@ import "@ui-sdk/web/menu"
 import "@ui-sdk/web/tree"
 import { createEffect, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { BookText, ChevronRight, Link2, Sparkles } from "lucide-solid"
-import { blobUrl } from "../../lib/attachments.ts"
-import { folderOf, hasThumbnail, renameProblem, reservedOf, SKILLS_FOLDER, type DriveRow } from "../../lib/drive.ts"
+import type { BlobCache } from "../../lib/blob-cache.ts"
+import { folderOf, hasTreeThumbnail, renameProblem, reservedOf, SKILLS_FOLDER, type DriveRow } from "../../lib/drive.ts"
 import { fileIconUrl } from "../../lib/file-icons.ts"
 import { theme } from "../../lib/theme.ts"
 import { createOverlayMount } from "../shell/presence.ts"
@@ -32,7 +32,7 @@ export function FileIcon(props: { name: string; folder: boolean }): JSX.Element 
   )
 }
 
-function RowIcon(props: { row: DriveRow }): JSX.Element {
+function RowIcon(props: { row: DriveRow; blobs: BlobCache }): JSX.Element {
   const row = props.row
   if (row.kind === "folder") {
     return (
@@ -43,10 +43,10 @@ function RowIcon(props: { row: DriveRow }): JSX.Element {
   }
   const reserved = reservedOf(row.entry.path)
   const entry = row.entry
-  if (reserved === undefined && hasThumbnail(entry.type))
+  if (reserved === undefined && hasTreeThumbnail(entry))
     return (
       <Tile
-        load={() => blobUrl(entry.sha256, entry.type)}
+        load={() => props.blobs.url(entry.sha256, entry.type)}
         alt=""
         fallback={<FileIcon name={row.name} folder={false} />}
         class="size-4 rounded-2xs"
@@ -71,6 +71,7 @@ export function DriveTree(props: {
   rows: readonly DriveRow[]
   childrenOf: (folder: string) => readonly DriveRow[]
   shares: Readonly<Record<string, string>>
+  blobs: BlobCache
   onOpen: (path: string) => void
   onRename: (from: string, to: string) => Promise<void>
   onMove: (path: string) => void
@@ -186,7 +187,7 @@ export function DriveTree(props: {
                 <ChevronRight size={14} stroke-width={1.5} />
               </ui-tree-item-indicator>
             </Show>
-            <RowIcon row={row} />
+            <RowIcon row={row} blobs={props.blobs} />
             <Show
               when={renaming() === valueOf(row)}
               fallback={
