@@ -33,7 +33,7 @@ export function plan(testFiles: readonly string[], durations: ReadonlyMap<string
       {
         name: `test-${index + 1}`,
         files,
-        script: `VITEST_MAX_WORKERS=${TEST_WORKERS} bun run test --reporter=default --reporter=json --outputFile=$HOME/vitest-${index + 1}.json ${files.map(quote).join(" ")}`,
+        script: `VITEST_MAX_WORKERS=${TEST_WORKERS} bun run test --reporter=default --reporter=json --outputFile=$HOME/test-${index + 1}.json ${files.map(quote).join(" ")}`,
       },
     ],
   }))
