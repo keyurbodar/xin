@@ -1,5 +1,5 @@
-import { For, Match, Show, Switch, type JSX } from "solid-js"
-import { host, slotItems } from "../plugins/slots.tsx"
+import { For, Match, Show, Switch, type Accessor, type JSX } from "solid-js"
+import { host, slotItems, type SlotItem } from "../plugins/slots.tsx"
 import { PluginPage } from "./plugin-page.tsx"
 import { navigate, route } from "../lib/router.ts"
 import { Glyph, type GlyphName } from "../components/extensions/glyph.tsx"
@@ -38,9 +38,9 @@ function entryOf(part: string | undefined): Entry {
   return ENTRIES.find((entry) => entry.id === part) ?? GENERAL
 }
 
-export function SettingsScreen(): JSX.Element {
+export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"settings.page">[]> }): JSX.Element {
   const current = (): Entry => entryOf(route().parts[1])
-  const pages = slotItems("settings.page")
+  const pages = props.pages ?? slotItems("settings.page")
   const page = () =>
     route().parts[1] === "plugin"
       ? pages().find((item) => item.key === `${route().parts[2]}:${route().parts[3]}`)
