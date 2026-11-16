@@ -3,7 +3,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import type { Context } from "../../src/kernel/index.ts"
 import type { IntakeBatch, IntakeBatchResult } from "../../src/contracts/intake.ts"
-import { MessageSendArgsSchema } from "../../src/contracts/message.ts"
+import { type AttachmentInput, type MessageAttachment, MessageSendArgsSchema } from "../../src/contracts/message.ts"
 import { capReason } from "../../src/contracts/models.ts"
 import { defineOp, OpRejected } from "../../src/ops.ts"
 import { type BatchLedger, createGateway, enqueue, type IntakeHost, resolve, stop } from "./gateway.ts"
@@ -22,8 +22,7 @@ export async function apply(ctx: Context): Promise<void> {
     ledger: ledgerOf(ctx),
     arm: (wake) => ctx.clock.arm(wake),
     push: () => ctx.get("push"),
-    readBytes: (path) => ctx.files.readBytes(path),
-    stat: (path) => ctx.files.stat(path),
+    readBlob: (sha256) => ctx.files.readBlob(sha256),
     vision: async (conversation: ConversationId) => {
       const target = await ctx.harness.conversation(conversation, BACKGROUND_CONTEXT)
       const model = target === undefined ? undefined : (await target.agent(BACKGROUND_CONTEXT)).model
@@ -56,6 +55,7 @@ export async function apply(ctx: Context): Promise<void> {
           throw new OpRejected("bad_args", "this conversation runs a disabled model; pick another first")
         const admission = await ctx.models.admitConversation(target)
         if (admission.kind === "capped") throw new OpRejected("forbidden", capReason(admission))
+        const attachments = await Promise.all((args.attachments ?? []).map((file) => stored(ctx, file)))
         const inserted = await enqueue(
           host,
           {
@@ -63,7 +63,7 @@ export async function apply(ctx: Context): Promise<void> {
             commandId: api.commandId,
             kind: "user",
             text: args.text,
-            attachments: args.attachments ?? [],
+            attachments,
             ...(args.clientTs === undefined ? {} : { clientTs: args.clientTs }),
           },
           Date.now(),
@@ -96,6 +96,13 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.on("wire/typing", async (conversation, on) => gateway.typing(conversation, on))
   ctx.clock.timer({ due: () => gateway.due(), fire: (now) => gateway.fire(now) })
   await gateway.start()
+}
+
+/** Records the size, type and blob the files index holds, so a turn reads each file by content address and no row. */
+async function stored(ctx: Context, file: AttachmentInput): Promise<MessageAttachment> {
+  const entry = await ctx.files.stat(file.path)
+  if (entry === undefined) throw new OpRejected("bad_args", `${file.name} is not stored; attach it again`)
+  return { path: entry.path, name: file.name, type: entry.type, size: entry.size, sha256: entry.sha256 }
 }
 
 const markKey = (batchId: string): string => `${BATCH_MARK}${batchId}`
