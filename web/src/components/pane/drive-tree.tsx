@@ -3,11 +3,13 @@ import "@ui-sdk/web/menu"
 import "@ui-sdk/web/tree"
 import { createEffect, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { BookText, ChevronRight, Link2, Sparkles } from "lucide-solid"
-import { folderOf, renameProblem, reservedOf, SKILLS_FOLDER, type DriveRow } from "../../lib/drive.ts"
+import type { BlobCache } from "../../lib/blob-cache.ts"
+import { folderOf, hasTreeThumbnail, renameProblem, reservedOf, SKILLS_FOLDER, type DriveRow } from "../../lib/drive.ts"
 import { fileIconUrl } from "../../lib/file-icons.ts"
 import { theme } from "../../lib/theme.ts"
 import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM, POPUP_SEPARATOR } from "../ui/surface.ts"
+import { Tile } from "../ui/tile.tsx"
 
 const ROW =
   "flex h-[var(--h-row)] cursor-default select-none items-center gap-1.5 rounded-sm pl-[calc((var(--tree-level)-1)*14px+4px)] pr-2 text-small text-ink-2 hover:bg-hover data-[selected]:bg-secondary data-[selected]:text-ink [ui-tree-item:focus-visible>&]:shadow-[inset_2px_0_0_var(--color-primary)]"
@@ -30,7 +32,7 @@ export function FileIcon(props: { name: string; folder: boolean }): JSX.Element 
   )
 }
 
-function RowIcon(props: { row: DriveRow }): JSX.Element {
+function RowIcon(props: { row: DriveRow; blobs: BlobCache }): JSX.Element {
   const row = props.row
   if (row.kind === "folder") {
     return (
@@ -40,6 +42,16 @@ function RowIcon(props: { row: DriveRow }): JSX.Element {
     )
   }
   const reserved = reservedOf(row.entry.path)
+  const entry = row.entry
+  if (reserved === undefined && hasTreeThumbnail(entry))
+    return (
+      <Tile
+        load={() => props.blobs.url(entry.sha256, entry.type)}
+        alt=""
+        fallback={<FileIcon name={row.name} folder={false} />}
+        class="size-4 rounded-2xs"
+      />
+    )
   if (reserved === undefined) return <FileIcon name={row.name} folder={false} />
   return reserved.kind === "instructions" ? (
     <BookText size={16} stroke-width={1.5} class="shrink-0 text-ink-3" />
@@ -59,6 +71,7 @@ export function DriveTree(props: {
   rows: readonly DriveRow[]
   childrenOf: (folder: string) => readonly DriveRow[]
   shares: Readonly<Record<string, string>>
+  blobs: BlobCache
   onOpen: (path: string) => void
   onRename: (from: string, to: string) => Promise<void>
   onMove: (path: string) => void
@@ -174,7 +187,7 @@ export function DriveTree(props: {
                 <ChevronRight size={14} stroke-width={1.5} />
               </ui-tree-item-indicator>
             </Show>
-            <RowIcon row={row} />
+            <RowIcon row={row} blobs={props.blobs} />
             <Show
               when={renaming() === valueOf(row)}
               fallback={

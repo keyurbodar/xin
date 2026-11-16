@@ -1,5 +1,5 @@
 import { For, Show, createResource, createSignal, type JSX } from "solid-js"
-import { firstLoad } from "../../lib/loading.ts"
+import { firstLoad, settled } from "../../lib/loading.ts"
 import { cmd } from "../../lib/api.ts"
 import { ago } from "../../lib/format.ts"
 import { Icon } from "../ui/icon.tsx"
@@ -130,7 +130,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
       <Show when={action.failed()}>
         {(message) => <div class="border-b border-line-1 px-3 py-2 text-sm text-failed">{message()}</div>}
       </Show>
-      <For each={suggestions()?.suggestions ?? []}>
+      <For each={settled(suggestions)?.suggestions ?? []}>
         {(suggestion) => (
           <div class="mx-3 mb-3 mt-3 rounded-md border border-primary/40 bg-card p-3">
             <div class="flex items-center gap-2">
@@ -170,7 +170,7 @@ export function MemoryTab(props: { conversationId: number; scope: string }): JSX
           </div>
         )}
       </For>
-      <Show when={notes()}>
+      <Show when={settled(notes)}>
         {(data) => (
           <Show
             when={data().notes.length > 0}

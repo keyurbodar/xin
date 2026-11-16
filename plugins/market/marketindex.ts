@@ -81,7 +81,7 @@ const SEMVER = new RegExp(
   "u",
 )
 const RANGE = /^(?:\*|x|X|(?:\^|~|>=|<=|>|<|=)?\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/u
-const COMMIT = /^[0-9a-f]{40}$/u
+export const COMMIT = /^[0-9a-f]{40}$/u
 const PATH_SEGMENT = /^[A-Za-z0-9._@+-]+$/u
 const DATA_ICON = /^data:(?:image\/svg\+xml|image\/png|image\/jpeg|image\/webp);base64,([A-Za-z0-9+/]*={0,2})$/u
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u

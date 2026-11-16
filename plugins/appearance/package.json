@@ -1,0 +1,31 @@
+{
+  "name": "ingle-plugin-appearance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The owner's appearance settings: theme, custom themes, background, sizing and code display.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "appearance": {
+        "module": "./index.ts",
+        "title": "Appearance",
+        "description": "Stores the owner's appearance settings as one row, so every tab and device shows the same look.",
+        "permissions": [
+          "storage"
+        ],
+        "contributes": {
+          "ops": [
+            "appearance.read",
+            "appearance.set"
+          ]
+        }
+      }
+    },
+    "bundle": [
+      {
+        "id": "appearance",
+        "plugin": "appearance"
+      }
+    ]
+  }
+}

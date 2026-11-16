@@ -1,5 +1,5 @@
-import { For, Match, Show, Switch, type JSX } from "solid-js"
-import { host, slotItems } from "../plugins/slots.tsx"
+import { For, Match, Show, Switch, type Accessor, type JSX } from "solid-js"
+import { host, slotItems, type SlotItem } from "../plugins/slots.tsx"
 import { PluginPage } from "./plugin-page.tsx"
 import { navigate, route } from "../lib/router.ts"
 import { Glyph, type GlyphName } from "../components/extensions/glyph.tsx"
@@ -11,8 +11,9 @@ import { Plugins } from "../components/settings/plugins.tsx"
 import { Members } from "../components/settings/members.tsx"
 import { Profile } from "../components/settings/profile.tsx"
 import { System } from "../components/settings/system.tsx"
+import { AppearanceSettings } from "../appearance/page.tsx"
 
-type Tab = "general" | "models" | "usage" | "notifications" | "plugins" | "members" | "profile" | "system"
+type Tab = "general" | "appearance" | "models" | "usage" | "notifications" | "plugins" | "members" | "profile" | "system"
 
 type Entry = { readonly id: Tab; readonly label: string; readonly icon: GlyphName; readonly about: string }
 
@@ -25,6 +26,7 @@ const GENERAL: Entry = {
 
 const ENTRIES: readonly Entry[] = [
   GENERAL,
+  { id: "appearance", label: "Appearance", icon: "monitor", about: "Theme, background, sizing and code display. Changes show as you make them." },
   { id: "models", label: "Models + providers", icon: "cpu", about: "Provider keys and the catalog they unlock." },
   { id: "usage", label: "Usage + cost", icon: "chart-column", about: "What this home spent, by day, project, model and tool." },
   { id: "notifications", label: "Notifications", icon: "bell", about: "Which reports reach this browser, and when they wait." },
@@ -38,9 +40,9 @@ function entryOf(part: string | undefined): Entry {
   return ENTRIES.find((entry) => entry.id === part) ?? GENERAL
 }
 
-export function SettingsScreen(): JSX.Element {
+export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"settings.page">[]> }): JSX.Element {
   const current = (): Entry => entryOf(route().parts[1])
-  const pages = slotItems("settings.page")
+  const pages = props.pages ?? slotItems("settings.page")
   const page = () =>
     route().parts[1] === "plugin"
       ? pages().find((item) => item.key === `${route().parts[2]}:${route().parts[3]}`)
@@ -90,12 +92,16 @@ export function SettingsScreen(): JSX.Element {
         <div class="mx-auto w-full max-w-[800px] px-7 pb-16 pt-8">
           <Show
             when={page()}
+            keyed
             fallback={
               <>
                 <h1 class="text-xl font-semibold tracking-[-0.015em] text-ink">{current().label}</h1>
                 <p class="mt-1 text-sm text-ink-3">{current().about}</p>
                 <div class="mt-7">
                   <Switch fallback={<General />}>
+                    <Match when={current().id === "appearance"}>
+                      <AppearanceSettings />
+                    </Match>
                     <Match when={current().id === "models"}>
                       <Models />
                     </Match>
@@ -123,7 +129,7 @@ export function SettingsScreen(): JSX.Element {
             }
           >
             {(found) => (
-              <PluginPage plugin={found().plugin} title={found().title} component={found().component} host={host} />
+              <PluginPage plugin={found.plugin} title={found.title} component={found.component} host={host} />
             )}
           </Show>
         </div>

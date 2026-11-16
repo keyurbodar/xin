@@ -1,0 +1,63 @@
+.appearance-pick {
+  outline: none;
+  transition: background-color var(--dur-color) var(--ease-color);
+}
+
+.appearance-pick:hover {
+  background-color: var(--color-hover);
+}
+
+.appearance-pick:focus-visible,
+.appearance-pick[aria-checked="true"] > :first-child,
+.appearance-pick[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 1.5px var(--color-accent),
+    0 0 0 3px color-mix(in oklch, var(--color-accent) 25%, transparent);
+}
+
+.appearance-pick:active {
+  transform: scale(0.97);
+  transition: transform var(--dur-press) var(--ease-enter);
+}
+
+.appearance-range {
+  accent-color: var(--color-accent);
+  height: 16px;
+  cursor: pointer;
+}
+
+.appearance-range:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.appearance-fade {
+  transition: opacity 240ms var(--ease-enter);
+}
+
+.appearance-code {
+  font-size: 12px;
+}
+
+:root[data-code-size="small"] :is(pre, code, .appearance-code) {
+  font-size: 0.9em;
+}
+
+:root[data-code-size="large"] :is(pre, code, .appearance-code) {
+  font-size: 1.12em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .appearance-fade,
+  .appearance-pick,
+  .appearance-pick:active {
+    transition: none;
+    transform: none;
+  }
+}
+
+:root[data-motion="reduce"] :is(.appearance-fade, .appearance-pick, .appearance-pick:active) {
+  transition: none;
+  transform: none;
+}
