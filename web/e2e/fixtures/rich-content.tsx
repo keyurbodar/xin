@@ -2,7 +2,9 @@ import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import { registerBlock, renderBlock, type BlockPayloads } from "../../src/components/chat/blocks.tsx"
 import { Markdown } from "../../src/components/chat/markdown.tsx"
-import { setTheme, themeOf } from "../../src/lib/theme.ts"
+import { BUILT_IN_THEMES, DEFAULT_THEME, setTheme } from "../../src/lib/theme.ts"
+
+const themeOf = (id: string | null) => BUILT_IN_THEMES.find((entry) => entry.id === id) ?? DEFAULT_THEME
 
 const fence = "```"
 
