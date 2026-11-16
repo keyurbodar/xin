@@ -59,13 +59,20 @@
     outline-offset: calc(var(--focus-ring-width) * -1);
   }
 
-  ui-input-group:has(:focus-visible) {
+  :is(ui-input-group, [data-focus-group]):has(:focus-visible) {
     outline: var(--focus-ring-width) solid var(--color-focus);
     outline-offset: var(--focus-ring-offset);
   }
 
-  ui-input-group :focus-visible {
+  :is(ui-input-group, [data-focus-group]) :focus-visible {
     outline: none;
+  }
+
+  @media (forced-colors: active) {
+    [data-highlighted] {
+      outline: var(--focus-ring-width) solid Highlight;
+      outline-offset: calc(var(--focus-ring-width) * -1);
+    }
   }
 
   :is(textarea, ui-token-input-editor, ui-combobox-input input, ui-command-input input):focus-visible {
@@ -749,4 +756,11 @@
 
 :root[data-motion="reduce"] .block-expand[data-animate] {
   transition: none;
+}
+
+@utility focus-inset {
+  &:focus-visible,
+  & :focus-visible {
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
 }

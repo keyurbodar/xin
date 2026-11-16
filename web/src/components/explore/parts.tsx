@@ -91,7 +91,7 @@ export function SearchBox(props: { value: string; placeholder: string; onInput: 
     onCleanup(() => window.removeEventListener("keydown", onKey))
   })
   return (
-    <label class="flex h-8 w-full items-center gap-2 rounded-sm bg-bg px-2.5 shadow-ring focus-within:shadow-[0_0_0_1px_var(--color-primary)] sm:w-[220px]">
+    <label data-focus-group class="flex h-8 w-full items-center gap-2 rounded-sm bg-bg px-2.5 shadow-ring sm:w-[220px]">
       <Glyph name="search" size={14} class="shrink-0 text-ink-3" />
       <input
         ref={input}
@@ -107,7 +107,7 @@ export function SearchBox(props: { value: string; placeholder: string; onInput: 
         placeholder={props.placeholder}
         aria-label={props.placeholder}
         spellcheck={false}
-        class="h-full min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-placeholder focus:outline-none"
+        class="h-full min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-placeholder"
       />
       <span class="kbd hidden sm:inline-flex" aria-hidden="true">
         /
@@ -222,7 +222,7 @@ export function LoadFailed(props: { what: string; message: string; onRetry: () =
 /** The page frame: a centred 640px column with the breadcrumb on top. */
 export function Page(props: { crumbs: readonly Crumb[]; wide?: boolean | undefined; children: JSX.Element }): JSX.Element {
   return (
-    <div class="min-h-0 flex-1 overflow-y-auto">
+    <div class="min-h-0 flex-1 scroll-py-[calc(var(--focus-ring-width)+var(--focus-ring-offset))] overflow-y-auto">
       <div
         class="mx-auto flex w-full flex-col gap-6 px-4 pb-16 pt-5 sm:px-8"
         classList={{ "max-w-[688px]": props.wide !== true, "max-w-[976px]": props.wide === true }}

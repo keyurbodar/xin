@@ -64,7 +64,7 @@ export function ProjectPane(props: {
   return (
     <aside class="flex min-h-0 flex-col" onPointerOver={preloadPaneViews} onFocusIn={preloadPaneViews}>
       <div class="flex h-[var(--h-topbar)] shrink-0 items-center gap-1 border-b border-line-1 px-2">
-        <div ref={strip} class="relative flex min-w-0 items-center gap-1 overflow-x-auto">
+        <div ref={strip} class="focus-inset relative flex min-w-0 items-center gap-1 overflow-x-auto">
           <Show when={pill()}>
             {(at) => (
               <span

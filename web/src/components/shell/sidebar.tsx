@@ -28,7 +28,7 @@ const ICON = { size: 16, "stroke-width": 1.5 } as const
 const THEME_ICONS: Readonly<Record<string, typeof Moon>> = { dark: Moon, light: Sun, rose: Flower2 }
 
 const ROW =
-  "im-hover flex h-[var(--h-row)] w-full shrink-0 items-center gap-2 rounded-sm px-2 text-left text-small outline-none focus-visible:shadow-[inset_2px_0_0_var(--color-primary)] disabled:opacity-50"
+  "im-hover flex h-[var(--h-row)] w-full shrink-0 items-center gap-2 rounded-sm px-2 text-left text-small focus-inset disabled:opacity-50"
 
 const SELECTED = "bg-secondary text-ink"
 
