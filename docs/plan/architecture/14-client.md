@@ -182,6 +182,7 @@ Explore (`web/src/components/explore/`, at `#/explore`) is one catalogue with th
 
 - **Plugins come from the market** (`market.search`, §12), and installing one goes through #35's `InstallSheet` and its consent and integrity flow. There is no second install path.
 - **Skills and themes come from a bundled first-party catalogue** in `plugins/explore`. Its `explore.search {kind}` lists a kind and `explore.entry {kind, name}` returns one entry. Neither op reads or writes storage or touches the network. The client searches and filters the listed entries in memory. `lock.ts` pins a sha256 for every entry, and a test fails the build when content and pin disagree. The pin guards the build, not the wire: both come from the same Worker.
+- **Tabs follow the route.** Plugins, Skills and Themes are UI SDK Tabs (`<ui-tabs>` from `@ui-sdk/web/tabs`), which own the tablist roles, roving focus and the arrow, Home and End keys. The selected tab is the route's (`#/explore`, `#/explore/skills`, `#/explore/themes`), and selecting a tab navigates there and clears the search, category and open section. "/" outside a text field focuses the search box.
 - **Adding** a skill calls `skill.put` behind a consent sheet that lists what the skill can do. Adding a theme calls the appearance store's `addCatalogTheme`, which adds a copy only once (keyed by `source`) and applies it.
 - **Not yet:** market indexes cannot carry skills or themes until the index format grows a kind, and there is no "Recently added" because `market.search` returns no publish time.
 
