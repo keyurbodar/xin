@@ -1,0 +1,1 @@
+2026-11-17T08:00:00Z	XIN-21	composer.css drops its .im-send .im-swap reduce override	#56 fixed the swap reset at the source, so the override was redundant; the .composer-chip[data-closing] rules stay because they cover the composer's own class	Chromium with the OS setting: inactive Send/Stop icon computes transform none, filter none without the override	adopted

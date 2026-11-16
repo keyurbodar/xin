@@ -14,7 +14,17 @@ import { resolveModel } from "../../src/contracts/models.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
 import type { Actor } from "../../src/ops.ts"
-import { addThreads, api, cmd as call, eventually, field, fresh, owner, turn } from "../../test/support.ts"
+import {
+  addThreads,
+  api,
+  cmd as call,
+  eventually,
+  field,
+  fresh,
+  loadDeferred,
+  owner,
+  turn,
+} from "../../test/support.ts"
 import { resetAlt, WIDE_MODEL } from "../../test/plugins/m3.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 
@@ -168,6 +178,7 @@ const compactionsIn = async (home: Home): Promise<number> => {
 describe("models", () => {
   it("applies a mid-run switch to the next request in the same run", async () => {
     const stub = fresh()
+    await loadDeferred(stub, ["set_model"])
     const entries = await runInDurableObject(stub, async (home: Home) => {
       await home.chooseModel(WIDE_MODEL)
       await home.submit("switch to alt-narrow", "switch-1")
@@ -185,6 +196,7 @@ describe("models", () => {
 
   it("asks instead of switching when several models match equally", async () => {
     const stub = fresh()
+    await loadDeferred(stub, ["set_model"])
     const entries = await runInDurableObject(stub, async (home: Home) => {
       await home.chooseModel(WIDE_MODEL)
       await home.submit("switch to alt", "switch-2")
@@ -202,6 +214,7 @@ describe("models", () => {
 
   it("compacts before the next request when the new window is smaller", async () => {
     const stub = fresh()
+    await loadDeferred(stub, ["set_model"])
     const entries = await runInDurableObject(stub, async (home: Home) => {
       await home.chooseModel(WIDE_MODEL)
       await home.submit("warm up", "switch-3a")

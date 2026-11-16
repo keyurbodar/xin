@@ -1,0 +1,1 @@
+2026-11-16T18:00:00Z	onboarding v5	skip decision: skipTarget(step, hasCaptain) decides which steps offer Skip and where it lands: the key step moves on, the Captain and thread steps open the shell until a Captain exists	one tested rule instead of three inline handlers	web/src/lib/onboarding.test.ts	adopted

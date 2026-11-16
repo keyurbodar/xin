@@ -1,0 +1,1 @@
+2026-11-06T16:59:30Z	P1	Cordis FiberState is an ambient const enum, so loader mirrors ACTIVE=2 FAILED=3 as named constants	isolatedModules forbids reading ambient const enums from cordis's .d.ts	node_modules/@deepseek-ai/cordis/src/fiber.ts FiberState; package exports point types at lib/types	kept

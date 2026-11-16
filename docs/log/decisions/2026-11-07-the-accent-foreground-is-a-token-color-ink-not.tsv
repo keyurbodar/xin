@@ -1,0 +1,1 @@
+2026-11-07T18:40	P14	The accent foreground is a token, `--color-ink`, not the literal #160700 repeated at thirteen call sites	the token block is the one place a hex may live; thirteen copies of the same value drift the moment the accent changes	web/src/styles/app.css @theme; web/src/components/ui/button.tsx	replaced everywhere; build green

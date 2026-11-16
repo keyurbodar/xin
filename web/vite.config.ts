@@ -12,6 +12,15 @@ export default defineConfig({
     dedupe: ["solid-js"],
   },
   optimizeDeps: { exclude: ["@ui-sdk/core"] },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [{ name: "vendor", test: /[\\/]node_modules[\\/]/, tags: ["$initial"] }],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       "/v1": { target: backend, changeOrigin: true, ws: true },

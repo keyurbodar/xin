@@ -1,0 +1,1 @@
+2026-11-07T18:24	P14	A send reuses one command id and one clientTs per draft text	intake dedupes on the unique command id, but the client minted a fresh uuid per call, so a retry after a lost ack enqueued the same message twice	web/src/lib/api.ts CmdOptions; web/src/components/chat/composer.tsx useSender; web/src/screens/project.tsx	fixed

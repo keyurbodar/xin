@@ -1,0 +1,1 @@
+2026-11-16T20:00:00Z	composer reasoning	Fast mode left out of the composer picker	the models contract (handoffs/api/models.md) and the xin#13 backend name no Fast field or op (grep fast/speed in src and plugins finds none); the owner rule says build only what the backend has	plugins/models/models.ts conv.configure args: conv, model, thinking	adopted
