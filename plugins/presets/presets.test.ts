@@ -185,6 +185,28 @@ describe("presets", () => {
     expect(offers.latest().tools).toContain("recall")
   }, 20_000)
 
+  it("keeps every hook extension under the minimal preset and drops only the tools it does not name", async () => {
+    const stub = fresh()
+    await install(stub, rows())
+    const project = await makeProject(stub, "hooks", "test-minimal")
+    await chooseModel(stub, project.coordinatorId)
+    await turn(stub, project.coordinatorId, "go", [fauxAssistantMessage("noted")])
+    const { kept, installed } = await runInDurableObject(stub, async (home: Home) => {
+      const conversation = await home.harness.conversation(project.coordinatorId as ConversationId, context)
+      if (conversation === undefined) throw new Error("no coordinator conversation")
+      return {
+        kept: (await conversation.agent(context)).extensions.map((extension) => extension.name),
+        installed: [...home.loader.ctx.pi.installed.keys()],
+      }
+    })
+    for (const name of ["xin.guard", "xin.compact", "xin.instructions", "xin.orchestrator"])
+      expect(kept, name).toContain(name)
+    expect(kept).toEqual(expect.arrayContaining(installed.filter((name) => !name.startsWith("tool-"))))
+    expect(kept).toContain("tool-memory")
+    expect(kept).not.toContain("tool-files")
+    expect(kept).not.toContain("tool-models")
+  }, 20_000)
+
   it("gives a thread its coordinator's preset", async () => {
     const stub = fresh()
     await install(stub, rows())

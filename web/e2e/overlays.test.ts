@@ -84,3 +84,16 @@ test("the picker shows No match when nothing fits", async () => {
   expect(await page.getByText("No match").isVisible()).toBe(true)
   await page.close()
 })
+
+test("the picker keeps its list while it animates closed and lays out no empty row while results match", async () => {
+  const page = await harness.open("pane-picker")
+  await page.getByRole("button", { name: "Open a view" }).click()
+  await settled(page)
+  expect(await page.evaluate(() => document.querySelector("[data-slot=command-empty]")?.getBoundingClientRect().height)).toBe(0)
+  await page.mouse.click(1200, 700)
+  await page.waitForTimeout(40)
+  expect(await page.evaluate(() => document.querySelectorAll("[data-slot=command-item]").length)).toBeGreaterThan(0)
+  await settled(page)
+  expect(await page.getByRole("listbox").count()).toBe(0)
+  await page.close()
+})
