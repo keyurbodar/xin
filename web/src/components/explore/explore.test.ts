@@ -1,24 +1,24 @@
-import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test"
+import { afterEach, beforeAll, beforeEach, expect, mock, test } from "bun:test"
 import { createComponent, createRoot } from "solid-js"
+import { stubGlobals } from "../../../test/globals.ts"
 import { insert, root, type TestNode } from "../../../test/universal.ts"
 import { invalidateReads } from "../../lib/api.ts"
 
 type Frame = { readonly id: string }
 
 const realFetch = globalThis.fetch
-const realWindow: unknown = Reflect.get(globalThis, "window")
-const realDocument: unknown = Reflect.get(globalThis, "document")
-const setGlobal = (key: "window" | "document", value: unknown): void => {
-  Object.defineProperty(globalThis, key, { value, configurable: true, writable: true })
-}
-setGlobal("window", { location: { hash: "" }, addEventListener: () => undefined, removeEventListener: () => undefined })
-if (realDocument === undefined)
-  setGlobal("document", { documentElement: { setAttribute: () => undefined }, addEventListener: () => undefined })
+stubGlobals({
+  window: { location: { hash: "" }, addEventListener: () => undefined, removeEventListener: () => undefined },
+  document: { documentElement: { setAttribute: () => undefined }, addEventListener: () => undefined },
+})
 void mock.module("../extensions/glyph.tsx", () => ({ Glyph: () => undefined }))
 void mock.module("@ark-ui/solid/menu", () => ({ Menu: new Proxy({}, { get: () => () => undefined }) }))
 void mock.module("../../appearance/store.ts", () => ({ isCatalogThemeAdded: () => false }))
 void mock.module("./theme-detail.tsx", () => ({ AddThemeButton: () => undefined, ThemeDetail: () => undefined }))
-const { Explore } = await import("./explore.tsx")
+let Explore: (typeof import("./explore.tsx"))["Explore"]
+beforeAll(async () => {
+  ;({ Explore } = await import("./explore.tsx"))
+})
 
 beforeEach(() => {
   invalidateReads()
@@ -32,11 +32,6 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch
-})
-
-afterAll(() => {
-  setGlobal("window", realWindow)
-  setGlobal("document", realDocument)
 })
 
 const find = (node: TestNode, match: (node: TestNode) => boolean): TestNode | undefined =>
