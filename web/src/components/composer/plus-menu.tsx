@@ -6,7 +6,7 @@ import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM, POPUP_SEPARATOR } from "../ui/surface.ts"
 import { KIND, KindIcon } from "./kinds.tsx"
 import { createSources, type Suggestion } from "./sources.ts"
-import { loadMenuElements, loadOnIntent } from "./lazy-elements.ts"
+import { loadOnIntent } from "../../lib/ui-sdk-lazy.ts"
 import { TOOL } from "./styles.ts"
 import type { ComposerToken, TokenKind } from "./tokens.ts"
 
@@ -113,7 +113,7 @@ export function PlusMenu(props: {
       }}
     >
       <ui-menu-trigger>
-        <button type="button" aria-label="Add" disabled={props.disabled} class={`${TOOL} w-[var(--h-control)] justify-center px-0`} {...loadOnIntent(loadMenuElements, "ui-menu")}>
+        <button type="button" aria-label="Add" disabled={props.disabled} class={`${TOOL} w-[var(--h-control)] justify-center px-0`} {...loadOnIntent("menu", "command")}>
           <Plus size={16} stroke-width={1.5} />
         </button>
       </ui-menu-trigger>

@@ -4,7 +4,7 @@ import { For, Show, createMemo, createSignal, type JSX } from "solid-js"
 import { isFavorite, missingFavorites, toggleFavorite, type ModelInfo, type ModelRef } from "../../state/settings.ts"
 import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
-import { loadComboboxElements, loadOnIntent } from "./lazy-elements.ts"
+import { loadOnIntent } from "../../lib/ui-sdk-lazy.ts"
 import { TOOL } from "./styles.ts"
 
 const FAVORITES = "favorites"
@@ -125,7 +125,7 @@ export function ModelPicker(props: {
           type="button"
           aria-label={`Model: ${props.label}`}
           class={TOOL}
-          {...loadOnIntent(loadComboboxElements, "ui-combobox")}
+          {...loadOnIntent("combobox")}
         >
           <Show when={props.current}>{(ref) => <ProviderMark provider={ref().provider} />}</Show>
           <span class="max-w-[220px] truncate">{props.label}</span>

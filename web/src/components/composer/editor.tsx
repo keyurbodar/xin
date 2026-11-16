@@ -4,7 +4,7 @@ import { render } from "solid-js/web"
 import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
 import { KIND, KindIcon } from "./kinds.tsx"
 import type { Sources, Suggestion } from "./sources.ts"
-import { loadEditorElements } from "./lazy-elements.ts"
+import { loadUiSdk } from "../../lib/ui-sdk-lazy.ts"
 import { composerCodec, fromInputToken, toInputToken, type ComposerToken, type TokenKind } from "./tokens.ts"
 
 /** What the composer, the + menu and plugin actions do to the draft. A prompt chip always goes first, replacing any other. */
@@ -91,7 +91,7 @@ export function ComposerEditor(props: {
   const groups = (): readonly (readonly [TokenKind, readonly Suggestion[]])[] =>
     kinds().map((kind) => [kind, props.sources.list(kind)] as const)
 
-  onMount(() => void loadEditorElements().then(() => {
+  onMount(() => void loadUiSdk("editor").then(() => {
     const foundInput = root.querySelector("ui-token-input")
     const foundEditor = root.querySelector("ui-token-input-editor")
     const menu = root.querySelector("ui-trigger-menu")
