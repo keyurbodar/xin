@@ -127,18 +127,22 @@ const bundleCheck = compile(BundleSchema)
 const SearchArgs = obj({ query: opt(str({ maxLength: 200 })), category: opt(str({ maxLength: 100 })) })
 const EntryArgs = obj({ name: str({ minLength: 1, maxLength: 200 }) })
 const Grant = opt(arr(str({ minLength: 1, maxLength: 40 }), { maxItems: 16 }))
+const PIN_PATTERN = "^sha512-[A-Za-z0-9+/]{86}==$"
+const ConsentedPin = opt(str({ pattern: PIN_PATTERN }))
 const InstallArgs = obj({
   name: str({ minLength: 1, maxLength: 200 }),
   version: opt(str({ minLength: 1, maxLength: 100 })),
   grant: Grant,
+  integrity: ConsentedPin,
 })
 const UpdateArgs = obj({
   name: str({ minLength: 1, maxLength: 200 }),
   version: str({ minLength: 1, maxLength: 100 }),
   grant: Grant,
+  integrity: ConsentedPin,
 })
-const RollbackArgs = obj({ name: str({ minLength: 1, maxLength: 200 }), grant: Grant })
-const AddArgs = obj({ spec: str({ minLength: 1, maxLength: 300 }), grant: Grant })
+const RollbackArgs = obj({ name: str({ minLength: 1, maxLength: 200 }), grant: Grant, integrity: ConsentedPin })
+const AddArgs = obj({ spec: str({ minLength: 1, maxLength: 300 }), grant: Grant, integrity: ConsentedPin })
 const PolicySchema = obj({
   autoUpdate: bool({ description: "Install newer versions without being asked." }),
 })
@@ -164,11 +168,11 @@ type Budget = { left: number }
 /** Why each permission is needed, keyed by permission. */
 type Needs = ReadonlyMap<Permission, readonly string[]>
 
-/** What an install may do beyond what the owner already holds: the permissions granted with this call, plus those held. */
-type Consent = { readonly grant: readonly string[]; readonly held: readonly Permission[] }
+/** What an install may do beyond what the owner already holds: the permissions granted with this call, plus those held, and the pin the grant answered. */
+type Consent = { readonly grant: readonly string[]; readonly held: readonly Permission[]; readonly integrity?: string }
 
 const UNREAD_CODE = "its code arrives with the next build, so its permissions cannot be read before you consent"
-const pinCheck = compile(str({ pattern: "^sha512-[A-Za-z0-9+/]{86}==$" }))
+const pinCheck = compile(str({ pattern: PIN_PATTERN }))
 
 function codeNeeds(ingle: unknown, label: string): Needs {
   const needs = new Map<Permission, string[]>()
@@ -545,7 +549,8 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       bad(`${spec}: the tarball declares a ${kind} package, the registry says ${claimed}`)
     if (kind === "bundle") return { kind, integrity, ingle: extracted.value.ingle }
     const needs = codeNeeds(extracted.value.ingle, spec)
-    requireConsent(spec, needs, consent, integrity)
+    const answered = consent.integrity === undefined || consent.integrity === integrity
+    requireConsent(spec, needs, answered ? consent : { ...consent, grant: [] }, integrity)
     ports.packages.install(spec, {
       integrity,
       tarball: document.dist.tarball,
@@ -609,6 +614,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     name: string,
     requested: string | undefined,
     grant: readonly string[],
+    integrity: string | undefined,
   ): Promise<JsonValue> => {
     const budget = { left: MAX_REQUESTS }
     const loaded = await load(budget, false)
@@ -633,11 +639,15 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       if (compareVersions(target.version, fact.version) <= 0)
         bad(`${name}@${target.version} is not newer than the installed ${fact.version}`)
     }
-    return installVersion(budget, name, target, { grant, held: mode === "update" ? await ports.held(name) : [] })
+    return installVersion(budget, name, target, {
+      grant,
+      held: mode === "update" ? await ports.held(name) : [],
+      ...(integrity === undefined ? {} : { integrity }),
+    })
   }
 
   /** Add from a spec the owner typed: the same consent and pin as an index entry, for one exact version or a git commit. */
-  const add = async (text: string, grant: readonly string[]): Promise<JsonValue> => {
+  const add = async (text: string, grant: readonly string[], integrity: string | undefined): Promise<JsonValue> => {
     const spec = parseSpec(text)
     if (spec === undefined) bad(`${text} is not a supported package spec`)
     if (spec.kind === "git") {
@@ -650,7 +660,11 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     if (spec.range === undefined || !isSemver(spec.range))
       bad(`${text}: name one exact version, such as ${spec.name}@1.2.0, so the build installs what you consent to`)
     const version: MarketVersion = { version: spec.range, publishTimestamp: 0, source: { type: "npm" }, engines: {} }
-    return installVersion({ left: MAX_REQUESTS }, spec.name, version, { grant, held: await ports.held(spec.name) })
+    return installVersion({ left: MAX_REQUESTS }, spec.name, version, {
+      grant,
+      held: await ports.held(spec.name),
+      ...(integrity === undefined ? {} : { integrity }),
+    })
   }
 
   const skip = async (name: string, requested: string | undefined): Promise<JsonValue> => {
@@ -673,7 +687,11 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     return toJson({ name })
   }
 
-  const rollback = async (name: string, grant: readonly string[]): Promise<JsonValue> => {
+  const rollback = async (
+    name: string,
+    grant: readonly string[],
+    integrity: string | undefined,
+  ): Promise<JsonValue> => {
     const budget = { left: MAX_REQUESTS }
     const loaded = await load(budget, false)
     const plugin = loaded.plugins.find((candidate) => candidate.name === name)
@@ -701,7 +719,11 @@ export function createMarket(ports: MarketPorts): MarketFeature {
         package: name,
         reason: `${name}@${target.version} requires ingle ${target.engines.ingle ?? "?"}`,
       })
-    return installVersion(budget, name, target, { grant, held: await ports.held(name) })
+    return installVersion(budget, name, target, {
+      grant,
+      held: await ports.held(name),
+      ...(integrity === undefined ? {} : { integrity }),
+    })
   }
 
   /** Patch updates only: a minor or major version changes what a row means, so it asks first. */
@@ -758,13 +780,13 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       name: "market.install",
       args: InstallArgs,
       actors: OWNER,
-      run: async (_api, args) => install("install", args.name, args.version, args.grant ?? []),
+      run: async (_api, args) => install("install", args.name, args.version, args.grant ?? [], args.integrity),
     }),
     defineOp({
       name: "market.update",
       args: UpdateArgs,
       actors: OWNER,
-      run: async (_api, args) => install("update", args.name, args.version, args.grant ?? []),
+      run: async (_api, args) => install("update", args.name, args.version, args.grant ?? [], args.integrity),
     }),
     defineOp({
       name: "market.refresh",
@@ -818,13 +840,13 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       name: "market.add",
       args: AddArgs,
       actors: OWNER,
-      run: async (_api, args) => add(args.spec, args.grant ?? []),
+      run: async (_api, args) => add(args.spec, args.grant ?? [], args.integrity),
     }),
     defineOp({
       name: "market.rollback",
       args: RollbackArgs,
       actors: OWNER,
-      run: async (_api, args) => rollback(args.name, args.grant ?? []),
+      run: async (_api, args) => rollback(args.name, args.grant ?? [], args.integrity),
     }),
   ]
 

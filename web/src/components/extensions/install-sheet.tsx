@@ -41,13 +41,13 @@ export function InstallSheet(props: {
 
   const version = (): string => offeredVersion(props.detail)?.version ?? "latest"
 
-  const install = async (grant: readonly string[] = []): Promise<void> => {
+  const install = async (grant: readonly string[] = [], integrity?: string): Promise<void> => {
     if (busy()) return
     setBusy(true)
     setError(undefined)
     setConsent(undefined)
     try {
-      setResult(await installFromMarket(props.name, grant))
+      setResult(await installFromMarket(props.name, grant, integrity))
     } catch (failure: unknown) {
       const asked = consentOf(failure)
       if (asked === undefined) setError(errorMessage(failure))
@@ -166,7 +166,7 @@ export function InstallSheet(props: {
                     integrity={asked().integrity}
                     action="Allow and install"
                     busy={busy()}
-                    onAllow={(grant) => void install(grant)}
+                    onAllow={(grant) => void install(grant, asked().integrity)}
                     onCancel={() => setConsent(undefined)}
                   />
                 )}

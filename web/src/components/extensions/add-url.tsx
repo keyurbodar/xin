@@ -31,13 +31,13 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
 
   const valid = (): boolean => SPEC.test(spec().trim())
 
-  const submit = async (grant: readonly string[] = []): Promise<void> => {
+  const submit = async (grant: readonly string[] = [], integrity?: string): Promise<void> => {
     if (!valid() || busy()) return
     setBusy(true)
     setError(undefined)
     setConsent(undefined)
     try {
-      await addSpec(spec().trim(), grant)
+      await addSpec(spec().trim(), grant, integrity)
       setAdded(spec().trim())
     } catch (failure: unknown) {
       const asked = consentOf(failure)
@@ -135,7 +135,7 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
                 integrity={asked().integrity}
                 action="Allow and add"
                 busy={busy()}
-                onAllow={(grant) => void submit(grant)}
+                onAllow={(grant) => void submit(grant, asked().integrity)}
                 onCancel={() => setConsent(undefined)}
               />
             )}

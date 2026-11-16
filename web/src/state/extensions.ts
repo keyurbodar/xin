@@ -521,10 +521,21 @@ export function consentOf(failure: unknown): ConsentRequest | undefined {
   return { permissions, integrity: integrityOf(details["integrity"]) }
 }
 
-const granted = (grant: readonly string[]): { grant?: readonly string[] } => (grant.length === 0 ? {} : { grant })
+/** A grant, and the pin of the consent it answers, so the market asks again if the tarball changed since. */
+const granted = (
+  grant: readonly string[],
+  integrity: string | undefined,
+): { grant?: readonly string[]; integrity?: string } => ({
+  ...(grant.length === 0 ? {} : { grant }),
+  ...(integrity === undefined ? {} : { integrity }),
+})
 
-export async function installFromMarket(name: string, grant: readonly string[] = []): Promise<InstallResult> {
-  const result = parseInstall(await cmd("market.install", { name, ...granted(grant) }))
+export async function installFromMarket(
+  name: string,
+  grant: readonly string[] = [],
+  integrity?: string,
+): Promise<InstallResult> {
+  const result = parseInstall(await cmd("market.install", { name, ...granted(grant, integrity) }))
   await Promise.all([rows.reload(), packages.reload(), market.reload(), marketDetail(name).reload()])
   return result
 }
@@ -533,8 +544,9 @@ export async function updateFromMarket(
   name: string,
   version: string,
   grant: readonly string[] = [],
+  integrity?: string,
 ): Promise<InstallResult> {
-  const result = parseInstall(await cmd("market.update", { name, version, ...granted(grant) }))
+  const result = parseInstall(await cmd("market.update", { name, version, ...granted(grant, integrity) }))
   await Promise.all([rows.reload(), packages.reload(), market.reload(), marketDetail(name).reload()])
   return result
 }
@@ -633,8 +645,12 @@ export const skippedMarket: RemoteHandle<readonly SkippedVersion[]> = remote(
 
 export type RollbackResult = { readonly application: string; readonly reason?: string | undefined }
 
-export async function rollbackPackage(name: string, grant: readonly string[] = []): Promise<RollbackResult> {
-  const value = await cmd<unknown>("market.rollback", { name, ...granted(grant) })
+export async function rollbackPackage(
+  name: string,
+  grant: readonly string[] = [],
+  integrity?: string,
+): Promise<RollbackResult> {
+  const value = await cmd<unknown>("market.rollback", { name, ...granted(grant, integrity) })
   await Promise.all([rows.reload(), packages.reload(), market.reload()])
   if (!isRecord(value)) return { application: "failed" }
   return { application: strOf(value["application"]) ?? "failed", reason: strOf(value["reason"]) }
@@ -651,8 +667,8 @@ export async function setMarketPolicy(autoUpdate: boolean): Promise<void> {
   await marketPolicy.reload()
 }
 
-export async function addSpec(spec: string, grant: readonly string[]): Promise<void> {
-  await cmd("market.add", { spec, grant })
+export async function addSpec(spec: string, grant: readonly string[], integrity?: string): Promise<void> {
+  await cmd("market.add", { spec, grant, ...(integrity === undefined ? {} : { integrity }) })
   await Promise.all([packages.reload(), rows.reload()])
 }
 

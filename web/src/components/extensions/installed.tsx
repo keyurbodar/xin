@@ -193,7 +193,7 @@ function RowPanel(props: {
   const [note, setNote] = createSignal<string | undefined>(undefined)
   const [consent, setConsent] = createSignal<ConsentRequest | undefined>(undefined)
 
-  const rollback = async (grant: readonly string[] = []): Promise<void> => {
+  const rollback = async (grant: readonly string[] = [], integrity?: string): Promise<void> => {
     const bundle = props.bundle
     if (bundle === undefined) return
     setBusy(true)
@@ -201,7 +201,7 @@ function RowPanel(props: {
     setNote(undefined)
     setConsent(undefined)
     try {
-      const result = await rollbackPackage(bundle.package, grant)
+      const result = await rollbackPackage(bundle.package, grant, integrity)
       if (result.application === "applied") setNote(`${bundle.package} rolled back to the version recorded before this one.`)
       else setError(result.reason ?? "The rollback did not apply.")
     } catch (failure: unknown) {
@@ -321,7 +321,7 @@ function RowPanel(props: {
                         integrity={asked().integrity}
                         action="Allow and roll back"
                         busy={busy()}
-                        onAllow={(grant) => void rollback(grant)}
+                        onAllow={(grant) => void rollback(grant, asked().integrity)}
                         onCancel={() => setConsent(undefined)}
                       />
                     </div>

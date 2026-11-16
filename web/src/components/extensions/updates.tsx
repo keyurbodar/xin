@@ -37,7 +37,7 @@ export function Updates(): JSX.Element {
     return state.value.filter((entry) => entry.status === "update-available")
   }
 
-  const updateOne = async (entry: MarketSummary, grant: readonly string[] = []): Promise<void> => {
+  const updateOne = async (entry: MarketSummary, grant: readonly string[] = [], integrity?: string): Promise<void> => {
     setError(undefined)
     setNote(undefined)
     setConsent(undefined)
@@ -48,7 +48,7 @@ export function Updates(): JSX.Element {
       const state = detail.state()
       const offered = state.kind === "ready" ? offeredVersion(state.value) : undefined
       if (offered === undefined) throw new Error(`${entry.name} offers no compatible version`)
-      const result = await updateFromMarket(entry.name, offered.version, grant)
+      const result = await updateFromMarket(entry.name, offered.version, grant, integrity)
       setNote(
         result.application === "applied"
           ? `${entry.name} updated to ${offered.version}`
@@ -97,7 +97,7 @@ export function Updates(): JSX.Element {
             integrity={asked().integrity}
             action="Allow and update"
             busy={busy() !== undefined}
-            onAllow={(grant) => void updateOne(asked().entry, grant)}
+            onAllow={(grant) => void updateOne(asked().entry, grant, asked().integrity)}
             onCancel={() => setConsent(undefined)}
           />
         )}
