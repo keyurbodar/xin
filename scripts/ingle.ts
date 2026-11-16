@@ -2,6 +2,15 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
+import {
+  gitProblem,
+  integrityProblem,
+  isGitSpec,
+  nameOf,
+  permissionProblem,
+  specProblem,
+  tarballProblem,
+} from "./pin.ts"
 import { assertUniquePackages } from "./discovery.ts"
 import { reachViolations } from "./reach.ts"
 import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
@@ -327,7 +336,24 @@ async function bun(args: readonly string[]): Promise<void> {
   if ((await child.exited) !== 0) throw new Error(`bun ${args.join(" ")} failed`)
 }
 
-type SyncPlan = { readonly add: readonly string[]; readonly remove: readonly string[] }
+type SyncPlan = {
+  readonly add: readonly string[]
+  readonly remove: readonly string[]
+  readonly pins: Readonly<Record<string, SyncPin>>
+}
+
+type SyncPin = { readonly integrity: string; readonly tarball: string; readonly permissions: readonly string[] }
+
+function syncPin(spec: string, value: unknown): SyncPin {
+  const integrity = field(value, "integrity")
+  const tarball = field(value, "tarball")
+  const permissions = stringList(field(value, "permissions"))
+  if (typeof integrity !== "string" || !integrity.startsWith("sha512-") || typeof tarball !== "string")
+    throw new Error(`plugin sync: the pin for ${spec} needs a sha512 integrity and a tarball url`)
+  if (!tarball.startsWith("https://")) throw new Error(`plugin sync: the tarball for ${spec} must be an https url`)
+  if (permissions === undefined) throw new Error(`plugin sync: the pin for ${spec} needs its permissions`)
+  return { integrity, tarball, permissions }
+}
 
 const stringList = (value: unknown): string[] | undefined =>
   Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined
@@ -338,7 +364,13 @@ function syncPlan(value: unknown): SyncPlan {
   const remove = stringList(field(packages, "remove") ?? [])
   if (add === undefined || remove === undefined)
     throw new Error("plugin sync needs { add: string[], remove: string[] }")
-  return { add, remove }
+  const pins = field(packages, "pins") ?? {}
+  if (typeof pins !== "object" || pins === null) throw new Error("plugin sync: pins must map a spec to its pin")
+  return {
+    add,
+    remove,
+    pins: Object.fromEntries(Object.entries(pins).map(([spec, pin]) => [spec, syncPin(spec, pin)])),
+  }
 }
 
 async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
@@ -350,9 +382,38 @@ async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
     for (const spec of add) console.warn(`would add ${spec}`)
     return
   }
+  const shipped = new Set(discover().flatMap((entry) => (entry.local ? [entry.pkg] : [])))
+  for (const spec of add) {
+    const problem = specProblem(spec, shipped)
+    if (problem !== undefined) throw new Error(problem)
+  }
   for (const pkg of remove) await bun(["remove", pkg])
   const before = new Set(discover().map((entry) => entry.pkg))
-  for (const spec of add) await bun(["add", spec])
+  for (const spec of add) {
+    const pin = plan.pins[spec]
+    if (pin !== undefined) {
+      const response = await fetch(pin.tarball, { redirect: "error" })
+      if (!response.ok) throw new Error(`${spec}: fetching ${pin.tarball} answered ${response.status}`)
+      const swapped = await tarballProblem(spec, pin.integrity, new Uint8Array(await response.arrayBuffer()))
+      if (swapped !== undefined) throw new Error(swapped)
+    }
+    const manifest = readFileSync(join(ROOT, "package.json"), "utf8")
+    const lock = readFileSync(join(ROOT, "bun.lock"), "utf8")
+    await bun(["add", spec])
+    if (isGitSpec(spec)) {
+      const problem = gitProblem(spec, readFileSync(join(ROOT, "bun.lock"), "utf8"), shipped)
+      if (problem === undefined) continue
+      writeFileSync(join(ROOT, "package.json"), manifest)
+      writeFileSync(join(ROOT, "bun.lock"), lock)
+      await bun(["install"])
+      throw new Error(problem)
+    }
+    if (pin === undefined) continue
+    const problem =
+      integrityProblem(spec, pin.integrity, readFileSync(join(ROOT, "bun.lock"), "utf8")) ??
+      permissionProblem(spec, pin.permissions, readJson(join(ROOT, "node_modules", nameOf(spec), "package.json")))
+    if (problem !== undefined) throw new Error(problem)
+  }
   for (const pkg of remove) setBundle(pkg, false)
   for (const entry of discover()) if (!before.has(entry.pkg)) setBundle(entry.pkg, true)
   generate()

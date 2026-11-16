@@ -73,18 +73,22 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
                 const enabled = (): boolean => actions.enabled(automation)
                 const busy = (): boolean => actions.busy() === automation.id
                 return (
-                  <div data-automation={automation.id} class="flex items-center gap-2.5 border-b border-line-1 py-2 pl-3 pr-1.5" style={{ "--i": index() }}>
+                  <div
+                    data-automation={automation.id}
+                    class="flex h-[var(--h-row-2)] items-center gap-2.5 border-b border-line-1 pl-3 pr-1.5 hover:bg-hover"
+                    style={{ "--i": index() }}
+                  >
                     <div class="min-w-0 flex-1">
                       <button
                         type="button"
                         onClick={() => rows.handle(automation, "open")}
-                        class="block max-w-full truncate text-left text-base hover:underline hover:decoration-line-3 hover:underline-offset-4"
+                        class="block max-w-full truncate text-left text-small font-title hover:underline hover:decoration-line-3 hover:underline-offset-4"
                         classList={{ "text-ink": enabled(), "text-ink-3": !enabled() }}
                       >
                         {automation.title}
                       </button>
-                      <div class="flex min-w-0 items-center gap-1.5 text-sm text-ink-3">
-                        <span class="shrink-0 font-mono text-xs tabular-nums">{nextLabel({ ...automation, enabled: enabled() })}</span>
+                      <div class="flex min-w-0 items-center gap-1.5 text-mini text-ink-3">
+                        <span class="shrink-0 font-mono tabular-nums">{nextLabel({ ...automation, enabled: enabled() })}</span>
                         <span class="shrink-0 text-icon">·</span>
                         <span class="truncate">{describeTriggers(automation)}</span>
                       </div>
