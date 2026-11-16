@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test"
 import { createComponent, createRoot } from "solid-js"
 import { insert, root, type TestNode } from "../../../test/universal.ts"
 import { invalidateReads } from "../../lib/api.ts"
@@ -6,11 +6,11 @@ import { invalidateReads } from "../../lib/api.ts"
 type Frame = { readonly id: string }
 
 const realFetch = globalThis.fetch
-if (Reflect.get(globalThis, "window") === undefined)
-  Object.defineProperty(globalThis, "window", {
-    value: { location: { hash: "" }, addEventListener: () => undefined, removeEventListener: () => undefined },
-    configurable: true,
-  })
+const realWindow: unknown = Reflect.get(globalThis, "window")
+Object.defineProperty(globalThis, "window", {
+  value: { location: { hash: "" }, addEventListener: () => undefined, removeEventListener: () => undefined },
+  configurable: true,
+})
 if (Reflect.get(globalThis, "document") === undefined)
   Object.defineProperty(globalThis, "document", {
     value: { documentElement: { setAttribute: () => undefined }, addEventListener: () => undefined },
@@ -34,6 +34,10 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch
+})
+
+afterAll(() => {
+  Object.defineProperty(globalThis, "window", { value: realWindow, configurable: true })
 })
 
 const find = (node: TestNode, match: (node: TestNode) => boolean): TestNode | undefined =>
