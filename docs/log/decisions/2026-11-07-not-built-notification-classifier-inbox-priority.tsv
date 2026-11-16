@@ -1,0 +1,1 @@
+2026-11-07T14:40	P11-P13	Not built: notification classifier, inbox priority, agent foldContext/dropContext, a feedback store feeding the model, a web row	each is a mechanism dsh lacks or a store dsh deliberately keeps out of model history; the owner declined the web row for now	docs/plan/architecture/13-always-on.md §Not added	accepted

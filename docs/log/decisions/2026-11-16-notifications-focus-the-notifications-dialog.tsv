@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	onboarding v5	notifications focus: The notifications dialog focuses its primary button, wraps Tab inside it and returns focus to the opener on close	it declared aria-modal without moving focus (XIN-23 on #29); the shared ui/dialog.tsx shell draws a title bar 18.5 does not have	web/src/lib/focus.test.ts	adopted

@@ -6,12 +6,13 @@
   "scripts": {
     "fmt": "oxfmt src plugins test scripts",
     "fmt:check": "oxfmt --check src plugins test scripts",
-    "lint": "oxlint --deny-warnings src plugins test scripts && bun scripts/boundaries.ts && bun scripts/ingle.ts plugin generate --check",
+    "lint": "oxlint --deny-warnings src plugins test scripts && bun scripts/boundaries.ts && bun scripts/decisions.ts --check && bun scripts/ingle.ts plugin generate --check",
     "typecheck": "tsgo --noEmit -p tsconfig.json && tsgo --noEmit -p web/tsconfig.json",
     "test": "vitest run",
     "bundle": "wrangler deploy --dry-run --outdir .wrangler/bundle && bun run dev:smoke",
     "dev:smoke": "bun scripts/devsmoke.ts",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "decisions": "bun scripts/decisions.ts"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.1.0",

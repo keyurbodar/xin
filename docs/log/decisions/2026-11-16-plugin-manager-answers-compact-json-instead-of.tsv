@@ -1,0 +1,1 @@
+2026-11-16T19:30:00Z	plugins	plugin_manager answers compact JSON instead of indented JSON	after main #47, #30's plugin list passed pi's 50 KB tool-output limit, so the agent lost its tail and the truncation note shifted the test's results	tools.test passes with every row listed	fixed in #30

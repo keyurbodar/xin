@@ -1,0 +1,1 @@
+2026-11-16T17:00:00Z	web-issues-edit	The link picker searches this project's issues with issue.list { q, limit: 8 } after a 250 ms pause and accepts a typed #id for any issue	the owner may link across projects, but search stays on the pane's project so its list stays short; an id reaches any issue	web/src/components/pane/issue-edit.tsx AddLink	adopted

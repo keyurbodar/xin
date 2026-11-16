@@ -1,0 +1,1 @@
+2026-11-07T11:00	P9	Drop bundle.rollback, stored previous, p#x ids, superseded; keep restore on a failed update only; a failed fresh install stays installed	dsh updateBundle restores on failure and refuses older versions; installBundle keeps the selection on activation failure	packages/boot/plugin-manager/README.md lines 54-58	accepted
