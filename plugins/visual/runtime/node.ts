@@ -65,6 +65,7 @@ export type ChartNode = {
   readonly format: NumberFormat
   readonly xFormat: NumberFormat
   readonly legend: boolean
+  readonly dither: boolean
 }
 
 export type Camera = { readonly yaw: number; readonly pitch: number; readonly zoom: number }
@@ -630,6 +631,7 @@ function chart(props: Props): ChartNode {
     "x_unit",
     "x_decimals",
     "legend",
+    "dither",
   ])
   const type = props.string("type") ?? "bar"
   if (type !== "bar" && type !== "line" && type !== "area" && type !== "scatter")
@@ -688,6 +690,7 @@ function chart(props: Props): ChartNode {
       decimals: xDecimals === undefined ? undefined : Math.trunc(clamp(xDecimals, 0, 6)),
     },
     legend: props.bool("legend") ?? true,
+    dither: props.bool("dither") ?? false,
   }
 }
 

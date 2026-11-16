@@ -30,9 +30,13 @@ afterAll(async () => {
   await server.close()
 })
 
-async function open(options: { fixture?: string; theme?: string; width?: number } = {}): Promise<{ page: Page; frame: Frame }> {
+async function open(
+  options: { fixture?: string; theme?: string; width?: number } = {},
+): Promise<{ page: Page; frame: Frame }> {
   const page = await browser.newPage({ viewport: { width: options.width ?? 1280, height: 900 } })
-  await page.goto(`${base}e2e/fixtures/visual.html?fixture=${options.fixture ?? "dashboard"}&theme=${options.theme ?? "dark"}`)
+  await page.goto(
+    `${base}e2e/fixtures/visual.html?fixture=${options.fixture ?? "dashboard"}&theme=${options.theme ?? "dark"}`,
+  )
   const element = await page.waitForSelector('[data-block="visual"] iframe', { state: "attached", timeout: 30_000 })
   const frame = await element.contentFrame()
   if (frame === null) throw new Error("no frame")
@@ -46,16 +50,23 @@ for (const theme of ["dark", "light"] as const) {
     expect(await frame.locator(".v-chart svg rect[rx]").count()).toBeGreaterThan(3)
     expect(await frame.locator(".v-stat").count()).toBe(2)
     expect(await frame.locator(".v-canvas canvas").count()).toBe(1)
-    const ink = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-ink").trim())
-    const text = await frame.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--text").trim())
+    const ink = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--color-ink").trim(),
+    )
+    const text = await frame.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--text").trim(),
+    )
     expect(text).toBe(ink)
-    const height = await page.locator('[data-block="visual"] iframe').evaluate((node) => node.getBoundingClientRect().height)
+    const height = await page
+      .locator('[data-block="visual"] iframe')
+      .evaluate((node) => node.getBoundingClientRect().height)
     const content = await frame.evaluate(() => document.documentElement.getBoundingClientRect().height)
     expect(Math.abs(height - content)).toBeLessThanOrEqual(1)
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 900 })
       await page.waitForTimeout(300)
-      if (renders !== undefined) await page.screenshot({ path: join(renders, `visual-${theme}-${width}.png`), fullPage: true })
+      if (renders !== undefined)
+        await page.screenshot({ path: join(renders, `visual-${theme}-${width}.png`), fullPage: true })
     }
     await page.close()
   }, 60_000)
@@ -132,19 +143,55 @@ test("a failed call renders nothing, since the agent fixes and calls again", asy
 
 test("the theme follows the app without reloading the script", async () => {
   const { page, frame } = await open({ theme: "dark" })
-  const before = await frame.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--text").trim())
+  const before = await frame.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--text").trim(),
+  )
   await page.evaluate(() => window.visualHarness.theme("light"))
-  await frame.waitForFunction((previous) => getComputedStyle(document.documentElement).getPropertyValue("--text").trim() !== previous, before)
+  await frame.waitForFunction(
+    (previous) => getComputedStyle(document.documentElement).getPropertyValue("--text").trim() !== previous,
+    before,
+  )
   expect(await frame.evaluate(() => document.documentElement.dataset.scheme)).toBe("light")
   await page.close()
 }, 60_000)
+
+test("a dithered chart draws its bars as Bayer dots that grow denser toward the value", async () => {
+  for (const theme of ["dark", "light"] as const) {
+    const { page, frame } = await open({ fixture: "dither", theme })
+    try {
+      await frame.locator(".v-chart svg pattern").first().waitFor({ state: "attached" })
+      const bars = await frame.evaluate(() => {
+        const chart = document.querySelector(".v-chart svg")
+        if (chart === null) return { pieces: 0, levels: [] as number[] }
+        const fills = [...chart.querySelectorAll("rect[fill^='url(']")].map((rect) => rect.getAttribute("fill") ?? "")
+        const dots = (fill: string): number => {
+          const id = /url\(#(.+)\)/.exec(fill)?.[1] ?? ""
+          return document.getElementById(id)?.childElementCount ?? 0
+        }
+        return { pieces: fills.length, levels: fills.slice(0, 8).map(dots) }
+      })
+      expect(bars.pieces).toBeGreaterThan(8)
+      const first = bars.levels[0] ?? 0
+      const last = bars.levels.at(-1) ?? 0
+      expect(last).toBeGreaterThan(first)
+      expect(await frame.locator(".v-error").isHidden()).toBe(true)
+      await frame.getByRole("tab", { name: "Reactive Meets AI" }).click()
+      await frame.locator(".v-chart svg rect[fill^='url(']").first().waitFor({ state: "attached" })
+      if (renders !== undefined)
+        await page.screenshot({ path: join(renders, `visual-dither-${theme}-1280.png`), fullPage: true })
+    } finally {
+      await page.close()
+    }
+  }
+}, 90_000)
 
 test("a 3D scene renders with WebGL inside the frame", async () => {
   const { page, frame } = await open({ fixture: "scene" })
   await frame.locator(".v-scene canvas").waitFor()
   await page.waitForTimeout(500)
   expect(await frame.locator(".v-error").isHidden()).toBe(true)
-  if (renders !== undefined) await page.screenshot({ path: join(renders, "visual-scene-dark-1280.png"), fullPage: true })
+  if (renders !== undefined)
+    await page.screenshot({ path: join(renders, "visual-scene-dark-1280.png"), fullPage: true })
   await page.close()
 }, 60_000)
 

@@ -185,6 +185,15 @@ describe("visual runtime", () => {
     )
   })
 
+  it("takes dither = true on a chart and refuses it elsewhere", () => {
+    const tree = Visual.load(
+      `return ui.chart { type = "bar", dither = true, x = { "a", "b" }, series = { { name = "n", values = { 1, 2 } } } }`,
+      1,
+    ).render()
+    expect(tree.kind === "chart" && tree.dither).toBe(true)
+    expect(failure(`return ui.text { "x", dither = true }`)).toContain("has no 'dither'")
+  })
+
   it("checks scenes and shaders without a GPU", () => {
     expect(
       check(

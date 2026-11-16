@@ -3,6 +3,7 @@
 import type { ChartNode, Series } from "../runtime/node.ts"
 import { formatNumber, niceTicks } from "../runtime/style.ts"
 import type { FrameTheme } from "./protocol.ts"
+import { DITHER_LEVELS, ditherPattern, ditherSteps } from "./dither.ts"
 import { cssColor, tokenCss } from "./theme.ts"
 import type { Widget, WidgetHost } from "./widget.ts"
 import { widthOf } from "./widget.ts"
@@ -14,6 +15,8 @@ const LABEL_FONT = 11
 const CHAR = 6.4
 
 type Hover = { readonly index: number; readonly series?: number } | undefined
+
+let charts = 0
 
 type Frame = { readonly left: number; readonly top: number; readonly width: number; readonly height: number }
 
@@ -81,6 +84,7 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
   element.className = "v-chart"
   const svg = el("svg", { role: "img" })
   element.append(svg)
+  const prefix = `v-dither-${(charts += 1)}`
 
   const categories = (): number =>
     node.type === "scatter" ? 0 : Math.max(node.x.length, ...node.series.map((s) => s.values.length))
@@ -139,6 +143,19 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
     svg.append(grid)
 
     const colorOf = (series: Series): string => cssColor(series.color, theme)
+    const defs = el("defs", {})
+    svg.append(defs)
+    const patterns = new Map<string, string>()
+    const dotted = (series: Series, level: number): string => {
+      const color = colorOf(series)
+      const key = `${color}|${level}`
+      const known = patterns.get(key)
+      if (known !== undefined) return known
+      const id = `${prefix}-${patterns.size}`
+      defs.append(ditherPattern(id, color, level))
+      patterns.set(key, `url(#${id})`)
+      return `url(#${id})`
+    }
     const marks = el("g", {})
     const band = (horizontal ? frame.height : frame.width) / Math.max(1, count)
     const centerOf = (index: number): number => (horizontal ? frame.top : frame.left) + band * (index + 0.5)
@@ -208,12 +225,27 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
           const lo = Math.min(a, b)
           const size = Math.max(1, Math.abs(b - a))
           const dim = hover !== undefined && hover.index !== index
-          const rect = horizontal
-            ? el("rect", { x: lo, y: start, width: size, height: Math.max(1, thickness - 1), rx: 2 })
-            : el("rect", { x: start, y: lo, width: Math.max(1, thickness - 1), height: size, rx: 2 })
-          rect.setAttribute("fill", colorOf(series))
-          rect.setAttribute("fill-opacity", dim ? "0.45" : "1")
-          marks.append(rect)
+          const across = Math.max(1, thickness - 1)
+          if (!node.dither) {
+            const rect = horizontal
+              ? el("rect", { x: lo, y: start, width: size, height: across, rx: 2 })
+              : el("rect", { x: start, y: lo, width: across, height: size, rx: 2 })
+            rect.setAttribute("fill", colorOf(series))
+            rect.setAttribute("fill-opacity", dim ? "0.45" : "1")
+            marks.append(rect)
+            return
+          }
+          const sign = b >= a ? 1 : -1
+          for (const step of ditherSteps(size)) {
+            const near = a + sign * step.from
+            const far = a + sign * step.to
+            const piece = horizontal
+              ? el("rect", { x: Math.min(near, far), y: start, width: step.to - step.from, height: across })
+              : el("rect", { x: start, y: Math.min(near, far), width: across, height: step.to - step.from })
+            piece.setAttribute("fill", dotted(series, step.level))
+            piece.setAttribute("fill-opacity", dim ? "0.45" : "1")
+            marks.append(piece)
+          }
         })
       }
       marks.append(
@@ -270,7 +302,14 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
               .toReversed()
               .map(([x, , y]) => `L${x.toFixed(2)},${y.toFixed(2)}`)
               .join("")
-            marks.append(el("path", { d: `${line}${back}Z`, fill: color, "fill-opacity": 0.18 }))
+            marks.append(
+              el(
+                "path",
+                node.dither
+                  ? { d: `${line}${back}Z`, fill: dotted(series, DITHER_LEVELS / 2) }
+                  : { d: `${line}${back}Z`, fill: color, "fill-opacity": 0.18 },
+              ),
+            )
           }
           marks.append(
             el("path", {

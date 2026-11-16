@@ -447,6 +447,8 @@ An extension that carries tools is named `tool-*`; the registry refuses one that
 
 fengari has no allocator hook, so a four-line `bun patch` adds one: before it allocates a string buffer (`luaL_prepbuffsize`, `luaV_concat`), makes a string (`TString`) or adds a table entry, it calls the meter stored on the state's `l_G`. The meter lives on the state rather than on a module object because test pools and bundlers do not always share fengari's module instances. In the frame the bounds are per call, so state that grows a little on every frame of an animation is limited only by how long the visual stays open, and since a `srcdoc` frame shares the page's renderer process, the page is the blast radius. Moving the frame to its own origin would put it in its own process. The DO check counts all its calls together, so it stays inside the isolate's memory. No I/O library is opened, but fengari's `lualib` still bundles `liolib`, `loslib` and `loadlib`, which costs the Worker about 122 KB gzipped.
 
+`ui.chart { dither = true }` draws bars and areas as ordered-dither dots with the Appearance dither's 8×8 Bayer matrix and 4px cell (`frame/dither.ts`), so a visual and a dithered background share one pattern.
+
 ## Slices
 
 | Slice | Builds | Status |
