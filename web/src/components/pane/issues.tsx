@@ -1,7 +1,9 @@
+import "@ui-sdk/web/popover"
+import "@ui-sdk/web/radio"
+import "@ui-sdk/web/select"
+import "@ui-sdk/web/toggle"
 import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
-import { Portal } from "solid-js/web"
-import { Popover } from "@ark-ui/solid/popover"
-import { Archive, MessagesSquare, Plus } from "lucide-solid"
+import { Archive, Check, ChevronDown, MessagesSquare, Plus, X } from "lucide-solid"
 import {
   assigneeName,
   closedGroups,
@@ -26,8 +28,9 @@ import { homeCaptains } from "../../state/captains.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { createPaneAction } from "../chat/ui.tsx"
 import { Button } from "../ui/button.tsx"
-import { ICON_BUTTON, MENU_CONTENT } from "../shell/menu.ts"
-import { PANE_ROW } from "./bodies.tsx"
+import { ICON_BUTTON } from "../shell/menu.ts"
+import { createOverlayMount } from "../shell/presence.ts"
+import { POPUP, POPUP_ITEM } from "../ui/surface.ts"
 import { AssigneeChip, PriorityMark, StateMark } from "./issue-marks.tsx"
 import { Section, type PaneContext } from "./overview.tsx"
 
@@ -81,17 +84,18 @@ export function IssuesSection(props: PaneContext & { label: string }): JSX.Eleme
       count={total()}
       action={
         <>
-          <button
-            type="button"
-            class={ICON_BUTTON}
-            classList={{ "bg-hover text-ink": showClosed() }}
-            aria-pressed={showClosed()}
-            aria-label={showClosed() ? "Hide closed issues" : "Show closed issues"}
-            title={showClosed() ? "Hide closed issues" : "Show closed issues"}
-            onClick={() => setShowClosed((value) => !value)}
-          >
-            <Archive size={14} stroke-width={1.5} />
-          </button>
+          <ui-toggle prop:pressed={showClosed()} on:pressedchange={(event) => setShowClosed(event.detail.value)}>
+            <button
+              type="button"
+              class={`${ICON_BUTTON} aria-pressed:bg-hover aria-pressed:text-ink`}
+              aria-label="Closed issues"
+              title={showClosed() ? "Hide closed issues" : "Show closed issues"}
+            >
+              <ui-toggle-icon class="contents">
+                <Archive size={14} stroke-width={1.5} />
+              </ui-toggle-icon>
+            </button>
+          </ui-toggle>
           <NewIssue project={props.project} projectId={issueProjectId(props)} states={data.latest?.states ?? []} />
         </>
       }
@@ -118,9 +122,9 @@ export function IssuesSection(props: PaneContext & { label: string }): JSX.Eleme
 function IssueGroupRows(props: { group: IssueGroup; project: ProjectSummary; names: Names; today: string }): JSX.Element {
   return (
     <div class="flex flex-col">
-      <span class="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-xs text-ink-3">
+      <span class="flex items-center gap-1.5 px-2 pb-0.5 pt-2 text-mini font-title text-ink-3">
         {props.group.state.name}
-        <span class="font-mono text-2xs text-icon">{props.group.issues.length}</span>
+        <span class="font-mono text-mini font-normal text-icon">{props.group.issues.length}</span>
       </span>
       <For each={props.group.issues}>
         {(issue) => (
@@ -146,50 +150,51 @@ export function IssueRow(props: {
 }): JSX.Element {
   const due = () => dueLabel(props.issue.due, props.today)
   return (
-    <button type="button" onClick={() => props.onOpen()} class={PANE_ROW}>
-      <StateMark tone={stateTone(props.state)} label={props.state?.name} class="mt-0.5" />
-      <span class="min-w-0 flex-1">
-        <span class="block truncate text-sm text-ink">{props.issue.title}</span>
-        <span class="flex items-center gap-1.5 text-xs text-ink-3">
-          <span class="font-mono text-2xs">#{props.issue.id}</span>
-          <Show when={due()}>
-            {(label) => (
-              <span classList={{ "text-failed": label().overdue }}>
-                · {label().overdue ? "Overdue " : "Due "}
-                {label().text}
-              </span>
-            )}
-          </Show>
-          <Show when={props.issue.threads.length > 0}>
-            <span class="flex items-center gap-1" title={`${props.issue.threads.length} linked threads`}>
-              · <MessagesSquare size={12} stroke-width={1.5} />
-              <span class="font-mono text-2xs">{props.issue.threads.length}</span>
-            </span>
-          </Show>
+    <button type="button" data-issue={props.issue.id} onClick={() => props.onOpen()} class={ISSUE_ROW}>
+      <StateMark tone={stateTone(props.state)} label={props.state?.name} />
+      <span class="w-8 shrink-0 font-mono text-mini text-ink-3">#{props.issue.id}</span>
+      <span class="min-w-0 flex-1 truncate text-small font-title text-ink">{props.issue.title}</span>
+      <Show when={props.issue.threads.length > 0}>
+        <span class="flex shrink-0 items-center gap-1 text-ink-3" title={`${props.issue.threads.length} linked threads`}>
+          <MessagesSquare size={12} stroke-width={1.5} />
+          <span class="font-mono text-mini">{props.issue.threads.length}</span>
         </span>
-      </span>
-      <span class="mt-0.5 flex shrink-0 items-center gap-2">
-        <PriorityMark priority={props.issue.priority} />
-        <AssigneeChip names={props.issue.assignees.map((assignee) => assigneeName(assignee, props.names))} />
-      </span>
+      </Show>
+      <Show when={due()}>
+        {(label) => (
+          <span
+            class="shrink-0 text-mini"
+            classList={{ "text-failed": label().overdue, "text-ink-3": !label().overdue }}
+            title={`${label().overdue ? "Overdue" : "Due"} ${label().text}`}
+          >
+            {label().text}
+          </span>
+        )}
+      </Show>
+      <PriorityMark priority={props.issue.priority} />
+      <AssigneeChip names={props.issue.assignees.map((assignee) => assigneeName(assignee, props.names))} />
     </button>
   )
 }
 
-const CHIP =
-  "im-press flex h-7 items-center gap-1.5 rounded-sm border px-2 text-xs text-ink-2 outline-none focus-visible:ring-2 focus-visible:ring-primary-soft"
+const ISSUE_ROW =
+  "im-hover flex h-[var(--h-list-row)] w-full shrink-0 items-center gap-2 rounded-sm px-2 text-left outline-none focus-visible:bg-secondary focus-visible:shadow-[inset_2px_0_0_var(--color-primary)]"
 
-function chipClass(on: boolean): string {
-  return `${CHIP} ${on ? "border-line-3 bg-hover text-ink" : "border-line-1 hover:bg-secondary"}`
-}
+const SEGMENT =
+  "im-press im-hover flex h-7 cursor-default items-center gap-1.5 rounded-sm border border-line-1 px-2 text-xs text-ink-2 outline-none focus-visible:ring-2 focus-visible:ring-primary-soft data-[checked]:border-line-3 data-[checked]:bg-hover data-[checked]:text-ink"
+
+const FIELD_LABEL = "text-mini font-title text-ink-3"
 
 /** Title first; priority and state are optional and fall back to the contract's defaults (Normal, the default open state). */
 function NewIssue(props: { project: ProjectSummary; projectId: string; states: readonly IssueState[] }): JSX.Element {
   const [open, setOpen] = createSignal(false)
+  const content = createOverlayMount(open)
   const [title, setTitle] = createSignal("")
   const [priority, setPriority] = createSignal<Priority>()
+  let pressedFrom: Priority | undefined
   const [state, setState] = createSignal<string>()
   const action = createPaneAction()
+  const openStates = () => props.states.filter((entry) => !entry.closed)
   const args = () =>
     newIssueArgs({
       title: title(),
@@ -220,84 +225,126 @@ function NewIssue(props: { project: ProjectSummary; projectId: string; states: r
   }
 
   return (
-    <Popover.Root
-      open={open()}
-      onOpenChange={(details) => setOpen(details.open)}
-      lazyMount
-      unmountOnExit
-      positioning={{ placement: "bottom-end", gutter: 6 }}
+    <ui-popover
+      prop:open={open()}
+      on:openchange={(event) => {
+        event.preventDefault()
+        const next = event.detail.value
+        queueMicrotask(() => setOpen(next))
+      }}
+      on:openchangecomplete={content.settle}
     >
-      <Popover.Trigger class={ICON_BUTTON} aria-label="New issue">
-        <Plus size={14} stroke-width={1.5} />
-      </Popover.Trigger>
-      <Portal>
-        <Popover.Positioner>
-          <Popover.Content class={`${MENU_CONTENT} w-[320px] p-0`}>
-            <form
-              class="flex flex-col"
-              onSubmit={(event) => {
-                event.preventDefault()
-                submit()
-              }}
-            >
-              <div class="border-b border-line-1 px-3 pb-2 pt-2.5">
-                <span class="text-xs text-ink-3">New issue in {props.project.name}</span>
-                <input
-                  autofocus
-                  value={title()}
-                  onInput={(event) => setTitle(event.currentTarget.value)}
-                  placeholder="Issue title"
-                  aria-label="Issue title"
-                  maxLength={300}
-                  class="mt-1 h-6 w-full bg-transparent text-sm text-ink outline-none placeholder:text-placeholder"
-                />
-              </div>
-              <div class="flex flex-col gap-2 px-3 py-2.5">
-                <span class="text-xs text-ink-3">Priority</span>
-                <div class="flex flex-wrap gap-1">
-                  <For each={PRIORITIES}>
-                    {(level) => (
+      <ui-popover-trigger>
+        <button type="button" class={`${ICON_BUTTON} aria-expanded:bg-hover aria-expanded:text-ink`} aria-label="New issue" title="New issue">
+          <Plus size={14} stroke-width={1.5} />
+        </button>
+      </ui-popover-trigger>
+      <ui-popover-content side="bottom" align="end" side-offset="6" class={`${POPUP} w-[320px] p-0`}>
+        <Show when={content.mounted()}>
+          <ui-popover-title class="sr-only">New issue</ui-popover-title>
+          <form
+            class="flex flex-col"
+            onSubmit={(event) => {
+              event.preventDefault()
+              submit()
+            }}
+          >
+            <div class="border-b border-line-1 px-3 pb-2 pt-2.5">
+              <span class="text-mini text-ink-3">New issue in {props.project.name}</span>
+              <input
+                autofocus
+                value={title()}
+                onInput={(event) => setTitle(event.currentTarget.value)}
+                placeholder="Issue title"
+                aria-label="Issue title"
+                maxLength={300}
+                class="mt-1 h-6 w-full bg-transparent text-body font-title text-ink outline-none placeholder:font-normal placeholder:text-placeholder"
+              />
+            </div>
+            <div class="flex flex-col gap-2 px-3 py-2.5">
+              <span id="new-issue-priority" class={FIELD_LABEL}>
+                Priority
+              </span>
+              <ui-radio-group
+                aria-labelledby="new-issue-priority"
+                prop:value={priority() ?? null}
+                on:valuechange={(event) => {
+                  const level = PRIORITIES.find((entry) => entry === event.detail.value)
+                  if (level !== undefined) setPriority(level)
+                }}
+                oncapture:click={() => {
+                  pressedFrom = priority()
+                }}
+                on:click={(event) => {
+                  const level = event.target instanceof Element ? event.target.closest("ui-radio")?.getAttribute("value") : undefined
+                  if (level !== undefined && level === pressedFrom) setPriority(undefined)
+                }}
+                class="flex flex-wrap gap-1"
+              >
+                <For each={PRIORITIES}>
+                  {(level) => (
+                    <ui-radio value={level} class={SEGMENT}>
+                      <PriorityMark priority={level} decorative />
+                      {PRIORITY_LABEL[level]}
+                    </ui-radio>
+                  )}
+                </For>
+              </ui-radio-group>
+              <Show when={openStates().length > 0}>
+                <ui-select
+                  class="flex flex-col gap-2 pt-1"
+                  placeholder="Default"
+                  prop:value={state() ?? null}
+                  on:valuechange={(event) => {
+                    const value = event.detail.value
+                    setState(typeof value === "string" ? value : undefined)
+                  }}
+                >
+                  <ui-select-label class={FIELD_LABEL}>State</ui-select-label>
+                  <div class="flex items-center gap-1">
+                    <ui-select-trigger class="block min-w-0 flex-1">
                       <button
                         type="button"
-                        aria-pressed={priority() === level}
-                        class={chipClass(priority() === level)}
-                        onClick={() => setPriority(priority() === level ? undefined : level)}
+                        class="im-hover flex h-7 w-full items-center gap-2 rounded-sm border border-line-1 px-2 text-left text-xs text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary-soft aria-expanded:bg-hover"
                       >
-                        <PriorityMark priority={level} decorative />
-                        {PRIORITY_LABEL[level]}
+                        <Show when={openStates().find((entry) => entry.id === state())}>
+                          {(chosen) => <StateMark tone={stateTone(chosen())} />}
+                        </Show>
+                        <ui-select-value class="min-w-0 flex-1 truncate data-[placeholder]:text-ink-3" />
+                        <ChevronDown size={12} stroke-width={1.5} class="shrink-0 text-icon" />
                       </button>
-                    )}
-                  </For>
-                </div>
-                <Show when={props.states.length > 0}>
-                  <span class="pt-1 text-xs text-ink-3">State</span>
-                  <div class="flex flex-wrap gap-1">
-                    <For each={props.states.filter((entry) => !entry.closed)}>
+                    </ui-select-trigger>
+                    <ui-select-clear>
+                      <button type="button" class={ICON_BUTTON} aria-label="Use the default state" title="Use the default state">
+                        <X size={14} stroke-width={1.5} />
+                      </button>
+                    </ui-select-clear>
+                  </div>
+                  <ui-select-content side-offset="4" class={`${POPUP} w-[var(--anchor-width)]`}>
+                    <For each={openStates()}>
                       {(entry) => (
-                        <button
-                          type="button"
-                          aria-pressed={state() === entry.id}
-                          class={chipClass(state() === entry.id)}
-                          onClick={() => setState(state() === entry.id ? undefined : entry.id)}
-                        >
+                        <ui-select-item value={entry.id} label={entry.name} class={POPUP_ITEM}>
                           <StateMark tone={stateTone(entry)} />
-                          {entry.name}
-                        </button>
+                          <ui-select-item-text class="min-w-0 flex-1 truncate">{entry.name}</ui-select-item-text>
+                          <ui-select-item-indicator class="text-ink-2">
+                            <Check size={14} stroke-width={1.5} />
+                          </ui-select-item-indicator>
+                        </ui-select-item>
                       )}
                     </For>
-                  </div>
-                </Show>
-              </div>
-              <div class="flex items-center gap-2 border-t border-line-1 px-3 py-2">
-                <span class="min-w-0 flex-1 truncate text-xs text-failed">{action.failed()}</span>
-                <Button type="submit" variant="primary" size="sm" disabled={args() === undefined || action.busy() !== undefined}>
-                  {action.busy() === undefined ? "Create" : "Creating"}
-                </Button>
-              </div>
-            </form>
-          </Popover.Content>
-        </Popover.Positioner>
-      </Portal>
-    </Popover.Root>
+                  </ui-select-content>
+                </ui-select>
+              </Show>
+            </div>
+            <div class="flex items-center gap-2 border-t border-line-1 px-3 py-2">
+              <span class="min-w-0 flex-1 truncate text-xs text-failed">{action.failed()}</span>
+              <Button type="submit" variant="primary" size="sm" disabled={args() === undefined || action.busy() !== undefined}>
+                {action.busy() === undefined ? "Create" : "Creating"}
+              </Button>
+            </div>
+          </form>
+        </Show>
+      </ui-popover-content>
+    </ui-popover>
   )
 }
