@@ -55,6 +55,82 @@ test("the next card opens at once while the last one was just open", async () =>
   await page.close()
 })
 
+test("a chip removed while its card is open does not leave later cards warm", async () => {
+  const page = await harness.open("hover-cards")
+  await page.hover("a[href='#ama-24']")
+  await page.waitForTimeout(550)
+  expect(await shown(page, "Removed while open")).toBe(true)
+  await page.evaluate(() => (window as unknown as { drop: () => void }).drop())
+  await page.mouse.move(1200, 780)
+  await page.waitForTimeout(450)
+  await page.hover("a[href='#xin-25']")
+  await page.waitForTimeout(250)
+  expect(await shown(page, "Web UI v2")).toBe(false)
+  await page.waitForTimeout(300)
+  expect(await shown(page, "Web UI v2")).toBe(true)
+  expect(await card(page, "Web UI v2").getAttribute("data-warm")).toBe(null)
+  await page.close()
+})
+
+test("a pointer sweep across chips loads only where it rests, and a chip never loads twice", async () => {
+  const page = await harness.open("hover-cards")
+  const loads = () => page.evaluate(() => (window as unknown as { loads: string[] }).loads.length)
+  await page.hover("a[href='#pr-60']")
+  await page.waitForTimeout(550)
+  expect(await loads()).toBe(1)
+  const centre = async (href: string) => {
+    const box = (await page.locator(`a[href='${href}']`).boundingBox())!
+    return [box.x + box.width / 2, box.y + box.height / 2] as const
+  }
+  for (const href of ["#xin-25", "#ama-23", "#418f19f"]) {
+    const [x, y] = await centre(href)
+    await page.mouse.move(x, y)
+    await page.waitForTimeout(60)
+  }
+  const [x, y] = await centre("#tokens")
+  await page.mouse.move(x, y)
+  await page.waitForTimeout(400)
+  expect(await loads()).toBe(2)
+  expect(await shown(page, "6.3 KB")).toBe(true)
+  await page.mouse.move(1200, 780)
+  await page.waitForTimeout(600)
+  await page.hover("a[href='#pr-60']")
+  await page.waitForTimeout(550)
+  expect(await shown(page, "design system v2")).toBe(true)
+  expect(await loads()).toBe(2)
+  await page.close()
+})
+
+test("an open card describes its chip and stops when it closes", async () => {
+  const page = await harness.open("hover-cards")
+  await tabTo(page, "#ama-23")
+  await page.waitForTimeout(550)
+  const link = page.locator("a[href='#ama-23']")
+  const id = await link.getAttribute("aria-describedby")
+  expect(id).not.toBe(null)
+  expect(await page.locator(`[id='${id}']`).textContent()).toContain("Hover cards and link chips")
+  await page.keyboard.press("Escape")
+  await page.waitForTimeout(300)
+  expect(await link.getAttribute("aria-describedby")).toBe(null)
+  await page.close()
+})
+
+test("under reduced motion a warm card still opens without animating", async () => {
+  for (const reduce of ["media", "setting"] as const) {
+    const page = await harness.open("hover-cards")
+    if (reduce === "media") await page.emulateMedia({ reducedMotion: "reduce" })
+    else await page.evaluate(() => document.documentElement.setAttribute("data-motion", "reduce"))
+    await page.hover("a[href='#pr-60']")
+    await page.waitForTimeout(550)
+    await page.hover("a[href='#xin-25']")
+    await page.waitForTimeout(50)
+    const warmCard = card(page, "XIN-25")
+    expect(await warmCard.getAttribute("data-warm")).toBe("")
+    expect(await warmCard.evaluate((element) => getComputedStyle(element).animationDuration)).toBe("0s")
+    await page.close()
+  }
+})
+
 test("keyboard focus opens a chip's card and Escape closes it", async () => {
   const page = await harness.open("hover-cards")
   await tabTo(page, "#ama-23")

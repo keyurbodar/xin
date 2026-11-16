@@ -1,14 +1,24 @@
 import "../../src/styles/app.css"
-import { createSignal } from "solid-js"
+import { Show, createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import { LinkChip } from "../../src/components/ui/link-chip.tsx"
 import { MESSAGE_HOST, MessageToolbar } from "../../src/components/ui/message-toolbar.tsx"
 import { RowCard } from "../../src/components/ui/row-card.tsx"
 
-const later = <T,>(value: T, ms = 600): (() => Promise<T>) => () => new Promise((resolve) => setTimeout(() => resolve(value), ms))
+const loads: string[] = []
+Object.assign(window, { loads })
+
+const later =
+  <T,>(value: T, ms = 600): (() => Promise<T>) =>
+  () => {
+    loads.push(JSON.stringify(value).slice(0, 40))
+    return new Promise((resolve) => setTimeout(() => resolve(value), ms))
+  }
 
 function App() {
   const [log, setLog] = createSignal("")
+  const [keep, setKeep] = createSignal(true)
+  Object.assign(window, { drop: () => setKeep(false) })
   return (
     <main class="flex flex-col gap-8 p-6 text-reading text-ink">
       <p id="prose" class="max-w-[640px]">
@@ -40,6 +50,12 @@ function App() {
         <LinkChip kind="issue" label="AMA-23" href="#ama-23" load={later({ key: "AMA-23", title: "Hover cards and link chips", state: "In progress" }, 0)} />, landed in{" "}
         <LinkChip kind="commit" label="418f19f" href="#418f19f" load={later({ sha: "418f19f2c0d1", message: "presets remove only tool extensions\n\nGoal tracking skips a storage read." }, 0)} /> and touches{" "}
         <LinkChip kind="file" label="web/src/styles/tokens.css" href="#tokens" load={later({ path: "web/src/styles/tokens.css", size: 6420 }, 0)} />.
+      </p>
+
+      <p id="drop">
+        <Show when={keep()}>
+          <LinkChip kind="issue" label="AMA-24" href="#ama-24" load={later({ key: "AMA-24", title: "Removed while open", state: "Todo" }, 0)} />
+        </Show>
       </p>
 
       <nav class="w-[240px]">

@@ -8,7 +8,7 @@ import {
   GitPullRequestDraft,
   MessagesSquare,
 } from "lucide-solid"
-import { Match, Show, Switch, createResource, type JSX } from "solid-js"
+import { Match, Show, Switch, createResource, createSignal, type Accessor, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { bytes } from "../../lib/format.ts"
 import { STATE_WORD, type SignalState } from "../../lib/status.ts"
@@ -66,11 +66,16 @@ const KIND_ICON = { thread: MessagesSquare, issue: CircleDot, commit: GitCommitH
 const CHIP =
   "im-focus inline-flex max-w-full items-baseline gap-1 rounded-xs text-primary-ink no-underline decoration-primary-ink/40 underline-offset-2 hover:underline"
 
-/** An inline reference to a PR, thread, issue, commit or file; its hover card loads the details through `load`. */
+/**
+ * An inline reference to a PR, thread, issue, commit or file. Its hover card calls `load` once per chip, the first time
+ * the card settles, so sweeping the pointer across chips loads none of them.
+ */
 export function LinkChip(props: LinkChipProps): JSX.Element {
   const mono = (): boolean => props.kind === "commit" || props.kind === "file"
+  const [wanted, setWanted] = createSignal(false)
   return (
     <HoverCard
+      onSettle={() => setWanted(true)}
       trigger={
         <a href={props.href} class={CHIP} data-kind={props.kind}>
           <span class={`shrink-0 self-center ${props.kind === "pr" ? PR_TONE[props.state] : "text-ink-3"}`}>
@@ -82,23 +87,27 @@ export function LinkChip(props: LinkChipProps): JSX.Element {
     >
       <div class="flex flex-col gap-1.5 p-2">
         <Switch>
-          <Match when={props.kind === "pr" && props}>{(chip) => <Loaded load={chip().load} render={PrCard} />}</Match>
+          <Match when={props.kind === "pr" && props}>{(chip) => <Loaded when={wanted} load={chip().load} render={PrCard} />}</Match>
           <Match when={props.kind === "thread" && props}>
-            {(chip) => <Loaded load={chip().load} render={ThreadCard} />}
+            {(chip) => <Loaded when={wanted} load={chip().load} render={ThreadCard} />}
           </Match>
-          <Match when={props.kind === "issue" && props}>{(chip) => <Loaded load={chip().load} render={IssueCard} />}</Match>
+          <Match when={props.kind === "issue" && props}>{(chip) => <Loaded when={wanted} load={chip().load} render={IssueCard} />}</Match>
           <Match when={props.kind === "commit" && props}>
-            {(chip) => <Loaded load={chip().load} render={CommitCard} />}
+            {(chip) => <Loaded when={wanted} load={chip().load} render={CommitCard} />}
           </Match>
-          <Match when={props.kind === "file" && props}>{(chip) => <Loaded load={chip().load} render={FileCard} />}</Match>
+          <Match when={props.kind === "file" && props}>{(chip) => <Loaded when={wanted} load={chip().load} render={FileCard} />}</Match>
         </Switch>
       </div>
     </HoverCard>
   )
 }
 
-function Loaded<T>(props: { load: () => Promise<T>; render: (details: T) => JSX.Element }): JSX.Element {
-  const [details] = createResource(props.load)
+function Loaded<T>(props: {
+  when: Accessor<boolean>
+  load: () => Promise<T>
+  render: (details: T) => JSX.Element
+}): JSX.Element {
+  const [details] = createResource(props.when, () => props.load())
   return (
     <Show
       when={!details.error}
