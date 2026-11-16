@@ -55,4 +55,4 @@ flowchart LR
 - [17 Issues](./architecture/17-issues.md): the shared work record, its wakes, scope and cost.
 - [Provenance](./provenance.md): what came from pi-durable, pi-ai, t3code, kiko and the other sources.
 - [Milestones](./milestones.md): build order, each with its proof, dependencies and parallel work.
-- [Write a plugin](../plugin-authoring.md): the author path, one page: scaffold, edit, test, deploy.
+- [Write a plugin](../plugins/README.md): the author docs: scaffold, the dev loop, client slots, permissions, publishing to a market.
