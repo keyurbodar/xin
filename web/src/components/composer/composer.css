@@ -78,10 +78,6 @@
     transform: none;
     transition-duration: var(--dur-reduce);
   }
-  .im-send .im-swap > :not([data-active]) {
-    filter: none;
-    transform: none;
-  }
 }
 
 :root[data-motion="reduce"] .composer-chip[data-closing] {

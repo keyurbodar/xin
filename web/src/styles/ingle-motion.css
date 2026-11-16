@@ -193,7 +193,7 @@
   opacity: 0;
   transition-duration: var(--dur-toast-exit);
 }
-.im-toast[data-swiping] { transition: none; transform: translateX(var(--swipe-x, 0px)); }
+.im-toast-stack .im-toast[data-swiping] { transition: none; transform: translateX(var(--swipe-x, 0px)); }
 .im-toast-life {
   transform-origin: left;
   animation: im-life var(--toast-life) linear forwards;
@@ -492,6 +492,8 @@
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { transform: none; transition-property: opacity; transition-duration: var(--dur-reduce); }
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { @starting-style { transform: none; opacity: 0; } }
   .im-toast[data-removed] { transform: none; }
+  .im-toast-stack:hover .im-toast, .im-toast-stack:focus-within .im-toast { transform: translateY(calc(var(--offset, 0px) * -1)); }
+  .im-toast-stack .im-toast[data-swiping] { transition: none; transform: translateX(var(--swipe-x, 0px)); }
   .im-flip, .im-lift, .im-lift[data-dragging], .im-lift[data-settling], .im-roll > span, .im-chevron, .im-switch > i { transition: none; }
   .im-lift[data-dragging] { transform: none; }
   .im-tab { transition-property: opacity; }
@@ -517,6 +519,8 @@
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { transform: none; transition-property: opacity; transition-duration: var(--dur-reduce); }
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { @starting-style { transform: none; opacity: 0; } }
   .im-toast[data-removed] { transform: none; }
+  .im-toast-stack:hover .im-toast, .im-toast-stack:focus-within .im-toast { transform: translateY(calc(var(--offset, 0px) * -1)); }
+  .im-toast-stack .im-toast[data-swiping] { transition: none; transform: translateX(var(--swipe-x, 0px)); }
   .im-flip, .im-lift, .im-lift[data-dragging], .im-lift[data-settling], .im-roll > span, .im-chevron, .im-switch > i { transition: none; }
   .im-lift[data-dragging] { transform: none; }
   .im-tab { transition-property: opacity; }
