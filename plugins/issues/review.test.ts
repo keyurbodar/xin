@@ -42,6 +42,66 @@ const jobs = (stub: Stub) =>
 
 const thread = (id: number): IssueActor => ({ kind: "thread", id })
 
+const storedRow = (stub: Stub, title: string, stored: string): Promise<void> =>
+  runInDurableObject(stub, async (home: Home) => {
+    await home.db.run(
+      "INSERT INTO issues (title, state, project, created_at, updated_at) VALUES (?, 'todo', ?, ?, ?)",
+      title,
+      stored,
+      Date.now(),
+      Date.now(),
+    )
+  })
+
+const storedProject = (stub: Stub, id: number): Promise<string | null | undefined> =>
+  runInDurableObject(
+    stub,
+    async (home: Home) =>
+      (await home.db.get<{ project: string | null }>("SELECT project FROM issues WHERE id = ?", id))?.project,
+  )
+
+describe("issue project references", () => {
+  it("stores the project id when created by slug, so the project's Overview list counts it", async () => {
+    const stub = fresh()
+    const ingle = await project(stub, "ingle")
+    expect(ingle.id).not.toBe("ingle")
+    const issue = await ok<Issue>(stub, "issue.create", { title: "By slug", project: "ingle" })
+    expect(issue.project).toBe(ingle.id)
+    expect(await storedProject(stub, issue.id)).toBe(ingle.id)
+    const overview = await ok<IssuePage>(stub, "issue.list", { project: ingle.id, closed: false, limit: 200 })
+    expect(overview.issues.map((found) => found.id)).toEqual([issue.id])
+    const bySlug = await ok<IssuePage>(stub, "issue.list", { project: "ingle" })
+    expect(bySlug.issues.map((found) => found.id)).toEqual([issue.id])
+    const unknown = await call(stub, "issue.create", { title: "Nowhere", project: "nowhere" })
+    expect(unknown.ok).toBe(false)
+    expect(unknown.error).toMatchObject({ code: "bad_args" })
+    const unlisted = await call(stub, "issue.list", { project: "nowhere" })
+    expect(unlisted.ok).toBe(false)
+    expect(unlisted.error).toMatchObject({ code: "bad_args" })
+    expect((await ok<IssuePage>(stub, "issue.list", {})).issues).toHaveLength(1)
+  })
+
+  it("rewrites a legacy row that stored a slug to the project id on the first boot only", async () => {
+    const stub = fresh()
+    const ingle = await project(stub, "ingle")
+    await storedRow(stub, "Legacy", "ingle")
+    await runInDurableObject(stub, (home: Home) => home.db.run("DELETE FROM issue_meta WHERE key = 'project_ids'"))
+    const legacy = (await ok<IssuePage>(stub, "issue.list", {})).issues[0]
+    if (legacy === undefined) throw new Error("no legacy row")
+    expect(await storedProject(stub, legacy.id)).toBe("ingle")
+    await evictDurableObject(stub)
+    expect(await storedProject(stub, legacy.id)).toBe(ingle.id)
+    const overview = await ok<IssuePage>(stub, "issue.list", { project: ingle.id, closed: false, limit: 200 })
+    expect(overview.issues.map((found) => found.id)).toEqual([legacy.id])
+
+    await storedRow(stub, "After the pass", "ingle")
+    const late = (await ok<IssuePage>(stub, "issue.list", {})).issues.find((found) => found.title === "After the pass")
+    if (late === undefined) throw new Error("no late row")
+    await evictDurableObject(stub)
+    expect(await storedProject(stub, late.id)).toBe("ingle")
+  })
+})
+
 describe("issue scope", () => {
   it("keeps an agent inside its own project and leaves owner ops unscoped", async () => {
     const stub = fresh()
@@ -344,8 +404,8 @@ describe("issue reads stay bounded", () => {
   it("matches a scoped search on the exact project, not a project id it prefixes", async () => {
     const stub = fresh()
     const near = await project(stub, "near")
-    await ok(stub, "issue.create", { title: "needle lookalike", project: `${near.id}-2` })
-    await ok(stub, "issue.create", { title: "needle lookalike spaced", project: `${near.id} 2` })
+    await storedRow(stub, "needle lookalike", `${near.id}-2`)
+    await storedRow(stub, "needle lookalike spaced", `${near.id} 2`)
     await ok(stub, "issue.create", { title: "needle near", threads: [near.coordinatorId] })
     const scoped = await withIssues(stub, (issues) => issues.list(thread(near.coordinatorId), { q: "needle" }))
     expect(scoped.issues.map((issue) => issue.title)).toEqual(["needle near"])
