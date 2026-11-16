@@ -53,3 +53,19 @@ test("a custom theme keeps valid colours and repairs invalid ones from Ingle's p
   expect(parsed.custom[0]?.dark).toEqual({ accent: "#abcdef", background: INGLE_DARK.background, foreground: "#eee" })
   expect(parsed.custom[0]?.light).toEqual(INGLE_LIGHT)
 })
+
+test("a translucent colour cannot slip past the contrast guarantee", () => {
+  const parsed = parseAppearance({
+    custom: [{ id: "clear", label: "Clear", dark: { accent: "#3168f2", background: "#0a0a0b00", foreground: "#ececed00" } }],
+  })
+  expect(parsed.custom[0]?.dark).toEqual(INGLE_DARK)
+})
+
+test("a wallpaper loads only from this home's share links or an inline image, never a third party", () => {
+  const image = (url: string) => parseAppearance({ background: { image: { url } } }).background.image
+  expect(image("/s/abc123/wall.png")?.url).toBe("/s/abc123/wall.png")
+  expect(image("data:image/png;base64,AAAA")?.url).toBe("data:image/png;base64,AAAA")
+  expect(image("https://tracker.example/pixel.png")).toBeUndefined()
+  expect(image("//tracker.example/pixel.png")).toBeUndefined()
+  expect(image("/v1/ops")).toBeUndefined()
+})

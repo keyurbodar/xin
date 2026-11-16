@@ -119,10 +119,12 @@ const clamp = (value: unknown, [low, high]: readonly [number, number, number], f
 const text = (value: unknown, max: number): string | undefined =>
   typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, max) : undefined
 
+const SHARE_PATH = /^\/s\/[\w-]+\/[^/?#]+$/u
+
 function parseWallpaper(value: unknown): Wallpaper | undefined {
   const raw = record(value)
   const url = text(raw["url"], 2048)
-  if (url === undefined || !(url.startsWith("/") || url.startsWith("https://") || url.startsWith("data:image/"))) return undefined
+  if (url === undefined || !(SHARE_PATH.test(url) || url.startsWith("data:image/"))) return undefined
   const path = text(raw["path"], 1024)
   return { name: text(raw["name"], 120) ?? "Wallpaper", url, ...(path === undefined ? {} : { path }) }
 }

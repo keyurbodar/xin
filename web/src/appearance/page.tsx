@@ -279,7 +279,7 @@ function Editor(props: { readonly selected: Swatch }): JSX.Element {
                 class="h-8 w-48 rounded-sm border border-line-2 bg-bg px-2 text-sm text-ink focus-visible:border-line-3 focus-visible:outline-none"
               />
             </Line>
-            <Line title="Share theme" detail="Download it as a file another Ingle home can import">
+            <Line title="Download theme" detail="Saves its colours as a JSON file">
               <button type="button" onClick={exportTheme} class="im-press h-8 rounded-sm px-2.5 text-sm text-ink-2 shadow-ring hover:text-ink">
                 Download
               </button>
@@ -391,6 +391,26 @@ function BackgroundSection(): JSX.Element {
     }
   }
 
+  const forget = async (wallpaper: Wallpaper): Promise<void> => {
+    setProblem(undefined)
+    try {
+      if (wallpaper.path !== undefined) {
+        await drive.unshare({ kind: "user" }, wallpaper.path)
+        await drive.remove({ kind: "user" }, wallpaper.path)
+      }
+      update((value) => {
+        const { image, ...rest } = value.background
+        return {
+          ...value,
+          background: image?.url === wallpaper.url ? rest : value.background,
+          wallpapers: value.wallpapers.filter((entry) => entry.url !== wallpaper.url),
+        }
+      })
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error))
+    }
+  }
+
   const sliders: readonly (readonly [keyof typeof LIMITS & keyof Background, string, string])[] = [
     ["brightness", "Brightness", "%"],
     ["blur", "Blur", "px"],
@@ -404,7 +424,7 @@ function BackgroundSection(): JSX.Element {
     <>
       <Section title="Background" detail="An image behind the home composer, stored in your Drive">
         <Card>
-          <Line title="Dashboard background" detail={busy() ? "Uploading…" : (problem() ?? "An image or gif, up to 50 MB")}>
+          <Line title="Dashboard background" detail={busy() ? "Uploading…" : (problem() ?? "An image or gif, up to 50 MB, shared by an unlisted link so every device can load it")}>
             <Show when={background().image}>
               {(image) => <img src={image().url} alt="" class="h-8 w-12 rounded-xs object-cover shadow-ring" />}
             </Show>
@@ -497,7 +517,7 @@ function BackgroundSection(): JSX.Element {
         </Card>
       </Section>
       <Show when={appearance().wallpapers.length > 0}>
-        <Section title="Your wallpapers" detail="Synced to every device you sign in on">
+        <Section title="Your wallpapers" detail="Stored in your Drive and served from a share link anyone with the link can open. Remove revokes the link and deletes the file.">
           <Card>
             <div class="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3">
               <For each={appearance().wallpapers}>
@@ -517,7 +537,7 @@ function BackgroundSection(): JSX.Element {
                       <button
                         type="button"
                         aria-label={`Forget ${wallpaper.name}`}
-                        onClick={() => update((value) => ({ ...value, wallpapers: value.wallpapers.filter((entry) => entry.url !== wallpaper.url) }))}
+                        onClick={() => void forget(wallpaper)}
                         class="shrink-0 text-xs text-ink-3 hover:text-failed"
                       >
                         Remove

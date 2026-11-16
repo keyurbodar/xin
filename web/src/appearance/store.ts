@@ -65,23 +65,26 @@ function persistLocal(next: Appearance): void {
   localStorage.setItem(KEY, JSON.stringify(next))
 }
 
+type Message = { readonly kind: "doc"; readonly doc: unknown } | { readonly kind: "rev"; readonly rev: number }
+
+const save = (next: Appearance): Promise<{ readonly rev: number }> =>
+  cmd<{ readonly rev: number }>("appearance.set", { doc: JSON.stringify(next), ...(rev === undefined ? {} : { rev }) })
+
+/** A save that lost the race to another tab or device re-reads the revision and saves again, so the newest edit wins instead of vanishing. */
 async function pushRemote(): Promise<void> {
   const next = appearance_()
   if (next.sync !== "synced") return
   setSaving("saving")
   try {
-    const reply = await cmd<{ readonly rev: number }>("appearance.set", {
-      doc: JSON.stringify(next),
-      ...(rev === undefined ? {} : { rev }),
+    const reply = await save(next).catch(async (problem: unknown) => {
+      if (!(problem instanceof OpError && problem.code === "busy")) throw problem
+      rev = (await cmd<{ readonly rev: number }>("appearance.read")).rev
+      return save(next)
     })
     rev = reply.rev
+    channel?.postMessage({ kind: "rev", rev: reply.rev } satisfies Message)
     setSaving("saved")
-  } catch (problem) {
-    if (problem instanceof OpError && problem.code === "busy") {
-      rev = undefined
-      await pullRemote()
-      return
-    }
+  } catch {
     setSaving("failed")
   }
 }
@@ -99,7 +102,7 @@ export function update(change: (current: Appearance) => Appearance): void {
   const next = parseAppearance(change(appearance_()))
   setAppearance_(next)
   persistLocal(next)
-  channel?.postMessage(next)
+  channel?.postMessage({ kind: "doc", doc: next } satisfies Message)
   schedule()
 }
 
@@ -128,8 +131,10 @@ export async function pullRemote(): Promise<void> {
 }
 
 channel?.addEventListener("message", (event: MessageEvent<unknown>) => {
-  const next = parseAppearance(event.data)
-  setAppearance_(next)
+  const data = event.data
+  if (typeof data !== "object" || data === null || !("kind" in data)) return
+  if (data.kind === "rev" && "rev" in data && typeof data.rev === "number") rev = Math.max(rev ?? 0, data.rev)
+  if (data.kind === "doc" && "doc" in data) setAppearance_(parseAppearance(data.doc))
 })
 
 document.addEventListener("visibilitychange", () => {
