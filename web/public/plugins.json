@@ -37,6 +37,7 @@
       "version": "0.1.0",
       "permissions": [
         "conversations",
+        "models",
         "owner",
         "routes",
         "storage"
@@ -213,6 +214,7 @@
       "version": "0.1.0",
       "permissions": [
         "conversations",
+        "models",
         "runtime"
       ],
       "slots": [],

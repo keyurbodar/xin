@@ -31,7 +31,12 @@
             "usage.alert.set",
             "usage.cap",
             "usage.cap.set",
-            "usage.summary"
+            "usage.cost",
+            "usage.crew",
+            "usage.feature.cap.set",
+            "usage.features",
+            "usage.summary",
+            "usage.today"
           ]
         }
       },

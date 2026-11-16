@@ -663,6 +663,22 @@ describe("models", () => {
     expect(counts.send).toBe(counts.spend)
   })
 
+  it("rejects a configure onto a model disabled after the disable's move-off scan already ran", async () => {
+    const stub = fresh()
+    const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+    const outcome = await runInDurableObject(stub, async (home: Home) => {
+      const root = await home.root()
+      const run = (op: string, args: object) =>
+        home.commands.run({ id: crypto.randomUUID() as CommandId, op, args }, { kind: "owner" })
+      const disabled = await run("models.enable", { model: narrow, enabled: false })
+      const configured = await run("conv.configure", { model: narrow })
+      return { configured, disabled, model: (await root.agent(context)).model }
+    })
+    expect(outcome.disabled).toMatchObject({ kind: "ok" })
+    expect(outcome.configured).toMatchObject({ kind: "rejected", code: "bad_args" })
+    expect(outcome.model).not.toEqual(narrow)
+  })
+
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {
     const original = globalThis.fetch
     globalThis.fetch = async () =>

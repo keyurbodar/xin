@@ -28,13 +28,18 @@ import {
   ROOT_CONVERSATION_ID,
   UsageDoc,
   type AgentChange,
+  configure as configureAgent,
   type ConversationId,
   type Harness,
+  type JsonObject,
   type ModelRef,
   type UsageState,
 } from "@earendil-works/pi-durable"
 import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
+import { conversationCost, createBudget, untag } from "./budget.ts"
+import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
+  FeatureSchema,
   ModelRefSchema,
   resolveModel,
   ThinkingSchema,
@@ -468,11 +473,14 @@ export type ModelsPort = {
   run(command: Command, actor: Actor): Promise<Outcome>
   notify?: (notification: Notification) => Promise<void>
   alertsOn?: () => Promise<boolean>
+  goals?: () => GoalsService | undefined
+  publishHome?: () => Promise<void>
 }
 
 export type ModelsParts = {
   readonly service: ModelsService
   readonly ops: readonly Op[]
+  home(): JsonObject
   models(): Models
   flush(): Promise<UsageState>
   flushDue(): Promise<void>
@@ -817,10 +825,17 @@ const commandId = (value: string): CommandId => value as CommandId
 export function create(deps: ModelsPort): ModelsParts {
   const { db, harness, run } = deps
   const recordUsage = usageRecorder(db, harness)
+  const budget = createBudget({
+    db,
+    harness,
+    conversations: deps.conversations,
+    goals: deps.goals ?? (() => undefined),
+  })
   let flushedAt = 0
   const flush = async (): Promise<UsageState> => {
     flushedAt = Date.now()
     const ledger = await recordUsage()
+    if (await budget.record()) await deps.publishHome?.()
     await alertSpend(db, deps.notify, deps.alertsOn ?? (async () => true))
     return ledger
   }
@@ -855,8 +870,6 @@ export function create(deps: ModelsPort): ModelsParts {
         const found = registry.models.getModel(args.model.provider, args.model.modelId)
         if (found === undefined)
           throw new OpRejected("bad_args", `unknown model ${args.model.provider}/${args.model.modelId}`)
-        if (isOff(refOf(found)))
-          throw new OpRejected("bad_args", `model ${args.model.provider}/${args.model.modelId} is disabled`)
         change.model = { provider: args.model.provider, modelId: args.model.modelId }
         if (!found.reasoning) change.thinkingLevel = null
       }
@@ -869,16 +882,12 @@ export function create(deps: ModelsPort): ModelsParts {
           change.thinkingLevel = args.thinking
         }
       }
-      const previous = (await conversation.agent(BACKGROUND_CONTEXT)).model
-      await conversation.configure(change satisfies AgentChange, BACKGROUND_CONTEXT)
-      const chosen = change.model
-      if (chosen !== undefined && chosen !== null && isOff(chosen)) {
-        await conversation.configure(
-          { model: previous === undefined || isOff(previous) ? null : previous },
-          BACKGROUND_CONTEXT,
-        )
-        throw new OpRejected("bad_args", `model ${chosen.provider}/${chosen.modelId} was disabled meanwhile`)
-      }
+      await api.harness.commit(async (tx) => {
+        const chosen = change.model
+        if (chosen !== undefined && chosen !== null && isOff(chosen))
+          throw new OpRejected("bad_args", `model ${chosen.provider}/${chosen.modelId} is disabled`)
+        await configureAgent(tx, conversation.id, change satisfies AgentChange)
+      }, BACKGROUND_CONTEXT)
       if (change.model !== undefined && change.model !== null) await remember(db, change.model)
       const agent = await conversation.agent(BACKGROUND_CONTEXT)
       return {
@@ -1179,14 +1188,19 @@ export function create(deps: ModelsPort): ModelsParts {
     actors: ["owner"],
     run: async () => {
       const ledger = await flush()
-      const byModel = Object.entries(ledger.models)
+      const merged = new Map<string, UsageBucket>()
+      for (const [key, usage] of Object.entries(ledger.models)) {
+        const { model } = untag(key)
+        merged.set(model, addUsage(merged.get(model) ?? EMPTY_USAGE, bucketOf(usage)))
+      }
+      const byModel = [...merged]
         .map(([key, usage]) => {
           const slash = key.indexOf("/")
           return {
             name: key,
             provider: slash === -1 ? key : key.slice(0, slash),
             modelId: slash === -1 ? "" : key.slice(slash + 1),
-            ...bucketOf(usage),
+            ...usage,
           }
         })
         .toSorted(
@@ -1215,6 +1229,96 @@ export function create(deps: ModelsPort): ModelsParts {
     },
   })
 
+  const featuresOp = defineOp({
+    name: "usage.features",
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => {
+      await flush()
+      return await budget.breakdown()
+    },
+  })
+
+  const featureCapOp = defineOp({
+    name: "usage.feature.cap.set",
+    args: obj({
+      feature: FeatureSchema,
+      day: opt(union([num({ minimum: 0 }), lit(null)])),
+      month: opt(union([num({ minimum: 0 }), lit(null)])),
+    }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      if (args.day === undefined && args.month === undefined)
+        throw new OpRejected("bad_args", "give day or month, or null to clear one")
+      const cap = await budget.setCap(args.feature, { day: args.day, month: args.month })
+      await deps.publishHome?.()
+      return { feature: args.feature, cap: { day: cap.day ?? null, month: cap.month ?? null } }
+    },
+  })
+
+  const costOp = defineOp({
+    name: "usage.cost",
+    args: obj({ convs: arr(int({ minimum: 0 }), { minItems: 1, maxItems: 500 }) }),
+    actors: ["owner"],
+    run: async (api, { convs }) => {
+      const rows = await Promise.all(
+        convs.map(async (conv) => {
+          const ledger = await api.harness.snapshot(UsageDoc, conv as ConversationId, BACKGROUND_CONTEXT)
+          return { conv, ...conversationCost(ledger) }
+        }),
+      )
+      return {
+        conversations: rows,
+        spend: rows.reduce((sum, row) => sum + row.spend, 0),
+        tokens: rows.reduce((sum, row) => sum + row.tokens, 0),
+      }
+    },
+  })
+
+  const crewOp = defineOp({
+    name: "usage.crew",
+    args: obj({ spaceId: str({ minLength: 1 }) }),
+    actors: ["owner"],
+    run: async (api, { spaceId }) => {
+      const workspace = await api.harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
+      const space = workspace !== undefined && parseWorkspace.check(workspace) ? workspace.spaces[spaceId] : undefined
+      if (space === undefined) throw new OpRejected("bad_args", `no space ${spaceId}`)
+      const lead = conversationCost(
+        await api.harness.snapshot(UsageDoc, space.coordinatorId as ConversationId, BACKGROUND_CONTEXT),
+      )
+      const crew = await Promise.all(
+        space.threadIds.map(async (conv) => ({
+          conv,
+          ...conversationCost(await api.harness.snapshot(UsageDoc, conv as ConversationId, BACKGROUND_CONTEXT)),
+        })),
+      )
+      return {
+        spaceId,
+        coordinator: { conv: space.coordinatorId, ...lead },
+        crew,
+        spend: lead.spend + crew.reduce((sum, row) => sum + row.spend, 0),
+        tokens: lead.tokens + crew.reduce((sum, row) => sum + row.tokens, 0),
+      }
+    },
+  })
+
+  const todayOp = defineOp({
+    name: "usage.today",
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => {
+      await flush()
+      const dated = await datedUsage(db)
+      return {
+        today: dated.today,
+        month: dated.month,
+        alert: await readDailyAlert(db),
+        cap: await readCap(db),
+        features: budget.features(),
+      }
+    },
+  })
+
   const service: ModelsService = {
     ownerDefaults: () => ownerDefaults(db),
     vision: async (ref) => {
@@ -1231,6 +1335,10 @@ export function create(deps: ModelsPort): ModelsParts {
       )
       return { catalog, matches: search(catalog, query) }
     },
+    admit: async (feature) => budget.admit(feature),
+    admitConversation: (conversation) => budget.admitConversation(conversation),
+    charge: (feature, conversation, message) => budget.charge(feature, conversation, message),
+    track: (tracker) => budget.track(tracker),
     switchModel: ({ conversation, caller, model, thinking, callId }) =>
       run(
         {
@@ -1257,11 +1365,17 @@ export function create(deps: ModelsPort): ModelsParts {
     setCapOp,
     alertOp,
     setAlertOp,
+    featuresOp,
+    featureCapOp,
+    costOp,
+    crewOp,
+    todayOp,
   ]
 
   return {
     service,
     ops,
+    home: () => ({ spend: budget.todaySpend() }),
     models: () => registry.models,
     flush,
     flushDue,
@@ -1269,6 +1383,8 @@ export function create(deps: ModelsPort): ModelsParts {
       disabledRefs = (await readKv(db, "owner.disabled", refsCheck.check)) ?? []
       await registry.sync()
       await seedUsage(db, harness)
+      await budget.load()
+      await budget.seed()
       // A fresh process records nothing until the ledger has had time to move; the first alarm after boot is usually
       // an eviction recovery, not new spend, and a full pass reads every conversation.
       flushedAt = Date.now()
