@@ -217,12 +217,12 @@ function webPaths(only: readonly string[]): string[] {
   return only.filter(isWebPath).map((path) => (path === "web" ? "src" : path.slice("web/".length)))
 }
 
-/** CI's web job runs the client's bun:test suite (its `prebuild`), so the gate's test step runs it too. */
+/** CI's web job runs the client's bun:test suite (its `prebuild`, through its `test` script), so the gate's test step runs it too. */
 function runWebTests(root: string, paths: readonly string[], log: string): boolean {
   const cwd = join(root, "web")
   const steps = [
     ...(existsSync(join(cwd, "node_modules")) ? [] : [["bun", "install", "--frozen-lockfile"]]),
-    ["nice", "-n", "10", "bun", "test", ...paths],
+    ["nice", "-n", "10", "bun", "run", "test", ...paths],
   ]
   for (const [program, ...rest] of steps) {
     appendFileSync(log, `$ (web) ${program} ${rest.join(" ")}\n`)

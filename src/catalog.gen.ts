@@ -711,7 +711,7 @@ export const CATALOG: Catalog = {
     description: "A /standup prompt, with a palette command and a composer button that start it.",
     manifest: {
       api: 1,
-      requires: [],
+      requires: ["presets"],
       permissions: [],
       contributes: { tools: [], ops: [] },
       slots: ["palette.command", "composer.action"],
