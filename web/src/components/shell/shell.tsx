@@ -1,4 +1,4 @@
-import { createEffect, createSignal, ErrorBoundary, Match, onCleanup, onMount, Show, Switch, type JSX } from "solid-js"
+import { createEffect, createSignal, ErrorBoundary, Match, on, onCleanup, onMount, Show, Switch, type JSX } from "solid-js"
 import { Menu as MenuIcon } from "lucide-solid"
 import { navigate, route } from "../../lib/router.ts"
 import { owner } from "../../state/settings.ts"
@@ -15,6 +15,7 @@ import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
 import { Toasts } from "../ui/toast.tsx"
 import { RowSkeleton } from "../ui/skeleton.tsx"
+import { Stopped } from "../ui/stopped.tsx"
 import { lazyView } from "../ui/lazy-view.tsx"
 
 const screenSkeleton = (): JSX.Element => <RowSkeleton rows={8} />
@@ -97,21 +98,10 @@ export function Shell(): JSX.Element {
       >
         <ConnectionBanner />
         <ErrorBoundary
-          fallback={(error: unknown, reset) => (
-            <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 rounded-lg bg-panel px-6 text-center shadow-ring">
-              <span class="text-base text-ink-2">This screen stopped</span>
-              <span class="max-w-[420px] font-mono text-xs text-ink-3">
-                {error instanceof Error ? error.message : String(error)}
-              </span>
-              <button
-                type="button"
-                onClick={() => reset()}
-                class="rounded-sm border border-line-2 px-2.5 py-1 text-sm text-ink-2 hover:border-line-3 hover:bg-secondary"
-              >
-                Try again
-              </button>
-            </div>
-          )}
+          fallback={(error: unknown, reset) => {
+            createEffect(on(() => route().path, reset, { defer: true }))
+            return <Stopped title="This screen stopped" error={error} onRetry={reset} class="min-h-0 flex-1 rounded-lg bg-panel shadow-ring" />
+          }}
         >
           <Show when={first() !== "c"} fallback={<CaptainScreen />}>
             <Show

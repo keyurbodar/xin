@@ -212,3 +212,81 @@ for (const [label, reduce] of [
     await page.close()
   })
 }
+
+for (const width of [800, 1000, 1280]) {
+  test(`at ${width}px a row shows its triggers exactly once`, async () => {
+    const page = await harness.open("automations", { width })
+    await page.getByRole("button", { name: "Weekly pipeline review", exact: true }).waitFor()
+    const shown = await page
+      .locator("[data-automation=a1]")
+      .locator("[data-fold=triggers], [data-column=triggers]")
+      .evaluateAll((parts) => parts.filter((part) => part.getBoundingClientRect().width > 0).length)
+    expect(shown).toBe(1)
+    await page.close()
+  })
+}
+
+const reloaded = (page: Page) => page.waitForTimeout(900)
+
+test("Pause and Resume from the keyboard menu keep focus on the row's menu trigger through the revision reload", async () => {
+  const page = await list()
+  const trigger = page.getByRole("button", { name: "Weekly pipeline review actions" })
+  for (const [label, enabled] of [["Pause", false], ["Resume", true]] as const) {
+    await trigger.focus()
+    await page.keyboard.press("Enter")
+    await page.getByRole("menuitem", { name: label }).waitFor()
+    for (let step = 0; step < 3; step++) await page.keyboard.press("ArrowDown")
+    expect(await focusedLabel(page)).toBe(label)
+    await page.keyboard.press("Enter")
+    await reloaded(page)
+    expect(await calls(page)).toContain(`automation.update:{"id":"a1","enabled":${enabled}}`)
+    expect(await count(page, "automation.list")).toBeGreaterThan(1)
+    expect(await focusedLabel(page)).toBe("Weekly pipeline review actions")
+  }
+  await page.close()
+})
+
+test("the switch keeps focus through each save and reload, and four presses send four updates", async () => {
+  const page = await list()
+  await page.getByRole("switch", { name: "Pause Weekly pipeline review" }).focus()
+  const lists = await count(page, "automation.list")
+  for (let press = 0; press < 4; press++) {
+    await page.keyboard.press("Space")
+    await reloaded(page)
+    expect(await focusedLabel(page)).toBe(press % 2 === 0 ? "Resume Weekly pipeline review" : "Pause Weekly pipeline review")
+  }
+  expect((await calls(page)).filter((call) => call.startsWith("automation.update"))).toEqual([
+    'automation.update:{"id":"a1","enabled":false}',
+    'automation.update:{"id":"a1","enabled":true}',
+    'automation.update:{"id":"a1","enabled":false}',
+    'automation.update:{"id":"a1","enabled":true}',
+  ])
+  expect(await count(page, "automation.list")).toBe(lists + 4)
+  await page.close()
+})
+
+test("a pointer press on the row menu while its save runs opens nothing and sends nothing more", async () => {
+  const page = await harness.open("automations", { search: "?delay=2000" })
+  await page.getByRole("button", { name: "Weekly pipeline review", exact: true }).waitFor()
+  await settled(page)
+  const box = await page.getByRole("button", { name: "Weekly pipeline review actions" }).boundingBox()
+  await page.getByRole("switch", { name: "Pause Weekly pipeline review" }).click()
+  await page.getByRole("button", { name: "Weekly pipeline review actions", disabled: true }).waitFor()
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.waitForTimeout(150)
+  expect(await page.getByRole("menu").count()).toBe(0)
+  await page.waitForTimeout(3000)
+  expect(await count(page, "automation.update")).toBe(1)
+  await page.close()
+})
+
+test("below 768px a row folds its next run into the meta line exactly once", async () => {
+  const page = await harness.open("automations", { width: 600 })
+  await page.getByRole("button", { name: "Weekly pipeline review", exact: true }).waitFor()
+  const shown = await page
+    .locator("[data-automation=a1]")
+    .locator("[data-fold=next], [data-column=next]")
+    .evaluateAll((parts) => parts.filter((part) => part.getBoundingClientRect().width > 0).map((part) => part.getAttribute("data-fold") ?? part.getAttribute("data-column")))
+  expect(shown).toEqual(["next"])
+  await page.close()
+})

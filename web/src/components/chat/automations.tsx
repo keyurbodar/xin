@@ -16,6 +16,7 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
   const mine = createMemo(() =>
     (value() ?? []).filter((automation) => automation.project === props.project.id && !actions.removed(automation)),
   )
+  const byId = createMemo(() => new Map(mine().map((automation) => [automation.id, automation])))
   let heading!: HTMLHeadingElement
   let rowList: HTMLDivElement | undefined
   const rows = createRowDialogs(actions, {
@@ -68,42 +69,46 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
           }
         >
           <div ref={rowList} class="im-stagger flex flex-col">
-            <For each={mine()}>
-              {(automation, index) => {
-                const enabled = (): boolean => actions.enabled(automation)
-                const busy = (): boolean => actions.busy() === automation.id
-                return (
-                  <div
-                    data-automation={automation.id}
-                    class="flex h-[var(--h-row-2)] items-center gap-2.5 border-b border-line-1 pl-3 pr-1.5 hover:bg-hover"
-                    style={{ "--i": index() }}
-                  >
-                    <div class="min-w-0 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => rows.handle(automation, "open")}
-                        class="block max-w-full truncate text-left text-small font-title hover:underline hover:decoration-line-3 hover:underline-offset-4"
-                        classList={{ "text-ink": enabled(), "text-ink-3": !enabled() }}
+            <For each={mine().map((automation) => automation.id)}>
+              {(id, index) => (
+                <Show when={byId().get(id)}>
+                  {(automation) => {
+                    const enabled = (): boolean => actions.enabled(automation())
+                    const busy = (): boolean => actions.busy() === id
+                    return (
+                      <div
+                        data-automation={id}
+                        class="flex h-[var(--h-row-2)] items-center gap-2.5 border-b border-line-1 pl-3 pr-1.5 hover:bg-hover"
+                        style={{ "--i": index() }}
                       >
-                        {automation.title}
-                      </button>
-                      <div class="flex min-w-0 items-center gap-1.5 text-mini text-ink-3">
-                        <span class="shrink-0 font-mono tabular-nums">{nextLabel({ ...automation, enabled: enabled() })}</span>
-                        <span class="shrink-0 text-icon">·</span>
-                        <span class="truncate">{describeTriggers(automation)}</span>
+                        <div class="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => rows.handle(automation(), "open")}
+                            class="block max-w-full truncate text-left text-small font-title hover:underline hover:decoration-line-3 hover:underline-offset-4"
+                            classList={{ "text-ink": enabled(), "text-ink-3": !enabled() }}
+                          >
+                            {automation().title}
+                          </button>
+                          <div class="flex min-w-0 items-center gap-1.5 text-mini text-ink-3">
+                            <span class="shrink-0 font-mono tabular-nums">{nextLabel({ ...automation(), enabled: enabled() })}</span>
+                            <span class="shrink-0 text-icon">·</span>
+                            <span class="truncate">{describeTriggers(automation())}</span>
+                          </div>
+                        </div>
+                        <LastRun automation={automation()} withAge={false} />
+                        <EnabledToggle automation={automation()} on={enabled()} busy={busy()} onToggle={() => void actions.toggle(automation())} />
+                        <RowMenu
+                          automation={automation()}
+                          enabled={enabled()}
+                          busy={busy()}
+                          onAction={(action) => rows.handle(automation(), action)}
+                        />
                       </div>
-                    </div>
-                    <LastRun automation={automation} withAge={false} />
-                    <EnabledToggle automation={automation} on={enabled()} busy={busy()} onToggle={() => void actions.toggle(automation)} />
-                    <RowMenu
-                      automation={automation}
-                      enabled={enabled()}
-                      busy={busy()}
-                      onAction={(action) => rows.handle(automation, action)}
-                    />
-                  </div>
-                )
-              }}
+                    )
+                  }}
+                </Show>
+              )}
             </For>
           </div>
         </Show>
