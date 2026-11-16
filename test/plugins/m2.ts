@@ -1,6 +1,6 @@
 import { type FauxResponseStep, fauxProvider } from "@earendil-works/pi-ai"
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
-import { obj, int } from "@earendil-works/pi-schema"
+import { obj } from "@earendil-works/pi-schema"
 import type { Provider } from "../../src/module.ts"
 import type { Catalog } from "../../src/kernel/loader.ts"
 import { testPlugin } from "../kernel.ts"
@@ -23,13 +23,16 @@ const hold = defineTool({
   execute: () => new Promise<never>(() => undefined),
 })
 
+/** Releases `pause`, which holds until the test calls this. */
+export const releasePause = Promise.withResolvers<void>()
+
 const pause = defineTool({
   name: "pause",
-  description: "Wait for the given time, then finish.",
-  parameters: obj({ ms: int({ minimum: 1 }) }),
+  description: "Wait until the test releases it, then finish.",
+  parameters: obj({}),
   replay: "safe",
-  execute: async (args) => {
-    await new Promise((resolve) => setTimeout(resolve, args.ms))
+  execute: async () => {
+    await releasePause.promise
     return { output: [{ type: "text", text: "paused" }] }
   },
 })

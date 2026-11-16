@@ -2,6 +2,7 @@ import type { Context as ChordContext, JsonValue } from "@earendil-works/chord"
 import type { ConversationId, ModelRef, Tx } from "@earendil-works/pi-durable"
 import { oneOf } from "@earendil-works/pi-schema"
 import type { ThreadRole, ThreadStatus } from "./threaddoc.ts"
+import type { ModelChoice } from "./models.ts"
 
 export type { ThreadRole, ThreadStatus } from "./threaddoc.ts"
 
@@ -25,18 +26,14 @@ export type Caller = {
   readonly taskId: string
 }
 
-export type CallerProject = {
-  readonly projectId: string
-  readonly name: string
-  readonly threadLimit: number
-}
-
 export type ThreadSummary = {
   readonly id: number
   readonly title: string
   readonly status: ThreadStatus
   readonly statusLine?: string
   readonly result?: string
+  /** `provider/modelId`, with ` · <thinking>` when the model reasons. */
+  readonly model?: string
 }
 
 export type LiveThread = {
@@ -60,7 +57,8 @@ export type DelegateRequest = {
   readonly task: string
   readonly title: string
   readonly role?: ThreadRole
-  readonly model?: ModelRef
+  /** Unset: the creator's model and thinking level. */
+  readonly choice?: ModelChoice
   readonly mode: DelegateMode
   readonly timeoutMs?: number
   readonly clientRequestId: string
@@ -74,6 +72,7 @@ export type CreateThreadRequest = {
   readonly role?: ThreadRole
   readonly project?: string
   readonly spaceId?: string
+  readonly target?: ModelChoice
 }
 
 export type CreateThreadOutcome =
@@ -138,6 +137,7 @@ export type PuckProject = {
 
 export type CapabilitiesOutcome = {
   readonly model?: ModelRef
+  readonly thinking?: string
   readonly models: readonly string[]
   readonly project?: ProjectView
   readonly puck?: { readonly projects: readonly PuckProject[] }

@@ -9,7 +9,8 @@ export type BlockPayloads = {
     name: string
     callId: string
     args: Record<string, unknown>
-    output?: string
+    output?: string | undefined
+    details?: unknown
     status: "streaming" | "running" | "done" | "error"
   }
 }

@@ -16,14 +16,12 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable"
 import { compile, int, map, obj, oneOf, opt, str, type Static } from "@earendil-works/pi-schema"
-import { type QuestionsService, RequestsDoc } from "../../src/contracts/questions.ts"
+import { APPROVAL_KIND, type QuestionsService, RequestsDoc } from "../../src/contracts/questions.ts"
 import { WorkspaceDoc, type WorkspaceState } from "../../src/contracts/workspace.ts"
 import { type Actor, type Command, defineOp, type Op, OpRejected, type Outcome } from "../../src/ops.ts"
 
 const context = BACKGROUND_CONTEXT
 
-/** The request kind every approval card shares, so one card renders the policy's approvals and the model's own. */
-export const APPROVAL_KIND = "approval"
 export const APPROVE = "Approve"
 export const ALWAYS_ALLOW = "Always allow"
 export const DENY = "Deny"

@@ -70,13 +70,17 @@ const withDump = (stub: Stub): Promise<void> =>
       home.loader.ctx.pi.install(defineExtension({ name: "tool-compact-dump", tools: [dump] }))
   })
 
-const useUtility = (stub: Stub, utility: { provider: string; modelId: string } = DREAM_MODEL): Promise<void> =>
+type Ref = { provider: string; modelId: string }
+
+const useDefaults = (stub: Stub, defaults: { utility?: Ref; compaction?: Ref }): Promise<void> =>
   runInDurableObject(stub, (home: Home) =>
     home.db.run(
       "INSERT INTO kv (key, value) VALUES ('owner.defaults', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-      JSON.stringify({ utility }),
+      JSON.stringify(defaults),
     ),
   )
+
+const useUtility = (stub: Stub, utility: Ref = DREAM_MODEL): Promise<void> => useDefaults(stub, { utility })
 
 const CHAT_COMPACTION = `compaction:${M8_MODEL.provider}/${M8_MODEL.modelId}`
 
@@ -154,6 +158,20 @@ describe("compact", () => {
       home.harness.snapshot(UsageDoc, (await home.root()).id, context),
     )
     expect(usage?.models[`compaction:${DREAM_MODEL.provider}/${DREAM_MODEL.modelId}`]?.totalTokens).toBeGreaterThan(0)
+  }, 60_000)
+
+  it("summarizes on the owner's compaction model ahead of the utility model", async () => {
+    const stub = fresh()
+    const seen: TranscriptContext[] = []
+    respond(chat(seen))
+    scriptUtility([fauxAssistantMessage("compaction summary")])
+    await useDefaults(stub, { compaction: DREAM_MODEL, utility: M8_MODEL })
+
+    const summary = await thresholdCompaction(stub, `read the build log ${"notes ".repeat(8_000)}`)
+
+    expect(summaryRequests(seen)).toBe(0)
+    expect(utilityRequests).toHaveLength(1)
+    expect(summary).toContain("compaction summary")
   }, 60_000)
 
   it("summarizes on the conversation's model, charged as compaction, without a utility default", async () => {

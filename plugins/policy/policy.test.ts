@@ -7,11 +7,13 @@ import { M6_MODEL } from "../../test/plugins/m6.ts"
 import { respond } from "../../test/plugins/m8.ts"
 import {
   cmd,
+  connect,
   contentText,
   eventually,
   field,
   fresh,
   lastOwnerText,
+  owner,
   recordOffers,
   type Stub,
   toolTexts,
@@ -22,7 +24,8 @@ import { RequestsDoc } from "../../src/contracts/questions.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
-import { canonical } from "./policy.ts"
+import { cardThread, threadReply } from "../../test/cards.ts"
+import { CallsDoc, canonical } from "./policy.ts"
 
 const context = BACKGROUND_CONTEXT
 const NOTE = { scope: "me", text: "The owner's dog is named Miso" }
@@ -293,7 +296,10 @@ describe("tool policy", () => {
       ok: true,
     })
     await ok(stub, "tool.policy.set", { tool: "issue", mode: "ask" })
-    respond([fauxAssistantMessage([fauxToolCall("issue", args, { id: "call-shape" })], { stopReason: "toolUse" })])
+    respond([
+      fauxAssistantMessage([fauxToolCall("tool_search", { query: "issue" })], { stopReason: "toolUse" }),
+      fauxAssistantMessage([fauxToolCall("issue", args, { id: "call-shape" })], { stopReason: "toolUse" }),
+    ])
     await turn(stub, "policy-secret-shape-ask")
     const [row] = await listed(stub)
     expect(row?.id).toBe("approval:call-shape")
@@ -303,6 +309,91 @@ describe("tool policy", () => {
     )
     for (const seen of [JSON.stringify(row), stored]) expect(seen).not.toContain(secret)
   })
+
+  it("keeps the secret out of every row and socket frame that carries the approval", async () => {
+    const stub = owner()
+    const secret = "keyzz7777q"
+    expect(await cmd(stub, "policy-scan-secret", "secret.set", { ref: "TOKEN", value: secret })).toMatchObject({
+      ok: true,
+    })
+    await ok(stub, "tool.policy.set", { tool: "issue", mode: "ask" })
+    const socket = await connect()
+    try {
+      socket.send({ t: "sub", stream: "home" })
+      await socket.next((frame) => frame.t === "snap" && frame.stream === "home")
+      respond([
+        fauxAssistantMessage([fauxToolCall("tool_search", { query: "issue" })], { stopReason: "toolUse" }),
+        fauxAssistantMessage(
+          [fauxToolCall("issue", { action: "read", id: 1, with: { [secret]: secret } }, { id: "call-scan" })],
+          { stopReason: "toolUse" },
+        ),
+      ])
+      await turn(stub, "policy-scan-ask")
+      const [row] = await listed(stub)
+      expect(row?.id).toBe("approval:call-scan")
+      expect(JSON.stringify(row)).not.toContain(secret)
+
+      const decoder = new TextDecoder()
+      const rows = await runInDurableObject(stub, (_home: Home, state: DurableObjectState) =>
+        state.storage.sql
+          .exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE '_cf_%'")
+          .toArray()
+          .flatMap(({ name }) =>
+            state.storage.sql
+              .exec(`SELECT * FROM "${name}"`)
+              .toArray()
+              .map((cells) =>
+                JSON.stringify(
+                  Object.values(cells).map((cell) =>
+                    cell instanceof ArrayBuffer || ArrayBuffer.isView(cell) ? decoder.decode(cell) : cell,
+                  ),
+                ),
+              ),
+          ),
+      )
+      const carrying = rows.filter((text) => text.includes("Allow issue to run?"))
+      expect(carrying.length, "the scan reads the request rows and the journal").toBeGreaterThan(0)
+      for (const text of carrying) expect(text).not.toContain(secret)
+      await socket.next((frame) => frame.stream === "home" && JSON.stringify(frame).includes("approval:call-scan"))
+      const frames = socket.received().filter((frame) => frame.includes("approval:call-scan"))
+      expect(frames.length, "the home stream carried the approval").toBeGreaterThan(0)
+      for (const frame of frames) expect(frame).not.toContain(secret)
+    } finally {
+      socket.close()
+    }
+  })
+
+  it("leaves an agent's own approval card to the questions service: Approve grants nothing", async () => {
+    const stub = fresh()
+    await setMode(stub, "ask")
+    const thread = await cardThread(stub, "agent-ask", {
+      search: "approve action",
+      tool: "request_approval",
+      args: { action: "remember", detail: canonical(NOTE) },
+    })
+    expect(thread.requestId.startsWith("q:")).toBe(true)
+    const always = await cmd(stub, "agent-ask-always", "request.respond", {
+      threadId: thread.threadId,
+      requestId: thread.requestId,
+      answer: "Always allow",
+    })
+    expect(always, "an agent's ask takes only Approve or Deny").toMatchObject({ ok: false })
+    const answered = await cmd(stub, "agent-ask-approve", "request.respond", {
+      threadId: thread.threadId,
+      requestId: thread.requestId,
+      answer: "Approve",
+    })
+    expect(answered.result).toMatchObject({ kind: "answered", run: 2 })
+    await threadReply(stub, thread, "Approve")
+    const grants = await runInDurableObject(stub, async (home: Home) => {
+      const ids = [thread.threadId, thread.coordinatorId, ROOT] as ConversationId[]
+      const docs = await Promise.all(ids.map((id) => home.harness.snapshot(CallsDoc, id, context)))
+      return docs.flatMap((doc) => Object.keys(doc?.grants ?? {}))
+    })
+    expect(grants).toEqual([])
+    expect(await rememberRow(stub)).toMatchObject({ home: "ask" })
+    expect(await rememberRow(stub, thread.projectId)).not.toHaveProperty("project")
+  }, 30_000)
 
   it("refuses an agent's answer to an approval and keeps the request open", async () => {
     const stub = fresh()
