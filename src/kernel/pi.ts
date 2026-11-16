@@ -1,12 +1,15 @@
 import { type Context, Service } from "@deepseek-ai/cordis"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { createModels, type Models } from "@earendil-works/pi-ai"
+import type { Context as ChordContext } from "@earendil-works/chord"
 import {
+  AgentDoc,
   type ConversationId,
   type CompactionSettings,
   createRegistry,
   type Cursor,
   defineExtension,
+  type DocumentReader,
   type EnvTarget,
   type Extension,
   Harness,
@@ -48,16 +51,27 @@ const summary = (description: string): string => {
   return sentence.length <= SUMMARY_CHARS ? sentence : `${sentence.slice(0, SUMMARY_CHARS - 1)}…`
 }
 
+/** The tools a conversation's `modelTools` removes: never listed, never loaded by search. */
+async function removedTools(
+  read: DocumentReader,
+  conversationId: ConversationId,
+  context: ChordContext,
+): Promise<ReadonlySet<string>> {
+  const modelTools = (await read.snapshot(AgentDoc, conversationId, context))?.modelTools
+  return new Set(modelTools === undefined || Array.isArray(modelTools) ? [] : (modelTools.remove ?? []))
+}
+
 /**
  * Every deferred tool the conversation may use, loaded or not, in extension order, so the text stays the same after
- * `tool_search` loads one and the cached prompt prefix survives. A tool its `modelTools` removes is left out.
+ * `tool_search` loads one and the cached prompt prefix survives.
  */
-const deferredIndex = (input: PromptInput): string | undefined => {
+const deferredIndex = async (input: PromptInput, context: ChordContext): Promise<string | undefined> => {
   const usable = new Set([...input.agent.tools, ...input.agent.deferred].map((tool) => tool.name))
+  const removed = await removedTools(input.read, input.conversationId, context)
   const lines = input.agent.extensions
     .filter((extension) => !UNLISTED.has(extension.name))
     .flatMap((extension) => extension.tools ?? [])
-    .filter((tool) => tool.deferred === true && usable.has(tool.name))
+    .filter((tool) => tool.deferred === true && usable.has(tool.name) && !removed.has(tool.name))
     .map((tool) => `- ${tool.name}: ${summary(tool.description)}`)
   if (lines.length === 0) return undefined
   return [
@@ -66,9 +80,46 @@ const deferredIndex = (input: PromptInput): string | undefined => {
   ].join("\n")
 }
 
+/** Ranked hits a query that names no tool loads, below pi's 8 so a vague query does not load a family. */
+const SEARCH_LIMIT = 3
+const rankedSearch = createToolSearchTool()
+
+/**
+ * pi's `tool_search`, except that a query naming deferred tools (the index's names, separated by spaces or commas)
+ * loads exactly those, and a ranked search loads at most `SEARCH_LIMIT`. Removed tools are never loaded.
+ */
+const searchTool: typeof rankedSearch = {
+  ...rankedSearch,
+  execute: async (args, api, context) => {
+    const removed = await removedTools(api, api.conversationId, context)
+    const deferred = (await api.agent(context)).deferred.filter((tool) => !removed.has(tool.name))
+    const words = args.query.split(/[\s,]+/).filter((word) => word !== "")
+    const named = deferred.filter((tool) => words.includes(tool.name))
+    if (named.length === 0 || named.length !== words.length) {
+      const result = await rankedSearch.execute({ ...args, limit: args.limit ?? SEARCH_LIMIT }, api, context)
+      const loaded = result.control?.addTools?.filter((name) => !removed.has(name))
+      return loaded === undefined ? result : { ...result, control: { ...result.control, addTools: loaded } }
+    }
+    const loaded = named.map((tool) => tool.name)
+    return {
+      output: [
+        {
+          type: "text",
+          text: [
+            `Loaded ${loaded.length} tool${loaded.length === 1 ? "" : "s"}. They are available from your next call:`,
+            ...named.map((tool) => `- ${tool.name}: ${summary(tool.description)}`),
+          ].join("\n"),
+        },
+      ],
+      details: { loaded },
+      control: { addTools: loaded },
+    }
+  },
+}
+
 const toolSearch = defineExtension({
   name: TOOL_SEARCH,
-  tools: [createToolSearchTool()],
+  tools: [searchTool],
   sections: [section("deferred-tools", deferredIndex)],
 })
 
