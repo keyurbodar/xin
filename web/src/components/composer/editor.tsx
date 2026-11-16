@@ -69,27 +69,22 @@ function textBeforeCaret(editor: HTMLElement): string | undefined {
   return range.toString()
 }
 
-function selectText(editor: HTMLElement, range: { readonly start: number; readonly end: number }): void {
+function pointAt(editor: HTMLElement, offset: number): readonly [Node, number] | undefined {
   const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
-  const target = document.createRange()
-  let offset = 0
-  let placed = 0
-  for (let node = walker.nextNode(); node !== null && placed < 2; node = walker.nextNode()) {
+  let seen = 0
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
     const length = node.textContent?.length ?? 0
-    if (placed === 0 && range.start <= offset + length) {
-      target.setStart(node, range.start - offset)
-      placed = 1
-    }
-    if (placed === 1 && range.end <= offset + length) {
-      target.setEnd(node, range.end - offset)
-      placed = 2
-    }
-    offset += length
+    if (offset <= seen + length) return [node, offset - seen]
+    seen += length
   }
-  if (placed !== 2) return
-  const selection = document.getSelection()
-  selection?.removeAllRanges()
-  selection?.addRange(target)
+  return undefined
+}
+
+function selectText(editor: HTMLElement, range: { readonly anchor: number; readonly focus: number }): void {
+  const anchor = pointAt(editor, range.anchor)
+  const focus = pointAt(editor, range.focus)
+  if (anchor === undefined || focus === undefined) return
+  document.getSelection()?.setBaseAndExtent(anchor[0], anchor[1], focus[0], focus[1])
 }
 
 function recollapse(editor: HTMLElement): void {
@@ -160,10 +155,15 @@ export function ComposerEditor(props: {
   const [load, setLoad] = createSignal<Load>({ kind: "waiting" })
   let composing = false
   let landed = false
-  let carried: { readonly start: number; readonly end: number } | undefined
+  let carried: { readonly anchor: number; readonly focus: number } | undefined
   const upgrade = (): void => {
     landed = false
-    carried = early !== undefined && document.activeElement === early ? { start: early.selectionStart, end: early.selectionEnd } : undefined
+    carried =
+      early === undefined || document.activeElement !== early
+        ? undefined
+        : early.selectionDirection === "backward"
+          ? { anchor: early.selectionEnd, focus: early.selectionStart }
+          : { anchor: early.selectionStart, focus: early.selectionEnd }
     setLoad({ kind: "ready" })
   }
   const start = (): void => {
@@ -216,7 +216,6 @@ export function ComposerEditor(props: {
       clear: () => input.api.clear(),
       focus: () => input.api.focus({ at: "end" }),
     }
-    if (typed !== "") input.api.setValue([typed])
     const selection = carried
     if (selection === undefined) return
     queueMicrotask(() => {
@@ -255,6 +254,7 @@ export function ComposerEditor(props: {
 
   const connected = (): JSX.Element => (
     <ui-token-input
+      prop:defaultValue={typed === "" ? undefined : [typed]}
       disabled={props.disabled ? "" : undefined}
       on:valuechange={() =>
         queueMicrotask(() => {
