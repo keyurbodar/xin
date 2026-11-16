@@ -34,7 +34,7 @@ export function apply(ctx: Context): void {
     disabled: (ref) => ctx.models.disabled(ref),
     admit: (feature) => ctx.models.admit(feature),
     admitConversation: (conversation) => ctx.models.admitConversation(conversation),
-    registry: ctx.pi.registry,
+    toolsNamed: (names) => ctx.pi.toolsNamed(names),
     threadRemovals: (parent) => ctx.get("presets")?.threadRemovals(parent) ?? [],
     settled: (event) => emitSettled(ctx, event),
     publishHome: () => ctx.wire.publishHome(),

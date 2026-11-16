@@ -21,57 +21,44 @@ const modelsView = (models: unknown): unknown =>
   Object.freeze({ getModel: method(models, "getModel"), getAvailable: method(models, "getAvailable") })
 
 /**
- * Loader state as a plugin row sees it: a frozen copy of the plain data, with functions such as plugin modules left
- * out, so nothing the row changes reaches the kernel's own records or its access checks.
+ * Loader and registry state as a plugin row sees it: a deep frozen copy of the plain data, with functions and class
+ * instances left out, so nothing the row changes reaches the kernel's own records, its access checks or what runs.
  */
-const frozenCopy = (value: unknown): unknown => {
-  if (value instanceof Promise) return value.then(frozenCopy)
-  if (Array.isArray(value)) return Object.freeze(value.map(frozenCopy))
-  if (typeof value === "function") return undefined
-  if (typeof value !== "object" || value === null) return value
+const frozenCopy = (value: unknown, copies = new WeakMap<object, unknown>()): unknown => {
+  if (value instanceof Promise) return value.then((inner: unknown) => frozenCopy(inner))
+  if (typeof value !== "object" || value === null) return typeof value === "function" ? undefined : value
+  if (copies.has(value)) return copies.get(value)
+  if (Array.isArray(value)) {
+    const items: unknown[] = []
+    copies.set(value, items)
+    for (const item of value) items.push(frozenCopy(item, copies))
+    return Object.freeze(items)
+  }
   const prototype: unknown = Object.getPrototypeOf(value)
   if (prototype !== Object.prototype && prototype !== null) return undefined
-  return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, frozenCopy(inner)])))
+  const fields: Record<string, unknown> = {}
+  copies.set(value, fields)
+  for (const [key, inner] of Object.entries(value))
+    if (typeof inner !== "function") fields[key] = frozenCopy(inner, copies)
+  return Object.freeze(fields)
 }
 
-const isObject = (value: unknown): value is object => typeof value === "object" && value !== null
-
 /**
- * One registry snapshot as a plugin row sees it: fresh frozen copies of the snapshot, its lists, and each extension,
- * tool, section and task in them, made per call. A row that changes what it reads changes nothing the next caller or
- * the harness sees, and cannot replace a tool's `execute`.
+ * One registry snapshot as a plugin row sees it: each read answers a fresh deep frozen copy of names and metadata, with
+ * no hook, handler, `execute` or other function, so a row can neither change what runs nor plant what the next reader sees.
  */
 const snapshotView = (snapshot: unknown): unknown => {
-  const copies = new WeakMap<object, object>()
-  const copy = (value: unknown): unknown => {
-    if (!isObject(value)) return value
-    const known = copies.get(value)
-    if (known !== undefined) return known
-    const made: Record<string, unknown> = { ...value }
-    copies.set(value, made)
-    for (const key of ["tools", "sections"])
-      if (Array.isArray(made[key])) made[key] = Object.freeze(made[key].map(copy))
-    return Object.freeze(made)
-  }
-  const entry = (value: unknown): unknown =>
-    isObject(value)
-      ? Object.freeze(Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, copy(inner)])))
-      : value
-  const list = (name: string, each: (value: unknown) => unknown) => (): unknown => {
-    const values: unknown = method(snapshot, name)()
-    return Object.freeze(Array.isArray(values) ? values.map(each) : [])
-  }
-  const one =
+  const read =
     (name: string) =>
-    (key: unknown): unknown =>
-      copy(method(snapshot, name)(key))
+    (...args: unknown[]): unknown =>
+      frozenCopy(method(snapshot, name)(...args))
   return Object.freeze({
-    installed: list("installed", copy),
-    extension: one("extension"),
-    tools: list("tools", entry),
-    sections: list("sections", entry),
-    tasks: list("tasks", copy),
-    task: one("task"),
+    installed: read("installed"),
+    extension: read("extension"),
+    tools: read("tools"),
+    sections: read("sections"),
+    tasks: read("tasks"),
+    task: read("task"),
   })
 }
 
@@ -102,6 +89,7 @@ const ALLOWED: Readonly<Record<string, Readonly<Record<string, Member>>>> = {
     compaction: { needs: "conversations" },
     extensions: {},
     extensionsNamed: { needs: "plugins" },
+    toolsNamed: { needs: "plugins" },
     conversations: { needs: "conversations" },
     models: { needs: "models" },
     currentModels: { needs: "models", view: modelsView },

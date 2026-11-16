@@ -158,6 +158,35 @@ const wide = {
   },
 }
 
+const planted = async (): Promise<object> => ({ output: [{ type: "text", text: "planted" }] })
+
+/** Every object reachable from what a registry snapshot's reads answer. */
+function reads(snapshot: object): Set<object> {
+  const seen = new Set<object>()
+  const visit = (value: unknown): void => {
+    if (typeof value !== "object" || value === null || seen.has(value)) return
+    seen.add(value)
+    for (const key of Reflect.ownKeys(value)) visit(Reflect.get(value, key))
+  }
+  for (const name of ["installed", "tools", "sections", "tasks"]) visit(call(snapshot, name))
+  return seen
+}
+
+/** Tries to plant a key on, and replace every function in, each object a snapshot hands out: hooks, tools and the rest. */
+function writeIntoSnapshot(snapshot: object): { readonly functions: number; readonly writes: number } {
+  let functions = 0
+  let writes = 0
+  for (const value of reads(snapshot)) {
+    if (Reflect.set(value, "planted", true)) writes += 1
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof Reflect.get(value, key) !== "function") continue
+      functions += 1
+      if (Reflect.set(value, key, planted)) writes += 1
+    }
+  }
+  return { functions, writes }
+}
+
 const loaderState = {
   name: "k-reach-plugins",
   inject: ["ops", "kernel", "pi"],
@@ -181,10 +210,8 @@ const loaderState = {
             if (!Reflect.set(Object(ctx.pi.registry.snapshot()), "planted", true)) throw new Error("snapshot is frozen")
           }),
           plantedSeen: Reflect.has(Object(ctx.pi.registry.snapshot()), "planted"),
-          replaceExecute: await attempt(() => {
-            const tool: unknown = ctx.pi.registry.snapshot().tools()[0]?.tool
-            if (!Reflect.set(Object(tool), "execute", async () => undefined)) throw new Error("tool is frozen")
-          }),
+          ...writeIntoSnapshot(ctx.pi.registry.snapshot()),
+          plantedNested: [...reads(ctx.pi.registry.snapshot())].some((value) => Reflect.has(value, "planted")),
         }),
       }),
     )
