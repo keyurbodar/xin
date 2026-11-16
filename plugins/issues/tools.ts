@@ -91,10 +91,9 @@ export async function write(
   api: ToolExecutionApi,
   op: string,
   args: JsonValue,
-  step = "",
 ): Promise<JsonValue> {
   const outcome = await port.run(
-    { id: `${op}:${api.taskId}${step}` as CommandId, op, args },
+    { id: `${op}:${api.taskId}` as CommandId, op, args },
     { kind: "agent", conversationId: api.conversationId },
   )
   if (outcome.kind !== "ok") return fail(outcome.message)
@@ -204,13 +203,11 @@ async function run(port: IssueToolPort, args: ToolArgs, api: ToolExecutionApi): 
       let issue = issueOf(await write(port, api, "issue.update", { id, ...fieldsOf(args) }))
       if (args.link !== undefined)
         issue = issueOf(
-          await write(
-            port,
-            api,
-            args.link.remove === true ? "issue.unlink" : "issue.link",
-            { id, kind: args.link.kind, other: args.link.other },
-            ":link",
-          ),
+          await write(port, api, args.link.remove === true ? "issue.unlink" : "issue.link", {
+            id,
+            kind: args.link.kind,
+            other: args.link.other,
+          }),
         )
       return `Updated ${line(issue)}`
     }
