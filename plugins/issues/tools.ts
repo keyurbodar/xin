@@ -232,6 +232,7 @@ async function run(port: IssueToolPort, args: ToolArgs, api: ToolExecutionApi): 
 export function issueTool(port: IssueToolPort) {
   return defineTool({
     name: "issue",
+    deferred: true,
     description: DESCRIPTION,
     parameters: Args,
     replay: "safe",

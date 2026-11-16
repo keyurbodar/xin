@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest"
 import { ArtifactsDoc } from "../../src/contracts/artifacts.ts"
 import { M5_MODEL } from "../../test/plugins/m5.ts"
 import type { CommandId } from "../../src/ids.ts"
-import { cmd, eventually, field, fresh } from "../../test/support.ts"
+import { cmd, eventually, field, fresh, loadDeferred } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -112,6 +112,7 @@ describe("artifacts", () => {
   it("lets a thread write its own artifact through the tool", async () => {
     const stub = fresh()
     const threadId = await setup(stub)
+    await loadDeferred(stub, ["artifact"], threadId as ConversationId)
     const sent = await cmd(stub, "artifact-thread-1", "thread.send", {
       threadId,
       text: "write artifact",
