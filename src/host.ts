@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers"
+import type { Context } from "@deepseek-ai/cordis"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Conversation, Harness, Wake } from "@earendil-works/pi-durable"
 import profile from "../ingle.profile.json"
@@ -60,6 +61,11 @@ export class Home extends DurableObject<Env> {
 
   get loader(): IngleLoader {
     return this.#current.loader
+  }
+
+  /** The kernel's own context: the one outside every row that the loader trusts to read guarded services. */
+  get services(): Context {
+    return this.#current.root
   }
 
   get commands(): { run(command: Command, actor: Actor): Promise<Outcome> } {
@@ -186,10 +192,10 @@ export class Home extends DurableObject<Env> {
   }
 
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    await this.#current.root.wire.sockets?.message(ws, message)
+    await this.#current.root.wire.message(ws, message)
   }
 
   override async webSocketClose(ws: WebSocket): Promise<void> {
-    await this.#current.root.wire.sockets?.closed(ws)
+    await this.#current.root.wire.closed(ws)
   }
 }

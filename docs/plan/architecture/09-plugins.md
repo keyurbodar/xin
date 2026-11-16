@@ -4,7 +4,7 @@ Ingle's plugin layer is the one deepseek-harness (dsh) uses: Cordis contexts, se
 
 This section adds the one thing dsh leaves implicit and Ingle makes a first-class word: **a plugin is mounted at a scope**. A plugin can apply to the whole Home, to one project, or to one thread, and the composition of a scope is resolved by inheritance. That is what makes a personal agent feel configurable without a settings maze: the same plugin can be on everywhere and off in one project, with no second mechanism.
 
-A plugin is **trusted code that just runs**. Installing the build is the only trust decision. There are no permission grants, no approval prompts and no sandbox; those were designed, then cut (see [Dropped for simplicity](#dropped-for-simplicity)).
+A plugin is **trusted code that runs in the Home's isolate**, so a manifest cannot confine it. What the manifest does is make it honest: a plugin declares the **permissions** it needs and the **tools and ops it contributes**, and the kernel refuses a row whose code reaches past either declaration, at mount, at the service access, or at build (see [Permissions and contributions](#permissions-and-contributions)). The checks keep honest code to its declaration; they cannot confine hostile code, because there is no sandbox. There are still no per-call approvals.
 
 Read with: [01 Host](./01-host.md) for the alarm loop the `clock` service owns, [03 Commands and wire](./03-commands-and-wire.md) for the `ops` and `wire` services, [05 Models](./05-models.md) for the `models` seam, [12 Market](./12-market.md) for installs.
 
@@ -133,6 +133,36 @@ A package declares its plugins in `package.json`. Everything is optional; a plug
 | --- | --- | --- |
 | `api` | `1` | the plugin API version the module is written against |
 | `requires` | `[]` | other plugins it needs, `name` or `name@range` |
+| `permissions` | `[]` | what it may ask the owner for, from the closed set below |
+| `contributes` | unchecked | `{ tools, ops }` it registers; a trailing `*` covers a prefix |
+
+### Permissions and contributions
+
+| Permission | Guards the services | Shown to the owner as |
+| --- | --- | --- |
+| `secrets` | `secrets` | Read your stored credentials |
+| `files` | `files` | Read and change your files |
+| `storage` | `db` | Keep its own tables in your Home |
+| `routes` | `http` | Answer HTTP requests to your Home |
+| `models` | `models` | Call models, which spends tokens |
+| `conversations` | `harness` | Read and write your conversations |
+| `plugins` | `kernel`, `packages`, `plugins` | Install, enable and configure plugins |
+| `network` | none (no sandbox to enforce it) | Connect to the internet |
+| `owner` | none: `ops.run` with the owner as actor; only first-party `ingle-plugin-automations` at `plugins/automations` may declare it, `readManifest` refuses it from any other package or path, and discovery refuses two packages with one name | Act as you: run any op you can, such as starting threads |
+| `runtime` | `host` (raw Durable Object storage, environment and bindings) | Full access to your Home: raw storage, keys and the file bucket |
+
+`runtime` implies every other permission but `owner`, since `host` reaches the raw SQLite, `KEK` and the R2 bucket; the checks grant it the rest, and `owner` must be declared on its own. Ten shipped plugins inject `host` today and declare it; narrowing them to guarded services is the way to shrink that list, as Drive did by reading and sharing blobs through the `files` service (`textOf`, `share`, `reshare`, `unshare`). The files service mints each share id and records the row that made it and its path; a plugin row gets a files service bound to its own row (the loader calls the service's `FOR_ROW` hook, `src/contracts/rowbound.ts`), so only that row can repoint or end its shares, and kernel code acts for the owner.
+
+- **Mount check.** A plugin whose `inject` lists a guarded service without its permission is not mounted; the row reports `failed` and `plugin.doctor` carries `{ kind: "permission", permission, service }`. Kernel rows (no manifest) are exempt from every check here.
+- **Access check.** A guarded service resolves for a kernel row (no manifest), for a plugin row whose manifest grants its permission (`runtime` grants all of them but `owner`), and for the one context the kernel trusts, the Durable Object host's own (`Home.services`); any other context gets none. So the root, the loader's context and an entry's context, which is what `ctx.fiber.parent` and `ctx.fiber.entry` lead to, resolve no guarded service, and `host` and `kernel` are provided from a kernel fiber rather than the root, so a walk up a row's ancestors finds neither. The check runs on every Cordis lookup: the loader's `internal/get` hook covers `ctx.<name>`, a nested `ctx.inject` and a child `ctx.plugin`, and the loader wraps `reflect.get`, so `ctx.get`, `ctx.reflect.get` and an aliased `ctx.get` are checked against the context they read through. `ctx.root` in a plugin row is the root re-attributed to that row's fiber. A plugin row may not listen to any `internal/*` event, so no row sees another row's `internal/get` or the values it resolves. Each lookup is one fiber walk and one map read: the row-to-permissions map is built at mount and on every recompose, and each new row is indexed as it is created. A service another plugin provides is checked as well, against the providing row found in Cordis's service store: a row in the same package reads it freely, and so does a row that holds `runtime`. Otherwise the first-party services that reach owner data need the permission they amount to (`PROVIDED` in `src/kernel/manifest.ts`: `drive` needs `files`; `intake`, `threads`, `watchdog`, `questions` and `memory` need `conversations`), and any other plugin service needs the reader's manifest to `requires` the providing plugin. So a service no permission covers is refused by default. A plugin row holds a plugin-provided service as a frozen object with no prototype that forwards the service's methods and carries none of its data, so no row can read another's state or replace a method other rows call.
+- **Facades.** A plugin row never holds a Cordis service object. Every service it reads comes back as a frozen facade (`src/kernel/facade.ts`) with no `ctx`, no `cordis.original` and no prototype. A facade is an allowlist: it carries only the members shipped rows use (`ops.define`, `list`, `run`; `wire.home`, `publishHome`, `announce`; `pi.install`, `env` under `runtime`, `compaction` under `conversations`, `extensions`, `extensionsNamed` and `toolsNamed` under `plugins`, `conversations` under `conversations`, `models`, `currentModels`, `registry` under `plugins`; `clock.arm`, `timer`; `http.route`; `secrets.get`, `set`; `loader.locate`, plus `composition`, `permissionsOf`, `pluginOfRow`, `rows` and `state` under `plugins`), and every other member, data members included, is absent. Values that would carry credentials come back as views: `pi.currentModels()` needs `models` and answers only `getModel` and `getAvailable`, with no `getAuth`, `login` or `logout`, and `pi.registry` needs `plugins` and answers only `snapshot`, whose every read answers a fresh deep frozen copy of names and metadata with no function in it (no hook, handler, wrap or `execute`), so a row can neither plant keys the next reader sees nor change what runs. `pi.extensionsNamed` and `pi.toolsNamed`, both under `plugins`, answer handles that carry a name and nothing that runs, because `configure` keeps only names; presets removes extensions and the orchestrator removes and loads tools through them. `pi.extensions()` answers frozen `{ name, row, kind }` records, never another row's extension or tool objects; presets turns the names it removes into objects through `pi.extensionsNamed`. Manifests are frozen when read, the loader checks access against its own frozen copy of each row's permissions, and the kernel facade hands out frozen plain-data copies of `composition`, `permissionsOf`, `rows` and `state`, so a row that changes what it reads changes nothing the kernel holds. The caller checks live in the facade and know the row from it: `ops.run` refuses an owner actor unless the row grants `owner`, and refuses a plugin actor. A kernel service keeps its internals (the credential store, the op table, the sockets) in module-private state (`src/kernel/hidden.ts`), because Cordis calls service methods through proxies and neither TypeScript `private` nor `#fields` hide anything there.
+- **Op handlers.** An op defined by a row that does not grant `conversations` gets a harness that throws on any use, so `api.harness` is not a way around the permission. `ops/before` listeners see each command with its credential args redacted: an op names the field names in `credentials`, and every field with that name is redacted at any depth (`secret.set`'s `value`, `credential.set`'s `key` and `custom`, `mcp.add`'s `headers`, `push.subscribe`'s `keys`, `plugin.configure`'s and `bundle.put`'s `config`). The op itself still receives the real args.
+- **Proof.** The `k-reach` probe (`src/kernel/doctor.test.ts`, `test/plugins/reach.ts`) runs from a row with no permissions and tries 40 routes: the service names through `ctx`, `ctx.get`, an alias, `ctx.reflect`, `ctx.inject` and `ctx.root`; the parent, entry and loader contexts; `cordis.original` and `.ctx` on `ops`, `wire`, `pi`, `clock`, on `ctx.get` and `ctx.root` results and on `ctx` itself; the owner actor; socket delivery; `api.harness`; `internal/get` and `internal/listener` listeners; `pi.currentModels().getAuth`, `pi.installed`, `pi.modelSources`, `pi.registry.install` and `clock.timers`; and an `ops/before` listener while the owner sets a secret and puts a bundle with credential headers. It also tries `pi.extensions()` for an extension object, `pi.extensionsNamed` and `pi.env`. A second row, `k-reach-wide`, holds `runtime` and `models` and is still refused the owner actor, `getAuth`, and unsharing or repointing Drive's share. A third, `k-reach-plugins`, holds `plugins`, pushes `secrets` onto the permission arrays it can read, and is still refused `secrets`. `k-reach` is also refused `drive.write` on the user's `AGENTS.md` and `push`, a plugin service no permission covers that it does not require; `k-reach-wide` may write through `drive` but cannot replace its `write`. `k-reach` is refused `pi.registry`, and `k-reach-plugins` finds no function in anything a registry snapshot answers and can write into none of it, hooks and tools included; a real turn after that attack runs its tool unchanged. Every route is refused or finds nothing.
+- **Build check.** `scripts/reach.ts` refuses what reads past the access check, in plugin source: an `inject` list or `ctx.get("name")` of a guarded service the `package.json` does not permit; `ctx.get` with a computed name or taken as a value; `ctx` aliased to another name, destructured, or read with a computed key; `cordis.original` or `symbols.original`; `ctx.root`, `ctx.reflect`, `ctx.fiber`, `ctx.registry` and `ctx.loader`; an `import()` of a computed name; and a `cloudflare:workers` import without `runtime`. `scripts/boundaries.ts` (in `lint`) runs it over `plugins/`, and `plugin generate` runs it over every npm code package, so a third-party package that reaches past its declaration fails the build.
+- **What the checks promise.** For shipped and built-in rows, every service lookup path is checked at run time, and every service a row holds is a facade. What the runtime does not police is a deliberate walk through Cordis's own bookkeeping, such as `ctx.registry`, `ctx.reflect.store` or listener lists, which hold other fibers' contexts; the build check refuses those spellings in shipped and npm source. The checks do not confine code written to escape them, because plugins share one isolate and there is no sandbox. A market code install therefore runs with owner trust: its permission list describes what its code declares, and the consent prompt says so.
+- **Registration check.** When a manifest declares `contributes`, `ops.define` and `pi.install` refuse a name it leaves out, so the row fails at mount with the name in the error. Every shipped plugin declares it.
+- **Inventory.** `plugin.doctor` rows carry `registered: { tools, ops }`, read from the live services.
+- **Cost.** All of these run in memory: 0 rows and 0 requests per user action. The access check is one fiber walk and one map read per service read, and a facade is built once per service and context.
 
 `bun scripts/ingle.ts plugin generate` parses and validates every manifest and writes it into `src/catalog.gen.ts`. A bad manifest fails the build, not boot. The running Worker never reads `package.json`; the catalog is the single source at run time.
 
@@ -142,8 +172,6 @@ The two fields earn their place:
 - `requires` catches the common failure of a plugin that calls a service another plugin provides.
 
 `scopes` joins the manifest with per-scope host mounting (slice 4). The agent surface is scoped today by presets, which need no declaration from the plugin.
-
-There is deliberately no `permissions` field. A plugin is trusted code; asking a person to tick capabilities before it can work was ceremony with no enforcement behind it, so it is gone.
 
 ## Discovery
 
@@ -216,7 +244,7 @@ Plugin-contributed prompts and skills follow a different rule: they follow their
 
 **Trust tiers.** `core` rows are required and cannot be removed. `build` rows come from packages in `ingle.profile.json`; installing the build is the trust decision. `runtime` rows come from a bundle or an owner patch at run time. Third-party *code* always arrives through a build; a bundle can mount only plugins that are already compiled.
 
-**What is not there.** No permission grants, no capability declarations, no per-call approval, no sandbox, no capability list to click through. A plugin runs with the same JavaScript access as the kernel, because it is the same isolate. This is dsh's model and the honest one for a personal agent: the boundary is what you install, not what you tick.
+**What is not there.** No per-call approval and no sandbox. A plugin runs in the same isolate as the kernel, so its permissions are checked declarations, not confinement: the boundary is still what you install.
 
 **What a person sees.** A plugin is on or off, with a title, a one-line description and the tools it adds. Turning it on is one action. There is nothing to approve before it works.
 
@@ -272,7 +300,7 @@ Nothing is granted, approved or configured before a plugin works.
 - Defaults that need no decision: one Home, one bundle per package, api 1, home scope, working config.
 - A hard API contract instead of version exemptions: a plugin either fits this build or it does not.
 - No platform declarations and no per-client plugin lists until there is a second client.
-- No permissions, approvals or sandbox until a concrete use case demands one.
+- No approvals or sandbox until a concrete use case demands one.
 
 **What we deliberately do not expose:** profiles (one Home), layer precedence, isolate realms, version exemptions, HMR toggles, platform gates, permission grants.
 
@@ -282,15 +310,14 @@ Designed, then cut because each added a concept or a click without buying a real
 
 | Dropped | Why |
 | --- | --- |
-| **Permission grants and consent cards** (`net`, `secrets`, `files`, `schedule`, `agent`; `plugin.grant` / `plugin.revoke`) | in-process code cannot be confined by a declaration, so the grant was an audit form, not a boundary; the build is the real trust decision |
 | **Per-call approvals** (dsh `user-approval`, `tools/pre-execute`) | every prompt interrupts a run; a plugin that needs a decision can ask a question, and the owner's own agent does not need a permission slip |
 | **Version exemptions** (dsh `compatibility.json`) | an `api` mismatch is a code problem; granting an exception would only produce a crash later |
 | **Platform declarations** | one client, one host; nothing to declare |
 | **A sandbox / Worker Loader** | no concrete use case today; MCP covers code that runs elsewhere, and the build covers code that runs here |
-| **A `provides` registry and capability inventory in the manifest** | `inject` already resolves services and fails a row that cannot get one; an inventory is diagnostics, not a gate, and arrives with `plugin.doctor`'s next slice |
+| **A `provides` registry** | `inject` already resolves services and fails a row that cannot get one |
 | **A config wizard at install** | `Config` defaults make a plugin work with no setup; settings remain optional |
 
-The `net` permission check named in M8 belonged to the pre-P5 host adapter, which no longer exists; there is no permission check in the plugin layer today.
+The `net` permission check named in M8 belonged to the pre-P5 host adapter, which no longer exists; `network` is declared and shown but not enforced.
 
 ## Rows, bundles and layers (engine)
 
@@ -336,8 +363,8 @@ Feature services follow the same pattern (`models`, `files`, `memory`, `push`, `
 | Op | Effect |
 | --- | --- |
 | `plugin.list` | rows with id, plugin, title, state, layer, config and manifest |
-| `plugin.catalog` | compiled plugins with title, description, manifest, config schema and source |
-| `plugin.doctor` | `{ ok, rows }` with package, version, state, manifest and issues |
+| `plugin.catalog` | compiled plugins with title, description, source, version, manifest, permission titles, config schema and `form` (settings fields derived from `Config`) |
+| `plugin.doctor` | `{ ok, rows }` with package, version, state, manifest, `registered` and issues |
 | `plugin.tree` | `{ bundles, runtime, layers, lower, owner, rows, warnings }` |
 | `plugin.enable` | `{ id, enabled }`; rejected for a required row |
 | `plugin.configure` | `{ id, config }`, validated against `Config`; rejected for a plugin without one |

@@ -9,7 +9,15 @@
       "failures": {
         "module": "./index.ts",
         "title": "Failures",
-        "description": "Run failures as visible entries."
+        "description": "Run failures as visible entries.",
+        "permissions": [
+          "conversations"
+        ],
+        "contributes": {
+          "ops": [
+            "message.retry"
+          ]
+        }
       }
     }
   }

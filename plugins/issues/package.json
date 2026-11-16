@@ -9,17 +9,46 @@
       "issues": {
         "module": "./index.ts",
         "title": "Issues",
-        "description": "Issues with editable states, sub-issues, links, a timeline and search. Comments, state and assignee changes wake the owning thread."
+        "description": "Issues with editable states, sub-issues, links, a timeline and search. Comments, state and assignee changes wake the owning thread.",
+        "permissions": [
+          "conversations",
+          "storage"
+        ],
+        "contributes": {
+          "ops": [
+            "issue.comment",
+            "issue.create",
+            "issue.get",
+            "issue.link",
+            "issue.list",
+            "issue.state.create",
+            "issue.state.delete",
+            "issue.state.update",
+            "issue.states",
+            "issue.unlink",
+            "issue.update"
+          ]
+        }
       },
       "tool-issues": {
         "module": "./tools.ts",
         "title": "Issue tools",
-        "description": "The model-facing issue tool: create, read and update. Coordinators and Captains get it; delegated threads leave it out."
+        "description": "The model-facing issue tool: create, read and update. Coordinators and Captains get it; delegated threads leave it out.",
+        "contributes": {
+          "tools": [
+            "issue"
+          ]
+        }
       },
       "tool-issue-comment": {
         "module": "./comment.ts",
         "title": "Issue comments",
-        "description": "The issue_comment tool, so any conversation, delegated threads included, can report on an issue."
+        "description": "The issue_comment tool, so any conversation, delegated threads included, can report on an issue.",
+        "contributes": {
+          "tools": [
+            "issue_comment"
+          ]
+        }
       }
     },
     "bundle": [

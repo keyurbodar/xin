@@ -9,7 +9,20 @@
       "tool-git-native": {
         "module": "./index.ts",
         "title": "Native git tools",
-        "description": "Clone and read a public git repository of any host inside the Worker: history, a file at a revision, and a diff between two revisions."
+        "description": "Clone and read a public git repository of any host inside the Worker: history, a file at a revision, and a diff between two revisions.",
+        "permissions": [
+          "network",
+          "runtime",
+          "storage"
+        ],
+        "contributes": {
+          "tools": [
+            "git_native_clone",
+            "git_native_diff",
+            "git_native_log",
+            "git_native_show"
+          ]
+        }
       }
     },
     "bundle": [

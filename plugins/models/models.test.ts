@@ -658,10 +658,10 @@ describe("models", () => {
       const any = () => calls(() => true)
       const kv = () => calls((sql) => sql.includes("FROM kv"))
       const before = any()
-      await home.loader.ctx.models.disabled(FAUX_MODEL)
+      await home.services.models.disabled(FAUX_MODEL)
       const check = any() - before
       const spendBefore = kv()
-      await home.loader.ctx.models.spend()
+      await home.services.models.spend()
       const spend = kv() - spendBefore
       const sendBefore = kv()
       await home.commands.run(

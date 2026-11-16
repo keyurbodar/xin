@@ -43,7 +43,7 @@ declare module "@deepseek-ai/cordis" {
   }
 
   interface Events {
-    /** @mode waterfall. Policy over every op; return an Outcome without next() to decide it. */
+    /** @mode waterfall. Policy over every op, with credential args redacted; return an Outcome without next() to decide it. */
     "ops/before"(call: OpCall, next: () => Promise<Outcome>): Promise<Outcome>
     /** @mode parallel. Typing indicator for a conversation. */
     "wire/typing"(conversation: ConversationId, on: boolean): Promise<void>

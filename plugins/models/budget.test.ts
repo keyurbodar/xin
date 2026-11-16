@@ -82,7 +82,7 @@ describe("usage by feature", () => {
       await bill(home, root, "faux/faux-1", 100, 0.5)
       await bill(home, thread.id, "faux/faux-1", 40, 0.25)
       const answer = fauxAssistantMessage("dreamt")
-      await home.loader.ctx.models.charge("dreamer", root, {
+      await home.services.models.charge("dreamer", root, {
         ...answer,
         provider: "faux",
         model: "faux-1",
@@ -125,8 +125,8 @@ describe("usage by feature", () => {
       error: { code: "forbidden" },
     })
     await runInDurableObject(stub, async (home: Home) => {
-      expect(await home.loader.ctx.models.admit("dreamer")).toEqual({ kind: "ok" })
-      expect(await home.loader.ctx.models.admitConversation((await home.root()).id)).toMatchObject({
+      expect(await home.services.models.admit("dreamer")).toEqual({ kind: "ok" })
+      expect(await home.services.models.admitConversation((await home.root()).id)).toMatchObject({
         kind: "capped",
         feature: "chat",
         period: "day",
@@ -213,7 +213,7 @@ describe("usage by feature", () => {
     ).toMatchObject({ ok: true })
     await call(stub, "goal-cap", "usage.feature.cap.set", { feature: "goal", day: 0 })
     await runInDurableObject(stub, async (home: Home) => {
-      expect(await home.loader.ctx.models.admitConversation(root)).toMatchObject({ kind: "capped", feature: "goal" })
+      expect(await home.services.models.admitConversation(root)).toMatchObject({ kind: "capped", feature: "goal" })
     })
   }, 30_000)
 

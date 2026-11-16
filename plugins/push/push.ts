@@ -272,6 +272,7 @@ export function pushOps(db: SqliteDatabase, fetcher: Fetcher = send): readonly O
         keys: SubscriptionKeys,
       }),
       actors: ["owner"],
+      credentials: ["keys"],
       run: async (_api, args) => {
         if (!httpsEndpoint(args.endpoint)) throw new OpRejected("bad_args", "push endpoint must be https")
         if (!(await validSubscriptionKeys(args.keys)))

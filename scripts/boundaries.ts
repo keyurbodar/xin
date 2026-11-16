@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import { KERNEL_OWNER, tableOwner } from "../src/kernel/dbtables.ts"
+import { reachViolations } from "./reach.ts"
 
 const ROOT = join(import.meta.dirname, "..")
 const PLUGINS = join(ROOT, "plugins")
@@ -46,7 +47,18 @@ const injected = (text: string): ReadonlySet<string> | undefined => {
     : new Set(lists.flatMap((list) => [...list.matchAll(/["']([^"']+)["']/g)].map((item) => item[1] ?? "")))
 }
 
+const declaredPermissions = (plugin: string): ReadonlySet<string> => {
+  const manifest: unknown = JSON.parse(readFileSync(join(PLUGINS, plugin, "package.json"), "utf8"))
+  const declared = Object.values(Object(Object(Object(manifest).ingle).plugins))
+  return new Set(
+    declared.flatMap((entry) => (Array.isArray(Object(entry).permissions) ? Object(entry).permissions : [])),
+  )
+}
+
 const violations: string[] = []
+const checkPermissions = (file: string, plugin: string, text: string): void => {
+  violations.push(...reachViolations(relative(ROOT, file), text, declaredPermissions(plugin)))
+}
 const checkInject = (file: string, requireDeclaration: boolean, text: string): void => {
   if (file.endsWith(".test.ts")) return
   const inject = injected(text)
@@ -76,6 +88,7 @@ for (const file of [...files(PLUGINS), ...files(join(ROOT, "test", "plugins"))])
   checkInject(file, true, text)
   const plugin = pluginOf(file)
   if (plugin === undefined || file.endsWith(".test.ts")) continue
+  checkPermissions(file, plugin, text)
   for (const match of text.matchAll(SQL_TABLE)) {
     const table = match[1]
     if (table === undefined || SQL_KEYWORDS.has(table.toLowerCase())) continue

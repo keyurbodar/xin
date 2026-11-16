@@ -1,7 +1,9 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
+import { assertUniquePackages } from "./discovery.ts"
+import { reachViolations } from "./reach.ts"
 import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
 
 const ROOT = join(import.meta.dirname, "..")
@@ -54,17 +56,21 @@ function parse(path: string, specifier: (module: string) => string, local: boole
       )
     const module = field(entry, "module")
     if (typeof module !== "string") throw new Error(`${pkg}: ingle.plugins.${name}.module must be a path`)
+    const parsedManifest = readManifest(
+      {
+        api: field(entry, "api"),
+        requires: field(entry, "requires"),
+        permissions: field(entry, "permissions"),
+        contributes: field(entry, "contributes"),
+      },
+      `${pkg}: ingle.plugins.${name}`,
+      local ? { pkg, dir: relative(ROOT, dirname(path)) } : undefined,
+    )
     plugins[name] = {
       module,
       title: String(field(entry, "title") ?? name),
       description: String(field(entry, "description") ?? field(manifest, "description") ?? ""),
-      manifest: readManifest(
-        {
-          api: field(entry, "api"),
-          requires: field(entry, "requires"),
-        },
-        `${pkg}: ingle.plugins.${name}`,
-      ),
+      manifest: parsedManifest,
     }
   }
   const rows = field(ingle, "bundle")
@@ -102,7 +108,8 @@ function discover(): Found[] {
     for (const name of readdirSync(local).toSorted()) {
       const manifest = join(local, name, "package.json")
       if (!existsSync(manifest)) continue
-      const parsed = parse(manifest, (module) => `../plugins/${name}/${module.replace(/^\.\//, "")}`, true)
+      const path = (prefix: string) => (module: string) => `${prefix}/plugins/${name}/${module.replace(/^\.\//, "")}`
+      const parsed = parse(manifest, path(".."), true)
       if (parsed !== undefined) found.push(parsed)
     }
   }
@@ -110,9 +117,11 @@ function discover(): Found[] {
   for (const pkg of Object.keys(typeof deps === "object" && deps !== null ? deps : {}).toSorted()) {
     const manifest = join(ROOT, "node_modules", pkg, "package.json")
     if (!existsSync(manifest)) continue
-    const parsed = parse(manifest, (module) => `${pkg}/${module.replace(/^\.\//, "")}`, false)
+    const path = (module: string) => `${pkg}/${module.replace(/^\.\//, "")}`
+    const parsed = parse(manifest, path, false)
     if (parsed !== undefined) found.push(parsed)
   }
+  assertUniquePackages(found.map((entry) => ({ pkg: entry.pkg, at: relative(ROOT, entry.dir) })))
   const seen = new Map<string, string>()
   for (const entry of found)
     for (const name of Object.keys(entry.plugins)) {
@@ -181,9 +190,37 @@ const readProfile = (): Profile => {
 
 const writeProfile = (profile: Profile) => writeFileSync(PROFILE, `${JSON.stringify(profile, null, 2)}\n`)
 
+const SOURCE = /\.(?:[cm]?[jt]s|tsx)$/
+const TEST = /\.test\.[cm]?[jt]sx?$/
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name)
+    if (statSync(path).isDirectory()) return name === "node_modules" ? [] : sourceFiles(path)
+    return SOURCE.test(path) && !path.endsWith(".d.ts") && !TEST.test(path) ? [path] : []
+  })
+}
+
+/** Refuses an npm code package whose source reaches past the permissions its plugins declare: lint never sees it. */
+function assertWithinPermissions(found: readonly Found[]): void {
+  const violations = found
+    .filter((entry) => !entry.local)
+    .flatMap((entry) =>
+      sourceFiles(entry.dir).flatMap((file) =>
+        reachViolations(
+          `${entry.pkg}/${relative(entry.dir, file)}`,
+          readFileSync(file, "utf8"),
+          new Set(Object.values(entry.plugins).flatMap((plugin) => plugin.manifest.permissions)),
+        ),
+      ),
+    )
+  if (violations.length > 0) throw new Error(`code packages reach past their permissions:\n${violations.join("\n")}`)
+}
+
 function generate(): Found[] {
   const found = discover()
   assertCoreFree(found)
+  assertWithinPermissions(found)
   writeFileSync(GENERATED, render(found))
   if (Bun.spawnSync(["bun", "x", "oxfmt", GENERATED], { cwd: ROOT }).exitCode !== 0)
     throw new Error(`oxfmt failed on ${relative(ROOT, GENERATED)}`)

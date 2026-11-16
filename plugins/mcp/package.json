@@ -9,17 +9,41 @@
       "mcp": {
         "module": "./index.ts",
         "title": "MCP",
-        "description": "MCP servers as deferred tools."
+        "description": "MCP servers as deferred tools.",
+        "permissions": [
+          "runtime",
+          "storage"
+        ],
+        "contributes": {
+          "ops": [
+            "mcp.add",
+            "mcp.list",
+            "mcp.prompts",
+            "mcp.remove",
+            "mcp.resources",
+            "mcp.tools"
+          ]
+        }
       },
       "tool-mcp": {
         "module": "./tools.ts",
         "title": "MCP tools",
-        "description": "The model-facing mcp tools. Disable to hide them; the mcp service keeps running."
+        "description": "The model-facing mcp tools. Disable to hide them; the mcp service keeps running.",
+        "contributes": {
+          "tools": [
+            "mcp_*",
+            "tool_search"
+          ]
+        }
       },
       "mcp-server": {
         "module": "./server.ts",
         "title": "MCP server",
-        "description": "One MCP server connection carried by a row, for bundles."
+        "description": "One MCP server connection carried by a row, for bundles.",
+        "permissions": [
+          "network",
+          "secrets"
+        ]
       }
     },
     "bundle": [

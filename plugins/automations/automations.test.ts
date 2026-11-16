@@ -282,7 +282,7 @@ describe("automations", () => {
     await op(stub, "c3", "usage.feature.cap.set", { feature: "automation", day: 0 })
     expect(
       await runInDurableObject(stub, (home: Home) =>
-        home.loader.ctx.models.admitConversation(first.threadId as ConversationId),
+        home.services.models.admitConversation(first.threadId as ConversationId),
       ),
     ).toMatchObject({ kind: "capped", feature: "automation" })
     const second = await op<RunView>(stub, "c4", "automation.trigger", { id: created.id })

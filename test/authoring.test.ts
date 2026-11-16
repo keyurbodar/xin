@@ -34,10 +34,14 @@ describe("plugin authoring", () => {
     expect(field(declared, "title")).toBe("Greeting")
     expect(
       readManifest(
-        { api: field(declared, "api"), requires: field(declared, "requires") },
+        {
+          api: field(declared, "api"),
+          requires: field(declared, "requires"),
+          contributes: field(declared, "contributes"),
+        },
         "ingle-plugin-greeting: ingle.plugins.greeting",
       ),
-    ).toEqual({ api: 1, requires: [] })
+    ).toEqual({ api: 1, requires: ["presets"], permissions: [], contributes: { tools: ["greeting"], ops: [] } })
     expect(field(ingle, "bundle")).toEqual([{ id: "greeting", plugin: "greeting" }])
 
     expect(fileOf("greeting", "index.ts")).toContain('export const name = "greeting"')

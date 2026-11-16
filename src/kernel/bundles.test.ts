@@ -236,8 +236,8 @@ describe("runtime bundles", () => {
     const stub = fresh()
     await runInDurableObject(stub, async (home: Home) => {
       await Promise.all([
-        home.loader.ctx.packages.put(bundleOf("ingle-plugin-one", "one-greet", "one")),
-        home.loader.ctx.packages.put(bundleOf("ingle-plugin-two", "two-greet", "two")),
+        home.services.packages.put(bundleOf("ingle-plugin-one", "one-greet", "one")),
+        home.services.packages.put(bundleOf("ingle-plugin-two", "two-greet", "two")),
       ])
     })
     expect(await list(stub)).toEqual(
