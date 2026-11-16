@@ -1,5 +1,6 @@
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import {
+  consentOf,
   errorMessage,
   market,
   marketDetail,
@@ -8,9 +9,11 @@ import {
   skipMarketVersion,
   unskipMarketVersion,
   updateFromMarket,
+  type ConsentPermission,
   type MarketDetail,
   type MarketSummary,
 } from "../../state/extensions.ts"
+import { ConsentPrompt } from "./consent.tsx"
 import { ago } from "../../lib/format.ts"
 import { Button, Chip, Empty, Failure, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
@@ -19,6 +22,9 @@ export function Updates(): JSX.Element {
   const [busy, setBusy] = createSignal<string | undefined>(undefined)
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [note, setNote] = createSignal<string | undefined>(undefined)
+  const [consent, setConsent] = createSignal<
+    { readonly entry: MarketSummary; readonly permissions: readonly ConsentPermission[] } | undefined
+  >(undefined)
 
   onMount(() => {
     void market.reload()
@@ -31,9 +37,10 @@ export function Updates(): JSX.Element {
     return state.value.filter((entry) => entry.status === "update-available")
   }
 
-  const updateOne = async (entry: MarketSummary): Promise<void> => {
+  const updateOne = async (entry: MarketSummary, grant: readonly string[] = []): Promise<void> => {
     setError(undefined)
     setNote(undefined)
+    setConsent(undefined)
     setBusy(entry.name)
     try {
       const detail = marketDetail(entry.name)
@@ -41,14 +48,16 @@ export function Updates(): JSX.Element {
       const state = detail.state()
       const offered = state.kind === "ready" ? offeredVersion(state.value) : undefined
       if (offered === undefined) throw new Error(`${entry.name} offers no compatible version`)
-      const result = await updateFromMarket(entry.name, offered.version)
+      const result = await updateFromMarket(entry.name, offered.version, grant)
       setNote(
         result.application === "applied"
           ? `${entry.name} updated to ${offered.version}`
           : `${entry.name} recorded for the next update`,
       )
     } catch (failure: unknown) {
-      setError(errorMessage(failure))
+      const permissions = consentOf(failure)
+      if (permissions === undefined) setError(errorMessage(failure))
+      else setConsent({ entry, permissions })
     } finally {
       setBusy(undefined)
     }
@@ -56,7 +65,9 @@ export function Updates(): JSX.Element {
 
   const updateAll = async (): Promise<void> => {
     for (const entry of available()) {
-      if (!entry.skipped) await updateOne(entry)
+      if (entry.skipped) continue
+      await updateOne(entry)
+      if (consent() !== undefined) return
     }
   }
 
@@ -78,6 +89,18 @@ export function Updates(): JSX.Element {
         </Button>
       </div>
 
+      <Show when={consent()}>
+        {(asked) => (
+          <ConsentPrompt
+            subject={asked().entry.name}
+            permissions={asked().permissions}
+            action="Allow and update"
+            busy={busy() !== undefined}
+            onAllow={(grant) => void updateOne(asked().entry, grant)}
+            onCancel={() => setConsent(undefined)}
+          />
+        )}
+      </Show>
       <Show when={error()}>
         {(message) => <Failure message={message()} />}
       </Show>

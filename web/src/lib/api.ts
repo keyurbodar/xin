@@ -4,10 +4,12 @@ import { parseRepairReply, type Drop, type RepairAnswer } from "./repair.ts"
 
 export class OpError extends Error {
   readonly code: string
+  readonly details: unknown
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, details?: unknown) {
     super(message)
     this.code = code
+    this.details = details
     this.name = "OpError"
   }
 }
@@ -19,7 +21,7 @@ export function isDefinitive(problem: unknown): boolean {
 
 type Ack<T> =
   | { readonly t: "ack"; readonly id: string; readonly ok: true; readonly result: T }
-  | { readonly t: "ack"; readonly id: string; readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+  | { readonly t: "ack"; readonly id: string; readonly ok: false; readonly error: { readonly code: string; readonly message: string; readonly details?: unknown } }
 
 /** A caller that may retry passes its own command id: the host dedupes on it, so a replay lands once. */
 export type CmdOptions = { readonly id?: string }
@@ -73,7 +75,7 @@ function send<T>(op: string, args: Record<string, unknown>, options: CmdOptions)
     if (queue.length === 0) queueMicrotask(() => void flush())
     queue.push({ frame, resolve, reject })
   }).then((ack) => {
-    if (!ack.ok) throw new OpError(ack.error.code, ack.error.message)
+    if (!ack.ok) throw new OpError(ack.error.code, ack.error.message, ack.error.details)
     return ack.result as T
   })
 }

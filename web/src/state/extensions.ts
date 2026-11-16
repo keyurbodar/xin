@@ -495,14 +495,31 @@ export async function configureRow(id: string, config: Readonly<Record<string, u
   await Promise.all([rows.reload(), packages.reload()])
 }
 
-export async function installFromMarket(name: string): Promise<InstallResult> {
-  const result = parseInstall(await cmd("market.install", { name }))
+export type ConsentPermission = { readonly id: string; readonly title: string; readonly why: string }
+
+/** The permissions an install was refused for, when the market asks for the owner's consent before it runs. */
+export function consentOf(failure: unknown): readonly ConsentPermission[] | undefined {
+  if (!(failure instanceof OpError) || failure.code !== "consent_required") return undefined
+  return records(isRecord(failure.details) ? failure.details["permissions"] : undefined).flatMap((item) => {
+    const id = strOf(item["id"])
+    return id === undefined ? [] : [{ id, title: strOf(item["title"]) ?? id, why: strOf(item["why"]) ?? "" }]
+  })
+}
+
+const granted = (grant: readonly string[]): { grant?: readonly string[] } => (grant.length === 0 ? {} : { grant })
+
+export async function installFromMarket(name: string, grant: readonly string[] = []): Promise<InstallResult> {
+  const result = parseInstall(await cmd("market.install", { name, ...granted(grant) }))
   await Promise.all([rows.reload(), packages.reload(), market.reload(), marketDetail(name).reload()])
   return result
 }
 
-export async function updateFromMarket(name: string, version: string): Promise<InstallResult> {
-  const result = parseInstall(await cmd("market.update", { name, version }))
+export async function updateFromMarket(
+  name: string,
+  version: string,
+  grant: readonly string[] = [],
+): Promise<InstallResult> {
+  const result = parseInstall(await cmd("market.update", { name, version, ...granted(grant) }))
   await Promise.all([rows.reload(), packages.reload(), market.reload(), marketDetail(name).reload()])
   return result
 }
@@ -601,8 +618,8 @@ export const skippedMarket: RemoteHandle<readonly SkippedVersion[]> = remote(
 
 export type RollbackResult = { readonly application: string; readonly reason?: string | undefined }
 
-export async function rollbackPackage(name: string): Promise<RollbackResult> {
-  const value = await cmd<unknown>("market.rollback", { name })
+export async function rollbackPackage(name: string, grant: readonly string[] = []): Promise<RollbackResult> {
+  const value = await cmd<unknown>("market.rollback", { name, ...granted(grant) })
   await Promise.all([rows.reload(), packages.reload(), market.reload()])
   if (!isRecord(value)) return { application: "failed" }
   return { application: strOf(value["application"]) ?? "failed", reason: strOf(value["reason"]) }
@@ -619,9 +636,9 @@ export async function setMarketPolicy(autoUpdate: boolean): Promise<void> {
   await marketPolicy.reload()
 }
 
-export async function installSpec(spec: string): Promise<void> {
-  await cmd("plugin.install", { spec })
-  await packages.reload()
+export async function addSpec(spec: string, grant: readonly string[]): Promise<void> {
+  await cmd("market.add", { spec, grant })
+  await Promise.all([packages.reload(), rows.reload()])
 }
 
 export async function uninstallPackage(name: string): Promise<void> {

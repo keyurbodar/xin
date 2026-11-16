@@ -1,7 +1,17 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
+import {
+  gitProblem,
+  integrityProblem,
+  isGitSpec,
+  nameOf,
+  permissionProblem,
+  specProblem,
+  tarballProblem,
+} from "./pin.ts"
+import { DEV_KEK, DEV_TOKEN } from "./devvars.ts"
 import { assertUniquePackages } from "./discovery.ts"
 import { reachViolations } from "./reach.ts"
 import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
@@ -291,10 +301,11 @@ const readTemplate = (): Template => ({
   manifest: readFileSync(join(TEMPLATE_DIR, "package.json"), "utf8"),
   module: readFileSync(join(TEMPLATE_DIR, "index.ts"), "utf8"),
   test: readFileSync(join(TEMPLATE_DIR, `${TEMPLATE}.test.ts`), "utf8"),
+  client: readFileSync(join(TEMPLATE_DIR, "client.tsx"), "utf8"),
 })
 
-function createPlugin(name: string): void {
-  const files = scaffold(name, readTemplate())
+function createPlugin(name: string, client: boolean): void {
+  const files = scaffold(name, readTemplate(), { client })
   const dir = join(ROOT, "plugins", name)
   const pkg = `ingle-plugin-${name}`
   if (existsSync(dir)) throw new Error(`plugins/${name} already exists; choose another name`)
@@ -309,7 +320,8 @@ function createPlugin(name: string): void {
     `created plugins/${name} and added ${pkg} to the build. Next:\n` +
       `  bun scripts/gate.ts submit types test --only=plugins/${name}\n` +
       "  wrangler deploy\n" +
-      "The author path, from an empty file to a deployed plugin: docs/plugin-authoring.md",
+      "  bun scripts/ingle.ts plugin dev     (Worker and web with live reload)\n" +
+      "The author path, from an empty file to a deployed plugin: docs/plugins/authoring.md",
   )
 }
 
@@ -327,7 +339,24 @@ async function bun(args: readonly string[]): Promise<void> {
   if ((await child.exited) !== 0) throw new Error(`bun ${args.join(" ")} failed`)
 }
 
-type SyncPlan = { readonly add: readonly string[]; readonly remove: readonly string[] }
+type SyncPlan = {
+  readonly add: readonly string[]
+  readonly remove: readonly string[]
+  readonly pins: Readonly<Record<string, SyncPin>>
+}
+
+type SyncPin = { readonly integrity: string; readonly tarball: string; readonly permissions: readonly string[] }
+
+function syncPin(spec: string, value: unknown): SyncPin {
+  const integrity = field(value, "integrity")
+  const tarball = field(value, "tarball")
+  const permissions = stringList(field(value, "permissions"))
+  if (typeof integrity !== "string" || !integrity.startsWith("sha512-") || typeof tarball !== "string")
+    throw new Error(`plugin sync: the pin for ${spec} needs a sha512 integrity and a tarball url`)
+  if (!tarball.startsWith("https://")) throw new Error(`plugin sync: the tarball for ${spec} must be an https url`)
+  if (permissions === undefined) throw new Error(`plugin sync: the pin for ${spec} needs its permissions`)
+  return { integrity, tarball, permissions }
+}
 
 const stringList = (value: unknown): string[] | undefined =>
   Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined
@@ -338,7 +367,13 @@ function syncPlan(value: unknown): SyncPlan {
   const remove = stringList(field(packages, "remove") ?? [])
   if (add === undefined || remove === undefined)
     throw new Error("plugin sync needs { add: string[], remove: string[] }")
-  return { add, remove }
+  const pins = field(packages, "pins") ?? {}
+  if (typeof pins !== "object" || pins === null) throw new Error("plugin sync: pins must map a spec to its pin")
+  return {
+    add,
+    remove,
+    pins: Object.fromEntries(Object.entries(pins).map(([spec, pin]) => [spec, syncPin(spec, pin)])),
+  }
 }
 
 async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
@@ -350,17 +385,102 @@ async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
     for (const spec of add) console.warn(`would add ${spec}`)
     return
   }
+  const shipped = new Set(discover().flatMap((entry) => (entry.local ? [entry.pkg] : [])))
+  for (const spec of add) {
+    const problem = specProblem(spec, shipped)
+    if (problem !== undefined) throw new Error(problem)
+  }
   for (const pkg of remove) await bun(["remove", pkg])
   const before = new Set(discover().map((entry) => entry.pkg))
-  for (const spec of add) await bun(["add", spec])
+  for (const spec of add) {
+    const pin = plan.pins[spec]
+    if (pin !== undefined) {
+      const response = await fetch(pin.tarball, { redirect: "error" })
+      if (!response.ok) throw new Error(`${spec}: fetching ${pin.tarball} answered ${response.status}`)
+      const swapped = await tarballProblem(spec, pin.integrity, new Uint8Array(await response.arrayBuffer()))
+      if (swapped !== undefined) throw new Error(swapped)
+    }
+    const manifest = readFileSync(join(ROOT, "package.json"), "utf8")
+    const lock = readFileSync(join(ROOT, "bun.lock"), "utf8")
+    await bun(["add", spec])
+    if (isGitSpec(spec)) {
+      const problem = gitProblem(spec, readFileSync(join(ROOT, "bun.lock"), "utf8"), shipped)
+      if (problem === undefined) continue
+      writeFileSync(join(ROOT, "package.json"), manifest)
+      writeFileSync(join(ROOT, "bun.lock"), lock)
+      await bun(["install"])
+      throw new Error(problem)
+    }
+    if (pin === undefined) continue
+    const problem =
+      integrityProblem(spec, pin.integrity, readFileSync(join(ROOT, "bun.lock"), "utf8")) ??
+      permissionProblem(spec, pin.permissions, readJson(join(ROOT, "node_modules", nameOf(spec), "package.json")))
+    if (problem !== undefined) throw new Error(problem)
+  }
   for (const pkg of remove) setBundle(pkg, false)
   for (const entry of discover()) if (!before.has(entry.pkg)) setBundle(entry.pkg, true)
   generate()
 }
 
+/** What `plugin generate` reads: a package manifest, or a client module appearing or going away. */
+const regenerates = (path: string): boolean => path.endsWith("package.json") || path.endsWith("client.tsx")
+
+/**
+ * The author's dev loop: regenerate once, run `wrangler dev` and the web dev server side by side, and regenerate
+ * whenever a plugin manifest or client module changes. Wrangler reloads the Worker on the new catalog and Vite
+ * hot-reloads the client, so editing a plugin never needs a restart. Without `.dev.vars` it runs with a throwaway
+ * owner token and KEK.
+ */
+async function dev(args: readonly string[]): Promise<void> {
+  const at = args.indexOf("--port")
+  const port = at === -1 ? 8799 : Number(args[at + 1])
+  if (!Number.isInteger(port) || port <= 0) throw new Error("dev --port needs a port number")
+  generate()
+  const local = existsSync(join(ROOT, ".dev.vars"))
+  const vars = local ? [] : ["--var", `OWNER_TOKEN:${DEV_TOKEN}`, "--var", `KEK:${DEV_KEK}`]
+  const children = [
+    Bun.spawn(["bunx", "wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", ...vars], {
+      cwd: ROOT,
+      stdout: "inherit",
+      stderr: "inherit",
+    }),
+    Bun.spawn(["bun", "x", "vite", "--host", "127.0.0.1"], {
+      cwd: join(ROOT, "web"),
+      env: { ...process.env, INGLE_DEV_URL: `http://127.0.0.1:${port}` },
+      stdout: "inherit",
+      stderr: "inherit",
+    }),
+  ]
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const watcher = watch(join(ROOT, "plugins"), { recursive: true }, (_event, file) => {
+    if (file === null || !regenerates(file)) return
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      try {
+        generate()
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error))
+      }
+    }, 200)
+  })
+  const stop = (): void => {
+    watcher.close()
+    for (const child of children) child.kill()
+  }
+  process.on("SIGINT", stop)
+  process.on("SIGTERM", stop)
+  console.warn(
+    `plugin dev: Worker on http://127.0.0.1:${port}, web on the Vite URL below` +
+      (local ? "; the owner token is the one in .dev.vars" : `; sign in with the owner token ${DEV_TOKEN}`),
+  )
+  await Promise.race(children.map((child) => child.exited))
+  stop()
+}
+
 const usage = `usage: bun scripts/ingle.ts plugin <command>
   list                       packages with a ingle field, their plugins and whether their bundle is enabled
-  new <name>                 create plugins/<name> from the template package plugins/hello
+  new <name> [--client]      create plugins/<name> from the template package plugins/hello; --client adds its web module
+  dev [--port N]             generate, then run wrangler dev and the web dev server, regenerating when a manifest changes
   generate [--check]         rewrite src/catalog.gen.ts and web/src/plugins.gen.ts from plugins/* and installed dependencies; --check fails if they are stale
   add <spec> [--enable]      bun add <spec>, regenerate, and with --enable append its bundle to the profile
   remove <package>           drop its bundle from the profile, bun remove it, regenerate
@@ -383,9 +503,11 @@ async function main(argv: readonly string[]): Promise<void> {
     }
     case "generate":
       return void generate(target === "--check")
+    case "dev":
+      return dev([target ?? "", ...flags])
     case "new": {
       if (target === undefined) throw new Error("new needs a plugin name")
-      return createPlugin(target)
+      return createPlugin(target, flags.includes("--client"))
     }
     case "add": {
       if (target === undefined) throw new Error("add needs a spec")
