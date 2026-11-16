@@ -4,7 +4,7 @@ Ingle's plugin layer is the one deepseek-harness (dsh) uses: Cordis contexts, se
 
 This section adds the one thing dsh leaves implicit and Ingle makes a first-class word: **a plugin is mounted at a scope**. A plugin can apply to the whole Home, to one project, or to one thread, and the composition of a scope is resolved by inheritance. That is what makes a personal agent feel configurable without a settings maze: the same plugin can be on everywhere and off in one project, with no second mechanism.
 
-A plugin is **trusted code that runs in the Home's isolate**, so a manifest cannot confine it. What the manifest does is make it honest: a plugin declares the **permissions** it needs and the **tools and ops it contributes**, and the kernel refuses a row whose code reaches past either declaration, at mount, at the service access, or at build (see [Permissions and contributions](#permissions-and-contributions)). The checks keep honest code to its declaration; they cannot confine hostile code, because there is no sandbox. There are still no per-call approvals.
+A plugin is **trusted code that runs in the Home's isolate**, so a manifest cannot confine it. What the manifest does is make it honest: a plugin declares the **permissions** it needs and the **tools and ops it contributes**, and the kernel refuses a row whose code reaches past either declaration, at mount, at the service access, or at build (see [Permissions and contributions](#permissions-and-contributions)). The checks keep honest code to its declaration; they cannot confine hostile code, because there is no sandbox. The only per-call approval is the owner's own [tool policy](#tool-policy), a plugin row; no plugin can make the kernel prompt on its behalf.
 
 Read with: [01 Host](./01-host.md) for the alarm loop the `clock` service owns, [03 Commands and wire](./03-commands-and-wire.md) for the `ops` and `wire` services, [05 Models](./05-models.md) for the `models` seam, [12 Market](./12-market.md) for installs.
 
@@ -262,7 +262,7 @@ Plugin-contributed prompts and skills follow a different rule: they follow their
 
 **Trust tiers.** `core` rows are required and cannot be removed. `build` rows come from packages in `ingle.profile.json`; installing the build is the trust decision. `runtime` rows come from a bundle or an owner patch at run time. Third-party *code* always arrives through a build; a bundle can mount only plugins that are already compiled.
 
-**What is not there.** No per-call approval and no sandbox. A plugin runs in the same isolate as the kernel, so its permissions are checked declarations, not confinement: the boundary is still what you install.
+**What is not there.** No sandbox, and no approval the kernel imposes: the owner's tool policy is the one per-call gate, and it is the owner's choice per tool. A plugin runs in the same isolate as the kernel, so its permissions are checked declarations, not confinement: the boundary is still what you install.
 
 **What a person sees.** A plugin is on or off, with a title, a one-line description and the tools it adds. Turning it on is one action. There is nothing to approve before it works.
 
@@ -281,11 +281,22 @@ Two things, both existing agent surfaces, neither an approval:
 
 Rules:
 
-- **No approval seam.** The kernel does not prompt before a plugin acts. A plugin that wants a human decision asks a question or uses its own tool; it cannot make the product ask "allow?" on its behalf.
+- **No approval seam.** The kernel does not prompt before a plugin acts. A plugin that wants a human decision asks a question or uses its own tool; it cannot make the product ask "allow?" on its behalf. The owner can, per tool, through the tool policy below.
 - **Defaults first.** `Config` has defaults, so a plugin does useful work with no setup. Configuring is optional, not a gate.
 - **Credentials are config.** A plugin that needs a key names the reference and reads it with `ctx.secrets.get`; the owner sets it once with `secret.set`. There is no per-use prompt and no credential dialog owned by the plugin.
 - **One surface.** A question is the existing `ask_user` path: it lands in the thread, is durable, and an answer starts the next run. A plugin does not render UI or own a socket.
 - **Fail closed, quietly.** A missing credential yields `undefined`; the plugin decides whether to report that as a normal tool error. Nothing hangs waiting for a person who is not there.
+
+## Tool policy
+
+`plugins/policy` (row `policy`, permissions `conversations` and `plugins`, dsh's `user-approval` service and `tools/pre-execute` gate) lets the owner set each tool to `allow` (the default), `ask` or `off`, for Home and per project; a project's mode wins over Home's.
+
+- **Ops.** `tool.policy.read { projectId? }` answers `{ tools: [{ name, plugin, title, home, project? }] }` from the registry, `plugin` being the plugin of the row that installed the tool and `project` present only when the project overrides it. `tool.policy.set { tool, mode, projectId? }` takes `allow`, `ask`, `off` or, with a `projectId`, `inherit`, which clears the override.
+- **State.** `xin.policy` (session) holds `{ home, projects }`; the row holds it in memory and rereads it only after a write. `xin.policy.calls` (conversation) holds that conversation's approvals by request id and the tool names the policy added to its `tools.remove`.
+- **Off.** Each conversation's `tools` filter gets the off tools in its `remove`, merged with what is already there (the orchestrator's child removals stay) through pi's `configure`, on start, on every policy write and on every workspace commit, writing only when the result differs. A `beforeTool` hook also blocks an off tool, for a filter another row rewrote since.
+- **Ask.** The `xin.policy` extension's `beforeTool` hook blocks a call that holds no grant, commits the grant as asked, and opens a request through `questions.ask` with kind `approval`, request id `approval:<callId>`, `subject: { tool, arguments }` (canonical JSON, keys sorted, capped at 500 characters) and options `Approve`, `Always allow`, `Deny`, in a thread, a coordinator or the root chat. Its `afterTool` hook gives that blocked result `control: { terminate: true }`, so the turn ends.
+- **Answer.** The row's `ops/before` listener takes `request.respond` for an open `approval:*` request: owner only, one of the three options. It settles the request through `questions.settle`, whose `admitted` callback writes, in the answer's own commit, a one-shot grant for that tool and canonical arguments (`Approve`), the grant plus the tool set to `allow` for the conversation's project or for Home in the root chat (`Always allow`), or drops the asked grant (`Deny`). The next run starts with a line telling the model to retry the call, or that it was refused. A grant is taken by the first matching call, marked with that call's id so a replay of the same call still runs, and a replayed answer returns `already_answered`.
+- **Cost.** 0 tokens, 0 rows and 0 requests per turn: the mode lookup is a map read, and an `allow` call reads nothing. Per approval: two commits when the call is blocked (grant and request), one when it is answered (request, grant and the run's input), one when the grant is used, and one run.
 
 ## UX: the concept budget
 
@@ -318,7 +329,7 @@ Nothing is granted, approved or configured before a plugin works.
 - Defaults that need no decision: one Home, one bundle per package, api 1, home scope, working config.
 - A hard API contract instead of version exemptions: a plugin either fits this build or it does not.
 - No platform declarations and no per-client plugin lists until there is a second client.
-- No approvals or sandbox until a concrete use case demands one.
+- No sandbox until a concrete use case demands one. The one approval is the owner's tool policy, off unless the owner sets a tool to ask.
 
 **What we deliberately do not expose:** profiles (one Home), layer precedence, isolate realms, version exemptions, HMR toggles, platform gates, permission grants.
 

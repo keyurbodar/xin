@@ -33,20 +33,21 @@ import * as p31 from "../plugins/models/tools.ts"
 import * as p32 from "../plugins/orchestrator/index.ts"
 import * as p33 from "../plugins/orchestrator/tools.ts"
 import * as p34 from "../plugins/outline/index.ts"
-import * as p35 from "../plugins/presets/index.ts"
-import * as p36 from "../plugins/presets/preset.ts"
-import * as p37 from "../plugins/push/index.ts"
-import * as p38 from "../plugins/questions/index.ts"
-import * as p39 from "../plugins/questions/tools.ts"
-import * as p40 from "../plugins/skills/index.ts"
-import * as p41 from "../plugins/skills/tools.ts"
-import * as p42 from "../plugins/standup/index.ts"
-import * as p43 from "../plugins/theme-pack/index.ts"
-import * as p44 from "../plugins/time/index.ts"
-import * as p45 from "../plugins/visual/index.ts"
-import * as p46 from "../plugins/watchdog/index.ts"
-import * as p47 from "../plugins/web/index.ts"
-import * as p48 from "../plugins/workspace/index.ts"
+import * as p35 from "../plugins/policy/index.ts"
+import * as p36 from "../plugins/presets/index.ts"
+import * as p37 from "../plugins/presets/preset.ts"
+import * as p38 from "../plugins/push/index.ts"
+import * as p39 from "../plugins/questions/index.ts"
+import * as p40 from "../plugins/questions/tools.ts"
+import * as p41 from "../plugins/skills/index.ts"
+import * as p42 from "../plugins/skills/tools.ts"
+import * as p43 from "../plugins/standup/index.ts"
+import * as p44 from "../plugins/theme-pack/index.ts"
+import * as p45 from "../plugins/time/index.ts"
+import * as p46 from "../plugins/visual/index.ts"
+import * as p47 from "../plugins/watchdog/index.ts"
+import * as p48 from "../plugins/web/index.ts"
+import * as p49 from "../plugins/workspace/index.ts"
 import type { Row } from "./kernel/layers.ts"
 import type { Catalog } from "./kernel/loader.ts"
 
@@ -634,8 +635,22 @@ export const CATALOG: Catalog = {
     local: true,
     source: "ingle-plugin-outline@0.1.0",
   },
-  presets: {
+  policy: {
     plugin: p35,
+    title: "Tool policy",
+    description: "Allow, ask or turn off each tool for Home or a project; an ask call waits for the owner's approval.",
+    manifest: {
+      api: 1,
+      requires: [],
+      permissions: ["conversations", "plugins"],
+      contributes: { tools: [], ops: ["tool.policy.read", "tool.policy.set"] },
+      slots: [],
+    },
+    local: true,
+    source: "ingle-plugin-policy@0.1.0",
+  },
+  presets: {
+    plugin: p36,
     title: "Presets",
     description: "Named agent presets that choose a conversation's plugins.",
     manifest: {
@@ -649,7 +664,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-presets@0.1.0",
   },
   preset: {
-    plugin: p36,
+    plugin: p37,
     title: "Preset",
     description: "One agent preset carried by a row, for bundles.",
     manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] }, slots: [] },
@@ -657,7 +672,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-presets@0.1.0",
   },
   push: {
-    plugin: p37,
+    plugin: p38,
     title: "Web Push",
     description: "Encrypted pushes when no tab is open.",
     manifest: {
@@ -684,7 +699,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-push@0.1.0",
   },
   questions: {
-    plugin: p38,
+    plugin: p39,
     title: "Questions",
     description: "ask_user and pending requests.",
     manifest: {
@@ -698,7 +713,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-questions@0.1.0",
   },
   "tool-questions": {
-    plugin: p39,
+    plugin: p40,
     title: "Questions tools",
     description: "The model-facing questions tools. Disable to hide them; the questions service keeps running.",
     manifest: {
@@ -712,7 +727,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-questions@0.1.0",
   },
   skills: {
-    plugin: p40,
+    plugin: p41,
     title: "Skills",
     description: "Markdown skills loaded on demand.",
     manifest: {
@@ -726,7 +741,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-skills@0.1.0",
   },
   "tool-skills": {
-    plugin: p41,
+    plugin: p42,
     title: "Skills tools",
     description: "The model-facing skills tools. Disable to hide them; the skills service keeps running.",
     manifest: {
@@ -740,7 +755,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-skills@0.1.0",
   },
   standup: {
-    plugin: p42,
+    plugin: p43,
     title: "Standup",
     description: "A /standup prompt, with a palette command and a composer button that start it.",
     manifest: {
@@ -754,7 +769,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-standup@0.1.0",
   },
   "theme-pack": {
-    plugin: p43,
+    plugin: p44,
     title: "Theme pack",
     description: "Three extra themes, Harbor, Moss and Paper, as pure colour data.",
     manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] }, slots: ["theme"] },
@@ -762,7 +777,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-theme-pack@0.1.0",
   },
   time: {
-    plugin: p44,
+    plugin: p45,
     title: "Current time",
     description:
       "A user-role time reading with the owner's zone and the elapsed time before each request, without a tool.",
@@ -771,7 +786,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-time@0.1.0",
   },
   visual: {
-    plugin: p45,
+    plugin: p46,
     title: "Visuals",
     description:
       "The show_visual tool: the model writes a sandboxed Lua script and the reply shows it as a live, interactive chart, table, canvas, 3D scene or shader.",
@@ -780,7 +795,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-visual@0.1.0",
   },
   watchdog: {
-    plugin: p46,
+    plugin: p47,
     title: "Watchdog",
     description: "Fails stalled threads and overdue jobs.",
     manifest: {
@@ -794,7 +809,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-watchdog@0.1.0",
   },
   "tool-web": {
-    plugin: p47,
+    plugin: p48,
     title: "Web tools",
     description: "Fetch a public page as readable text, and search the web once a Brave Search key is set.",
     manifest: {
@@ -808,7 +823,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-web@0.1.0",
   },
   workspace: {
-    plugin: p48,
+    plugin: p49,
     title: "Workspace",
     description: "Projects and thread documents.",
     manifest: {
@@ -894,6 +909,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
     { id: "tool-orchestrator", name: "cordis:tool-orchestrator" },
   ],
   "ingle-plugin-outline": [{ id: "outline", name: "cordis:outline" }],
+  "ingle-plugin-policy": [{ id: "policy", name: "cordis:policy" }],
   "ingle-plugin-presets": [
     {
       id: "presets",
