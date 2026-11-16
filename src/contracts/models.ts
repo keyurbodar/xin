@@ -4,6 +4,12 @@ import { MODEL_THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-sch
 import { obj, oneOf, opt, str } from "@earendil-works/pi-schema"
 import type { Outcome } from "../ops.ts"
 
+/**
+ * Provider retries per model request: 2, 4, 8, 16, 32 and 60 s apart (pi-ai caps one wait at 60 s), so a run rides out
+ * about two minutes of rate limiting or overload before it fails. Each wait is one durable sleep commit.
+ */
+export const PROVIDER_RETRIES = 6
+
 export type Role = "chat" | "thread" | "utility" | "compaction"
 export type ModelDefaults = { readonly [K in Role]?: ModelRef }
 export type ResolvedModel =
