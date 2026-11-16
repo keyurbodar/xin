@@ -6,9 +6,9 @@ Read with: [06 Orchestration](./06-orchestration.md) for the job wrapper, [08 Fi
 
 ```text
 tool-web row (bundle ingle-plugin-web, row id tool-web)
-  installs the tool-web extension with two tools
-  web_search(query, maxResults?)  -> titles, URLs, snippets
-  web_fetch(url, maxChars?, offset?) -> title, content type, one window of readable text
+  installs the tool-web extension, republished when the brave_search secret changes
+  web_fetch(url, maxChars?, offset?) -> title, content type, one window of readable text   always
+  web_search(query, maxResults?)  -> titles, URLs, snippets                                once brave_search is set
 ```
 
 ## Tools
@@ -18,11 +18,13 @@ tool-web row (bundle ingle-plugin-web, row id tool-web)
 | `web_search` | `query` (1–500 chars), `maxResults` (1–10, default 5)                                                      | A numbered list of title, URL and snippet; `details.results` carries the same array.                                 |
 | `web_fetch`  | `url` (public http or https), `maxChars` (1,000–100,000, default 8,000), `offset` (integer ≥ 0, default 0) | Title, content type and the readable text in `[offset, offset + maxChars)`; non-text responses return metadata only. |
 
-Both tools are wrapped with `jobs.tool`, so a call that takes longer than the 8 s inline wait becomes a job and reports its result later. In a thread the wrapper waits inline until the thread's deadline. They are read-only: no file is written and no project data is read.
+Both tools are deferred: the prompt's `deferred-tools` index lists them and `tool_search` loads one on first use. Both are wrapped with `jobs.tool`, so a call that takes longer than the 8 s inline wait becomes a job and reports its result later. In a thread the wrapper waits inline until the thread's deadline. They are read-only: no file is written and no project data is read.
 
 ## Search
 
-`web_search` reads DuckDuckGo's HTML endpoint (`https://html.duckduckgo.com/html/`) with no API key. It parses `result__a` anchors and `result__snippet` text, decodes entities and follows DuckDuckGo's `uddg` redirect parameter to the target URL. Internal DuckDuckGo links and non-http(s) targets are dropped. An empty result set is a tool error, not a silent success. There is no second search provider and no API-key setting; a provider with a key can arrive as a plugin later.
+`web_search` calls the Brave Search API: `GET https://api.search.brave.com/res/v1/web/search?q=<query>&count=<maxResults>` with `X-Subscription-Token: <key>` and `Accept: application/json`. The key is the secret ref `brave_search`, which the owner sets with `secret.set`; the row reads it with `ctx.secrets.get`, as `tool-git` does. Each of `web.results[]` becomes a result: `title` and `description` have their tags stripped and entities decoded, `url` is kept. A non-2xx answer, a body over 1 MB or a shape other than `{ web?: { results: [...] } }` is a tool error, and so is an empty result set.
+
+Without the key, `web_search` is not installed at all: it is in no request and not in the deferred index. `secret.set` emits `credentials/updated`, and the row reinstalls its extension when the ref is `brave_search` (the way `tool-mcp` republishes on `mcp/changed`), so the next request carries it with no restart. There is one provider and no fallback; the earlier DuckDuckGo HTML scraping is removed.
 
 ## Fetch
 
@@ -38,7 +40,11 @@ The model sees one window of that text per call, 8,000 characters by default, be
 
 ## Row and scoping
 
-The feature is a native Cordis package, `plugins/web`, with one row, `tool-web`, in the `ingle-plugin-web` bundle. The row injects `pi` and `jobs` and installs the `tool-web` extension. The bundle declares the row `disabled: true` (`plugins/web/package.json`, carried into `src/catalog.gen.ts`), the way `ingle-plugin-git` does: web and git access are optional plugins and off by default, as the scope rule requires, but the row is in the tree so `plugin.list` shows it and `plugin.enable` mounts it without a rebuild. `ingle.profile.json` names the bundle and carries no row state; the disabled flag lives on the row. A preset can then hide it for one scope.
+The feature is a native Cordis package, `plugins/web`, with one row, `tool-web`, in the `ingle-plugin-web` bundle. The row injects `pi`, `jobs` and `secrets` (manifest permissions `network` and `secrets`) and installs the `tool-web` extension. The bundle row ships enabled (`plugins/web/package.json`, carried into `src/catalog.gen.ts`). That is an exception to the scope rule that optional access rows ship off, decided by Bosun, 2026-11-16, under Keyur's standing authority, for Capy parity; `ingle-plugin-git` still ships disabled. `ingle.profile.json` names the bundle and carries no row state. The owner can still turn the row off with `plugin.enable`, and a preset can hide it for one scope.
+
+## Cost
+
+With no key the row adds one deferred-index line to every request's system prompt, `- web_fetch: Fetch a public http or https page as readable text.` (65 B). With a key it adds a second, `- web_search: Search the public web.` (37 B), 102 B in all. Neither tool schema is sent until `tool_search` loads it. Each call is one outbound subrequest (`web_fetch` may follow redirects within that fetch) and writes no rows; the result itself stays in the transcript like any tool result, which is why `web_fetch` windows at 8,000 characters.
 
 The tools follow the same scoping rules as the rest of the agent:
 
@@ -52,6 +58,6 @@ No approval prompt, permission gate or click-through is added. The URL policy is
 
 - a browser or JavaScript rendering;
 - authenticated pages, cookies or a logged-in session;
-- a search API key or provider setting;
+- a second search provider, a provider setting or a keyless fallback;
 - page caching, embeddings or an index;
 - a second fetch path through `r.jina.ai` or another proxy.

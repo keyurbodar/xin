@@ -470,13 +470,7 @@ export const CATALOG: Catalog = {
     plugin: p26,
     title: "MCP tools",
     description: "The model-facing mcp tools. Disable to hide them; the mcp service keeps running.",
-    manifest: {
-      api: 1,
-      requires: [],
-      permissions: [],
-      contributes: { tools: ["mcp_*", "tool_search"], ops: [] },
-      slots: [],
-    },
+    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: ["mcp_*"], ops: [] }, slots: [] },
     local: true,
     source: "ingle-plugin-mcp@0.1.0",
   },
@@ -802,11 +796,11 @@ export const CATALOG: Catalog = {
   "tool-web": {
     plugin: p47,
     title: "Web tools",
-    description: "Search the public web and fetch a page as readable text.",
+    description: "Fetch a public page as readable text, and search the web once a Brave Search key is set.",
     manifest: {
       api: 1,
       requires: ["jobs"],
-      permissions: ["network"],
+      permissions: ["network", "secrets"],
       contributes: { tools: ["web_fetch", "web_search"], ops: [] },
       slots: [],
     },
@@ -936,7 +930,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
   "ingle-plugin-time": [{ id: "time", name: "cordis:time", config: { timezone: "UTC" } }],
   "ingle-plugin-visual": [{ id: "visual", name: "cordis:visual" }],
   "ingle-plugin-watchdog": [{ id: "watchdog", name: "cordis:watchdog" }],
-  "ingle-plugin-web": [{ id: "tool-web", name: "cordis:tool-web", disabled: true }],
+  "ingle-plugin-web": [{ id: "tool-web", name: "cordis:tool-web" }],
   "ingle-plugin-workspace": [{ id: "workspace", name: "cordis:workspace" }],
 }
 

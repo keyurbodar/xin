@@ -1,10 +1,11 @@
 import type { ToolExecutionResult, ToolRegistration } from "@earendil-works/pi-durable"
-import { compile, int, obj, opt, str } from "@earendil-works/pi-schema"
+import { arr, compile, int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { JobsService } from "../../src/contracts/jobs.ts"
 import { messageOf } from "../../src/errors.ts"
 import { textResult } from "../../src/kernel/index.ts"
 
-const SEARCH_URL = "https://html.duckduckgo.com/html/"
+const SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+export const SEARCH_KEY_REF = "brave_search"
 const USER_AGENT = "Mozilla/5.0 (compatible; Ingle/0.1; +https://github.com/keyurbodar/xin)"
 const TIMEOUT_MS = 15_000
 const SEARCH_BYTES = 1_000_000
@@ -50,7 +51,17 @@ const FetchArgs = obj({
   offset: opt(int({ minimum: 0, description: "First character to return, 0 by default." })),
 })
 
+const BraveResponse = obj(
+  {
+    web: opt(
+      obj({ results: arr(obj({ title: str(), url: str(), description: opt(str()) }, { open: true })) }, { open: true }),
+    ),
+  },
+  { open: true },
+)
+
 const searchCheck = compile(SearchArgs)
+const braveCheck = compile(BraveResponse)
 const fetchCheck = compile(FetchArgs)
 
 const named: Readonly<Record<string, string>> = {
@@ -89,59 +100,6 @@ function cleanText(value: string): string {
 
 function stripTags(value: string): string {
   return cleanText(value)
-}
-
-function decodeResultUrl(raw: string): string | undefined {
-  const absolute = raw.startsWith("//") ? `https:${raw}` : raw.startsWith("/") ? `https://duckduckgo.com${raw}` : raw
-  let url: URL
-  try {
-    url = new URL(absolute)
-  } catch {
-    return undefined
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
-  if (url.hostname === "duckduckgo.com" || url.hostname.endsWith(".duckduckgo.com")) {
-    if (url.pathname !== "/l/") return undefined
-    const target = url.searchParams.get("uddg")
-    if (target === null) return undefined
-    try {
-      const decoded = new URL(target)
-      return decoded.protocol === "http:" || decoded.protocol === "https:" ? decoded.toString() : undefined
-    } catch {
-      return undefined
-    }
-  }
-  return url.toString()
-}
-
-export function parseSearchResults(html: string, limit = DEFAULT_RESULTS): SearchResult[] {
-  const anchors = [
-    ...html.matchAll(/<a\b[^>]*class="[^"]*\bresult__a\b[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi),
-  ]
-  const snippets = [...html.matchAll(/<a\b[^>]*class="[^"]*\bresult__snippet\b[^"]*"[^>]*>([\s\S]*?)<\/a>/gi)]
-  const fallbackAnchors = [
-    ...html.matchAll(/<a\b[^>]*class="[^"]*\bresult-link\b[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi),
-  ]
-  const fallbackSnippets = [
-    ...html.matchAll(/<(?:td|div)\b[^>]*class="[^"]*\bresult-snippet\b[^"]*"[^>]*>([\s\S]*?)<\/(?:td|div)>/gi),
-  ]
-  const found = anchors.length > 0 ? anchors : fallbackAnchors
-  const text = anchors.length > 0 ? snippets : fallbackSnippets
-  const results: SearchResult[] = []
-  for (const [index, match] of found.entries()) {
-    const rawUrl = match[1]
-    const rawTitle = match[2]
-    if (rawUrl === undefined || rawTitle === undefined) continue
-    const url = decodeResultUrl(rawUrl)
-    if (url === undefined) continue
-    const title = stripTags(rawTitle)
-    if (title === "") continue
-    const rawSnippet = text[index]?.[1] ?? ""
-    const snippet = stripTags(rawSnippet)
-    results.push({ title, url, snippet })
-    if (results.length >= limit) break
-  }
-  return results
 }
 
 export function extractHtml(html: string): { readonly title: string; readonly text: string } {
@@ -281,11 +239,11 @@ function decode(bytes: Uint8Array, contentType: string): string {
   }
 }
 
-async function request(url: string, signal: AbortSignal, accept: string): Promise<Response> {
+async function request(url: string, signal: AbortSignal, headers: Record<string, string>): Promise<Response> {
   const timed = timeoutSignal(signal)
   try {
     const response = await fetch(url, {
-      headers: { "user-agent": USER_AGENT, accept },
+      headers: { "user-agent": USER_AGENT, ...headers },
       redirect: "follow",
       signal: timed.signal,
     })
@@ -297,13 +255,26 @@ async function request(url: string, signal: AbortSignal, accept: string): Promis
   }
 }
 
-async function searchWeb(query: string, maxResults: number, signal: AbortSignal): Promise<SearchResult[]> {
+async function searchWeb(key: string, query: string, maxResults: number, signal: AbortSignal): Promise<SearchResult[]> {
   const url = new URL(SEARCH_URL)
   url.searchParams.set("q", query)
-  url.searchParams.set("kl", "wt-wt")
-  const response = await request(url.toString(), signal, "text/html")
+  url.searchParams.set("count", String(maxResults))
+  const response = await request(url.toString(), signal, {
+    accept: "application/json",
+    "x-subscription-token": key,
+  })
   const body = await readCapped(response, SEARCH_BYTES)
-  const results = parseSearchResults(decode(body.bytes, response.headers.get("content-type") ?? ""), maxResults)
+  if (body.truncated) throw new Error("the search response was too large")
+  const parsed: unknown = JSON.parse(decode(body.bytes, response.headers.get("content-type") ?? ""))
+  if (!braveCheck.check(parsed)) throw new Error("the search provider answered in an unexpected shape")
+  const results = (parsed.web?.results ?? [])
+    .map((result) => ({
+      title: cleanText(result.title),
+      url: result.url,
+      snippet: cleanText(result.description ?? ""),
+    }))
+    .filter((result) => result.title !== "")
+    .slice(0, maxResults)
   if (results.length === 0) throw new Error("the search returned no results")
   return results
 }
@@ -330,11 +301,9 @@ function pageOf(
 
 async function fetchPage(raw: string, maxChars: number, offset: number, signal: AbortSignal): Promise<FetchedPage> {
   const url = publicUrl(raw)
-  const response = await request(
-    url.toString(),
-    signal,
-    "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.5",
-  )
+  const response = await request(url.toString(), signal, {
+    accept: "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.5",
+  })
   const contentType = response.headers.get("content-type") ?? ""
   const body = await readCapped(response, PAGE_BYTES)
   const rawText = decode(body.bytes, contentType)
@@ -390,29 +359,11 @@ function failure(action: string, error: unknown): ToolExecutionResult {
   return textResult(`${action}: ${messageOf(error)}`, { isError: true })
 }
 
-export function createTools(jobs: JobsService): readonly ToolRegistration[] {
-  const search = jobs.tool(
-    {
-      name: "web_search",
-      description: "Search the public web. Returns result titles, URLs and snippets. Use web_fetch to read a result.",
-      parameters: SearchArgs,
-    },
-    async (args, run) => {
-      if (!searchCheck.check(args)) return textResult("web_search needs a query", { isError: true })
-      try {
-        const results = await searchWeb(args.query, args.maxResults ?? DEFAULT_RESULTS, run.signal)
-        return textResult(searchText(args.query, results), {
-          details: { query: args.query, results: results.map((result) => ({ ...result })) },
-        })
-      } catch (error) {
-        return failure("web_search failed", error)
-      }
-    },
-  )
-
+export function createTools(jobs: JobsService, searchKey: string | undefined): readonly ToolRegistration[] {
   const fetchTool = jobs.tool(
     {
       name: "web_fetch",
+      deferred: true,
       description:
         "Fetch a public http or https page as readable text. Long pages are paged with offset. Non-text responses return metadata only.",
       parameters: FetchArgs,
@@ -434,6 +385,27 @@ export function createTools(jobs: JobsService): readonly ToolRegistration[] {
         })
       } catch (error) {
         return failure("web_fetch failed", error)
+      }
+    },
+  )
+  if (searchKey === undefined) return [fetchTool]
+
+  const search = jobs.tool(
+    {
+      name: "web_search",
+      deferred: true,
+      description: "Search the public web. Returns result titles, URLs and snippets. Use web_fetch to read a result.",
+      parameters: SearchArgs,
+    },
+    async (args, run) => {
+      if (!searchCheck.check(args)) return textResult("web_search needs a query", { isError: true })
+      try {
+        const results = await searchWeb(searchKey, args.query, args.maxResults ?? DEFAULT_RESULTS, run.signal)
+        return textResult(searchText(args.query, results), {
+          details: { query: args.query, results: results.map((result) => ({ ...result })) },
+        })
+      } catch (error) {
+        return failure("web_search failed", error)
       }
     },
   )

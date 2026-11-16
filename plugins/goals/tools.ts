@@ -47,6 +47,7 @@ export function apply(ctx: Context): void {
       tools: [
         defineTool({
           name: "get_goal",
+          deferred: true,
           description: GET_DESCRIPTION,
           parameters: obj({}),
           replay: "safe",
@@ -54,6 +55,7 @@ export function apply(ctx: Context): void {
         }),
         defineTool({
           name: "create_goal",
+          deferred: true,
           description: CREATE_DESCRIPTION,
           parameters: obj({
             objective: str({
@@ -75,6 +77,7 @@ export function apply(ctx: Context): void {
         }),
         defineTool({
           name: "update_goal",
+          deferred: true,
           description:
             "Update the current goal; call get_goal first for its id and revision. " +
             "edit, pause and resume need a direct human request; complete and blocked are also " +

@@ -4,18 +4,30 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { respond } from "../../test/plugins/m8.ts"
-import { addThreads, cmd, fresh, setRow, turn } from "../../test/support.ts"
+import { addThreads, cmd, fresh, loadDeferred, recordOffers, rowOf, type Stub, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
-import { extractHtml, parseSearchResults, publicUrl } from "./web.ts"
+import { extractHtml, publicUrl, SEARCH_KEY_REF } from "./web.ts"
 
-const SEARCH_HTML = `<div class="result results_links">
-  <h2 class="result__title"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpage&amp;rut=abc">Example <b>Page</b></a></h2>
-  <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpage">A <b>short</b> snippet &amp; more</a>
-</div>
-<div class="result">
-  <h2><a class="result__a" href="https://second.example/x">Second result</a></h2>
-  <a class="result__snippet">Another snippet</a>
-</div>`
+const BRAVE_KEY = "test-brave-key"
+
+const BRAVE_JSON = JSON.stringify({
+  type: "search",
+  query: { original: "ingle" },
+  web: {
+    type: "search",
+    results: [
+      {
+        title: "Example <strong>Page</strong>",
+        url: "https://example.com/page",
+        description: "A <strong>short</strong> snippet &amp; more",
+        language: "en",
+      },
+      { title: "Second result", url: "https://second.example/x", description: "Another snippet" },
+    ],
+  },
+})
+
+type Searched = { readonly url: URL; readonly headers: Headers }
 
 const PAGE_HTML = `<!doctype html>
 <html>
@@ -39,10 +51,14 @@ const long = (args: Record<string, unknown>) =>
   })
 const body = (text: string): string => text.slice(text.indexOf("\n\n") + 2)
 
-const fakeFetch = (async (input: Parameters<typeof fetch>[0]) => {
+const searched: Searched[] = []
+
+const fakeFetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
-  if (url.startsWith("https://html.duckduckgo.com/html/"))
-    return new Response(SEARCH_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
+  if (url.startsWith("https://api.search.brave.com/res/v1/web/search")) {
+    searched.push({ url: new URL(url), headers: new Headers(init?.headers) })
+    return new Response(BRAVE_JSON, { headers: { "content-type": "application/json" } })
+  }
   if (url === "https://example.com/page")
     return new Response(PAGE_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
   if (url === "https://example.com/long") return new Response(LONG_TEXT, { headers: { "content-type": "text/plain" } })
@@ -50,14 +66,6 @@ const fakeFetch = (async (input: Parameters<typeof fetch>[0]) => {
 }) as typeof fetch
 
 describe("web parsing", () => {
-  it("reads DuckDuckGo anchors, snippets and redirect URLs", () => {
-    expect(parseSearchResults(SEARCH_HTML, 5)).toEqual([
-      { title: "Example Page", url: "https://example.com/page", snippet: "A short snippet & more" },
-      { title: "Second result", url: "https://second.example/x", snippet: "Another snippet" },
-    ])
-    expect(parseSearchResults(SEARCH_HTML, 1)).toHaveLength(1)
-  })
-
   it("reduces an HTML page to a title and readable text", () => {
     expect(extractHtml(PAGE_HTML)).toEqual({ title: "Hello & world", text: "Hello\n\nOne & two\n\nSecond line" })
   })
@@ -107,28 +115,40 @@ const toolTexts = (home: Home, conversationId: ConversationId): Promise<string[]
     )
   })
 
+const offered = async (stub: Stub, requestId: string): Promise<readonly string[]> => {
+  const offers = recordOffers()
+  respond([offers.step()])
+  await turn(stub, requestId)
+  return offers.latest().available
+}
+
 describe("web tools", () => {
-  it("ships the web row disabled and mounts it when enabled", async () => {
-    const stub = fresh()
-    const rowOf = async (id: string) => {
-      const listed = await cmd(stub, id, "plugin.list")
-      return Array.isArray(listed.result)
-        ? listed.result.find((row) => Reflect.get(row, "id") === "tool-web")
-        : undefined
-    }
-    expect(await rowOf("web-row-1")).toMatchObject({ disabled: true, state: { kind: "disabled" } })
-    await setRow(stub, "tool-web", true)
-    expect(await rowOf("web-row-2")).toMatchObject({ disabled: false })
+  it("ships the web row enabled", async () => {
+    expect(await rowOf(fresh(), "tool-web")).toMatchObject({ disabled: false })
   })
 
-  it("searches and fetches through the model-facing tools", async () => {
+  it("offers web_fetch but leaves web_search out until a search key is set", async () => {
+    const available = await offered(fresh(), "web-no-key")
+    expect(available).toContain("web_fetch")
+    expect(available).not.toContain("web_search")
+  })
+
+  it("turns web_search on after secret.set and searches Brave with the key", async () => {
     const original = globalThis.fetch
     globalThis.fetch = fakeFetch
+    searched.length = 0
     try {
       const stub = fresh()
-      await setRow(stub, "tool-web", true)
+      expect(await cmd(stub, "web-key", "secret.set", { ref: SEARCH_KEY_REF, value: BRAVE_KEY })).toMatchObject({
+        ok: true,
+      })
+      expect(await offered(stub, "web-keyed")).toEqual(expect.arrayContaining(["web_fetch", "web_search"]))
+      await loadDeferred(stub, ["web_search", "web_fetch"])
       respond([
-        () => fauxAssistantMessage([fauxToolCall("web_search", { query: "ingle" })], { stopReason: "toolUse" }),
+        () =>
+          fauxAssistantMessage([fauxToolCall("web_search", { query: "ingle", maxResults: 3 })], {
+            stopReason: "toolUse",
+          }),
         () =>
           fauxAssistantMessage([fauxToolCall("web_fetch", { url: "https://example.com/page" })], {
             stopReason: "toolUse",
@@ -138,8 +158,16 @@ describe("web tools", () => {
       await turn(stub, "web-tools", { text: "look it up" })
       const root = await runInDurableObject(stub, async (home: Home) => (await home.root()).id)
       const texts = await runInDurableObject(stub, (home: Home) => toolTexts(home, root))
-      expect(texts.some((text) => text.includes("Example Page"))).toBe(true)
+      expect(
+        texts.some((text) => text.includes("1. Example Page\nhttps://example.com/page\nA short snippet & more")),
+      ).toBe(true)
       expect(texts.some((text) => text.includes("One & two"))).toBe(true)
+      expect(searched).toHaveLength(1)
+      const [call] = searched
+      expect(call?.url.searchParams.get("q")).toBe("ingle")
+      expect(call?.url.searchParams.get("count")).toBe("3")
+      expect(call?.headers.get("x-subscription-token")).toBe(BRAVE_KEY)
+      expect(call?.headers.get("accept")).toBe("application/json")
     } finally {
       globalThis.fetch = original
     }
@@ -150,7 +178,7 @@ describe("web tools", () => {
     globalThis.fetch = fakeFetch
     try {
       const stub = fresh()
-      await setRow(stub, "tool-web", true)
+      await loadDeferred(stub, ["web_fetch"])
       respond([
         () => long({}),
         () => long({ offset: 8_000 }),
@@ -180,7 +208,6 @@ describe("web tools", () => {
     globalThis.fetch = fakeFetch
     try {
       const stub = fresh()
-      await setRow(stub, "tool-web", true)
       const created = await cmd(stub, "web-thread-project", "project.create", {
         slug: "web-thread",
         name: "Web thread",
@@ -189,6 +216,7 @@ describe("web tools", () => {
       const project = created.result as { id: string }
       const [thread] = await addThreads(stub, project.id, ["web thread"])
       if (thread === undefined) throw new Error("no thread")
+      await loadDeferred(stub, ["web_fetch"], thread.id)
       respond([
         () =>
           fauxAssistantMessage([fauxToolCall("web_fetch", { url: "https://example.com/page" })], {
