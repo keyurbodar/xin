@@ -7,7 +7,7 @@ export type ComposerToken = { readonly kind: TokenKind; readonly value: string; 
 
 const KINDS: readonly TokenKind[] = ["thread", "skill", "file", "prompt"]
 
-export const isTokenKind = (value: string): value is TokenKind => KINDS.some((kind) => kind === value)
+const isTokenKind = (value: string): value is TokenKind => KINDS.some((kind) => kind === value)
 
 /** `@thread:12`, `@skill:issues`, `@/projects/x/notes.md`, `/fix`: the draft's chips written as plain text. */
 export function formatToken(token: { readonly kind: TokenKind; readonly value: string }): string {

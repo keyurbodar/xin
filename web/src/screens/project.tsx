@@ -205,6 +205,7 @@ export function ProjectChat(props: {
             busy={busy()}
             presets={presetRows()}
             presetId={presetId()}
+            fresh={!started()}
             presetLocked={started()}
             effort={agentThinkingOf(snapshot())}
             efforts={currentInfo()?.thinking ?? []}

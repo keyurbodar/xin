@@ -8,8 +8,10 @@ export function SendButton(props: {
   ready: boolean
   pending: boolean
   label: string
+  size?: "base" | "sm"
   onStop: () => void
 }): JSX.Element {
+  const box = (): string => (props.size === "sm" ? "h-[var(--h-control-sm)] w-[var(--h-control-sm)]" : "h-[var(--h-control)] w-[var(--h-control)]")
   const state = (): string => (props.stop ? "stop" : props.ready ? "ready" : "idle")
   return (
     <button
@@ -22,7 +24,7 @@ export function SendButton(props: {
       disabled={props.pending || (!props.stop && !props.ready)}
       aria-label={props.stop ? "Stop the run" : props.label}
       data-state={state()}
-      class="im-send grid h-[var(--h-control)] w-[var(--h-control)] shrink-0 place-items-center rounded-sm disabled:cursor-default"
+      class={`im-send grid ${box()} shrink-0 place-items-center rounded-sm disabled:cursor-default`}
     >
       <span class="im-swap im-swap-icon place-items-center">
         <span class="grid place-items-center" data-active={!props.pending && !props.stop ? "" : undefined}>

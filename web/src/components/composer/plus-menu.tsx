@@ -9,13 +9,13 @@ import { POPUP, POPUP_ITEM, POPUP_SEPARATOR } from "../ui/surface.ts"
 import { KIND, KindIcon } from "./kinds.tsx"
 import { createSources, type Suggestion } from "./sources.ts"
 import { TOOL } from "./styles.ts"
-import { formatToken, type ComposerToken, type TokenKind } from "./tokens.ts"
+import type { ComposerToken, TokenKind } from "./tokens.ts"
 
 const UPLOAD_SHORTCUT = "mod+/"
 
 const MENU_KINDS: readonly TokenKind[] = ["thread", "skill", "prompt", "file"]
 
-export const KBD = "ml-auto inline-flex h-[var(--h-badge)] items-center rounded-xs bg-secondary px-1.5 font-mono text-micro text-ink-2"
+const KBD = "ml-auto inline-flex h-[var(--h-badge)] items-center rounded-xs bg-secondary px-1.5 font-mono text-micro text-ink-2"
 
 function KindMenu(props: { kind: TokenKind; rows: readonly Suggestion[]; onPick: (token: ComposerToken) => void }): JSX.Element {
   let search: HTMLInputElement | undefined
@@ -78,8 +78,7 @@ export function PlusMenu(props: {
   project: ProjectSummary
   disabled: boolean
   onUpload: () => void
-  onInsert: (text: string, token: ComposerToken) => void
-  onPrompt: (name: string, token: ComposerToken) => void
+  onInsert: (token: ComposerToken) => void
 }): JSX.Element {
   const [open, setOpen] = createSignal(false)
   const { mounted, settle } = createOverlayMount(open)
@@ -92,8 +91,7 @@ export function PlusMenu(props: {
     setOpen(false)
   }
 
-  const pick = (token: ComposerToken): void =>
-    close(() => (token.kind === "prompt" ? props.onPrompt(token.value, token) : props.onInsert(`${formatToken(token)} `, token)))
+  const pick = (token: ComposerToken): void => close(() => props.onInsert(token))
 
   return (
     <ui-menu

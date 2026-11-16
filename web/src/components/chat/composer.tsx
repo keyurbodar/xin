@@ -1,4 +1,4 @@
-import { ArrowUp, Square, X } from "lucide-solid"
+import { X } from "lucide-solid"
 import { For, Show, createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js"
 import { pendingDraftFor, takePendingDraft } from "../../lib/draft.ts"
 import { handleAttachShortcut } from "../../lib/attach-shortcut.ts"
@@ -8,14 +8,17 @@ import type { PresetRow } from "../../state/extensions.ts"
 import type { ProjectSummary } from "../../state/home.ts"
 import type { ModelInfo, ModelRef } from "../../state/settings.ts"
 import { AttachmentGrid, useAttachments, type Upload } from "../composer/attachments.tsx"
+import { ComposerCard } from "../composer/composer-card.tsx"
 import { ContextMeter } from "../composer/context-meter.tsx"
+import { ComposerEditor, type EditorHandle } from "../composer/editor.tsx"
 import { ModelPicker } from "../composer/model-picker.tsx"
 import { PlusMenu } from "../composer/plus-menu.tsx"
 import { ReasoningMenu } from "../composer/reasoning-menu.tsx"
-import "../composer/composer.css"
+import { ScopeChips } from "../composer/scope-chips.tsx"
+import { SendButton } from "../composer/send-button.tsx"
+import { createSources } from "../composer/sources.ts"
 import { bindComposer, host, slotItems } from "../../plugins/slots.tsx"
 import { Icon, isIconName } from "../ui/icon.tsx"
-import { Spinner } from "./ui.tsx"
 
 function errorText(failure: unknown): string {
   return failure instanceof Error ? failure.message : String(failure)
@@ -86,44 +89,6 @@ function useStopper(onStop: () => Promise<void>, onError: (message: string | und
   return { stopping, stop }
 }
 
-/** Send while there is something to send; Stop while the run is live and the draft is empty. */
-function SendButton(props: {
-  stop: boolean
-  ready: boolean
-  pending: boolean
-  size: "base" | "sm"
-  label: string
-  onSend: () => void
-  onStop: () => void
-}): JSX.Element {
-  const box = (): string => (props.size === "base" ? "h-8 w-8" : "h-7 w-7")
-  const state = (): string => (props.stop ? "stop" : props.ready ? "ready" : "idle")
-  return (
-    <button
-      type="button"
-      onClick={() => (props.stop ? props.onStop() : props.onSend())}
-      disabled={props.pending || (!props.stop && !props.ready)}
-      aria-label={props.stop ? "Stop the run" : props.label}
-      data-state={state()}
-      class={`im-send grid ${box()} shrink-0 place-items-center rounded-sm disabled:cursor-default`}
-    >
-      <span class="im-swap im-swap-icon place-items-center">
-        <span class="grid place-items-center" data-active={!props.pending && !props.stop ? "" : undefined}>
-          <ArrowUp size={16} stroke-width={2} />
-        </span>
-        <span class="grid place-items-center" data-active={!props.pending && props.stop ? "" : undefined}>
-          <Square size={11} stroke-width={0} fill="currentColor" />
-        </span>
-        <span class="grid place-items-center" data-active={props.pending ? "" : undefined}>
-          <Show when={props.pending}>
-            <Spinner />
-          </Show>
-        </span>
-      </span>
-    </button>
-  )
-}
-
 function ErrorLine(props: { message: string; onRetry?: (() => void) | undefined; onDismiss: () => void }): JSX.Element {
   return (
     <div class="shake mt-2 flex items-center gap-2 rounded-md bg-failed-soft px-3 py-2 text-sm text-failed">
@@ -150,6 +115,7 @@ export function Composer(props: {
   omitted: number
   query: string
   busy: boolean
+  fresh: boolean
   presets: readonly PresetRow[]
   presetId: string | undefined
   presetLocked: boolean
@@ -172,20 +138,16 @@ export function Composer(props: {
   const { stopping, stop } = useStopper(props.onStop, (message) =>
     setError(message === undefined ? undefined : { message, retry: "stop" }),
   )
-  const grow = useGrow(320)
-  let textarea!: HTMLTextAreaElement
+  const sources = createSources(() => props.project)
+  const [editor, setEditor] = createSignal<EditorHandle>()
   let fileInput!: HTMLInputElement
 
   const pickFiles = (): void => fileInput.click()
 
   createEffect(() => {
-    if (!props.active || pendingDraftFor(props.project.coordinatorId) === undefined) return
-    const text = takePendingDraft(props.project.coordinatorId) ?? ""
-    setDraft((current) => (current.trim() === "" ? text : `${text}${current}`))
-    queueMicrotask(() => {
-      textarea.focus()
-      textarea.setSelectionRange(text.length, text.length)
-    })
+    const current = editor()
+    if (!props.active || current === undefined || pendingDraftFor(props.project.coordinatorId) === undefined) return
+    current.prepend(takePendingDraft(props.project.coordinatorId) ?? "")
   })
 
   onMount(() => {
@@ -193,33 +155,6 @@ export function Composer(props: {
     document.addEventListener("keydown", shortcut)
     onCleanup(() => document.removeEventListener("keydown", shortcut))
   })
-
-  const insert = (text: string): void => {
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const current = draft()
-    const before = current.slice(0, start)
-    const spacer = before === "" || /\s$/u.test(before) ? "" : " "
-    const next = `${before}${spacer}${text}${current.slice(end)}`
-    setDraft(next)
-    queueMicrotask(() => {
-      const caret = before.length + spacer.length + text.length
-      textarea.focus()
-      textarea.setSelectionRange(caret, caret)
-      grow.resize()
-    })
-  }
-
-  const applyPrompt = (name: string): void => {
-    const command = `/${name} `
-    const rest = draft().replace(/^\/[a-z][a-z0-9-]*(?:\s+|$)/u, "").trimStart()
-    setDraft(`${command}${rest}`)
-    queueMicrotask(() => {
-      textarea.focus()
-      textarea.setSelectionRange(command.length, command.length)
-      grow.resize()
-    })
-  }
 
   const run = async (work: () => Promise<void>): Promise<void> => {
     setError(undefined)
@@ -235,13 +170,14 @@ export function Composer(props: {
   const showStop = (): boolean => props.busy && empty()
 
   const submit = async (): Promise<void> => {
-    if (!ready()) return
+    const current = editor()
+    if (!ready() || current === undefined) return
     setError(undefined)
     try {
-      if (await send(draft().trim(), attachments.uploaded())) {
+      if (await send(current.text().trim(), attachments.uploaded())) {
+        current.clear()
         setDraft("")
         attachments.clear()
-        grow.resize()
       }
     } catch (failure) {
       setError({ message: errorText(failure), retry: "send" })
@@ -250,8 +186,9 @@ export function Composer(props: {
 
   const actions = slotItems("composer.action")
   const handle = {
-    insert,
+    insert: (text: string): void => editor()?.insertText(text),
     submit: (text: string): void => {
+      editor()?.setText(text)
       setDraft(text)
       void submit()
     },
@@ -262,64 +199,37 @@ export function Composer(props: {
 
   return (
     <div class="shrink-0 px-4 pb-3 pt-2">
-      <div class="mx-auto w-full max-w-[var(--w-column)]">
-        <div
-          class="rounded-lg bg-card shadow-composer transition-shadow duration-[var(--dur-fast)]"
-          classList={{ "shadow-[0_0_0_1px_var(--color-primary)]": dragging() }}
-          onDragOver={(event) => {
-            if (!event.dataTransfer?.types.includes("Files")) return
-            event.preventDefault()
-            setDragging(true)
-          }}
-          onDragLeave={(event) => {
-            if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return
-            setDragging(false)
-          }}
-          onDrop={(event) => {
-            const dropped = filesOf(event.dataTransfer?.files)
-            setDragging(false)
-            if (dropped.length === 0) return
-            event.preventDefault()
-            attachments.add(dropped)
-          }}
-        >
-          <textarea
-            ref={(element) => {
-              textarea = element
-              grow.ref(element)
-            }}
-            value={draft()}
-            rows={1}
-            disabled={sending()}
-            onInput={(event) => {
-              setDraft(event.currentTarget.value)
-              grow.resize()
-            }}
-            onPaste={(event) => {
-              const pasted = filesOf(event.clipboardData?.files)
-              if (pasted.length === 0) return
-              event.preventDefault()
-              attachments.add(pasted)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
-                event.preventDefault()
-                void submit()
-              }
-            }}
-            placeholder="Ask anything, / for commands, @ for context"
-            aria-label={`Message ${props.project.name}`}
-            class="block min-h-[48px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-base text-ink outline-none placeholder:text-placeholder disabled:opacity-60"
-          />
-          <AttachmentGrid items={attachments.items()} onRemove={attachments.remove} />
-          <div class="flex items-center gap-0.5 px-2 pb-2 pt-1">
-            <PlusMenu
-              project={props.project}
-              disabled={sending()}
-              onUpload={pickFiles}
-              onInsert={insert}
-              onPrompt={applyPrompt}
-            />
+      <ComposerCard
+        above={props.fresh ? <ScopeChips project={props.project.name} /> : undefined}
+        dragging={dragging()}
+        onSubmit={() => void submit()}
+        onDragOver={(event) => {
+          if (!event.dataTransfer?.types.includes("Files")) return
+          event.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={(event) => {
+          if (event.relatedTarget instanceof Node && event.currentTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return
+          setDragging(false)
+        }}
+        onDrop={(event) => {
+          const dropped = filesOf(event.dataTransfer?.files)
+          setDragging(false)
+          if (dropped.length === 0) return
+          event.preventDefault()
+          attachments.add(dropped)
+        }}
+        onPaste={(event) => {
+          const pasted = filesOf(event.clipboardData?.files)
+          if (pasted.length === 0) return
+          event.preventDefault()
+          event.stopPropagation()
+          attachments.add(pasted)
+        }}
+        attachments={<AttachmentGrid items={attachments.items()} onRemove={attachments.remove} />}
+        start={
+          <>
+            <PlusMenu project={props.project} disabled={sending()} onUpload={pickFiles} onInsert={(token) => editor()?.insert(token)} />
             <input
               ref={fileInput}
               type="file"
@@ -361,20 +271,25 @@ export function Composer(props: {
               onLevel={(level) => void run(() => props.onPickEffort(level))}
               onPreset={(id) => void run(() => props.onPickPreset(id))}
             />
-            <div class="ml-auto flex items-center gap-1.5">
-              <ContextMeter conversation={props.project.coordinatorId} busy={props.busy} />
-              <SendButton
-                stop={showStop()}
-                ready={ready()}
-                pending={sending() || stopping()}
-                size="base"
-                label="Send message"
-                onSend={() => void submit()}
-                onStop={() => void stop()}
-              />
-            </div>
-          </div>
-        </div>
+          </>
+        }
+        end={
+          <>
+            <ContextMeter conversation={props.project.coordinatorId} busy={props.busy} />
+            <SendButton stop={showStop()} ready={ready()} pending={sending() || stopping()} label="Send message" onStop={() => void stop()} />
+          </>
+        }
+      >
+        <ComposerEditor
+          sources={sources}
+          label={`Message ${props.project.name}`}
+          placeholder="Ask anything, / for commands, @ for context"
+          disabled={sending()}
+          onChange={setDraft}
+          ref={setEditor}
+        />
+      </ComposerCard>
+      <div class="mx-auto w-full max-w-[var(--w-column)]">
         <Show when={error()}>
           {(failure) => (
             <ErrorLine
@@ -420,7 +335,13 @@ export function SteerComposer(props: {
 
   return (
     <div class="shrink-0 border-t border-line-1 p-3">
-      <div class="rounded-lg bg-card shadow-composer">
+      <form
+        class="rounded-lg bg-card shadow-composer"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void submit()
+        }}
+      >
         <div class="flex items-center gap-2 border-b border-line-1 px-3 py-2 text-xs text-ink-3">
           <Show
             when={props.busy}
@@ -465,11 +386,10 @@ export function SteerComposer(props: {
             pending={sending() || stopping()}
             size="sm"
             label="Send to thread"
-            onSend={() => void submit()}
             onStop={() => void stop()}
           />
         </div>
-      </div>
+      </form>
       <Show when={error()}>{(message) => <div class="mt-2 text-sm text-failed">{message()}</div>}</Show>
     </div>
   )

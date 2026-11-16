@@ -27,5 +27,9 @@ declare module "solid-js" {
         readonly insert: (content: string | TokenInsert) => void
       }>
     }
+
+    interface CustomCaptureEvents {
+      paste: ClipboardEvent
+    }
   }
 }

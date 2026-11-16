@@ -1,15 +1,7 @@
 import "../../src/styles/app.css"
 import { createSignal, type JSX } from "solid-js"
 import { render } from "solid-js/web"
-import { ComposerCard } from "../../src/components/composer/composer-card.tsx"
-import { ContextMeter } from "../../src/components/composer/context-meter.tsx"
-import { ComposerEditor, type EditorHandle } from "../../src/components/composer/editor.tsx"
-import { ModelPicker } from "../../src/components/composer/model-picker.tsx"
-import { PlusMenu } from "../../src/components/composer/plus-menu.tsx"
-import { ReasoningMenu } from "../../src/components/composer/reasoning-menu.tsx"
-import { ScopeChips } from "../../src/components/composer/scope-chips.tsx"
-import { SendButton } from "../../src/components/composer/send-button.tsx"
-import { createSources } from "../../src/components/composer/sources.ts"
+import { Composer } from "../../src/components/chat/composer.tsx"
 import type { ThinkingLevel } from "../../src/lib/thinking.ts"
 import type { ProjectSummary, ThreadSummary } from "../../src/state/home.ts"
 import type { ModelInfo } from "../../src/state/settings.ts"
@@ -89,64 +81,45 @@ function App(): JSX.Element {
   const [query, setQuery] = createSignal("")
   const [current, setCurrent] = createSignal<ModelInfo | undefined>(CATALOG[0])
   const [effort, setEffort] = createSignal<ThinkingLevel | undefined>("medium")
-  const [draft, setDraft] = createSignal("")
   const [busy, setBusy] = createSignal(false)
   const [sent, setSent] = createSignal("")
-  const sources = createSources(() => project)
   const models = (): readonly ModelInfo[] =>
     CATALOG.filter((entry) => entry.name.toLowerCase().includes(query().trim().toLowerCase()))
-  let editor!: EditorHandle
-
-  const ready = (): boolean => draft().trim() !== ""
-  const submit = (): void => {
-    if (!ready()) return
-    setSent(editor.text().trim())
-    editor.clear()
-    setBusy(true)
-  }
 
   return (
-    <main class="flex min-h-screen flex-col justify-end bg-bg p-6 pb-10">
-      <ComposerCard
-        above={<ScopeChips project={project.name} device={{ name: "build", online: true }} />}
-        start={
-          <>
-            <PlusMenu
-              project={project}
-              disabled={false}
-              onUpload={() => setSent("upload")}
-              onInsert={(_text, token) => editor.insert(token)}
-              onPrompt={(_name, token) => editor.insert(token)}
-            />
-            <ModelPicker
-              label={current()?.name ?? "Model"}
-              current={current()}
-              models={models()}
-              omitted={0}
-              query={query()}
-              onSearch={setQuery}
-              onPick={setCurrent}
-            />
-            <ReasoningMenu levels={LEVELS} level={effort()} presets={[]} presetId={undefined} presetLocked={false} onLevel={setEffort} onPreset={() => undefined} />
-          </>
-        }
-        end={
-          <>
-            <ContextMeter conversation={project.coordinatorId} busy={busy()} />
-            <SendButton stop={busy() && !ready()} ready={ready()} pending={false} label="Send message" onStop={() => setBusy(false)} />
-          </>
-        }
-        onSubmit={submit}
-      >
-        <ComposerEditor
-          sources={sources}
-          label={`Message ${project.name}`}
-          placeholder="Ask anything, / for commands, @ for context"
-          disabled={false}
-          onChange={setDraft}
-          ref={(handle) => (editor = handle)}
-        />
-      </ComposerCard>
+    <main class="flex min-h-screen flex-col justify-end bg-bg pb-6">
+      <Composer
+        project={project}
+        active
+        modelLabel={current()?.name ?? "Model"}
+        model={current()}
+        models={models()}
+        omitted={0}
+        query={query()}
+        onSearch={setQuery}
+        busy={busy()}
+        fresh={new URLSearchParams(location.search).get("fresh") !== "0"}
+        presets={[]}
+        presetId={undefined}
+        presetLocked={false}
+        effort={effort()}
+        efforts={LEVELS}
+        onPickModel={async (model) => {
+          setCurrent(model)
+        }}
+        onPickPreset={async () => undefined}
+        onPickEffort={async (level) => {
+          setEffort(level)
+        }}
+        onSend={async (text) => {
+          setSent(text)
+          setBusy(true)
+        }}
+        onStop={async () => {
+          setBusy(false)
+        }}
+        onAttach={async (file) => ({ path: `/projects/ingle/attachments/${file.name}`, name: file.name, size: file.size, type: file.type })}
+      />
       <output id="sent" class="sr-only">{sent()}</output>
       <output id="effort" class="sr-only">{effort() ?? ""}</output>
       <output id="model" class="sr-only">{current()?.modelId ?? ""}</output>

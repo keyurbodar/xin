@@ -1,6 +1,6 @@
 import "@ui-sdk/web/token-input"
 import "@ui-sdk/web/trigger-menu"
-import type { Token, UiTokenInputElement } from "@ui-sdk/web/token-input"
+import type { Token, TokenInputValue, UiTokenInputElement } from "@ui-sdk/web/token-input"
 import { For, Show, createSignal, onMount, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
@@ -8,9 +8,12 @@ import { KIND, KindIcon } from "./kinds.tsx"
 import type { Sources, Suggestion } from "./sources.ts"
 import { composerCodec, fromInputToken, toInputToken, type ComposerToken, type TokenKind } from "./tokens.ts"
 
-/** What the composer card and the + menu do to the draft. */
+/** What the composer, the + menu and plugin actions do to the draft. A prompt chip always goes first, replacing any other. */
 export type EditorHandle = {
   readonly insert: (token: ComposerToken) => void
+  readonly insertText: (text: string) => void
+  readonly prepend: (text: string) => void
+  readonly setText: (text: string) => void
   readonly text: () => string
   readonly clear: () => void
   readonly focus: () => void
@@ -21,7 +24,7 @@ const KINDS_FOR: Readonly<Record<string, readonly TokenKind[]>> = {
   "/": ["skill", "prompt"],
 }
 
-export const CHIP = "inline-flex items-baseline gap-1 rounded-xs text-primary-ink data-[selected]:bg-primary-soft"
+const CHIP = "inline-flex items-baseline gap-1 rounded-xs text-primary-ink data-[selected]:bg-primary-soft"
 
 function Chip(props: { token: ComposerToken }): JSX.Element {
   return (
@@ -33,6 +36,14 @@ function Chip(props: { token: ComposerToken }): JSX.Element {
 }
 
 const disposers = new WeakMap<HTMLElement, () => void>()
+
+function withPrompt(value: TokenInputValue, prompt: ComposerToken): TokenInputValue {
+  const [first, ...others] = value
+  const rest = first !== undefined && typeof first !== "string" && first.type === "prompt" ? others : value
+  const [head, ...tail] = rest
+  const body = typeof head === "string" ? [head.trimStart(), ...tail].filter((part) => part !== "") : rest
+  return [toInputToken(prompt), " ", ...body]
+}
 
 function renderChip(token: Token, host: HTMLElement): void {
   disposers.get(host)?.()
@@ -80,9 +91,23 @@ export function ComposerEditor(props: {
     ]
     props.ref({
       insert: (token) => {
+        if (token.kind === "prompt") {
+          input.api.setValue(withPrompt(input.api.getValue(), token))
+          input.api.focus({ at: "end" })
+          return
+        }
         input.api.insert([toInputToken(token), " "])
         input.api.focus()
       },
+      insertText: (value) => {
+        input.api.insert(value)
+        input.api.focus()
+      },
+      prepend: (value) => {
+        input.api.insert(value, { at: { start: 0, end: 0 } })
+        input.api.focus()
+      },
+      setText: (value) => input.api.setValue(value === "" ? [] : [value]),
       text,
       clear: () => input.api.clear(),
       focus: () => input.api.focus({ at: "end" }),
