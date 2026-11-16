@@ -256,8 +256,9 @@ function Editor(props: { readonly selected: Swatch }): JSX.Element {
   const exportTheme = (): void => {
     const mine = custom()
     if (mine === undefined) return
+    const { source: _source, ...shared } = mine
     const link = document.createElement("a")
-    link.href = URL.createObjectURL(new Blob([JSON.stringify({ kind: "ingle-theme", ...mine }, null, 2)], { type: "application/json" }))
+    link.href = URL.createObjectURL(new Blob([JSON.stringify({ kind: "ingle-theme", ...shared }, null, 2)], { type: "application/json" }))
     link.download = `${mine.id}.ingle-theme.json`
     link.click()
     URL.revokeObjectURL(link.href)
