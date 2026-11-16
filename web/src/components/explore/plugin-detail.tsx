@@ -1,4 +1,4 @@
-import { createSignal, For, onMount, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import {
@@ -41,11 +41,11 @@ const dateOf = (timestamp: number | undefined): string | undefined =>
   timestamp === undefined || timestamp <= 0 ? undefined : new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
 
 export function PluginDetail(props: { name: string }): JSX.Element {
-  const detail = marketDetail(props.name)
+  const handle = createMemo(() => marketDetail(props.name))
   const [sheet, setSheet] = createSignal(false)
 
+  createEffect(() => void handle().reload())
   onMount(() => {
-    void detail.reload()
     void market.reload()
   })
 
@@ -54,7 +54,7 @@ export function PluginDetail(props: { name: string }): JSX.Element {
     return state.kind === "ready" ? state.value.find((entry) => entry.name === props.name) : undefined
   }
   const value = (): MarketDetail | undefined => {
-    const state = detail.state()
+    const state = handle().state()
     return state.kind === "ready" ? state.value : undefined
   }
   const title = (): string => summary()?.title ?? props.name
@@ -63,13 +63,13 @@ export function PluginDetail(props: { name: string }): JSX.Element {
 
   return (
     <Page crumbs={crumbsFor("plugins", title())} wide>
-      <Show when={failureOf(detail.state())}>
-        {(message) => <LoadFailed what={props.name} message={message()} onRetry={() => void detail.reload()} />}
+      <Show when={failureOf(handle().state())}>
+        {(message) => <LoadFailed what={props.name} message={message()} onRetry={() => void handle().reload()} />}
       </Show>
-      <Show when={detail.state().kind === "loading"}>
+      <Show when={handle().state().kind === "loading"}>
         <SkeletonRows count={4} />
       </Show>
-      <Show when={detail.state().kind === "ready" && value() === undefined}>
+      <Show when={handle().state().kind === "ready" && value() === undefined}>
         <div class="flex flex-col items-start gap-2 py-8">
           <span class="text-base text-ink">No plugin called {props.name}</span>
           <a href="#/explore" class="text-sm text-primary-ink hover:underline">
