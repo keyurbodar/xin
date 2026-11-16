@@ -1,7 +1,6 @@
 const LOADERS = {
   menu: () => import("@ui-sdk/web/menu"),
   "segmented-control": () => import("@ui-sdk/web/segmented-control"),
-  command: () => import("@ui-sdk/web/command"),
   combobox: () => import("@ui-sdk/web/combobox"),
   editor: () => Promise.all([import("@ui-sdk/web/token-input"), import("@ui-sdk/web/trigger-menu")]),
   toggle: () => import("@ui-sdk/web/toggle"),
