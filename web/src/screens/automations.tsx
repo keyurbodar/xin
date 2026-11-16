@@ -28,6 +28,7 @@ function AutomationList(): JSX.Element {
   const { list, value, retry } = createAutomationList()
   const actions = createAutomationActions(() => value())
   const shown = createMemo(() => (value() ?? []).filter((automation) => !actions.removed(automation)))
+  const byId = createMemo(() => new Map(shown().map((automation) => [automation.id, automation])))
   let heading!: HTMLHeadingElement
   let rowList: HTMLDivElement | undefined
   const rows = createRowDialogs(actions, {
@@ -97,15 +98,19 @@ function AutomationList(): JSX.Element {
             >
               <div class="overflow-hidden rounded-lg border border-line-1 bg-card">
                 <div ref={rowList} class="im-stagger">
-                  <For each={shown()}>
-                    {(automation, index) => (
-                      <Row
-                        automation={automation}
-                        index={index()}
-                        enabled={actions.enabled(automation)}
-                        busy={actions.busy() === automation.id}
-                        onAction={(action) => rows.handle(automation, action)}
-                      />
+                  <For each={shown().map((automation) => automation.id)}>
+                    {(id, index) => (
+                      <Show when={byId().get(id)}>
+                        {(automation) => (
+                          <Row
+                            automation={automation()}
+                            index={index()}
+                            enabled={actions.enabled(automation())}
+                            busy={actions.busy() === id}
+                            onAction={(action) => rows.handle(automation(), action)}
+                          />
+                        )}
+                      </Show>
                     )}
                   </For>
                 </div>
@@ -146,16 +151,18 @@ function Row(props: {
         <div class="min-w-0 truncate text-mini text-ink-3">
           {TARGET_WORD[props.automation.target]}
           <Show when={project()}>{(name) => <> · {name()}</>}</Show>
-          <span class="md:hidden">
+          <span data-fold="triggers" class="lg:hidden">
             {" "}
-            · {describeTriggers(props.automation)} · {nextLabel(view())}
+            · {describeTriggers(props.automation)}
           </span>
+          <span data-fold="next" class="md:hidden"> · {nextLabel(view())}</span>
         </div>
       </div>
-      <span class="hidden w-[220px] shrink-0 truncate text-small text-ink-2 lg:block" title={describeTriggers(props.automation)}>
+      <span data-column="triggers" class="hidden w-[220px] shrink-0 truncate text-small text-ink-2 lg:block" title={describeTriggers(props.automation)}>
         {describeTriggers(props.automation)}
       </span>
       <span
+        data-column="next"
         class="hidden w-24 shrink-0 font-mono text-mini tabular-nums md:block"
         classList={{ "text-ink-2": props.enabled, "text-ink-3": !props.enabled }}
       >
