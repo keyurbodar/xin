@@ -1,289 +1,105 @@
-import { createSignal, For, onCleanup, type JSX } from "solid-js"
-import { highlight } from "sugar-high"
-import { lang } from "sugar-high/lang"
-import { MorphIcon } from "../ui/morph-icon.tsx"
-import { Morph } from "../ui/morph.tsx"
+import { For, Index, Match, Switch, createMemo, type Accessor, type JSX } from "solid-js"
+import { renderBlock } from "./blocks.tsx"
+import { inline } from "./inline.tsx"
+import { parseBlocks, type MarkdownBlock } from "./markdown-parse.ts"
 
-function fenceLabel(fence: string): string {
-  return lang(fence) ?? (fence === "" ? "code" : fence)
-}
+type Of<K extends MarkdownBlock["kind"]> = Extract<MarkdownBlock, { kind: K }>
 
-/** Sugar High escapes the code it marks up. The newline between line spans is dropped so the gutter stacks. */
-function markedUp(code: string, fence: string): string {
-  const canonical = lang(fence)
-  const html = highlight(code, canonical === undefined ? { lang: "plaintext" } : { lang: canonical })
-  return html.replaceAll('\n<span class="sh__line', '<span class="sh__line')
-}
-
-function CodeBlock(props: { code: string; fence: string }): JSX.Element {
-  const [copied, setCopied] = createSignal(false)
-  const [wrapped, setWrapped] = createSignal(false)
-  let timer: number | undefined
-  onCleanup(() => window.clearTimeout(timer))
-
-  /** The label settles back on its own; a browser that refuses the clipboard leaves it alone. */
-  const copy = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(props.code)
-      setCopied(true)
-      window.clearTimeout(timer)
-      timer = window.setTimeout(() => setCopied(false), 1600)
-    } catch {
-      setCopied(false)
-    }
+function Block(props: { block: Accessor<MarkdownBlock> }): JSX.Element {
+  const fence = (): Of<"fence"> | undefined => {
+    const block = props.block()
+    return block.kind === "fence" ? block : undefined
   }
+  const table = (): Of<"table"> | undefined => {
+    const block = props.block()
+    return block.kind === "table" ? block : undefined
+  }
+  const heading = (): Of<"heading"> | undefined => {
+    const block = props.block()
+    return block.kind === "heading" ? block : undefined
+  }
+  const list = (): Of<"list"> | undefined => {
+    const block = props.block()
+    return block.kind === "list" ? block : undefined
+  }
+  const quote = (): Of<"quote"> | undefined => {
+    const block = props.block()
+    return block.kind === "quote" ? block : undefined
+  }
+  const paragraph = (): Of<"paragraph"> | undefined => {
+    const block = props.block()
+    return block.kind === "paragraph" ? block : undefined
+  }
+  const mermaid = (): boolean => fence()?.lang === "mermaid"
 
   return (
-    <div class="code-block overflow-hidden rounded-md border border-line-2 bg-panel">
-      <div class="flex h-8 items-center gap-3 border-b border-line-1 px-3 font-mono text-2xs text-ink-3">
-        <span>{fenceLabel(props.fence)}</span>
-        <span class="ml-auto flex items-center gap-1">
-          <button
-            type="button"
-            aria-pressed={wrapped()}
-            onClick={() => setWrapped((on) => !on)}
-            class="h-6 rounded-sm px-1.5 text-2xs hover:text-ink"
-          >
-            {wrapped() ? "Wrapped" : "Wrap"}
-          </button>
-          <button
-            type="button"
-            aria-label="Copy code"
-            onClick={() => void copy()}
-            class="flex h-6 items-center gap-1.5 rounded-sm px-1.5 hover:text-ink"
-            classList={{ "text-ink": copied() }}
-          >
-            <MorphIcon kind="copy" on={copied()} size={13} />
-            <Morph value={copied() ? "Copied" : "Copy"} />
-          </button>
-        </span>
-      </div>
-      <pre classList={{ "is-wrapped": wrapped() }}>
-        <code innerHTML={markedUp(props.code, props.fence)} />
-      </pre>
-    </div>
-  )
-}
-
-function inline(text: string): JSX.Element[] {
-  const parts: JSX.Element[] = []
-  let buffer = ""
-  let index = 0
-  const flush = (): void => {
-    if (buffer !== "") parts.push(<>{buffer}</>)
-    buffer = ""
-  }
-  while (index < text.length) {
-    const rest = text.slice(index)
-    if (rest.startsWith("[")) {
-      const labelEnd = text.indexOf("](", index + 1)
-      const hrefEnd = labelEnd === -1 ? -1 : text.indexOf(")", labelEnd + 2)
-      if (labelEnd !== -1 && hrefEnd !== -1) {
-        const href = text.slice(labelEnd + 2, hrefEnd)
-        if (/^https?:\/\//u.test(href)) {
-          flush()
-          parts.push(
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              class="text-ink underline decoration-line-3 underline-offset-[3px] hover:decoration-ink"
-            >
-              {text.slice(index + 1, labelEnd)}
-            </a>,
-          )
-          index = hrefEnd + 1
-          continue
-        }
-      }
-    }
-    if (rest.startsWith("**")) {
-      const close = text.indexOf("**", index + 2)
-      if (close !== -1) {
-        flush()
-        parts.push(<strong class="font-medium text-ink">{text.slice(index + 2, close)}</strong>)
-        index = close + 2
-        continue
-      }
-    }
-    if (rest.startsWith("*") && !rest.startsWith("**")) {
-      const close = text.indexOf("*", index + 1)
-      if (close !== -1 && close > index + 1) {
-        flush()
-        parts.push(<em class="not-italic">{text.slice(index + 1, close)}</em>)
-        index = close + 1
-        continue
-      }
-    }
-    if (rest.startsWith("`")) {
-      const close = text.indexOf("`", index + 1)
-      if (close !== -1) {
-        flush()
-        const code = text.slice(index + 1, close)
-        parts.push(
-          <code class="rounded-sm border border-line-2 bg-secondary px-1 py-0.5 font-mono text-sm text-ink-2">
-            {code}
-          </code>,
-        )
-        index = close + 1
-        continue
-      }
-    }
-    buffer += rest[0] ?? ""
-    index += 1
-  }
-  flush()
-  return parts
-}
-
-function splitRow(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => cell.trim())
-}
-
-function isTableDelimiter(line: string): boolean {
-  const cells = splitRow(line)
-  return cells.length > 0 && cells.every((cell) => /^:?-{2,}:?$/.test(cell))
-}
-
-function TableBlock(props: { header: readonly string[]; rows: readonly (readonly string[])[] }): JSX.Element {
-  return (
-    <div class="overflow-x-auto">
-      <table class="w-max min-w-full border-collapse text-base leading-[1.5]">
-        <thead>
-          <tr>
-            <For each={props.header}>
-              {(cell) => (
-                <th class="border-b border-line-1 px-2 py-1.5 text-left text-2xs font-normal tracking-wide whitespace-nowrap text-ink-3 uppercase">
-                  {inline(cell)}
-                </th>
-              )}
-            </For>
-          </tr>
-        </thead>
-        <tbody>
-          <For each={props.rows}>
-            {(row) => (
-              <tr>
-                <For each={row}>
-                  {(cell) => <td class="border-b border-line-2 px-2 py-1.5 align-top text-ink-2">{inline(cell)}</td>}
-                </For>
-              </tr>
-            )}
-          </For>
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function isBlockStart(line: string): boolean {
-  const trimmed = line.trimStart()
-  return (
-    trimmed.startsWith("```") ||
-    /^#{1,3}\s+/.test(trimmed) ||
-    /^[-*]\s+/.test(trimmed) ||
-    /^\d+\.\s+/.test(trimmed) ||
-    trimmed.startsWith(">")
-  )
-}
-
-export function Markdown(props: { text: string; small?: boolean; muted?: boolean }): JSX.Element {
-  const blocks = (): JSX.Element[] => {
-    const lines = props.text.replaceAll("\r\n", "\n").split("\n")
-    const output: JSX.Element[] = []
-    let index = 0
-    while (index < lines.length) {
-      const line = lines[index] ?? ""
-      if (line.trim() === "") {
-        index += 1
-        continue
-      }
-      const trimmed = line.trimStart()
-      if (trimmed.startsWith("```")) {
-        const fence = trimmed.slice(3).trim().split(/\s+/u)[0] ?? ""
-        index += 1
-        const code: string[] = []
-        while (index < lines.length && !(lines[index] ?? "").trimStart().startsWith("```")) {
-          code.push(lines[index] ?? "")
-          index += 1
-        }
-        index += 1
-        output.push(<CodeBlock code={code.join("\n")} fence={fence} />)
-        continue
-      }
-      const heading = /^(#{1,3})\s+(.*)$/.exec(trimmed)
-      if (heading !== null) {
-        output.push(
-          <div class="mt-1 text-[15px] font-medium leading-[1.4] text-ink">{inline(heading[2] ?? "")}</div>,
-        )
-        index += 1
-        continue
-      }
-      if ((line ?? "").includes("|") && isTableDelimiter(lines[index + 1] ?? "")) {
-        const header = splitRow(line)
-        index += 2
-        const rows: string[][] = []
-        while (index < lines.length && (lines[index] ?? "").includes("|") && (lines[index] ?? "").trim() !== "") {
-          const cells = splitRow(lines[index] ?? "")
-          rows.push(Array.from({ length: header.length }, (_, column) => cells[column] ?? ""))
-          index += 1
-        }
-        output.push(<TableBlock header={header} rows={rows} />)
-        continue
-      }
-      if (/^[-*]\s+/.test(trimmed)) {
-        const items: string[] = []
-        while (index < lines.length && /^\s*[-*]\s+/.test(lines[index] ?? "")) {
-          items.push((lines[index] ?? "").replace(/^\s*[-*]\s+/, ""))
-          index += 1
-        }
-        output.push(
+    <Switch>
+      <Match when={fence() !== undefined && mermaid()}>
+        {renderBlock("mermaid", {
+          get source() {
+            return fence()?.source ?? ""
+          },
+          get streaming() {
+            return fence()?.streaming ?? false
+          },
+        })}
+      </Match>
+      <Match when={fence() !== undefined}>
+        {renderBlock("code", {
+          get lang() {
+            return fence()?.lang ?? ""
+          },
+          get source() {
+            return fence()?.source ?? ""
+          },
+          get streaming() {
+            return fence()?.streaming ?? false
+          },
+        })}
+      </Match>
+      <Match when={table() !== undefined}>
+        {renderBlock("table", {
+          get header() {
+            return table()?.header ?? []
+          },
+          get align() {
+            return table()?.align ?? []
+          },
+          get rows() {
+            return table()?.rows ?? []
+          },
+          get streaming() {
+            return table()?.streaming ?? false
+          },
+        })}
+      </Match>
+      <Match when={heading()}>
+        {(current) => <div class="mt-1 text-[15px] font-medium leading-[1.4] text-ink">{inline(current().text)}</div>}
+      </Match>
+      <Match when={list()?.ordered === false ? list() : undefined}>
+        {(current) => (
           <ul class="list-disc pl-5 [&>li+li]:mt-1">
-            <For each={items}>{(item) => <li>{inline(item)}</li>}</For>
-          </ul>,
-        )
-        continue
-      }
-      if (/^\d+\.\s+/.test(trimmed)) {
-        const items: string[] = []
-        while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index] ?? "")) {
-          items.push((lines[index] ?? "").replace(/^\s*\d+\.\s+/, ""))
-          index += 1
-        }
-        output.push(
+            <For each={current().items}>{(item) => <li>{inline(item)}</li>}</For>
+          </ul>
+        )}
+      </Match>
+      <Match when={list()?.ordered === true ? list() : undefined}>
+        {(current) => (
           <ol class="list-decimal pl-5 [&>li+li]:mt-1">
-            <For each={items}>{(item) => <li>{inline(item)}</li>}</For>
-          </ol>,
-        )
-        continue
-      }
-      if (trimmed.startsWith(">")) {
-        const quoted: string[] = []
-        while (index < lines.length && (lines[index] ?? "").trimStart().startsWith(">")) {
-          quoted.push((lines[index] ?? "").replace(/^\s*>\s?/, ""))
-          index += 1
-        }
-        output.push(
-          <blockquote class="border-l border-line-3 pl-3 text-ink-2">{inline(quoted.join("\n"))}</blockquote>,
-        )
-        continue
-      }
-      const paragraph: string[] = []
-      while (index < lines.length) {
-        const current = lines[index] ?? ""
-        if (current.trim() === "" || (paragraph.length > 0 && isBlockStart(current))) break
-        paragraph.push(current)
-        index += 1
-      }
-      output.push(<p class="whitespace-pre-wrap">{inline(paragraph.join("\n"))}</p>)
-    }
-    return output
-  }
+            <For each={current().items}>{(item) => <li>{inline(item)}</li>}</For>
+          </ol>
+        )}
+      </Match>
+      <Match when={quote()}>
+        {(current) => <blockquote class="border-l border-line-3 pl-3 text-ink-2">{inline(current().text)}</blockquote>}
+      </Match>
+      <Match when={paragraph()}>{(current) => <p class="whitespace-pre-wrap">{inline(current().text)}</p>}</Match>
+    </Switch>
+  )
+}
+
+export function Markdown(props: { text: string; small?: boolean; muted?: boolean; streaming?: boolean }): JSX.Element {
+  const blocks = createMemo(() => parseBlocks(props.text, props.streaming === true))
 
   return (
     <div
@@ -295,7 +111,7 @@ export function Markdown(props: { text: string; small?: boolean; muted?: boolean
         "text-ink-2": props.muted === true,
       }}
     >
-      {blocks()}
+      <Index each={blocks()}>{(block) => <Block block={block} />}</Index>
     </div>
   )
 }

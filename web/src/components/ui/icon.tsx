@@ -24,6 +24,7 @@ import {
   LayoutGrid,
   Link,
   Menu,
+  Maximize2,
   MessageSquare,
   PanelRight,
   Paperclip,
@@ -83,6 +84,7 @@ const ICONS = {
   users: Users,
   image: Image,
   key: Key,
+  maximize: Maximize2,
 } as const
 
 export type IconName = keyof typeof ICONS
