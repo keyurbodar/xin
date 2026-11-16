@@ -29,10 +29,10 @@ test("the consent prompt lists plain sentences and grants exactly the ids the ba
     ),
   )
   const text = textOf(tree)
-  expect(text).toContain("What Notes will be allowed to do")
-  expect(text).toContain("Reads the keys and passwords you have saved")
+  expect(text).toContain("Notes asks for")
+  expect(text).toContain("Reads and changes the keys and passwords you have saved")
   expect(text).toContain("Asked for because notes declares it")
-  expect(text).toContain("Connects to websites and services on the internet")
+  expect(text).toContain("Says it connects to websites and services on the internet (Ingle can’t stop this)")
   expect(text).toContain("“calendar”")
   expect(text).not.toContain("Read your stored credentials")
   expect(find(tree, (node) => node.tag === "code")).toBeUndefined()

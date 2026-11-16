@@ -1,14 +1,14 @@
 import type { MarketDetail } from "../../state/extensions.ts"
 
 const SENTENCES: ReadonlyMap<string, string> = new Map(Object.entries({
-  secrets: "Reads the keys and passwords you have saved",
+  secrets: "Reads and changes the keys and passwords you have saved",
   files: "Reads and changes your files, including those in your Drive",
   storage: "Keeps its own data in your Home",
   routes: "Answers web requests sent to your Home",
   models: "Uses AI models, which spends your tokens",
   conversations: "Reads and writes your conversations",
   plugins: "Installs, switches on and sets up other plugins",
-  network: "Connects to websites and services on the internet",
+  network: "Says it connects to websites and services on the internet (Ingle can’t stop this)",
   runtime: "Has full access to your Home, including its data, keys and files",
   owner: "Acts as you, such as starting threads on your behalf",
 }))

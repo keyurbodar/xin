@@ -17,7 +17,7 @@ export function ConsentPrompt(props: {
     <section class="overflow-hidden rounded-md border border-working/40 bg-working-soft" role="alertdialog" aria-label={`Allow ${props.subject}`}>
       <div class="flex items-center gap-2 border-b border-line-1 px-3.5 py-2.5">
         <Glyph name="lock" size={13} class="text-working-text" />
-        <span class="text-sm text-ink">What {props.subject} will be allowed to do</span>
+        <span class="text-sm text-ink">{props.subject} asks for</span>
       </div>
       <ul class="flex flex-col">
         <For each={props.permissions}>
@@ -36,7 +36,7 @@ export function ConsentPrompt(props: {
       </ul>
       <div class="flex items-center gap-2 border-t border-line-1 px-3.5 py-2.5">
         <span class="text-xs text-ink-3">
-          It runs with the same access you have. This list is what it says it needs, not a limit on what it can do.
+          Ingle holds it to this list for your Home’s data and services. It can still reach the internet, and because its code runs inside your Home, code written to get around the list could. Install only plugins you trust.
         </span>
         <span class="ml-auto" />
         <Button size="sm" variant="quiet" disabled={props.busy} onClick={props.onCancel}>
