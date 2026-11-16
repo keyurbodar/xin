@@ -94,6 +94,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
 
   const capabilities = defineTool({
     name: "capabilities",
+    deferred: true,
     description: "Show the current model, the project's thread limits, and the installed plugins.",
     parameters: obj({}),
     replay: "safe",
@@ -180,6 +181,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
 
   const taskCancel = defineTool({
     name: "task_cancel",
+    deferred: true,
     description: "Stop a thread's current run or a job. Give exactly one of threadId or jobId.",
     parameters: obj({
       threadId: opt(int({ minimum: 0 })),

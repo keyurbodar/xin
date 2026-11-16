@@ -10,7 +10,7 @@ import type {
 } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { M8_MODEL, respond } from "../../test/plugins/m8.ts"
-import { cmd, fresh, type Stub, toolTexts } from "../../test/support.ts"
+import { cmd, fresh, loadDeferred, type Stub, toolTexts } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import type { CommandId } from "../../src/ids.ts"
 import { commentTool } from "./comment.ts"
@@ -53,6 +53,7 @@ const kinds = (issue: IssueDetail): string[] => issue.timeline.map((event) => ev
  * then evicts the home and returns the tool results once pi has rerun the call.
  */
 async function evictMidCall(stub: Stub, tool: string, args: JsonObject, op: string): Promise<readonly string[]> {
+  await loadDeferred(stub, [tool])
   respond([
     fauxAssistantMessage([fauxToolCall(tool, args, { id: "evicted" })], { stopReason: "toolUse" }),
     fauxAssistantMessage("done"),

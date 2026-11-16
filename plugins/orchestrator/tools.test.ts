@@ -4,7 +4,7 @@ import { fauxAssistantMessage, fauxToolCall, type FauxResponseStep } from "@eare
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { describe, expect, it } from "vitest"
 import { M8_MODEL, respond } from "../../test/plugins/m8.ts"
-import { cmd, fresh, recordOffers, rowState, setRow } from "../../test/support.ts"
+import { cmd, fresh, loadDeferred, recordOffers, rowState, setRow } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -77,12 +77,12 @@ describe("orchestrator tool row", () => {
     const offers = recordOffers()
 
     await turn(stub, project.coordinatorId, "what can you do", [offers.step()])
-    expect(offers.latest().tools).toEqual(expect.arrayContaining([...TOOLS]))
+    expect(offers.latest().available).toEqual(expect.arrayContaining([...TOOLS]))
     expect(offers.latest().tools).toContain("remember")
 
     await setRow(stub, "tool-orchestrator", false)
     await turn(stub, project.coordinatorId, "still there", [offers.step()])
-    for (const name of TOOLS) expect(offers.latest().tools, name).not.toContain(name)
+    for (const name of TOOLS) expect(offers.latest().available, name).not.toContain(name)
     expect(offers.latest().tools).toContain("remember")
 
     expect(await rowState(stub, "orchestrator")).toEqual({ kind: "active" })
@@ -96,13 +96,14 @@ describe("orchestrator tool row", () => {
 
     await setRow(stub, "tool-orchestrator", true)
     await turn(stub, project.coordinatorId, "back again", [offers.step()])
-    expect(offers.latest().tools).toEqual(expect.arrayContaining([...TOOLS]))
+    expect(offers.latest().available).toEqual(expect.arrayContaining([...TOOLS]))
   }, 20_000)
 
   it("reports the plugin row states from the plugin manager", async () => {
     const stub = fresh()
     const project = await makeProject(stub, "tool-caps")
     await chooseModel(stub, project.coordinatorId)
+    await loadDeferred(stub, ["capabilities"], project.coordinatorId as ConversationId)
     const offers = recordOffers()
 
     await turn(stub, project.coordinatorId, "capabilities please", [
@@ -150,7 +151,7 @@ describe("orchestrator tool row", () => {
       "task_status",
       "pending_request",
     ])
-      expect(child?.tools, name).not.toContain(name)
+      expect(child?.available, name).not.toContain(name)
     expect(child?.tools).toContain("remember")
     expect(child?.tools).toContain("ask_user")
   }, 20_000)
