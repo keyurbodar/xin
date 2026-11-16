@@ -32,8 +32,11 @@ test("the consent prompt lists plain sentences and grants exactly the ids the ba
   expect(text).toContain("Notes asks for")
   expect(text).toContain("Reads and changes the keys and passwords you have saved")
   expect(text).toContain("Asked for because notes declares it")
-  expect(text).toContain("Says it connects to websites and services on the internet (Ingle can’t stop this)")
+  expect(text).toContain("Says it connects to websites and services on the internet (Ingle can't stop this)")
   expect(text).toContain("“calendar”")
+  expect(text).toContain(
+    "Ingle holds it to this list for your Home's data and services. It can still reach the internet, and because its code runs inside your Home, code written to get around the list could. Install only plugins you trust.",
+  )
   expect(text).not.toContain("Read your stored credentials")
   expect(find(tree, (node) => node.tag === "code")).toBeUndefined()
 

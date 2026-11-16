@@ -386,7 +386,7 @@ class SealedCredentialStore implements CredentialStore {
   constructor(
     private readonly db: SqliteDatabase,
     private readonly sealer: Sealer,
-    private readonly changed: () => Promise<void>,
+    private readonly changed: (providerId: string) => Promise<void>,
   ) {}
 
   read(providerId: string): Promise<Credential | undefined> {
@@ -413,7 +413,7 @@ class SealedCredentialStore implements CredentialStore {
       if (next === undefined) return current?.credential
       const entry: StoredEntry = current === undefined ? { credential: next } : { ...current, credential: next }
       await this.#write(providerId, entry)
-      await this.changed()
+      await this.changed(providerId)
       return next
     })
   }
@@ -421,14 +421,14 @@ class SealedCredentialStore implements CredentialStore {
   delete(providerId: string): Promise<void> {
     return this.#serialize(providerId, async () => {
       await this.db.run("DELETE FROM credentials WHERE provider = ?", providerId)
-      await this.changed()
+      await this.changed(providerId)
     })
   }
 
   set(providerId: string, entry: StoredEntry): Promise<void> {
     return this.#serialize(providerId, async () => {
       await this.#write(providerId, entry)
-      await this.changed()
+      await this.changed(providerId)
     })
   }
 
@@ -469,7 +469,7 @@ type Registry = {
   readonly models: MutableModels
   readonly store: SealedCredentialStore
   readonly custom: ReadonlyMap<string, Endpoint>
-  sync(): Promise<void>
+  sync(changed?: string): Promise<void>
   /** Re-register after a credential change; pi-ai caches a provider's auth state until it is set again. */
   restore(provider: string): void
 }
@@ -515,15 +515,20 @@ function createRegistry(port: Pick<ModelsPort, "db" | "kek" | "providers">): Reg
     else if (!custom.has(id)) models.deleteProvider(id)
   }
 
-  async function sync(): Promise<void> {
-    const rows = await port.db.all<{ provider: string }>("SELECT provider FROM credentials ORDER BY provider")
+  async function sync(changed?: string): Promise<void> {
+    const ids =
+      changed === undefined
+        ? (await port.db.all<{ provider: string }>("SELECT provider FROM credentials ORDER BY provider")).map(
+            (row) => row.provider,
+          )
+        : [changed]
     const endpoints = new Map<string, Endpoint>()
-    for (const row of rows) {
-      const entry = await store.entry(row.provider)
-      if (entry?.endpoint !== undefined) endpoints.set(row.provider, entry.endpoint)
+    for (const id of ids) {
+      const entry = await store.entry(id)
+      if (entry?.endpoint !== undefined) endpoints.set(id, entry.endpoint)
     }
-    for (const id of custom.keys()) {
-      if (endpoints.has(id)) continue
+    for (const id of ids) {
+      if (!custom.has(id) || endpoints.has(id)) continue
       custom.delete(id)
       restore(id)
     }
