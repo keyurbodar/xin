@@ -1,4 +1,5 @@
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai"
+import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Context, Draft } from "@earendil-works/chord"
 import {
@@ -37,7 +38,9 @@ import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
   ThreadDoc,
   defaultSpaceOf,
+  RESUME_NOTE,
   RoleSchema,
+  scheduleResume,
   threadState,
   transition,
   type NewThread,
@@ -103,6 +106,7 @@ type ReporterCheckpoint =
       readonly phase: "report"
       readonly status: ReportStatus
       readonly text: string
+      readonly resuming?: true
     }
   | { readonly phase: "skip" }
 
@@ -160,7 +164,7 @@ function reporterTask(deps: ThreadDeps): ReporterTask {
         const settled = await settle(deps, task.input, runtime, taskContext)
         await runtime.commit(async (tx) => {
           const thread = await tx.doc(ThreadDoc, task.input.threadId as ConversationId)
-          if (thread.status !== "working") {
+          if (thread.status !== "working" || (thread.run ?? 1) !== task.input.run) {
             return { status: "running", checkpoint: { phase: "skip" } } as const
           }
           const next = transition(thread.status, eventOf(settled.status))
@@ -170,12 +174,14 @@ function reporterTask(deps: ThreadDeps): ReporterTask {
           }
           thread.result = settled.text
           thread.beatAt = runtime.now()
+          const resuming = settled.transient !== undefined && scheduleResume(thread, runtime.now(), settled.transient)
           return {
             status: "running",
             checkpoint: {
               phase: "report",
               status: settled.status,
               text: settled.text,
+              ...(resuming ? { resuming: true } : {}),
             },
           } as const
         }, taskContext)
@@ -197,9 +203,9 @@ function reporterTask(deps: ThreadDeps): ReporterTask {
             threadId: String(task.input.threadId),
             title: task.input.title,
             status: checkpoint.status,
-            text: checkpoint.text,
+            text: checkpoint.resuming === true ? checkpoint.text + RESUME_NOTE : checkpoint.text,
           }))
-        if (accepted) await deps.arm()
+        if (accepted || checkpoint.resuming === true) await deps.arm()
         const projectId = await projectIdOf(runtime, task.input.threadId, taskContext)
         if (projectId !== undefined)
           deps.settled({
@@ -228,7 +234,7 @@ async function settle(
   input: ReporterInput,
   runtime: TaskRuntime<ReporterInput, ReporterCheckpoint, null, object>,
   taskContext: Context,
-): Promise<{ readonly status: ReportStatus; readonly text: string }> {
+): Promise<{ readonly status: ReportStatus; readonly text: string; readonly transient?: string }> {
   const conversation = await runtime.conversation(input.threadId as ConversationId, taskContext)
   if (conversation === undefined) return { status: "failed", text: "failed: the thread conversation is gone" }
   const submission = await conversation.submit(
@@ -253,10 +259,26 @@ async function settle(
       text: settled.detail === undefined ? "cancelled" : `cancelled: ${detailOf(settled.detail)}`,
     }
   }
-  return {
-    status: "failed",
-    text: settled.detail === undefined ? `failed: ${settled.reason}` : `failed: ${detailOf(settled.detail)}`,
+  const reason = settled.detail === undefined ? settled.reason : detailOf(settled.detail)
+  const transient =
+    settled.reason === "interrupted" ||
+    (settled.reason === "model_error" && (await providerTransient(deps.harness, input.threadId, taskContext)))
+  return { status: "failed", text: `failed: ${reason}`, ...(transient ? { transient: reason } : {}) }
+}
+
+/**
+ * Whether the run's last provider error is one pi-ai calls transient (overload, rate limit, 5xx, network). pi already
+ * retried it inside the run, so reaching here means an outage outlasted those retries; a deterministic error (bad
+ * request, auth, quota) would fail the same way again and is left to the coordinator.
+ */
+async function providerTransient(harness: Harness, threadId: number, run: Context): Promise<boolean> {
+  const reader = await harness.conversation(threadId as ConversationId, run)
+  const page = await reader?.entries({ order: "descending" }, 5, undefined, run)
+  for (const entry of page?.items ?? []) {
+    const failed = entry.model?.find((message) => message.role === "assistant" && message.stopReason === "error")
+    if (failed?.role === "assistant") return isRetryableAssistantError(failed)
   }
+  return false
 }
 
 async function projectIdOf(read: DocumentReader, threadId: number, run: Context): Promise<string | undefined> {
@@ -364,7 +386,7 @@ export type Threads = {
 
 const sendKeyOf = (threadId: number, sendKey: string): string => `thread-send:${threadId}:${sendKey}`
 
-type ReportFn = (tx: Tx, input: ReporterInput) => Promise<void>
+export type ReportFn = (tx: Tx, input: ReporterInput) => Promise<void>
 
 async function sendToThread(
   deps: ThreadDeps,
@@ -377,37 +399,7 @@ async function sendToThread(
   if (snapshot === undefined) return { kind: "rejected", reason: `no thread ${args.threadId}` }
   if (snapshot.status === "waiting") return { kind: "waiting" }
   if (snapshot.status === "working") return deliver(harness, threadId, args)
-  const opened = await harness.commit(async (tx) => {
-    const thread = await tx.doc(ThreadDoc, threadId)
-    if (thread.status === "working") return { kind: "busy" as const }
-    if (thread.status === "waiting") return { kind: "waiting" as const }
-    const next = transition(thread.status, "thread_send")
-    if (next.kind !== "ok") return { kind: "rejected" as const, reason: next.reason }
-    if (thread.parentId === undefined)
-      return { kind: "rejected" as const, reason: `thread ${args.threadId} has no parent` }
-    const parentId = thread.parentId as ConversationId
-    const workspace = await tx.doc(WorkspaceDoc)
-    const project = workspace.projects[thread.projectId]
-    if (project === undefined) return { kind: "rejected" as const, reason: `no project ${thread.projectId}` }
-    const run = (thread.run ?? 1) + 1
-    const now = Date.now()
-    thread.run = run
-    thread.status = "working"
-    delete thread.result
-    delete thread.archived
-    thread.beatAt = now
-    thread.deadlineAt = now + project.settings.deadlineMs
-    await deps.watchdog.ensure(tx, parentId)
-    await report(tx, {
-      threadId: args.threadId,
-      parentId,
-      title: thread.title,
-      run,
-      brief: args.text,
-      requestId: sendKeyOf(args.threadId, args.sendKey),
-    })
-    return { kind: "opened" as const, run }
-  }, context)
+  const opened = await harness.commit((tx) => openRun(deps, tx, args, report), context)
   switch (opened.kind) {
     case "rejected":
       return { kind: "rejected", reason: opened.reason }
@@ -415,21 +407,63 @@ async function sendToThread(
       return { kind: "waiting" }
     case "busy":
       return deliver(harness, threadId, args)
-    case "opened": {
-      const conversation = await harness.conversation(threadId, context)
-      if (conversation !== undefined) {
-        await conversation.submit(
-          {
-            type: "input",
-            content: args.text,
-            requestId: sendKeyOf(args.threadId, args.sendKey),
-          },
-          context,
-        )
-      }
+    case "opened":
+      await submitOpened(harness, args)
       return { kind: "sent", run: opened.run, note: `Started run ${opened.run}. Its result will arrive as a report.` }
-    }
   }
+}
+
+export type Opened =
+  | { readonly kind: "busy" }
+  | { readonly kind: "waiting" }
+  | { readonly kind: "rejected"; readonly reason: string }
+  | { readonly kind: "opened"; readonly run: number }
+
+/** Reopens a resolved thread as run N+1 inside `tx`; a pending automatic resume gives way to it. */
+export async function openRun(
+  deps: Pick<ThreadDeps, "watchdog">,
+  tx: Tx,
+  args: Omit<SendArgs, "mode">,
+  report: ReportFn,
+): Promise<Opened> {
+  const thread = await tx.doc(ThreadDoc, args.threadId as ConversationId)
+  if (thread.status === "working") return { kind: "busy" }
+  if (thread.status === "waiting") return { kind: "waiting" }
+  const next = transition(thread.status, "thread_send")
+  if (next.kind !== "ok") return { kind: "rejected", reason: next.reason }
+  if (thread.parentId === undefined) return { kind: "rejected", reason: `thread ${args.threadId} has no parent` }
+  const parentId = thread.parentId as ConversationId
+  const workspace = await tx.doc(WorkspaceDoc)
+  const project = workspace.projects[thread.projectId]
+  if (project === undefined) return { kind: "rejected", reason: `no project ${thread.projectId}` }
+  const run = (thread.run ?? 1) + 1
+  const now = Date.now()
+  thread.run = run
+  thread.status = "working"
+  delete thread.result
+  delete thread.archived
+  delete thread.resume
+  thread.beatAt = now
+  thread.deadlineAt = now + project.settings.deadlineMs
+  await deps.watchdog.ensure(tx, parentId)
+  await report(tx, {
+    threadId: args.threadId,
+    parentId,
+    title: thread.title,
+    run,
+    brief: args.text,
+    requestId: sendKeyOf(args.threadId, args.sendKey),
+  })
+  return { kind: "opened", run }
+}
+
+/** Places a reopened run's input directly; the Reporter submits the same request key, so it lands once. */
+export async function submitOpened(harness: Harness, args: Omit<SendArgs, "mode">): Promise<void> {
+  const conversation = await harness.conversation(args.threadId as ConversationId, context)
+  await conversation?.submit(
+    { type: "input", content: args.text, requestId: sendKeyOf(args.threadId, args.sendKey) },
+    context,
+  )
 }
 
 async function deliver(harness: Harness, threadId: ConversationId, args: SendArgs): Promise<SendOutcome> {
@@ -499,6 +533,7 @@ const stopThread = defineOp({
     // The Reporter is skipped once the thread is no longer working, so this cannot race a terminal status.
     const status = await api.harness.commit(async (tx) => {
       const thread = await tx.doc(ThreadDoc, threadId)
+      delete thread.resume
       const next = transition(thread.status, "abort")
       if (next.kind !== "ok") return thread.status
       thread.status = next.status

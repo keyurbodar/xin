@@ -22,7 +22,7 @@ function emitSettled(ctx: Context, event: ThreadSettled): void {
   }
 }
 
-export function apply(ctx: Context): void {
+export async function apply(ctx: Context): Promise<void> {
   const built = create({
     harness: ctx.harness,
     arm: (wake) => ctx.clock.arm(wake),
@@ -43,6 +43,7 @@ export function apply(ctx: Context): void {
   ctx.provide("threads", built.threads)
   ctx.pi.install(built.extension)
   for (const op of built.ops) ctx.ops.define(op)
+  ctx.clock.timer({ due: () => built.resumer.due(), fire: (now) => built.resumer.fire(now) })
   ctx.wire.home("captains", () => captainsHome(ctx.harness))
   ctx.effect(
     () =>
@@ -63,4 +64,6 @@ export function apply(ctx: Context): void {
       }),
     )
   })
+  const stopResumer = await built.resumer.start()
+  ctx.effect(() => stopResumer, `${name}.resumer`)
 }

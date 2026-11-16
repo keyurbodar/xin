@@ -87,6 +87,12 @@ const step: FauxResponseStep = async (context) => {
         [fauxToolCall("ask_user", { question: "Which color?", options: ["red", "blue"] }, { id: `ask-${brief}` })],
         { stopReason: "toolUse" },
       )
+    if (brief.includes("flaky"))
+      return fauxAssistantMessage("", { stopReason: "error", errorMessage: "provider overloaded" })
+    if (brief.includes("broken"))
+      return fauxAssistantMessage("", { stopReason: "error", errorMessage: "broken: provider overloaded" })
+    if (brief.includes("invalid"))
+      return fauxAssistantMessage("", { stopReason: "error", errorMessage: "invalid api key" })
     if (brief.includes("stuck"))
       return fauxAssistantMessage([fauxToolCall("stuck_tool", {}, { id: `stuck-${brief}` })], { stopReason: "toolUse" })
     if (brief.includes("quick"))

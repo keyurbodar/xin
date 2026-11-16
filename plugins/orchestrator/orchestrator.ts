@@ -4,6 +4,7 @@ import type { Op } from "../../src/ops.ts"
 import { threadCache } from "./cache.ts"
 import { captainOps, captainPrompt, type CaptainDeps } from "./captains.ts"
 import { threadService, type ServiceDeps } from "./service.ts"
+import { resumer, type Resumer } from "./resume.ts"
 import { lifecycle, type ThreadDeps } from "./threads.ts"
 
 export type OrchestratorDeps = ServiceDeps & ThreadDeps & CaptainDeps
@@ -12,6 +13,7 @@ export type Orchestrator = {
   readonly threads: ThreadsService
   readonly extension: Extension
   readonly ops: readonly Op[]
+  readonly resumer: Resumer
 }
 
 export function create(deps: OrchestratorDeps): Orchestrator {
@@ -25,5 +27,6 @@ export function create(deps: OrchestratorDeps): Orchestrator {
       sections: [section("captain", (input) => captainPrompt(input.read, input.conversationId))],
     }),
     ops: [...threads.ops, ...captainOps(deps)],
+    resumer: resumer(deps, threads.report),
   }
 }

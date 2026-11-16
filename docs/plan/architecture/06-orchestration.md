@@ -127,6 +127,17 @@ Watchdog = one pi background task (key "xin.watchdog"), phases: check â†’ fail â
  beatAt is written by hook(GenerationTask.afterResponse) and hook(ToolTask.afterTool): ~1 row per step
 ```
 
-A waiting thread is not work: it holds no run and needs no watchdog. `request.respond` starts the next watchdog when it reopens the thread, as `thread.send` does.
+A waiting thread is not work: it holds no run and needs no watchdog.
+
+### Automatic resume of transient failures
+
+A thread run that fails for a transient reason is resumed once, automatically, 30 s later:
+
+- **Transient** means one of three things. The Reporter settles the run unanswered with `interrupted`, because the host died mid-answer with no retry left. Or it settles with `model_error` and the run's last error message is one pi-ai's `isRetryableAssistantError` accepts (overload, rate limit, 5xx, network); pi has already retried that inside the run, so reaching here means an outage outlasted its backoff. Or the watchdog marks the run stalled. An overtime (deadline) failure, a cancellation, a deterministic provider error (bad request, auth, quota) and every other reason are never resumed.
+- **Scheduling** happens in the commit that marks the thread `failed`, in the Reporter or the watchdog, through `scheduleResume` in `xin.thread`: it sets `resume = {run, at: now + 30 s, reason}` unless `resumedRun` equals the failed run, so a run that a resume started is never resumed again. The failure report still reaches the coordinator, with "A resume is scheduled in 30 s." appended; `xin.thread.result` keeps the plain failure text.
+- **Firing** is a clock timer owned by the orchestrator, not a held task. Its due times live in memory, fed by the commit stream and seeded from the space lists at boot, so an arm reads no document and an eviction between the failure and the resume still resumes. At the due time it reopens the thread through the same path `thread.send` uses on a resolved thread (queue semantics: a new run N+1) with the brief "Resume: the last run failed with <reason>. Continue where you stopped." and send key `resume:<thread>:<run>`, so the input lands once. The commit that opens run N+1 also clears `resume` and sets `resumedRun = N+1`, so a replay or a second alarm does nothing.
+- **Skipped** when, at the due time, the thread is no longer `failed` on that run (someone sent to it, or it was stopped: `thread.stop` and any reopen clear `resume`), its model is disabled, or its feature is capped (`admitConversation`). Skipping clears `resume` and logs why.
+- **Reporter guard**: a Reporter skips a thread whose `run` is no longer its own, so the late settle of an aborted stalled run cannot overwrite the resumed run's status.
+- **Cost**: 0 rows, requests and tokens when nothing fails. Per transient failure: `resume` rides the failure commit that was written anyway; one more `xin.thread` write when the resume opens the run (in the same commit as the new Reporter); one Worker alarm; and one new run, which costs a resent context plus the resume brief (about 25 tokens). No tool declaration is added. `request.respond` starts the next watchdog when it reopens the thread, as `thread.send` does.
 
 A coordinator run that fails (provider error, compaction failure) commits one `xin.error` entry into the chat, which the UI renders as an error bubble with a retry button (`op message.retry` resubmits that batch). Nothing fails silently.

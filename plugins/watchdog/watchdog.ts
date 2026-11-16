@@ -16,7 +16,7 @@ import {
 } from "@earendil-works/pi-durable"
 import type { InboundDraft, IntakeService } from "../../src/contracts/intake.ts"
 import { JobsDoc, type JobRecord, type JobsService } from "../../src/contracts/jobs.ts"
-import { ThreadDoc, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
+import { RESUME_NOTE, scheduleResume, ThreadDoc, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -42,6 +42,8 @@ type Victim =
       readonly parentId?: number
       readonly title: string
       readonly text: string
+      /** Set on a stall, the one transient watchdog failure: the reason a scheduled resume names. */
+      readonly stall?: string
     }
   | {
       readonly kind: "job"
@@ -78,6 +80,10 @@ export function watchdogTask(ports: WatchdogPorts): WatchdogTask {
               doc.result = candidate.text
               doc.beatAt = now
               delete doc.statusLine
+              if (candidate.stall !== undefined && scheduleResume(doc, now, candidate.stall)) {
+                victims.push({ ...candidate, text: candidate.text + RESUME_NOTE })
+                continue
+              }
             }
             victims.push(candidate)
           }
@@ -214,6 +220,7 @@ async function sweep(ports: WatchdogPorts, now: number): Promise<Victim[]> {
       ...(doc.parentId === undefined ? {} : { parentId: doc.parentId }),
       title: doc.title,
       text: failureText(stalled, tool),
+      ...(stalled && !overtime ? { stall: stallText(tool) } : {}),
     })
   }
   for (const [id, job] of Object.entries(await jobsOf(ports))) {
@@ -230,8 +237,10 @@ async function sweep(ports: WatchdogPorts, now: number): Promise<Victim[]> {
   return victims
 }
 
+const stallText = (tool: string | undefined): string => `no progress for 2 min in ${tool ?? "the model"}`
+
 function failureText(stalled: boolean, tool: string | undefined): string {
-  return stalled ? `stopped: no progress for 2 min in ${tool ?? "the model"}` : "stopped: deadline exceeded"
+  return stalled ? `stopped: ${stallText(tool)}` : "stopped: deadline exceeded"
 }
 
 async function deliverFailure(ports: WatchdogPorts, victim: Victim): Promise<void> {
