@@ -79,7 +79,7 @@ export function ContextMeter(props: { conversation: number; busy: boolean }): JS
         >
           <Popover.Trigger
             aria-label={`Context ${percent(value())}% used`}
-            class="composer-press grid h-[var(--h-control)] w-[var(--h-control)] place-items-center rounded-sm outline-none hover:bg-secondary focus-visible:outline-2 focus-visible:outline-primary data-[state=open]:bg-secondary"
+            class="composer-press grid h-[var(--h-control)] w-[var(--h-control)] place-items-center rounded-sm outline-none hover:bg-secondary focus-visible:outline-2 focus-visible:outline-focus data-[state=open]:bg-secondary"
           >
             <Ring fraction={fraction(value())} />
           </Popover.Trigger>

@@ -11,4 +11,4 @@ export const GROUP_LABEL = "flex h-[var(--h-row)] items-center px-2 text-xs text
 export const SEPARATOR = "my-1 h-px border-0 bg-line-1"
 
 export const TOOL =
-  "composer-press flex h-[var(--h-control)] items-center gap-1.5 rounded-sm px-2 text-sm text-ink-2 outline-none hover:bg-secondary hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary data-[state=open]:bg-secondary data-[state=open]:text-ink disabled:opacity-50"
+  "composer-press flex h-[var(--h-control)] items-center gap-1.5 rounded-sm px-2 text-sm text-ink-2 outline-none hover:bg-secondary hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus data-[state=open]:bg-secondary data-[state=open]:text-ink disabled:opacity-50"

@@ -46,8 +46,17 @@
   }
 
   :focus-visible {
-    outline: 1px solid var(--color-line-3);
-    outline-offset: 1px;
+    outline: var(--focus-ring-width) solid var(--color-focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  ui-tree-item:focus-visible {
+    outline: none;
+  }
+
+  ui-tree-item:focus-visible > ui-tree-item-label {
+    outline: var(--focus-ring-width) solid var(--color-focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
   }
 
   * {

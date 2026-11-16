@@ -109,7 +109,7 @@ export function EnabledToggle(props: { automation: Automation; on: boolean; busy
         event.preventDefault()
         queueMicrotask(props.onToggle)
       }}
-      class="im-switch relative block h-4 w-7 shrink-0 cursor-default rounded-sm bg-line-2 outline-none focus-visible:ring-2 focus-visible:ring-primary-soft data-[checked]:bg-ink data-[disabled]:opacity-40"
+      class="im-switch relative block h-4 w-7 shrink-0 cursor-default rounded-sm bg-line-2 data-[checked]:bg-ink data-[disabled]:opacity-40"
     >
       <ui-switch-thumb class="absolute left-0.5 top-0.5 block h-3 w-3 rounded-2xs bg-ink-3 data-[checked]:bg-bg" />
     </ui-switch>

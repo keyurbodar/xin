@@ -420,7 +420,7 @@ function FeaturedTheme(props: { theme: ExploreTheme }): JSX.Element {
 function ThemeCard(props: { theme: ExploreTheme }): JSX.Element {
   const added = (): boolean => isCatalogThemeAdded(themeSource(props.theme.id))
   return (
-    <a href={`#${themePath(props.theme.id)}`} class="group flex flex-col gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-primary">
+    <a href={`#${themePath(props.theme.id)}`} class="group flex flex-col gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-focus">
       <span class="ex-color block overflow-hidden rounded-md shadow-ring group-hover:shadow-[0_0_0_1px_var(--color-line-3)]">
         <ThemePreview
           palette={themePalette(props.theme)}

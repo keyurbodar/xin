@@ -12,7 +12,7 @@ import { POPUP, POPUP_ITEM, POPUP_SEPARATOR } from "../ui/surface.ts"
 import { Tile } from "../ui/tile.tsx"
 
 const ROW =
-  "flex h-[var(--h-row)] cursor-default select-none items-center gap-1.5 rounded-sm pl-[calc((var(--tree-level)-1)*14px+4px)] pr-2 text-small text-ink-2 hover:bg-hover data-[selected]:bg-secondary data-[selected]:text-ink [ui-tree-item:focus-visible>&]:shadow-[inset_2px_0_0_var(--color-primary)]"
+  "flex h-[var(--h-row)] cursor-default select-none items-center gap-1.5 rounded-sm pl-[calc((var(--tree-level)-1)*14px+4px)] pr-2 text-small text-ink-2 hover:bg-hover data-[selected]:bg-secondary data-[selected]:text-ink"
 
 const GROUP =
   "relative data-[expanded]:block before:pointer-events-none before:absolute before:inset-y-0 before:left-[calc((var(--tree-level)-1)*14px+11.5px)] before:w-px before:bg-line-1"
@@ -180,7 +180,7 @@ export function DriveTree(props: {
   const Rows = (rowsProps: { rows: readonly DriveRow[] }): JSX.Element => (
     <For each={rowsProps.rows}>
       {(row) => (
-        <ui-tree-item value={valueOf(row)} label={row.name} branch={row.kind === "folder" ? "" : undefined} class="block outline-none">
+        <ui-tree-item value={valueOf(row)} label={row.name} branch={row.kind === "folder" ? "" : undefined} class="block">
           <ui-tree-item-label class={ROW}>
             <Show when={row.kind === "folder"} fallback={<span class="size-4 shrink-0" />}>
               <ui-tree-item-indicator class="im-chevron grid size-4 shrink-0 place-items-center text-icon data-[expanded]:[transform:rotate(90deg)]">
@@ -329,7 +329,7 @@ function RenameField(props: {
           aria-label={`Rename ${props.name}`}
           aria-invalid={props.problem !== undefined}
           spellcheck={false}
-          class="h-[calc(var(--h-row)-6px)] min-w-0 flex-1 rounded-xs border border-primary/40 bg-panel px-1 text-small text-ink outline-none aria-[invalid=true]:border-failed"
+          class="h-[calc(var(--h-row)-6px)] min-w-0 flex-1 rounded-xs border border-primary/40 bg-panel px-1 text-small text-ink aria-[invalid=true]:border-failed"
           on:pointerdown={(event) => event.stopPropagation()}
           on:click={(event) => event.stopPropagation()}
           onInput={() => props.onInput()}

@@ -22,7 +22,7 @@ export function Breadcrumb(props: { crumbs: readonly Crumb[] }): JSX.Element {
             >
               <a
                 href={`#${crumb.to ?? ""}`}
-                class="shrink-0 rounded-xs text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary"
+                class="shrink-0 rounded-xs text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
               >
                 {crumb.label}
               </a>
@@ -126,7 +126,7 @@ export function Segmented<T extends string>(props: {
             aria-selected={props.active === tab.id}
             tabIndex={props.active === tab.id ? 0 : -1}
             onClick={() => props.onSelect(tab.id)}
-            class="ex-color h-7 rounded-[5px] px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-primary"
+            class="ex-color h-7 rounded-[5px] px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-focus"
             classList={{
               "bg-card text-ink shadow-ring": props.active === tab.id,
               "text-ink-2 hover:text-ink": props.active !== tab.id,
@@ -194,7 +194,7 @@ export function ViewAll(props: { onClick: () => void; label?: string | undefined
     <button
       type="button"
       onClick={() => props.onClick()}
-      class="ex-color flex items-center gap-1 rounded-xs text-sm text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary"
+      class="ex-color flex items-center gap-1 rounded-xs text-sm text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
     >
       {props.label ?? "View all"}
       <Glyph name="arrow-right" size={12} />
@@ -214,7 +214,7 @@ export function CompactRow(props: {
   return (
     <a
       href={`#${props.to}`}
-      class="ex-color flex min-w-0 items-center gap-3 rounded-md px-2 py-2 hover:bg-hover focus-visible:outline-2 focus-visible:outline-primary"
+      class="ex-color flex min-w-0 items-center gap-3 rounded-md px-2 py-2 hover:bg-hover focus-visible:outline-2 focus-visible:outline-focus"
     >
       {props.logo}
       <span class="min-w-0 flex-1">
