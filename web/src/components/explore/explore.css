@@ -1,0 +1,48 @@
+.ex-fade {
+  opacity: 0;
+  transition: opacity 200ms var(--ease-out);
+}
+.ex-fade[data-loaded] {
+  opacity: 1;
+}
+
+.ex-color {
+  transition:
+    background-color 100ms var(--ease-out),
+    color 100ms var(--ease-out),
+    box-shadow 100ms var(--ease-out);
+}
+
+.ex-skeleton {
+  display: block;
+  background: var(--color-secondary);
+  animation: ex-pulse 1.4s var(--ease-in-out) infinite alternate;
+}
+@keyframes ex-pulse {
+  to {
+    opacity: 0.45;
+  }
+}
+
+.ex-halftone {
+  background-image: radial-gradient(circle, var(--color-primary) 1.1px, transparent 1.4px);
+  background-size: 6px 6px;
+  mask-image: linear-gradient(to left, black 10%, transparent 85%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ex-fade,
+  .ex-color {
+    transition: none;
+  }
+  .ex-skeleton {
+    animation: none;
+  }
+}
+:root[data-motion="reduce"] .ex-fade,
+:root[data-motion="reduce"] .ex-color {
+  transition: none;
+}
+:root[data-motion="reduce"] .ex-skeleton {
+  animation: none;
+}

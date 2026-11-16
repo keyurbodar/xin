@@ -33,6 +33,7 @@
     "ingle-plugin-outline",
     "ingle-plugin-standup",
     "ingle-plugin-appearance",
+    "ingle-plugin-explore",
     "ingle-plugin-visual"
   ],
   "patch": [
