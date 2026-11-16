@@ -119,7 +119,28 @@ export const setRow = async (stub: Stub, id: string, enabled: boolean): Promise<
   return ack
 }
 
-export type Offer = { readonly tools: readonly string[]; readonly system: string }
+export type Offer = {
+  readonly tools: readonly string[]
+  readonly system: string
+  /** Offered tools plus the deferred ones the `deferred-tools` section lists, which `tool_search` loads. */
+  readonly available: readonly string[]
+}
+
+function deferredListed(system: string): string[] {
+  const section = /<deferred-tools>\n([\s\S]*?)\n<\/deferred-tools>/.exec(system)?.[1] ?? ""
+  return section.split("\n").flatMap((line) => /^- ([^:]+):/.exec(line)?.[1] ?? [])
+}
+
+/** Load deferred tools into a conversation (the root chat by default), as a `tool_search` hit would. */
+export const loadDeferred = (stub: Stub, names: readonly string[], conversationId?: ConversationId): Promise<void> =>
+  runInDurableObject(stub, async (home: Home) => {
+    const conversation =
+      conversationId === undefined
+        ? await home.root()
+        : await home.harness.conversation(conversationId, BACKGROUND_CONTEXT)
+    if (conversation === undefined) throw new Error(`no conversation ${conversationId}`)
+    await conversation.configure({ modelTools: { add: home.loader.ctx.pi.toolsNamed(names) } }, BACKGROUND_CONTEXT)
+  })
 
 export type OfferLog = {
   readonly seen: Offer[]
@@ -149,7 +170,9 @@ export function recordOffers(): OfferLog {
   const wrap =
     (factory: FauxResponseFactory): FauxResponseStep =>
     (context, options, state, model) => {
-      seen.push({ tools: offeredTools(context), system: getCurrentSystemPrompt(context.messages) })
+      const tools = offeredTools(context)
+      const system = getCurrentSystemPrompt(context.messages)
+      seen.push({ tools, system, available: [...new Set([...tools, ...deferredListed(system)])].toSorted() })
       return factory(context, options, state, model)
     }
   return {
