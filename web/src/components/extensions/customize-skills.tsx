@@ -1,4 +1,5 @@
 import { createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { settled } from "../../lib/loading.ts"
 import { errorMessage, putSkill, readSkill, removeSkill, skills } from "../../state/extensions.ts"
 import { Button, Empty, Failure, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
@@ -113,7 +114,7 @@ function SkillDetail(props: { name: string; description: string; onRemoved: () =
   const [draft, setDraft] = createSignal("")
 
   const startEditing = (): void => {
-    setDraft(body()?.markdown ?? "")
+    setDraft(settled(body)?.markdown ?? "")
     setEditing(true)
   }
 
@@ -191,7 +192,7 @@ function SkillDetail(props: { name: string; description: string; onRemoved: () =
           <Show
             when={editing()}
             fallback={
-              <Show when={body()}>
+              <Show when={settled(body)}>
                 {(skill) => (
                   <Panel>
                     <pre class="max-h-[420px] overflow-auto px-3.5 py-3 font-mono text-xs leading-relaxed text-ink-2">
