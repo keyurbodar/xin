@@ -6,6 +6,7 @@ import {
   duration,
   groupSummary,
   liveTimelineOf,
+  reuseItems,
   turnPhrase,
   waitPhrase,
   waitTarget,
@@ -155,4 +156,46 @@ test("the agent waits on the person first, then a running tool, then working thr
   expect(waitTarget({ live: { ...running, parts: [{ kind: "text", text: "x" }] }, asking: false, threads })).toBeUndefined()
   expect(waitTarget({ live: IDLE, asking: false, threads })).toEqual({ kind: "threads", threads })
   expect(waitTarget({ live: IDLE, asking: false, threads: [] })).toBeUndefined()
+})
+
+test("a call the ended turn never answered failed, and a live one still runs", () => {
+  const turn = [ask(1, "Go", NOW - 10_000), answer(2, NOW - 9_000, call("a", "bash", { command: "bun test" }))]
+  const group = (live: LiveTimeline) => buildTimeline(turn, live, OPTIONS).find((item) => item.kind === "tools")
+  const ended = group(IDLE)
+  expect(ended?.kind === "tools" ? ended.calls[0]?.status : undefined).toBe("error")
+  const running = group({ busy: true, parts: [], slots: new Map() })
+  expect(running?.kind === "tools" ? running.calls[0]?.status : undefined).toBe("running")
+})
+
+test("a turn the agent never answered gets no summary, even when it carried finished threads", () => {
+  const reports = entry(1, "xin.batch", [], [{ body: { kind: "report", text: "Done", threadId: "7", title: "Docs pass", status: "completed" }, clientTs: NOW - 5_000 }])
+  expect(buildTimeline([reports], IDLE, OPTIONS).some((item) => item.kind === "summary")).toBe(false)
+  const answered = buildTimeline([reports, answer(2, NOW - 1_000, { type: "text", text: "Noted." })], IDLE, OPTIONS)
+  expect(answered.at(-1)?.kind).toBe("summary")
+})
+
+test("a streamed token rebuilds only the item it lands in", () => {
+  const history = [
+    ask(1, "Fix it", NOW - 90_000),
+    answer(2, NOW - 80_000, call("a", "read", { path: "a.ts" }), call("b", "bash", { command: "bun test" })),
+    output(3, NOW - 79_000, "a", "file a"),
+    output(4, NOW - 78_000, "b", "ok"),
+    answer(5, NOW - 70_000, { type: "text", text: "Found it." }, call("c", "edit", { path: "a.ts" })),
+    output(6, NOW - 60_000, "c", "edited"),
+  ]
+  const live = (text: string): LiveTimeline => ({
+    busy: true,
+    parts: [{ kind: "text", text }, { kind: "call", callId: "d", name: "read", args: { path: "b.ts" } }],
+    slots: new Map(),
+  })
+  const first = buildTimeline(history, live("Now the"), OPTIONS)
+  const kept = reuseItems(first, buildTimeline(history, live("Now the"), OPTIONS))
+  expect(kept.filter((item, index) => item !== first[index]).length).toBe(0)
+  const next = reuseItems(kept, buildTimeline(history, live("Now the tests"), OPTIONS))
+  const rebuilt = next.filter((item, index) => item !== kept[index])
+  expect(rebuilt.map((item) => item.kind)).toEqual(["text"])
+  const finished = reuseItems(next, buildTimeline([...history, output(7, NOW, "d", "file b")], { busy: true, parts: [], slots: new Map() }, OPTIONS))
+  const groups = finished.filter((item) => item.kind === "tools")
+  const before = next.filter((item) => item.kind === "tools")
+  expect(groups[0]).toBe(before[0])
 })

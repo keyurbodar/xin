@@ -431,3 +431,42 @@ export function buildTimeline(entries: readonly TimelineEntry[], live: LiveTimel
   }
   return items
 }
+
+const sameJson = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b)
+
+const sameCall = (a: ToolCall, b: ToolCall): boolean =>
+  a.callId === b.callId && a.name === b.name && a.status === b.status && a.output === b.output && sameJson(a.args, b.args)
+
+function reuseItem(before: TimelineItem | undefined, item: TimelineItem): TimelineItem {
+  if (before === undefined || before.kind !== item.kind) return item
+  switch (item.kind) {
+    case "text":
+      return before.kind === "text" && before.text === item.text && before.streaming === item.streaming ? before : item
+    case "tools": {
+      if (before.kind !== "tools") return item
+      const earlier = new Map(before.calls.map((call) => [call.callId, call]))
+      const calls = item.calls.map((call) => {
+        const kept = earlier.get(call.callId)
+        return kept !== undefined && sameCall(kept, call) ? kept : call
+      })
+      const unchanged = before.live === item.live && calls.length === before.calls.length && calls.every((call, index) => call === before.calls[index])
+      return unchanged ? before : { ...item, calls }
+    }
+    case "block":
+      return before.kind === "block" && sameCall(before.call, item.call) ? before : item
+    case "date":
+    case "owner":
+    case "pass":
+    case "summary":
+      return sameJson(before, item) ? before : item
+    default: {
+      const _exhaustive: never = item
+      return _exhaustive
+    }
+  }
+}
+
+export function reuseItems(previous: readonly TimelineItem[], next: readonly TimelineItem[]): readonly TimelineItem[] {
+  const earlier = new Map(previous.map((item) => [item.key, item]))
+  return next.map((item) => reuseItem(earlier.get(item.key), item))
+}

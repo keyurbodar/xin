@@ -62,7 +62,7 @@ test("the summary counts each kind and marks a failed step", async () => {
   await page.close()
 })
 
-test("the live turn's groups stay open while it works and collapse when it ends", async () => {
+test("the live turn's groups stay open while it works and fold when it ends, keeping what the owner opened", async () => {
   const page = await harness.open("timeline")
   await tl(page, (fixture) => fixture.run(6))
   await groupButtons(page).first().click()
@@ -71,7 +71,7 @@ test("the live turn's groups stay open while it works and collapse when it ends"
   expect(await page.locator("[data-tool-group]").last().getAttribute("data-status")).toBe("running")
   await tl(page, (fixture) => fixture.finish())
   await settled(page)
-  expect((await expanded(page)).every((value) => value === "false")).toBe(true)
+  expect(await expanded(page)).toEqual(["true", "false", "false", "false"])
   expect(await page.locator("[data-turn-summary]").last().innerText()).toBe("Worked for 1m 27s")
   await page.close()
 })
@@ -120,16 +120,44 @@ test("scrolled up, new content keeps the view still and raises the jump pill, wh
   expect(Math.abs((after?.y ?? 0) - (anchor?.y ?? 0))).toBeLessThan(2)
   const pill = page.locator("[data-jump]")
   expect(await pill.innerText()).toBe("3 messages")
+  const announcer = page.locator("[data-jump-status]")
+  expect(await announcer.getAttribute("aria-live")).toBe("polite")
+  expect(await announcer.textContent()).toBe("3 new messages")
   await pill.focus()
   await page.keyboard.press("Enter")
   await settled(page)
   expect(await page.locator("[data-jump]").count()).toBe(0)
+  expect(await page.locator("[data-jump-status]").textContent()).toBe("")
   expect(
     await page.evaluate(() => {
       const scroller = document.querySelector<HTMLElement>("[data-timeline]")!
       return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
     }),
   ).toBeLessThan(2)
+  await page.close()
+})
+
+test("a streamed token touches only the message it lands in, never the tool groups", async () => {
+  const page = await harness.open("timeline")
+  await tl(page, (fixture) => fixture.run(10))
+  await settled(page)
+  await page.evaluate(() => {
+    const counts = { groups: 0, text: 0 }
+    const watch = (selector: string, key: keyof typeof counts) => {
+      for (const node of document.querySelectorAll(selector))
+        new MutationObserver((records) => {
+          counts[key] += records.length
+        }).observe(node, { subtree: true, childList: true, characterData: true, attributes: true })
+    }
+    watch("[data-tool-group]", "groups")
+    watch("[data-text]", "text")
+    Object.assign(window, { counts })
+  })
+  await tl(page, (fixture) => fixture.run(1))
+  await settled(page)
+  const counts = await page.evaluate(() => (window as unknown as { counts: { groups: number; text: number } }).counts)
+  expect(counts.groups).toBe(0)
+  expect(counts.text).toBeGreaterThan(0)
   await page.close()
 })
 

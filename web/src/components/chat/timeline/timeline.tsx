@@ -4,7 +4,7 @@ import { count } from "../../../lib/format.ts"
 import { OwnerBubble } from "../entries.tsx"
 import { Markdown, renderBlock } from "./blocks-port.ts"
 import { DateDivider, plainLink, TurnSummary, WaitingLine, type RenderLink } from "./dividers.tsx"
-import type { PassItem, TimelineItem, WaitTarget } from "./model.ts"
+import { reuseItems, type PassItem, type TimelineItem, type WaitTarget } from "./model.ts"
 import { ToolGroup } from "./tool-group.tsx"
 
 const PINNED_WITHIN = 32
@@ -15,10 +15,10 @@ type ItemOf<K extends Kind> = Extract<TimelineItem, { readonly kind: K }>
 
 function follow<K extends Kind>(item: () => TimelineItem | undefined, first: ItemOf<K>): () => ItemOf<K> {
   const same = (candidate: TimelineItem | undefined): candidate is ItemOf<K> => candidate?.kind === first.kind
-  return () => {
+  return createMemo(() => {
     const now = item()
     return same(now) ? now : first
-  }
+  })
 }
 
 function ItemView(props: {
@@ -113,28 +113,23 @@ export function Timeline(props: {
   const [pinned, setPinned] = createSignal(true)
   const [seen, setSeen] = createSignal<{ readonly keys: ReadonlySet<string>; readonly revision: number }>()
 
-  const byKey = createMemo(() => new Map(props.items.map((item) => [item.key, item])))
-  const keys = createMemo(() => props.items.map((item) => item.key), undefined, {
+  const items = createMemo<readonly TimelineItem[]>((previous) => reuseItems(previous, props.items), [])
+  const byKey = createMemo(() => new Map(items().map((item) => [item.key, item])))
+  const keys = createMemo(() => items().map((item) => item.key), undefined, {
     equals: (a, b) => a.length === b.length && a.every((key, index) => key === b[index]),
   })
-  const liveGroups = createMemo(() => props.items.flatMap((item) => (item.kind === "tools" && item.live ? [item.key] : [])))
-  const owners = createMemo(() => props.items.filter((item) => item.kind === "owner").length)
+  const owners = createMemo(() => items().filter((item) => item.kind === "owner").length)
   const revision = createMemo(() =>
-    props.items.reduce(
+    items().reduce(
       (total, item) => total + 1 + (item.kind === "text" ? item.text.length : item.kind === "tools" ? item.calls.length : 0),
       0,
     ),
   )
 
   createEffect(
-    on(liveGroups, (now, before) => {
-      if (before !== undefined && before.some((key) => !now.includes(key))) setChoice(new Map())
-    }),
-  )
-  createEffect(
     on(owners, (now, before) => {
       if (before === undefined || now <= before) return
-      const groups = untrack(() => props.items.flatMap((item) => (item.kind === "tools" ? [item.key] : [])))
+      const groups = untrack(() => items().flatMap((item) => (item.kind === "tools" ? [item.key] : [])))
       setChoice(new Map(groups.map((key) => [key, false])))
     }),
   )
@@ -142,7 +137,7 @@ export function Timeline(props: {
   const fresh = createMemo(() => {
     const since = seen()
     if (since === undefined || pinned()) return undefined
-    const added = props.items.filter((item) => !since.keys.has(item.key))
+    const added = items().filter((item) => !since.keys.has(item.key))
     if (added.length === 0 && revision() === since.revision) return undefined
     return { messages: added.filter((item) => MESSAGE_KINDS.has(item.kind)).length }
   })
@@ -204,6 +199,9 @@ export function Timeline(props: {
         </div>
       </div>
       <div class="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+        <p role="status" aria-live="polite" data-jump-status="" class="sr-only">
+          {(fresh()?.messages ?? 0) > 0 ? count(fresh()?.messages ?? 0, "new message") : ""}
+        </p>
         <Show when={fresh()}>{(news) => <JumpPill messages={news().messages} onJump={jump} />}</Show>
       </div>
     </div>
