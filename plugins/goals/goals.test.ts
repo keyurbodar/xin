@@ -172,6 +172,7 @@ describe("lifecycle", () => {
     expect(cleared.ok).toBe(true)
     expect(goalOf(cleared)).toEqual({})
     expect(await stored(stub, root)).toBeUndefined()
+    expect(record((await get(stub, root)).result).goal).toBeNull()
 
     const again = await create(stub, root, "fresh")
     expect(again.ok).toBe(true)
@@ -229,26 +230,47 @@ describe("lifecycle", () => {
     expect(created).toMatchObject({ kind: "ok", goal: { maxRounds: 4 } })
   })
 
-  it("reads each conversation's goal from kv at most once, so a turn's round check costs no row", async () => {
+  it("serves each goal from a cache every write refreshes, so a warm turn reads no goal row", async () => {
     const stub = fresh()
-    const gets = await runInDurableObject(stub, async (_home: Home, state: DurableObjectState) => {
-      let count = 0
+    const seen = await runInDurableObject(stub, async (_home: Home, state: DurableObjectState) => {
+      let gets = 0
       const kv = new Proxy(state.storage.kv, {
         get(target, property) {
-          if (property === "get") count++
+          if (property === "get") gets++
           const value: unknown = Reflect.get(target, property)
           return typeof value === "function" ? value.bind(target) : value
         },
       })
       const goals = createGoals({ kv, defaultMaxRounds: 4 })
-      await goals.set({ conversation: 1 as ConversationId, action: "create", objective: "ship the release" })
-      for (let turn = 0; turn < 3; turn++) {
-        await goals.reserve(1 as ConversationId)
-        await goals.reserve(2 as ConversationId)
-      }
-      return count
+      const conversation = 1 as ConversationId
+      await goals.set({ conversation, action: "create", objective: "ship the release" })
+      const warm = gets
+      const first = await goals.reserve(conversation)
+      const admitted = first === null ? undefined : await goals.admit(conversation, first.goal.id, first.round)
+      const second = await goals.reserve(conversation)
+      await goals.reserve(2 as ConversationId)
+      const cold = createGoals({ kv, defaultMaxRounds: 4 })
+      await cold.get(conversation)
+      const coldReads = gets - warm
+      await cold.get(conversation)
+      const warmReads = gets - warm - coldReads
+      if (second === null)
+        return { first, admitted, second, coldReads, warmReads, cleared: undefined, after: undefined }
+      const cleared = await goals.set({
+        conversation,
+        action: "clear",
+        id: second.goal.id,
+        revision: second.goal.revision,
+      })
+      return { first, admitted, second, coldReads, warmReads, cleared, after: await goals.get(conversation) }
     })
-    expect(gets).toBeLessThanOrEqual(1)
+    expect(seen.first).toMatchObject({ round: 1, goal: { objective: "ship the release", rounds: 0 } })
+    expect(seen.admitted).toMatchObject({ kind: "admitted" })
+    expect(seen.second).toMatchObject({ round: 2, goal: { rounds: 1 } })
+    expect(seen.coldReads).toBe(1)
+    expect(seen.warmReads).toBe(0)
+    expect(seen.cleared).toMatchObject({ kind: "ok", goal: null })
+    expect(seen.after).toBeNull()
   })
 
   it("answers no goal before a create", async () => {

@@ -8,7 +8,7 @@ import {
   type Harness,
   type JsonObject,
   type ModelRef,
-  type Registry,
+  type ToolRegistration,
   type Tx,
 } from "@earendil-works/pi-durable"
 import { bool, compile, int, map, obj, opt, str, type Static } from "@earendil-works/pi-schema"
@@ -69,7 +69,7 @@ export type WritableFile = "notes" | "crewRules"
 
 export type CaptainDeps = {
   readonly harness: Harness
-  readonly registry: Registry
+  readonly toolsNamed: (names: readonly string[]) => readonly ToolRegistration[]
   readonly watchdog: WatchdogService
   currentModels(): Models
   disabled(ref: ModelRef): Promise<boolean>
@@ -288,12 +288,7 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
     await deps.publishHome()
     return value
   }
-  const notesTool = () =>
-    deps.registry
-      .snapshot()
-      .tools()
-      .map(({ tool }) => tool)
-      .filter((tool) => tool.name === NOTES_TOOL)
+  const notesTool = () => deps.toolsNamed([NOTES_TOOL])
 
   const list = defineOp({
     name: "captain.list",

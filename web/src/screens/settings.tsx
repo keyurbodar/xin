@@ -1,6 +1,6 @@
 import { For, Match, Show, Switch, type JSX } from "solid-js"
-import { Dynamic } from "solid-js/web"
-import { host, PluginBoundary, slotItems } from "../plugins/slots.tsx"
+import { host, slotItems } from "../plugins/slots.tsx"
+import { PluginPage } from "./plugin-page.tsx"
 import { navigate, route } from "../lib/router.ts"
 import { Glyph, type GlyphName } from "../components/extensions/glyph.tsx"
 import { General } from "../components/settings/general.tsx"
@@ -123,14 +123,7 @@ export function SettingsScreen(): JSX.Element {
             }
           >
             {(found) => (
-              <>
-                <h1 class="text-xl font-semibold tracking-[-0.015em] text-ink">{found().title}</h1>
-                <div class="mt-7">
-                  <PluginBoundary plugin={found().plugin}>
-                    <Dynamic component={found().component} host={host} />
-                  </PluginBoundary>
-                </div>
-              </>
+              <PluginPage plugin={found().plugin} title={found().title} component={found().component} host={host} />
             )}
           </Show>
         </div>
