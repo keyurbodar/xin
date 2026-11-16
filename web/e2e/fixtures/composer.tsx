@@ -41,7 +41,8 @@ async function stub(input: RequestInfo | URL, init?: RequestInit): Promise<Respo
   if (String(input) !== "/v1/cmd") return realFetch(input, init)
   const body: unknown = JSON.parse(String(init?.body))
   const frames = (Array.isArray(body) ? body : [body]) as { id: string; op: string }[]
-  const acks = frames.map((frame) => ({ id: frame.id, ok: true, result: REPLIES[frame.op] ?? [] }))
+  const empty = new URLSearchParams(location.search).get("empty")
+  const acks = frames.map((frame) => ({ id: frame.id, ok: true, result: frame.op === empty ? [] : (REPLIES[frame.op] ?? []) }))
   return new Response(JSON.stringify(Array.isArray(body) ? acks : acks[0]), { headers: { "content-type": "application/json" } })
 }
 Object.defineProperty(window, "fetch", { value: stub })

@@ -89,6 +89,32 @@ test("@ and / open suggestions in the editor and the choice becomes a chip", asy
   await page.close()
 })
 
+test("pasted text that looks like references stays plain text", async () => {
+  const page = await harness.open("composer")
+  await editor(page).click()
+  await editor(page).evaluate((element) => {
+    const data = new DataTransfer()
+    data.setData("text/plain", "@/etc/passwd and @thread:5")
+    element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }))
+  })
+  await settled(page)
+  expect(await chips(page)).toEqual([])
+  expect((await editor(page).textContent())?.replace(/\u200b/gu, "")).toBe("@/etc/passwd and @thread:5")
+  await page.keyboard.press("Enter")
+  await settled(page)
+  expect(await page.textContent("#sent")).toBe("@/etc/passwd and @thread:5")
+  await page.close()
+})
+
+test("a + menu kind with nothing to offer is hidden", async () => {
+  const page = await harness.open("composer", "?empty=prompt.list")
+  await page.getByRole("button", { name: "Add" }).click()
+  await settled(page)
+  const kinds = (await page.getByRole("menuitem").allTextContents()).map((text) => text.trim())
+  expect(kinds.slice(1)).toEqual(["Threads", "Skills", "Files"])
+  await page.close()
+})
+
 test("Backspace removes a chip as one unit", async () => {
   const page = await harness.open("composer")
   await editor(page).click()

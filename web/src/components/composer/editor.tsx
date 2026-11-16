@@ -6,7 +6,7 @@ import { render } from "solid-js/web"
 import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
 import { KIND, KindIcon } from "./kinds.tsx"
 import type { Sources, Suggestion } from "./sources.ts"
-import { composerCodec, fromInputToken, parseDraft, toInputToken, type ComposerToken, type TokenKind } from "./tokens.ts"
+import { composerCodec, fromInputToken, toInputToken, type ComposerToken, type TokenKind } from "./tokens.ts"
 
 /** What the composer card and the + menu do to the draft. */
 export type EditorHandle = {
@@ -55,7 +55,6 @@ export function ComposerEditor(props: {
   label: string
   placeholder: string
   disabled: boolean
-  initial?: string | undefined
   onChange: (text: string) => void
   ref: (handle: EditorHandle) => void
 }): JSX.Element {
@@ -79,7 +78,6 @@ export function ComposerEditor(props: {
       { char: "@", type: "mention" },
       { char: "/", boundary: "start", type: "command" },
     ]
-    if (props.initial !== undefined && props.initial !== "") input.api.setValue(parseDraft(props.initial))
     props.ref({
       insert: (token) => {
         input.api.insert([toInputToken(token), " "])

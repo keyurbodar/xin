@@ -1,4 +1,4 @@
-import type { Token, TokenCodec, TokenInputValue } from "@ui-sdk/web/token-input"
+import type { Token, TokenCodec } from "@ui-sdk/web/token-input"
 
 /** What a chip in the draft stands for. Each kind keeps the text the backend has always read for it. */
 export type TokenKind = "thread" | "skill" | "file" | "prompt"
@@ -27,37 +27,17 @@ export function formatToken(token: { readonly kind: TokenKind; readonly value: s
   }
 }
 
-const baseName = (path: string): string => path.slice(path.lastIndexOf("/") + 1)
-
-const PATTERN = /(@thread:\d+|@skill:[a-z0-9][a-z0-9-]*|@\/\S+|^\/[a-z][a-z0-9-]*(?=\s|$))/gu
-
-function tokenOf(text: string): ComposerToken | undefined {
-  if (text.startsWith("@thread:")) return { kind: "thread", value: text.slice(8), label: `Thread ${text.slice(8)}` }
-  if (text.startsWith("@skill:")) return { kind: "skill", value: text.slice(7), label: text.slice(7) }
-  if (text.startsWith("@/")) return { kind: "file", value: text.slice(1), label: baseName(text) }
-  if (text.startsWith("/")) return { kind: "prompt", value: text.slice(1), label: text.slice(1) }
-  return undefined
-}
-
 export const toInputToken = (token: ComposerToken): Token => ({ type: token.kind, value: token.value, label: token.label })
 
 export function fromInputToken(token: Token): ComposerToken | undefined {
   return isTokenKind(token.type) ? { kind: token.type, value: token.value, label: token.label } : undefined
 }
 
-/** Reads draft text back into text and chips, so a pasted or restored draft keeps its chips. */
-export function parseDraft(text: string): TokenInputValue {
-  return text.split(PATTERN).flatMap((part): TokenInputValue => {
-    if (part === "") return []
-    const token = tokenOf(part)
-    return token === undefined ? [part] : [toInputToken(token)]
-  })
-}
-
+/** Writes chips as backend text; reads any text back as plain text, so only a chip the owner picks is ever a chip. */
 export const composerCodec: TokenCodec = {
   format: (token) => {
     const known = fromInputToken(token)
     return known === undefined ? token.label : formatToken(known)
   },
-  parse: parseDraft,
+  parse: (text) => [text],
 }

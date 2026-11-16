@@ -71,7 +71,7 @@ function KindMenu(props: { kind: TokenKind; rows: readonly Suggestion[]; onPick:
 
 /**
  * The + menu: upload a file, or put a chip for something the project already has into the draft. Each kind opens
- * a searchable submenu; kinds Ingle has no source for yet (people, Captains, pull requests, plugins, devices,
+ * a searchable submenu and is hidden while it has nothing to offer; kinds Ingle has no source for yet (people, Captains, pull requests, plugins, devices,
  * environment variables) stay out of the menu until they do.
  */
 export function PlusMenu(props: {
@@ -84,6 +84,7 @@ export function PlusMenu(props: {
   const [open, setOpen] = createSignal(false)
   const { mounted, settle } = createOverlayMount(open)
   const sources = createSources(() => props.project)
+  const kinds = (): readonly TokenKind[] => MENU_KINDS.filter((kind) => sources.list(kind).length > 0)
   let after: (() => void) | undefined
 
   const close = (then: () => void): void => {
@@ -128,8 +129,10 @@ export function PlusMenu(props: {
               {formatShortcut(UPLOAD_SHORTCUT)}
             </kbd>
           </ui-menu-item>
-          <ui-menu-separator class={POPUP_SEPARATOR} />
-          <For each={MENU_KINDS}>{(kind) => <KindMenu kind={kind} rows={sources.list(kind)} onPick={pick} />}</For>
+          <Show when={kinds().length > 0}>
+            <ui-menu-separator class={POPUP_SEPARATOR} />
+          </Show>
+          <For each={kinds()}>{(kind) => <KindMenu kind={kind} rows={sources.list(kind)} onPick={pick} />}</For>
         </Show>
       </ui-menu-content>
     </ui-menu>
