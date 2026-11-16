@@ -2,8 +2,8 @@ import { createSignal, Match, onMount, Show, Switch, type JSX } from "solid-js"
 import { navigate, route } from "../lib/router.ts"
 import { market, rows } from "../state/extensions.ts"
 import { Glyph } from "../components/extensions/glyph.tsx"
-import { Discover } from "../components/extensions/discover.tsx"
-import { PackagePage } from "../components/extensions/package-page.tsx"
+import { Explore } from "../components/explore/explore.tsx"
+import { exploreViewOf, type ExploreView } from "../components/explore/routes.ts"
 import { Installed } from "../components/extensions/installed.tsx"
 import { Updates } from "../components/extensions/updates.tsx"
 import { Customize } from "../components/extensions/customize.tsx"
@@ -13,7 +13,7 @@ import { AddUrl } from "../components/extensions/add-url.tsx"
 type View = "discover" | "installed" | "updates" | "customize" | "sources" | "package"
 
 const TABS: readonly { readonly id: View; readonly label: string; readonly to: string }[] = [
-  { id: "discover", label: "Discover", to: "/extensions" },
+  { id: "discover", label: "Explore", to: "/explore" },
   { id: "installed", label: "Installed", to: "/extensions/installed" },
   { id: "updates", label: "Updates", to: "/extensions/updates" },
   { id: "customize", label: "Customize", to: "/extensions/customize" },
@@ -38,7 +38,7 @@ function viewOf(part: string | undefined): View {
 
 export function ExtensionsScreen(): JSX.Element {
   const [addUrl, setAddUrl] = createSignal(false)
-  const view = (): View => viewOf(route().parts[1])
+  const view = (): View => (route().parts[0] === "explore" ? "discover" : viewOf(route().parts[1]))
 
   onMount(() => {
     void rows.reload()
@@ -55,14 +55,11 @@ export function ExtensionsScreen(): JSX.Element {
     return state.kind === "ready" ? state.value.filter((entry) => entry.status === "update-available").length : 0
   }
 
-  const packageName = (): string | undefined => {
-    const part = route().parts[2]
-    if (view() !== "package" || part === undefined) return undefined
-    try {
-      return decodeURIComponent(part)
-    } catch {
-      return undefined
-    }
+  const exploreView = (): ExploreView => {
+    const parts = route().parts
+    if (parts[0] === "explore") return exploreViewOf(parts.slice(1))
+    const name = parts[2]
+    return view() === "package" && name !== undefined ? exploreViewOf(["plugins", name]) : { kind: "list", tab: "plugins" }
   }
 
   const customizeRow = (): string | undefined => {
@@ -125,7 +122,7 @@ export function ExtensionsScreen(): JSX.Element {
       </header>
 
       <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <Switch fallback={<Discover onOpen={(name) => navigate(`/extensions/package/${encodeURIComponent(name)}`)} onSources={() => navigate("/extensions/sources")} />}>
+        <Switch fallback={<Explore view={exploreView()} />}>
           <Match when={view() === "installed"}>
             <Installed onCustomize={(rowId) => navigate(`/extensions/customize/${encodeURIComponent(rowId)}`)} />
           </Match>
@@ -137,20 +134,6 @@ export function ExtensionsScreen(): JSX.Element {
           </Match>
           <Match when={view() === "sources"}>
             <Sources />
-          </Match>
-          <Match when={view() === "package"}>
-            <Show
-              when={packageName()}
-              fallback={<Discover onOpen={(name) => navigate(`/extensions/package/${encodeURIComponent(name)}`)} onSources={() => navigate("/extensions/sources")} />}
-            >
-              {(name) => (
-                <PackagePage
-                  name={name()}
-                  onBack={() => navigate("/extensions")}
-                  onCustomize={() => navigate("/extensions/customize")}
-                />
-              )}
-            </Show>
           </Match>
         </Switch>
       </div>

@@ -8,6 +8,8 @@ import {
   parseAppearance,
   pickedInMenu,
   tokensOf,
+  withCatalogTheme,
+  type CustomTheme,
   type Palette,
 } from "./model.ts"
 
@@ -91,4 +93,14 @@ test("Light or Dark from the owner menu sets the mode, and any other theme sets 
   expect(pickedInMenu(custom, "light")).toMatchObject({ mode: "light", theme: "ingle" })
   expect(pickedInMenu({ ...DEFAULT_APPEARANCE, mode: "light" }, "dark")).toMatchObject({ mode: "dark", theme: "ingle" })
   expect(pickedInMenu(DEFAULT_APPEARANCE, "rose")).toMatchObject({ mode: "dark", theme: "rose" })
+})
+
+test("adding a catalogue theme twice keeps one copy and applies it both times", () => {
+  const fjord: CustomTheme = { id: "fjord", label: "Fjord", source: "explore:fjord", dark: INGLE_DARK, light: INGLE_LIGHT }
+  const once = withCatalogTheme(DEFAULT_APPEARANCE, fjord, "fjord-1a2b3c")
+  expect(once.custom.map((theme) => theme.id)).toEqual(["fjord-1a2b3c"])
+  expect(once.theme).toBe("custom:fjord-1a2b3c")
+  const twice = withCatalogTheme({ ...once, theme: "ingle" }, fjord, "fjord-9z9z9z")
+  expect(twice.custom.map((theme) => theme.id)).toEqual(["fjord-1a2b3c"])
+  expect(twice.theme).toBe("custom:fjord-1a2b3c")
 })
