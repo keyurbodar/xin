@@ -126,7 +126,8 @@
   animation: im-pop-out var(--dur-tooltip-exit) var(--ease-out) forwards;
 }
 .im-tip[data-instant],
-.im-pop[data-instant] {
+.im-pop[data-instant],
+.im-pop[data-warm] {
   animation-duration: 0ms;
 }
 @keyframes im-pop-in {
