@@ -124,7 +124,13 @@ export function Lightbox(props: {
   }
   const zoomIn = (): void => zoomTo(ZOOM_STEPS.find((step) => step > scale() + EPSILON) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1]!)
   const zoomOut = (): void => zoomTo(ZOOM_STEPS.findLast((step) => step < scale() - EPSILON) ?? ZOOM_STEPS[0])
+  let epoch = 0
+  const alive = (): (() => boolean) => {
+    const started = epoch
+    return () => started === epoch
+  }
   const reset = (): void => {
+    epoch++
     clearTimeout(copiedTimer)
     setCopied(undefined)
     setZoom(null)
@@ -138,6 +144,15 @@ export function Lightbox(props: {
 
   resetOnOpen(() => props.open, reset)
   createEffect(on(() => props.index, reset, { defer: true }))
+  createEffect(
+    on(
+      () => props.open,
+      (open) => {
+        if (!open) epoch++
+      },
+      { defer: true },
+    ),
+  )
   createEffect(() => {
     const index = props.index
     if (!props.open) return
@@ -160,7 +175,9 @@ export function Lightbox(props: {
   const copy = async (): Promise<void> => {
     const item = current()
     if (item === undefined) return
+    const live = alive()
     const outcome = (await copyImage(item.src)) ? "copied" : "failed"
+    if (!live()) return
     setCopied(outcome)
     clearTimeout(copiedTimer)
     copiedTimer = setTimeout(() => setCopied(undefined), outcome === "copied" ? COPIED_MS : BLOCKED_MS)
