@@ -36,7 +36,7 @@ export function ConsentPrompt(props: {
       </ul>
       <div class="flex items-center gap-2 border-t border-line-1 px-3.5 py-2.5">
         <span class="text-xs text-ink-3">
-          Ingle holds it to this list for your Home’s data and services. It can still reach the internet, and because its code runs inside your Home, code written to get around the list could. Install only plugins you trust.
+          Ingle holds it to this list for your Home's data and services. It can still reach the internet, and because its code runs inside your Home, code written to get around the list could. Install only plugins you trust.
         </span>
         <span class="ml-auto" />
         <Button size="sm" variant="quiet" disabled={props.busy} onClick={props.onCancel}>

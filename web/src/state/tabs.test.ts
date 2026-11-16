@@ -1,20 +1,24 @@
-import { expect, test } from "bun:test"
+import { beforeAll, expect, test } from "bun:test"
+import { stubGlobals } from "../../test/globals.ts"
 
 const stored = new Map<string, string>()
-Object.assign(globalThis, {
+stubGlobals({
   localStorage: {
     getItem: (key: string) => stored.get(key) ?? null,
     setItem: (key: string, value: string) => void stored.set(key, value),
   },
-  window: { matchMedia: () => ({ matches: true, addEventListener: () => undefined }) },
+  window: { location: { hash: "" }, matchMedia: () => ({ matches: true, addEventListener: () => undefined }) },
 })
-const { closeThreadTabs, openThreadTab, openThreadTabs, reopenThreadTabs } = await import("./tabs.ts")
+let tabs: typeof import("./tabs.ts")
+beforeAll(async () => {
+  tabs = await import("./tabs.ts")
+})
 
 test("every close gets its own id, so undoing one close reopens only its tabs", () => {
-  for (const id of [1, 2, 3]) openThreadTab("p", id)
-  const first = closeThreadTabs("p", [2])
-  const second = closeThreadTabs("p", [3])
+  for (const id of [1, 2, 3]) tabs.openThreadTab("p", id)
+  const first = tabs.closeThreadTabs("p", [2])
+  const second = tabs.closeThreadTabs("p", [3])
   expect(second).not.toBe(first)
-  reopenThreadTabs("p", first)
-  expect(openThreadTabs("p")).toEqual([1, 2])
+  tabs.reopenThreadTabs("p", first)
+  expect(tabs.openThreadTabs("p")).toEqual([1, 2])
 })
