@@ -1,0 +1,1 @@
+2026-11-06T14:21:00Z	M4	Milestone commits carry their own modules, tests, spec and verify pages; the shared harness (src/host.ts, src/module.ts, test/worker.ts, vitest.config.ts) lands with the commit where all its imports exist	lanes ran in parallel in one checkout, so the harness mixes milestones; the final tree passes the full gate	git log	accepted

@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	onboarding v5	captain model: Step 3 always sends an explicit model, the first keyed model by default, and drops the Default option	captain.create leaves the conversation without a model and coordinator turns do not fall back to owner.defaults, so the first message failed with no_model (Devin on #29)	plugins/orchestrator/captains.ts:347	adopted

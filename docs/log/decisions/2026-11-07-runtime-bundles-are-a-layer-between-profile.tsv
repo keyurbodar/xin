@@ -1,0 +1,1 @@
+2026-11-07T00:00	P6	Runtime bundles are a layer between profile patch and owner patch, not loader groups	Owner edits to bundle rows then survive updates through the existing minimal-departure patch; no group support needed in layers.ts	src/kernel/layers.ts	accepted

@@ -1,0 +1,1 @@
+2026-11-06T14:29:41Z	M5	Workspace publishes the home stream once in a microtask on xin.workspace, xin.thread or xin.requests changes	the four explicit publish calls missed thread creation, so the home stream never showed a new thread	plugins/workspace/workspace.ts apply; plugins/orchestrator/orchestrator.test.ts home push case	accepted

@@ -1,0 +1,1 @@
+2026-11-06T14:41:38Z	M5	Live proof green: coordinator reply, delegated thread report carrying the haiku, mid-run switch iceman-contributor-free -> beam-free within one run	goal live condition	gate XIN_LIVE=1 local run; src/live.test.ts; the .verify scratch artifact is gone	accepted

@@ -1,0 +1,1 @@
+2026-11-07T00:00	P6	Free plan only (owner): code installs through a build; bundle-only packages (rows over compiled plugins) install and update live as a runtime layer	Owner ruled out Paid; Worker Loader is Paid-only; dsh already splits code from bundles	docs/plan/architecture/12-market.md	accepted

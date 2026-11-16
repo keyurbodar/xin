@@ -1,0 +1,1 @@
+2026-11-06T13:57:41Z	M7	Dreamer lane skipped transcripts; lead re-briefed lane M7b to add them	spec 07 diagram reads transcripts after cursor up to 24k tokens	lane M7b	done 2026-11-10: the transcript reader is plugins/memory/dreamtranscript.ts and the pass reads transcripts after the cursor

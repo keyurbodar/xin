@@ -1,0 +1,1 @@
+2026-11-15T17:20:00Z	page-15	Every tab close (×, middle click, menu) is undoable; undo restores the earlier order plus any tabs opened since	closing a tab is the one destructive action the client can reverse alone	web/src/state/tabs.ts restoreThreadTabs	adopted

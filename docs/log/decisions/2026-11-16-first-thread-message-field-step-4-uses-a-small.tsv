@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	onboarding v5	first thread message field: Step 4 uses a small textarea and .im-send button, not the composer	the composer files belong to xin#14; a first message needs no attachments, presets or model picker	web/src/components/onboarding/thread-step.tsx	adopted

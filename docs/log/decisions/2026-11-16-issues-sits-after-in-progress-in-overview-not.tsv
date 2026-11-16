@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	web-issues	Issues sits after In progress in Overview, not first as in render 14.1	Needs you and In progress are thread state the person acts on now; the issues list is longer and would push running threads below the fold	web/src/components/pane/views.tsx OVERVIEW_SECTIONS	adopted

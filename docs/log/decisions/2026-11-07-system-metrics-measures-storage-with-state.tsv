@@ -1,0 +1,1 @@
+2026-11-07T20:45	P14	system.metrics measures storage with `state.storage.sql.databaseSize`, not a page_count pragma	workerd's SQLite authorizer answers `not authorized: SQLITE_AUTH` for pragma_page_count in the Durable Object	src/kernel/system.ts + system.test.ts; live figure 532,480 bytes on the demo home	gate green; live
