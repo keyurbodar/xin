@@ -7,7 +7,7 @@ import {
   type ToolRegistration,
 } from "@earendil-works/pi-durable"
 import { int, obj, oneOf, opt, str } from "@earendil-works/pi-schema"
-import { ModelChoiceSchema } from "../../src/contracts/models.ts"
+import { ThinkingSchema, type ModelChoice } from "../../src/contracts/models.ts"
 import {
   SendModeSchema,
   type Caller,
@@ -19,6 +19,13 @@ import { RoleSchema, StatusSchema } from "../../src/contracts/threaddoc.ts"
 import { type Context as KernelContext, textResult } from "../../src/kernel/index.ts"
 import { excerpt } from "../../src/transcript.ts"
 import { MAX_FILE_CHARS, NOTES_TOOL, writeOwnFile } from "./captains.ts"
+
+const TargetSchema = obj({ model: opt(str({ minLength: 1 })), thinking: opt(ThinkingSchema) })
+
+const choiceOf = (target: { readonly model?: string; readonly thinking?: ModelChoice["thinking"] }): ModelChoice => ({
+  ...(target.model === undefined ? {} : { query: target.model }),
+  ...(target.thinking === undefined ? {} : { thinking: target.thinking }),
+})
 
 const MAX_READ_CHARS = 16_000
 const MAX_WAIT_MS = 8_000
@@ -127,13 +134,13 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
   const delegate = defineTool({
     name: "delegate_task",
     description:
-      "Delegate a self-contained brief to a background thread. A Space runs it in its own project; Puck must name one with project. The thread sees only the brief and its role; its result arrives later as a report. It runs on your model and thinking level unless target names another: honour a model the owner asks for, pick a cheaper model from capabilities for research, reading and summaries, and a strong one for builds and reviews.",
+      "Delegate a self-contained brief to a background thread. A Space runs it in its own project; Puck must name one with project. The thread sees only the brief and its role; its result arrives later as a report. It runs on your model unless target.model names one: cheaper for research, stronger for builds.",
     parameters: obj({
       task: str({ minLength: 1 }),
       title: str({ minLength: 1, maxLength: 200 }),
       role: opt(RoleSchema),
       project: opt(str({ minLength: 1, maxLength: 200 })),
-      target: opt(ModelChoiceSchema),
+      target: opt(TargetSchema),
       mode: ModeSchema,
       timeoutMs: opt(int({ minimum: 1, maximum: MAX_WAIT_MS })),
       clientRequestId: str({ minLength: 1 }),
@@ -150,7 +157,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
             clientRequestId: args.clientRequestId,
             ...(args.role === undefined ? {} : { role: args.role }),
             ...(args.project === undefined ? {} : { project: args.project }),
-            ...(args.target === undefined ? {} : { choice: args.target }),
+            ...(args.target === undefined ? {} : { choice: choiceOf(args.target) }),
             ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
           },
           callContext,
@@ -326,12 +333,12 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
       role: opt(RoleSchema),
       project: opt(str({ minLength: 1 })),
       spaceId: opt(str({ minLength: 1 })),
-      target: opt(ModelChoiceSchema),
+      target: opt(TargetSchema),
     }),
     replay: "safe",
     execute: async (args, api) => {
       const created = await threads.create(callerOf(api), {
-        ...(args.target === undefined ? {} : { target: args.target }),
+        ...(args.target === undefined ? {} : { target: choiceOf(args.target) }),
         title: args.title,
         task: args.task,
         ...(args.role === undefined ? {} : { role: args.role }),

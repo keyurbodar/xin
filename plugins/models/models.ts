@@ -885,7 +885,10 @@ export function create(deps: ModelsPort): ModelsParts {
       : `${problem}. Usable: ${usable.map((model) => `${model.provider}/${model.id}`).join(", ")}.`
   }
   const byName = async (query: string): Promise<ModelRef | string> => {
-    const matches = search(await usableModels(), query)
+    const usable = await usableModels()
+    const exact = usable.find((model) => `${model.provider}/${model.id}` === query)
+    if (exact !== undefined) return refOf(exact)
+    const matches = search(usable, query)
     const top = matches[0]
     if (top === undefined) return `No usable model matches "${query}".`
     if ((matches[1]?.score ?? 0) === top.score)

@@ -23,7 +23,7 @@ flowchart TD
   H --> G
 ```
 
-A delegated thread resolves its model in this order: `delegate_task target.model`, the project's `thread` default, the owner's `thread` default, then the coordinator's current model as an explicit last fallback, then `none` (the tool returns `no_model`). The coordinator fallback keeps the common case — one model picked in the picker — working without configuring a thread default.
+A conversation another one starts (a delegated thread, a `thread.create` or `thread.side` thread, a Captain) gets its model and thinking level from `ModelsService.pick`, in this order: the creator's explicit override (`target: {model?, query?, thinking?}` on `delegate_task` and `thread_create`, the same fields on `thread.create` and `thread.side`, `model` and `thinking` on `captain.create`/`captain.update`), then **the creator's own model and thinking level**, then the project's role default, then the owner's role default, then a refusal (`delegate_task` answers `no_model`, the ops `bad_args`). Inheriting is the default because the owner picks one model for a Captain and expects its crew to run on it (owner decision 2026-11-16); role defaults only cover a creator with no usable model. A Captain created without a model inherits from its project's default coordinator. `query` is a name such as "haiku 5.5", searched like `set_model`; a tie returns the candidates. An inherited thinking level is kept only when the chosen model supports it, and an explicit one the model does not support is refused. Every candidate has to be usable: known to the catalog, enabled, and keyed (pi-ai `getAvailable(provider)`). A model that is not usable is refused with the reason and up to three models that are, and `conv.configure` refuses one the same way. `task_status`, `thread_list` and `captain.get` crew members show each thread's `provider/modelId · thinking`.
 
 ## The picker catalog
 
@@ -34,7 +34,7 @@ A selection is a conversation's `pi.agent`, so the model and thinking level of a
 ## The `set_model` tool
 
 ```text
-set_model({ target: "this_chat" | "thread:<id>" | "new_threads" | "project_default", query: string, thinking?: "off"|"minimal"|"low"|"medium"|"high"|"xhigh"|"max" })
+set_model({ target: "this_chat" | "thread:<id>", query: string, thinking?: "off"|"minimal"|"low"|"medium"|"high"|"xhigh"|"max" })
  1. candidates = catalog.search(query)        // fuzzy over provider, id, name; only providers with working auth
  2. 0 hits      → error listing close matches + "add a provider key in Settings"
     >1 strong   → return the top 4 to the model; it asks you ("opus 5.5 or opus 5?")

@@ -19,8 +19,6 @@ function resolveTarget(target: string, mine: ConversationId): Target {
       ? { kind: "conversation", id: id as ConversationId }
       : { kind: "none", message: `"${target}" is not a thread id` }
   }
-  if (target === "new_threads" || target === "project_default")
-    return { kind: "none", message: `"${target}" is not available yet; it arrives with projects and threads` }
   return { kind: "none", message: `unknown target "${target}"` }
 }
 
@@ -31,7 +29,7 @@ function setModel(models: ModelsService) {
     name: "set_model",
     description: "Switch the model a chat or thread uses. The switch applies from the next request.",
     parameters: obj({
-      target: str({ minLength: 1, description: "this_chat, thread:<id>, new_threads or project_default" }),
+      target: str({ minLength: 1, description: "this_chat or thread:<id>" }),
       query: str({ minLength: 1, description: "model name, id or provider to search for" }),
       thinking: opt(ThinkingSchema),
     }),
