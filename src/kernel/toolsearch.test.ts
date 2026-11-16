@@ -56,5 +56,17 @@ describe("tool_search over the deferred tools", () => {
 
     expect(offers.at(0).available).not.toContain("set_model")
     expect(offers.at(1).tools).not.toContain("set_model")
+    const [search] = await toolTexts(stub)
+    expect(search).not.toContain("set_model")
+  })
+
+  it("keeps an explicit limit at three", async () => {
+    const stub = fresh()
+    const offers = recordOffers()
+    respond([offers.wrap(() => call("tool_search", { query: "goal automation run", limit: 8 })), offers.step("done")])
+    await turn(stub, "search-limit", { text: "find tools" })
+
+    const loaded = offers.at(1).tools.filter((name) => !offers.at(0).tools.includes(name))
+    expect(loaded.length).toBeLessThanOrEqual(3)
   })
 })
