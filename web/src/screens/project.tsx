@@ -57,6 +57,7 @@ import { ProjectSettings } from "../components/project/settings.tsx"
 import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
+import { Backdrop } from "../appearance/backdrop.tsx"
 
 export function ProjectChat(props: {
   project: ProjectSummary
@@ -171,7 +172,7 @@ export function ProjectChat(props: {
   }
 
   return (
-    <div class="flex min-h-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
+    <div class="relative isolate flex min-h-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
       <Loading when={snapshot() === undefined} skeleton={<ThreadSkeleton />} label="Loading conversation">
         <Show when={snapshot()}>
           {(value) => (
@@ -193,6 +194,9 @@ export function ProjectChat(props: {
           )}
         </Show>
       </Loading>
+      <Show when={snapshot() !== undefined && !started()}>
+        <Backdrop ground="panel" class="-z-10" />
+      </Show>
           <Composer
             project={props.project}
             active={props.active}

@@ -12,7 +12,7 @@ import { Signal } from "../ui/signal.tsx"
 import { ICON_BUTTON } from "../shell/menu.ts"
 import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM, POPUP_LABEL, POPUP_SEPARATOR } from "../ui/surface.ts"
-import { paneEntry, paneView, paneViews, type PaneContext, type PaneEntry } from "./views.tsx"
+import { paneEntry, paneView, paneViews, preloadPaneViews, type PaneContext, type PaneEntry } from "./views.tsx"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
 
@@ -61,7 +61,7 @@ export function ProjectPane(props: {
   })
 
   return (
-    <aside class="flex min-h-0 flex-col">
+    <aside class="flex min-h-0 flex-col" onPointerOver={preloadPaneViews} onFocusIn={preloadPaneViews}>
       <div class="flex h-[var(--h-topbar)] shrink-0 items-center gap-1 border-b border-line-1 px-2">
         <div ref={strip} class="relative flex min-w-0 items-center gap-1 overflow-x-auto">
           <Show when={pill()}>

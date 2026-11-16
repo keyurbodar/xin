@@ -5,6 +5,7 @@
  * `src/reads.test.ts` fails when an op here is not declared `read` on the server.
  */
 export const READS: Readonly<Record<string, "cached" | "live">> = {
+  "appearance.read": "live",
   "automation.list": "cached",
   "market.entry": "cached",
   "market.policy": "cached",
