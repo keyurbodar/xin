@@ -218,6 +218,52 @@ test("before Segmented Control loads, the stored section already shows checked u
   }
 })
 
+const item = (page: Page, value: string) => page.locator(`ui-segmented-control-item[value=${value}]`)
+
+test("an aborted Segmented Control chunk raises no page error, and the next press loads it and switches the section", async () => {
+  const errors: string[] = []
+  let release = async (): Promise<void> => undefined
+  const page = await harness.open("sidebar", {
+    expected: /Failed to load resource/,
+    before: async (page) => {
+      page.on("pageerror", (error) => errors.push(String(error)))
+      release = await holdChunk(page, "segmented-control", true)
+    },
+  })
+  await page.waitForTimeout(300)
+  expect(await page.evaluate(() => customElements.get("ui-segmented-control") === undefined)).toBe(true)
+  await release()
+  await item(page, "captains").click()
+  await page.waitForFunction(() => document.querySelector("ui-segmented-control-item[value=captains]")?.getAttribute("aria-checked") === "true", undefined, {
+    timeout: 5000,
+  })
+  expect((await rows(page)).join("|")).toContain("Atlas")
+  expect(errors).toEqual([])
+  await page.close()
+})
+
+test("a press while the Segmented Control chunk is slow switches the section once it lands", async () => {
+  let release = async (): Promise<void> => undefined
+  const page = await harness.open("sidebar", {
+    before: async (page) => {
+      release = await holdChunk(page, "segmented-control")
+    },
+  })
+  await item(page, "captains").click()
+  await item(page, "captains").click()
+  await page.waitForTimeout(200)
+  expect((await rows(page)).join("|")).not.toContain("Atlas")
+  await release()
+  await page.waitForFunction(() => document.querySelector("ui-segmented-control-item[value=captains]")?.getAttribute("aria-checked") === "true", undefined, {
+    timeout: 5000,
+  })
+  await page.waitForTimeout(200)
+  expect(await segment(page, "Captains").getAttribute("aria-checked")).toBe("true")
+  expect((await rows(page)).join("|")).toContain("Atlas")
+  expect(await page.evaluate(() => localStorage.getItem("ingle.sidebar.section"))).toBe("captains")
+  await page.close()
+})
+
 test("the sidebar sends only owner.read on mount, and switching sections sends nothing", async () => {
   const page = await harness.open("sidebar")
   await page.waitForTimeout(300)

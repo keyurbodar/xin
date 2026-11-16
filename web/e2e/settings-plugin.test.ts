@@ -26,14 +26,14 @@ test("a plugin Settings page that throws shows its fallback and leaves the next 
   try {
     const plugins = page.getByRole("navigation", { name: "Settings" })
     await page.locator("#steady").waitFor()
-    await plugins.getByRole("button", { name: "Broken settings" }).click()
+    await plugins.getByRole("link", { name: "Broken settings" }).click()
     await page.getByRole("heading", { name: "Broken settings" }).waitFor()
     await page.getByText("broken failed to render").waitFor()
-    await plugins.getByRole("button", { name: "Steady settings" }).click()
+    await plugins.getByRole("link", { name: "Steady settings" }).click()
     await page.getByRole("heading", { name: "Steady settings" }).waitFor()
     expect(await page.locator("#steady").textContent()).toBe("steady body")
     expect(await page.getByText("failed to render").count()).toBe(0)
-    await plugins.getByRole("button", { name: "Plugins" }).click()
+    await plugins.getByRole("link", { name: "Plugins" }).click()
     await page.getByRole("heading", { name: "Plugins" }).waitFor()
   } finally {
     await page.close()

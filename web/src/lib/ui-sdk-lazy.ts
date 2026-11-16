@@ -1,6 +1,9 @@
 const LOADERS = {
   menu: () => import("@ui-sdk/web/menu"),
   "segmented-control": () => import("@ui-sdk/web/segmented-control"),
+  command: () => import("@ui-sdk/web/command"),
+  combobox: () => import("@ui-sdk/web/combobox"),
+  editor: () => Promise.all([import("@ui-sdk/web/token-input"), import("@ui-sdk/web/trigger-menu")]),
 } as const
 
 export type LazyElements = keyof typeof LOADERS
@@ -33,30 +36,43 @@ export function loadUiSdk(name: LazyElements): Promise<void> {
   return running
 }
 
-/** Starts loading an element family ahead of use; a failed load is left for the next press to retry. */
-export function warmUiSdk(name: LazyElements): void {
-  loadUiSdk(name).catch(() => undefined)
+const loadAll = (names: readonly LazyElements[]): Promise<unknown> => Promise.all(names.map(loadUiSdk))
+
+/** Starts loading element families ahead of use; a failed load is left for the next press to retry. */
+export function warmUiSdk(...names: readonly LazyElements[]): void {
+  loadAll(names).catch(() => undefined)
 }
 
-const holding = new Set<LazyElements>()
+const holding = new WeakSet<EventTarget>()
 
 /**
- * Lets a press that lands before an element family has registered count once: it is held, and `again` is sent to
- * the same target on the frame after the load. Presses while one is held are dropped, so a double press opens a
- * menu once instead of opening and closing it, and a failed load drops the held press so the next one retries.
+ * Lets a press that lands before its element families have registered count once: it is held, and the same click is
+ * sent again to its target on the frame after the load. Further presses on the same control while one is held are
+ * dropped, so a double press opens a menu once instead of opening and closing it, and a failed load drops the held
+ * press so the next one retries the load.
  */
-export function replayWhenReady(name: LazyElements, event: Event, again: () => Event): void {
-  if (ready.has(name)) return
+export function replayWhenReady(names: readonly LazyElements[], event: MouseEvent): void {
+  if (names.every(uiSdkReady)) return
   event.preventDefault()
-  const target = event.target
-  if (holding.has(name) || target === null) return
-  holding.add(name)
-  loadUiSdk(name).then(
+  const { target, currentTarget } = event
+  if (target === null || currentTarget === null || holding.has(currentTarget)) return
+  holding.add(currentTarget)
+  loadAll(names).then(
     () =>
       requestAnimationFrame(() => {
-        holding.delete(name)
-        target.dispatchEvent(again())
+        holding.delete(currentTarget)
+        target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: event.detail }))
       }),
-    () => holding.delete(name),
+    () => holding.delete(currentTarget),
   )
+}
+
+/** Trigger handlers that load element families on first hover or focus, and replay a press that came before them. */
+export function loadOnIntent(...names: readonly LazyElements[]) {
+  const warm = (): void => warmUiSdk(...names)
+  return {
+    onPointerEnter: warm,
+    onFocus: warm,
+    onClick: (event: MouseEvent): void => replayWhenReady(names, event),
+  }
 }

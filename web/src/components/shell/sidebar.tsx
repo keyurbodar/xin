@@ -10,7 +10,7 @@ import { ago } from "../../lib/format.ts"
 import { stagger } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { theme } from "../../lib/theme.ts"
-import { replayWhenReady, warmUiSdk } from "../../lib/ui-sdk-lazy.ts"
+import { loadOnIntent, replayWhenReady, warmUiSdk } from "../../lib/ui-sdk-lazy.ts"
 import { applyTheme, SlotList, themes } from "../../plugins/slots.tsx"
 import { openThreadTab, paneOpen, projectTabs, setSidebarDrawer, showPaneView } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
@@ -233,6 +233,7 @@ function LowerSection(): JSX.Element {
         <ui-segmented-control
           aria-label="Sidebar list"
           default-value={initial}
+          onClick={(event) => replayWhenReady(["segmented-control"], event)}
           on:valuechange={(event) => pick(event.detail.value)}
           class="relative isolate flex h-[var(--h-control-sm)] flex-1 items-center rounded-sm bg-secondary p-0.5"
         >
@@ -364,9 +365,6 @@ function ThreadList(props: {
  */
 function AccountChip(): JSX.Element {
   const initial = (): string => ownerName().trim().slice(0, 1).toUpperCase() || "O"
-  const warm = (): void => warmUiSdk("menu")
-  const replay = (event: MouseEvent): void =>
-    replayWhenReady("menu", event, () => new MouseEvent("click", { bubbles: true, cancelable: true, detail: event.detail }))
   return (
     <div class="shrink-0 border-t border-line-1 p-2">
       <ui-menu
@@ -377,9 +375,7 @@ function AccountChip(): JSX.Element {
         <ui-menu-trigger>
           <button
             type="button"
-            onPointerEnter={warm}
-            onFocus={warm}
-            onClick={replay}
+            {...loadOnIntent("menu")}
             class="im-hover im-focus flex h-[var(--h-row-2)] w-full items-center gap-2.5 rounded-sm px-2 text-left data-[open]:bg-hover"
           >
             <span
