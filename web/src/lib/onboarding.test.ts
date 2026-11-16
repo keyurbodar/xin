@@ -206,3 +206,8 @@ test("needsOnboarding reads the stored flag and falls back to a live Captain", a
   serve({ "owner.read": () => ({ name: "", instructions: "" }), "captain.list": () => [profile("Old", "old", true)] })
   expect(await needsOnboarding()).toBe(true)
 })
+
+test("needsOnboarding opens onboarding when its reads fail, instead of rejecting", async () => {
+  serve({ "captain.list": () => [profile("Bosun", "bosun")] })
+  expect(await needsOnboarding()).toBe(true)
+})

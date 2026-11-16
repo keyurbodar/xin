@@ -75,7 +75,7 @@ export function App(): JSX.Element {
         <SignIn
           onSignedIn={async () => {
             await start()
-            if (await needsOnboarding().catch(() => true)) navigate("/welcome")
+            if (await needsOnboarding()) navigate("/welcome")
           }}
         />
       </Match>
