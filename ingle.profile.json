@@ -28,11 +28,16 @@
     "ingle-plugin-workspace",
     "ingle-plugin-git-native",
     "ingle-plugin-issues",
-    "ingle-plugin-drive"
+    "ingle-plugin-drive",
+    "ingle-plugin-visual"
   ],
   "patch": [
     {
       "id": "hello",
+      "disabled": true
+    },
+    {
+      "id": "visual",
       "disabled": true
     }
   ]

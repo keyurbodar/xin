@@ -1,0 +1,23 @@
+{
+  "name": "ingle-plugin-visual",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live visuals: the show_visual tool renders charts, tables, diagrams, canvases, 3D scenes and shaders inline. Ported from zeron (MIT).",
+  "license": "MIT",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "visual": {
+        "module": "./index.ts",
+        "title": "Visuals",
+        "description": "The show_visual tool: the model writes a sandboxed Lua script and the reply shows it as a live, interactive chart, table, canvas, 3D scene or shader."
+      }
+    },
+    "bundle": [
+      {
+        "id": "visual",
+        "plugin": "visual"
+      }
+    ]
+  }
+}

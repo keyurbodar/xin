@@ -1,0 +1,160 @@
+import { afterAll, beforeAll, expect, test } from "bun:test"
+import { mkdirSync } from "node:fs"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { chromium, type Browser, type Frame, type Page } from "playwright"
+import { createServer, type ViteDevServer } from "vite"
+
+const web = fileURLToPath(new URL("..", import.meta.url))
+const renders = process.env.INGLE_RENDERS_DIR
+
+let browser: Browser
+let server: ViteDevServer
+let base = ""
+
+beforeAll(async () => {
+  server = await createServer({
+    root: web,
+    configFile: join(web, "vite.config.ts"),
+    logLevel: "error",
+    server: { port: 0, host: "127.0.0.1" },
+  })
+  await server.listen()
+  base = server.resolvedUrls?.local[0] ?? ""
+  browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] })
+  if (renders !== undefined) mkdirSync(renders, { recursive: true })
+}, 60_000)
+
+afterAll(async () => {
+  await browser.close()
+  await server.close()
+})
+
+async function open(options: { fixture?: string; theme?: string; width?: number } = {}): Promise<{ page: Page; frame: Frame }> {
+  const page = await browser.newPage({ viewport: { width: options.width ?? 1280, height: 900 } })
+  await page.goto(`${base}e2e/fixtures/visual.html?fixture=${options.fixture ?? "dashboard"}&theme=${options.theme ?? "dark"}`)
+  const element = await page.waitForSelector('[data-block="visual"] iframe', { state: "attached", timeout: 30_000 })
+  const frame = await element.contentFrame()
+  if (frame === null) throw new Error("no frame")
+  await page.waitForSelector('[data-visual-state="shown"]', { timeout: 30_000 })
+  return { page, frame }
+}
+
+for (const theme of ["dark", "light"] as const) {
+  test(`a visual renders its chart, stats and canvas in ${theme}, in theme colours`, async () => {
+    const { page, frame } = await open({ theme })
+    expect(await frame.locator(".v-chart svg rect[rx]").count()).toBeGreaterThan(3)
+    expect(await frame.locator(".v-stat").count()).toBe(2)
+    expect(await frame.locator(".v-canvas canvas").count()).toBe(1)
+    const ink = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-ink").trim())
+    const text = await frame.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--text").trim())
+    expect(text).toBe(ink)
+    const height = await page.locator('[data-block="visual"] iframe').evaluate((node) => node.getBoundingClientRect().height)
+    const content = await frame.evaluate(() => document.documentElement.getBoundingClientRect().height)
+    expect(Math.abs(height - content)).toBeLessThanOrEqual(1)
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 })
+      await page.waitForTimeout(300)
+      if (renders !== undefined) await page.screenshot({ path: join(renders, `visual-${theme}-${width}.png`), fullPage: true })
+    }
+    await page.close()
+  }, 60_000)
+}
+
+test("a control runs its Lua handler and the view renders again", async () => {
+  const { page, frame } = await open()
+  await frame.getByRole("tab", { name: "p99" }).click()
+  await frame.getByText("Showing p99").waitFor()
+  expect(await frame.getByRole("tab", { name: "p99" }).getAttribute("aria-selected")).toBe("true")
+  await page.close()
+}, 60_000)
+
+test("the frame is sandboxed: opaque origin, no parent access, no network", async () => {
+  const { page, frame } = await open()
+  const probe = await frame.evaluate(async (url) => {
+    const attempt = async (run: () => unknown): Promise<string> => {
+      try {
+        await run()
+        return "allowed"
+      } catch {
+        return "blocked"
+      }
+    }
+    return {
+      origin: window.origin,
+      parentDocument: await attempt(() => window.parent.document.body.innerHTML),
+      topLocation: await attempt(() => window.top?.location.href),
+      fetch: await attempt(() => fetch(url)),
+      image: await new Promise<string>((resolve) => {
+        const image = new Image()
+        image.onload = () => resolve("allowed")
+        image.onerror = () => resolve("blocked")
+        image.src = `${url}favicon.ico`
+      }),
+      storage: await attempt(() => window.localStorage.length),
+    }
+  }, base)
+  expect(probe).toEqual({
+    origin: "null",
+    parentDocument: "blocked",
+    topLocation: "blocked",
+    fetch: "blocked",
+    image: "blocked",
+    storage: "blocked",
+  })
+  expect(await page.locator('[data-block="visual"] iframe').getAttribute("sandbox")).toBe("allow-scripts")
+  await page.close()
+}, 60_000)
+
+test("a streaming script draws as it arrives and never shows a half-written error", async () => {
+  const { page, frame } = await open()
+  const script = await page.evaluate(() => window.visualHarness.dashboard)
+  await page.evaluate(() => window.visualHarness.set("", "streaming"))
+  const cuts = [40, 160, 400, script.length - 30, script.length]
+  for (const cut of cuts) {
+    await page.evaluate(([text]) => window.visualHarness.set(text ?? "", "streaming"), [script.slice(0, cut)])
+    await page.waitForTimeout(220)
+    expect(await frame.locator(".v-error").isHidden()).toBe(true)
+  }
+  await page.locator('[data-visual-state="drawing"]').waitFor()
+  await page.evaluate(([text]) => window.visualHarness.set(text ?? "", "done"), [script])
+  await page.locator('[data-visual-state="shown"]').waitFor()
+  expect(await frame.locator(".v-chart svg").count()).toBe(1)
+  await page.close()
+}, 60_000)
+
+test("a failed call renders nothing, since the agent fixes and calls again", async () => {
+  const { page } = await open()
+  await page.evaluate(() => window.visualHarness.set("return ui.text { 'x', color = 'red' }", "error"))
+  await page.locator('[data-block="visual"]').waitFor({ state: "detached" })
+  await page.close()
+}, 60_000)
+
+test("the theme follows the app without reloading the script", async () => {
+  const { page, frame } = await open({ theme: "dark" })
+  const before = await frame.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--text").trim())
+  await page.evaluate(() => window.visualHarness.theme("light"))
+  await frame.waitForFunction((previous) => getComputedStyle(document.documentElement).getPropertyValue("--text").trim() !== previous, before)
+  expect(await frame.evaluate(() => document.documentElement.dataset.scheme)).toBe("light")
+  await page.close()
+}, 60_000)
+
+test("a 3D scene renders with WebGL inside the frame", async () => {
+  const { page, frame } = await open({ fixture: "scene" })
+  await frame.locator(".v-scene canvas").waitFor()
+  await page.waitForTimeout(500)
+  expect(await frame.locator(".v-error").isHidden()).toBe(true)
+  if (renders !== undefined) await page.screenshot({ path: join(renders, "visual-scene-dark-1280.png"), fullPage: true })
+  await page.close()
+}, 60_000)
+
+test("full screen opens a second live frame and Esc closes it", async () => {
+  const { page } = await open()
+  await page.locator('[data-block="visual"]').hover()
+  await page.getByRole("button", { name: "Full screen" }).click()
+  await page.getByRole("dialog").waitFor()
+  expect(await page.locator('[role="dialog"] iframe').count()).toBe(1)
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.close()
+}, 60_000)

@@ -38,9 +38,10 @@ import * as p36 from "../plugins/questions/tools.ts"
 import * as p37 from "../plugins/skills/index.ts"
 import * as p38 from "../plugins/skills/tools.ts"
 import * as p39 from "../plugins/time/index.ts"
-import * as p40 from "../plugins/watchdog/index.ts"
-import * as p41 from "../plugins/web/index.ts"
-import * as p42 from "../plugins/workspace/index.ts"
+import * as p40 from "../plugins/visual/index.ts"
+import * as p41 from "../plugins/watchdog/index.ts"
+import * as p42 from "../plugins/web/index.ts"
+import * as p43 from "../plugins/workspace/index.ts"
 import type { Row } from "./kernel/layers.ts"
 import type { Catalog } from "./kernel/loader.ts"
 
@@ -373,8 +374,17 @@ export const CATALOG: Catalog = {
     local: true,
     source: "ingle-plugin-time@0.1.0",
   },
-  watchdog: {
+  visual: {
     plugin: p40,
+    title: "Visuals",
+    description:
+      "The show_visual tool: the model writes a sandboxed Lua script and the reply shows it as a live, interactive chart, table, canvas, 3D scene or shader.",
+    manifest: { api: 1, requires: [] },
+    local: true,
+    source: "ingle-plugin-visual@0.1.0",
+  },
+  watchdog: {
+    plugin: p41,
     title: "Watchdog",
     description: "Fails stalled threads and overdue jobs.",
     manifest: { api: 1, requires: [] },
@@ -382,7 +392,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-watchdog@0.1.0",
   },
   "tool-web": {
-    plugin: p41,
+    plugin: p42,
     title: "Web tools",
     description: "Search the public web and fetch a page as readable text.",
     manifest: { api: 1, requires: [] },
@@ -390,7 +400,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-web@0.1.0",
   },
   workspace: {
-    plugin: p42,
+    plugin: p43,
     title: "Workspace",
     description: "Projects and thread documents.",
     manifest: { api: 1, requires: [] },
@@ -481,6 +491,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
     { id: "tool-skills", name: "cordis:tool-skills" },
   ],
   "ingle-plugin-time": [{ id: "time", name: "cordis:time", config: { timezone: "UTC" } }],
+  "ingle-plugin-visual": [{ id: "visual", name: "cordis:visual" }],
   "ingle-plugin-watchdog": [{ id: "watchdog", name: "cordis:watchdog" }],
   "ingle-plugin-web": [{ id: "tool-web", name: "cordis:tool-web", disabled: true }],
   "ingle-plugin-workspace": [{ id: "workspace", name: "cordis:workspace" }],

@@ -1,11 +1,28 @@
 import tailwindcss from "@tailwindcss/vite"
-import { defineConfig } from "vite"
+import { defineConfig, type PluginOption } from "vite"
 import solid from "vite-plugin-solid"
+import { frameBundle } from "./visual-frame.ts"
+
+const FRAME_ID = "virtual:visual-frame"
+
+/** `import frame from "virtual:visual-frame"` is the live-visual frame's script as a string, for an iframe's srcdoc. */
+function visualFrame(): PluginOption {
+  return {
+    name: "visual-frame",
+    resolveId: (id) => (id === FRAME_ID ? `\0${FRAME_ID}` : undefined),
+    async load(id) {
+      if (id !== `\0${FRAME_ID}`) return undefined
+      const { code, files } = await frameBundle()
+      for (const file of files) this.addWatchFile(file)
+      return `export default ${JSON.stringify(code)}`
+    },
+  }
+}
 
 const backend = process.env.INGLE_DEV_URL ?? "http://127.0.0.1:8799"
 
 export default defineConfig({
-  plugins: [solid(), tailwindcss()],
+  plugins: [solid(), tailwindcss(), visualFrame()],
   server: {
     proxy: {
       "/v1": { target: backend, changeOrigin: true, ws: true },

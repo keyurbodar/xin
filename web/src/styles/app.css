@@ -694,3 +694,23 @@
 :root[data-motion="reduce"] .block-expand[data-animate] {
   transition: none;
 }
+
+@keyframes visual-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.visual-pulse {
+  animation: visual-pulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .visual-pulse {
+    animation: none;
+  }
+}
+
+[data-motion="reduce"] .visual-pulse {
+  animation: none;
+}

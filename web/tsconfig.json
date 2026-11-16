@@ -26,7 +26,10 @@
   },
   "include": [
     "src",
-    "vite.config.ts"
+    "vite.config.ts",
+    "visual-frame.ts",
+    "../plugins/visual/frame",
+    "../plugins/visual/runtime/fengari.d.ts"
   ],
   "exclude": [
     "src/**/*.test.ts"

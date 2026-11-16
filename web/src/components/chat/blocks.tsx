@@ -24,7 +24,7 @@ const BUILT_IN: { [K in keyof BlockPayloads]: (payload: BlockPayloads[K]) => JSX
   mermaid: (diagram) => untrack(() => <MermaidBlock {...diagram} />),
   table: (table) => untrack(() => <TableBlock {...table} />),
   tool: (call) => {
-    const tool = toolRenderer(call.name)
+    const tool = toolRenderer(untrack(() => call.name))
     return tool === undefined ? undefined : untrack(() => tool(call))
   },
 }
