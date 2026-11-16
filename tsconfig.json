@@ -16,5 +16,5 @@
     "resolveJsonModule": true
   },
   "include": ["src", "plugins", "test", "vitest.config.ts"],
-  "exclude": ["plugins/*/client.tsx"]
+  "exclude": ["plugins/visual/frame", "plugins/*/client.tsx"]
 }

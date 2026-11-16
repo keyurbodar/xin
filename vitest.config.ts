@@ -51,6 +51,12 @@ export default defineConfig({
       },
     }),
   ],
+  resolve: {
+    alias: {
+      "readline-sync": path("./plugins/visual/runtime/stubs/readline-sync.cjs"),
+      tmp: path("./plugins/visual/runtime/stubs/tmp.cjs"),
+    },
+  },
   test: {
     include: load ? ["test/**/*.bench.ts"] : ["src/**/*.test.ts", "plugins/**/*.test.ts", "test/**/*.test.ts"],
     maxWorkers,

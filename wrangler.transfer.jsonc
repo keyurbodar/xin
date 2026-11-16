@@ -5,6 +5,7 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
+  "alias": { "readline-sync": "./plugins/visual/runtime/stubs/readline-sync.cjs", "tmp": "./plugins/visual/runtime/stubs/tmp.cjs" },
   "define": { "import.meta.url": "\"file:///bundle/index.js\"" },
   "durable_objects": { "bindings": [{ "name": "HOME", "class_name": "Home" }] },
   "migrations": [{ "tag": "v1", "transferred_classes": [{ "from": "Home", "from_script": "xin", "to": "Home" }] }],

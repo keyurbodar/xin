@@ -43,9 +43,10 @@ import * as p41 from "../plugins/skills/tools.ts"
 import * as p42 from "../plugins/standup/index.ts"
 import * as p43 from "../plugins/theme-pack/index.ts"
 import * as p44 from "../plugins/time/index.ts"
-import * as p45 from "../plugins/watchdog/index.ts"
-import * as p46 from "../plugins/web/index.ts"
-import * as p47 from "../plugins/workspace/index.ts"
+import * as p45 from "../plugins/visual/index.ts"
+import * as p46 from "../plugins/watchdog/index.ts"
+import * as p47 from "../plugins/web/index.ts"
+import * as p48 from "../plugins/workspace/index.ts"
 import type { Row } from "./kernel/layers.ts"
 import type { Catalog } from "./kernel/loader.ts"
 
@@ -775,8 +776,17 @@ export const CATALOG: Catalog = {
     local: true,
     source: "ingle-plugin-time@0.1.0",
   },
-  watchdog: {
+  visual: {
     plugin: p45,
+    title: "Visuals",
+    description:
+      "The show_visual tool: the model writes a sandboxed Lua script and the reply shows it as a live, interactive chart, table, canvas, 3D scene or shader.",
+    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: ["show_visual"], ops: [] }, slots: [] },
+    local: true,
+    source: "ingle-plugin-visual@0.1.0",
+  },
+  watchdog: {
+    plugin: p46,
     title: "Watchdog",
     description: "Fails stalled threads and overdue jobs.",
     manifest: {
@@ -790,7 +800,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-watchdog@0.1.0",
   },
   "tool-web": {
-    plugin: p46,
+    plugin: p47,
     title: "Web tools",
     description: "Search the public web and fetch a page as readable text.",
     manifest: {
@@ -804,7 +814,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-web@0.1.0",
   },
   workspace: {
-    plugin: p47,
+    plugin: p48,
     title: "Workspace",
     description: "Projects and thread documents.",
     manifest: {
@@ -924,6 +934,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
   "ingle-plugin-standup": [{ id: "standup", name: "cordis:standup" }],
   "ingle-plugin-theme-pack": [{ id: "theme-pack", name: "cordis:theme-pack" }],
   "ingle-plugin-time": [{ id: "time", name: "cordis:time", config: { timezone: "UTC" } }],
+  "ingle-plugin-visual": [{ id: "visual", name: "cordis:visual" }],
   "ingle-plugin-watchdog": [{ id: "watchdog", name: "cordis:watchdog" }],
   "ingle-plugin-web": [{ id: "tool-web", name: "cordis:tool-web", disabled: true }],
   "ingle-plugin-workspace": [{ id: "workspace", name: "cordis:workspace" }],
