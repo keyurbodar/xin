@@ -550,6 +550,8 @@ export const CATALOG: Catalog = {
           "owner.compaction",
           "owner.compaction.set",
           "owner.defaults",
+          "owner.fallbacks",
+          "owner.fallbacks.set",
           "usage.alert",
           "usage.alert.set",
           "usage.cap",

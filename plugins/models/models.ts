@@ -33,12 +33,14 @@ import {
   type CompactionSettings,
   type ConversationId,
   type Harness,
+  type HookRegistration,
   type JsonObject,
   type ModelRef,
   type UsageState,
 } from "@earendil-works/pi-durable"
 import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
 import { conversationCost, createBudget, untag } from "./budget.ts"
+import { createFallbacks } from "./fallback.ts"
 import { FastDoc, fastOn, modesOf } from "./fast.ts"
 import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
@@ -65,6 +67,8 @@ const COMPACTION_KEY = "owner.compaction"
 const CompactionSchema = obj({ percent: int({ minimum: 50, maximum: 95 }) })
 const compactionCheck = compile(CompactionSchema)
 const MAX_RECENT = 8
+const FALLBACKS_KEY = "owner.fallbacks"
+const MAX_FALLBACKS = 8
 
 type UsageBucket = {
   readonly input: number
@@ -487,6 +491,8 @@ export type ModelsParts = {
   readonly service: ModelsService
   readonly ops: readonly Op[]
   compaction(): CompactionSettings | undefined
+  /** Ends a conversation's fallback streak on its first good response. */
+  readonly fallbackHook: HookRegistration
   home(): JsonObject
   models(): Models
   flush(): Promise<UsageState>
@@ -857,6 +863,21 @@ export function create(deps: ModelsPort): ModelsParts {
   }
   const registry = createRegistry(deps)
   const store = registry.store
+  let fallbackOrder: readonly ModelRef[] = []
+  const fallbacks = createFallbacks({
+    harness,
+    order: () => fallbackOrder,
+    usable: async (ref) => !isOff(ref) && (await available(registry)).some((model) => same(refOf(model), ref)),
+    admitted: async (conversation) => (await budget.admitConversation(conversation)).kind === "ok",
+    configure: async (conversation, model, id) =>
+      (
+        await run(
+          { id: commandId(id), op: "conv.configure", args: { conv: conversation, model } },
+          { kind: "agent", conversationId: conversation },
+        )
+      ).kind === "ok",
+  })
+  let stopFallbacks: (() => void) | undefined
   let disabledRefs: readonly ModelRef[] = []
   /** The owner's disabled models, read once at start and updated by `models.enable`, so a check reads no row. */
   const isOff = (ref: ModelRef): boolean => disabledRefs.some((entry) => same(entry, ref))
@@ -1235,6 +1256,29 @@ export function create(deps: ModelsPort): ModelsParts {
     },
   })
 
+  const fallbacksOp = defineOp({
+    name: "owner.fallbacks",
+    read: true,
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => ({ models: [...fallbackOrder] }),
+  })
+
+  const setFallbacksOp = defineOp({
+    name: "owner.fallbacks.set",
+    args: obj({ models: arr(ModelRefSchema, { maxItems: MAX_FALLBACKS }) }),
+    actors: ["owner"],
+    run: async (_api, { models }) => {
+      for (const model of models)
+        if (registry.models.getModel(model.provider, model.modelId) === undefined)
+          throw new OpRejected("bad_args", `unknown model ${model.provider}/${model.modelId}`)
+      const unique = models.filter((model, index) => models.findIndex((other) => same(other, model)) === index)
+      await writeKv(db, FALLBACKS_KEY, unique)
+      fallbackOrder = unique
+      return { models: unique }
+    },
+  })
+
   const setDefaults = defineOp({
     name: "owner.defaults",
     args: obj({ role: RoleSchema, model: ModelRefSchema }),
@@ -1472,6 +1516,8 @@ export function create(deps: ModelsPort): ModelsParts {
     setCredential,
     deleteCredential,
     setDefaults,
+    fallbacksOp,
+    setFallbacksOp,
     summary,
     readCapOp,
     setCapOp,
@@ -1488,12 +1534,16 @@ export function create(deps: ModelsPort): ModelsParts {
     service,
     ops,
     compaction,
+    fallbackHook: fallbacks.hook,
     home: () => ({ spend: budget.todaySpend() }),
     models: () => registry.models,
     flush,
     flushDue,
     start: async () => {
       disabledRefs = (await readKv(db, "owner.disabled", refsCheck.check)) ?? []
+      fallbackOrder = (await readKv(db, FALLBACKS_KEY, refsCheck.check)) ?? []
+      stopFallbacks?.()
+      stopFallbacks = fallbacks.start()
       await registry.sync()
       setPercent((await readKv(db, COMPACTION_KEY, compactionCheck.check))?.percent)
       await seedUsage(db, harness)
