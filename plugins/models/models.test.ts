@@ -55,6 +55,8 @@ const firstOf = (entries: readonly EntryRecord[], kind: string): EntryRecord | u
 const cmd = (id: string, op: string, args?: unknown) =>
   api("/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }).then((reply) => reply.json())
 
+const custom = (host: string, key: string) => ({ baseUrl: `https://${host}/v1`, key, api: "openai-completions" })
+
 type Slice = {
   readonly name?: string
   readonly provider?: string
@@ -871,7 +873,6 @@ describe("models", () => {
       })
     }
     const stub = fresh()
-    const custom = (host: string, key: string) => ({ baseUrl: `https://${host}/v1`, key, api: "openai-completions" })
     const requests = async (id: string, op: string, args: unknown): Promise<string[]> => {
       seen.length = 0
       const reply = await call(stub, id, op, args)
