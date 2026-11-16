@@ -19,6 +19,7 @@ declare module "solid-js" {
       action: CustomEvent<{ readonly value: string }>
       valuechange: UiChange
       pressedchange: UiChange<boolean>
+      checkedchange: UiChange<boolean>
     }
   }
 }
