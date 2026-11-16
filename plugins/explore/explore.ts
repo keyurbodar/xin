@@ -38,7 +38,7 @@ export function exploreOps(): readonly Op[] {
     args: obj({ kind: oneOf(KINDS) }),
     actors: ["owner"],
     run: async (_api, { kind }) =>
-      kind === "skill" ? { kind, entries: SKILLS.map(skillSummary) } : { kind, entries: THEMES },
+      kind === "skill" ? { kind, entries: SKILLS.map(skillSummary) } : { kind, entries: [...THEMES] },
   })
 
   const entry = defineOp({
