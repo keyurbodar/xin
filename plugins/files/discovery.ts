@@ -5,7 +5,7 @@ import {
   type ToolExecutionResult,
   type ToolRegistration,
 } from "@earendil-works/pi-durable"
-import type { ExecutionEnv, FileInfo } from "@earendil-works/pi-durable/env"
+import { type ExecutionEnv, type FileError, type FileInfo, ok, type Result } from "@earendil-works/pi-durable/env"
 import { bool, int, obj, opt, str } from "@earendil-works/pi-schema"
 import { textResult } from "../../src/kernel/index.ts"
 
@@ -18,6 +18,7 @@ const GREP_MAX_FILES = 200
 const GREP_MAX_FILE_BYTES = 512 * 1024
 const GREP_MAX_BYTES = 4 * 1024 * 1024
 const MATCH_PREVIEW_CHARS = 200
+const PAGE = 100
 const VISIT_NOTE = `[Stopped after ${MAX_VISITED} entries: start from a deeper path.]`
 
 const PathArg = opt(str({ description: "Directory; the working directory by default." }))
@@ -43,9 +44,15 @@ const capped = (lines: readonly string[], notes: readonly string[]): string => {
   return [...kept, ...(cut > 0 ? [`[${cut} more not shown: narrow the path or pattern.]`] : []), ...notes].join("\n")
 }
 
-/** `*` and `?` stay inside one path segment and `**` spans any number; a pattern without `/` matches the file name. */
-export function globMatcher(pattern: string): (relative: string) => boolean {
+/**
+ * `*`, `?` and `[...]` (`[!...]` negated) stay inside one path segment, `**` spans any number, `{a,b}` picks one, and a
+ * leading `./` is dropped; a pattern without `/` matches the file name. Throws for an absolute or unbalanced pattern.
+ */
+export function globMatcher(glob: string): (relative: string) => boolean {
+  if (glob.startsWith("/")) throw new Error("a glob is relative to path: put the directory in path")
+  const pattern = glob.replace(/^(?:\.\/)+/, "")
   let source = ""
+  let depth = 0
   for (let index = 0; index < pattern.length; index += 1) {
     const char = pattern.charAt(index)
     if (char === "*" && pattern.charAt(index + 1) === "*") {
@@ -54,8 +61,24 @@ export function globMatcher(pattern: string): (relative: string) => boolean {
       index += slash ? 2 : 1
     } else if (char === "*") source += "[^/]*"
     else if (char === "?") source += "[^/]"
-    else source += char.replace(/[|\\{}()[\]^$+.]/g, String.raw`\$&`)
+    else if (char === "{") {
+      depth += 1
+      source += "(?:"
+    } else if (char === "," && depth > 0) source += "|"
+    else if (char === "}" && depth > 0) {
+      depth -= 1
+      source += ")"
+    } else if (char === "[") {
+      const negated = pattern.charAt(index + 1) === "!" || pattern.charAt(index + 1) === "^"
+      const start = index + (negated ? 2 : 1)
+      const close = pattern.indexOf("]", start + 1)
+      if (close === -1) throw new Error(`unclosed [ in ${glob}`)
+      const members = pattern.slice(start, close).replace(/[\\\]^/]/g, (found) => (found === "/" ? "" : `\\${found}`))
+      source += negated ? `[^/${members}]` : `[${members}]`
+      index = close
+    } else source += char.replace(/[|\\{}()[\]^$+.]/g, String.raw`\$&`)
   }
+  if (depth > 0) throw new Error(`unclosed { in ${glob}`)
   const regex = new RegExp(`^${source}$`)
   const byName = !pattern.includes("/")
   return (relative) => regex.test(byName ? relative.slice(relative.lastIndexOf("/") + 1) : relative)
@@ -63,13 +86,36 @@ export function globMatcher(pattern: string): (relative: string) => boolean {
 
 type Walk = { readonly files: readonly FileInfo[]; readonly cut: boolean }
 
+/** Up to `max` entries of `dir`, read a page at a time so a large directory costs only what is kept. */
+async function entriesOf(
+  env: ExecutionEnv,
+  dir: string,
+  max: number,
+  context: Context,
+): Promise<Result<FileInfo[], FileError>> {
+  const reader = await env.openDirReader(dir, context)
+  if (!reader.ok) return reader
+  const entries: FileInfo[] = []
+  try {
+    while (entries.length < max) {
+      const page = await reader.value.next(Math.min(PAGE, max - entries.length), context)
+      if (!page.ok) return page
+      entries.push(...page.value.entries)
+      if (page.value.done) break
+    }
+  } finally {
+    await reader.value.close(context)
+  }
+  return ok(entries)
+}
+
 /** Every file under `root`, breadth first, stopping after `MAX_VISITED` entries. */
 async function walk(env: ExecutionEnv, root: string, context: Context): Promise<Walk> {
   const files: FileInfo[] = []
   const queue = [root]
   let visited = 0
   for (let dir = queue.shift(); dir !== undefined; dir = queue.shift()) {
-    const listed = await env.listDir(dir, context)
+    const listed = await entriesOf(env, dir, MAX_VISITED - visited + 1, context)
     if (!listed.ok) continue
     for (const entry of listed.value) {
       visited += 1
@@ -89,6 +135,11 @@ const relativeTo = (root: string, path: string): string => {
 const byPath = (left: FileInfo, right: FileInfo): number =>
   left.path < right.path ? -1 : left.path > right.path ? 1 : 0
 
+const byName = (left: FileInfo, right: FileInfo): number =>
+  left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
 /** The directory a call starts from, or the error result to return. */
 async function rootOf(
   env: ExecutionEnv,
@@ -103,6 +154,13 @@ async function rootOf(
   return resolved.value
 }
 
+/** The lines of a text, without the empty one after a final newline. */
+const linesOf = (text: string): string[] => {
+  const lines = text === "" ? [] : text.split(/\r?\n/)
+  if (text.endsWith("\n")) lines.pop()
+  return lines
+}
+
 const lsTool = defineTool({
   name: "ls",
   description: "List a directory (subdirectories end with /, files show bytes).",
@@ -112,21 +170,22 @@ const lsTool = defineTool({
     const env = envOf(api)
     const root = await rootOf(env, args.path, context)
     if (typeof root !== "string") return root
-    const listed = await env.listDir(root, context)
+    const limit = args.limit ?? DEFAULT_LIMIT
+    const listed = await entriesOf(env, root, limit + 1, context)
     if (!listed.ok) return failure(listed.error.message)
     if (listed.value.length === 0) return textResult(`${root} is empty.`)
-    const limit = args.limit ?? DEFAULT_LIMIT
     const lines = listed.value
       .slice(0, limit)
+      .toSorted(byName)
       .map((entry) => (entry.kind === "directory" ? `${entry.name}/` : `${entry.name}  ${entry.size}`))
-    const notes = listed.value.length > limit ? [`[${listed.value.length - limit} more: raise limit.]`] : []
-    return textResult(capped(lines, notes), { details: { path: root, entries: listed.value.length } })
+    const notes = listed.value.length > limit ? [`[Stopped at ${limit} entries: raise limit or use find.]`] : []
+    return textResult(capped(lines, notes), { details: { path: root, entries: lines.length } })
   },
 })
 
 const findTool = defineTool({
   name: "find",
-  description: "Find files under a directory by glob, such as **/*.ts; a pattern without / matches names.",
+  description: "Find files under a directory by glob, such as **/*.{ts,md}; a pattern without / matches names.",
   parameters: obj({
     pattern: str({ minLength: 1, maxLength: 500 }),
     path: PathArg,
@@ -134,11 +193,16 @@ const findTool = defineTool({
   }),
   replay: "safe",
   execute: async (args, api, context) => {
+    let matches: (relative: string) => boolean
+    try {
+      matches = globMatcher(args.pattern)
+    } catch (error) {
+      return failure(`Invalid glob: ${messageOf(error)}`)
+    }
     const env = envOf(api)
     const root = await rootOf(env, args.path, context)
     if (typeof root !== "string") return root
     const walked = await walk(env, root, context)
-    const matches = globMatcher(args.pattern)
     const found = walked.files
       .map((file) => relativeTo(root, file.path))
       .filter(matches)
@@ -157,7 +221,7 @@ const findTool = defineTool({
 
 const grepTool = defineTool({
   name: "grep",
-  description: "Search text files under a directory for a regular expression; answers path:line: text.",
+  description: "Search text files under a directory for an RE2 regex; answers path:line: text.",
   parameters: obj({
     pattern: str({ minLength: 1, maxLength: 500 }),
     path: PathArg,
@@ -167,20 +231,26 @@ const grepTool = defineTool({
   }),
   replay: "safe",
   execute: async (args, api, context) => {
-    let regex: RegExp
+    const { RE2JS } = await import("re2js")
+    let regex: InstanceType<typeof RE2JS>
+    let wanted: (relative: string) => boolean
     try {
-      regex = new RegExp(args.pattern, args.ignoreCase === true ? "i" : "")
+      regex = RE2JS.compile(args.pattern, args.ignoreCase === true ? RE2JS.CASE_INSENSITIVE : 0)
     } catch (error) {
-      return failure(`Invalid pattern: ${error instanceof Error ? error.message : String(error)}`)
+      return failure(`Invalid pattern: ${messageOf(error)}`)
+    }
+    try {
+      wanted = args.glob === undefined ? () => true : globMatcher(args.glob)
+    } catch (error) {
+      return failure(`Invalid glob: ${messageOf(error)}`)
     }
     const env = envOf(api)
     const root = await rootOf(env, args.path, context)
     if (typeof root !== "string") return root
     const walked = await walk(env, root, context)
-    const wanted = args.glob === undefined ? () => true : globMatcher(args.glob)
-    const candidates = walked.files
-      .filter((file) => file.size <= GREP_MAX_FILE_BYTES && wanted(relativeTo(root, file.path)))
-      .toSorted(byPath)
+    const globbed = walked.files.filter((file) => wanted(relativeTo(root, file.path)))
+    const candidates = globbed.filter((file) => file.size <= GREP_MAX_FILE_BYTES).toSorted(byPath)
+    const large = globbed.length - candidates.length
     const limit = args.limit ?? DEFAULT_LIMIT
     const lines: string[] = []
     let scanned = 0
@@ -195,7 +265,7 @@ const grepTool = defineTool({
       bytes += file.size
       const text = await env.readTextFile(file.path, context)
       if (!text.ok || text.value.includes("\u0000")) continue
-      for (const [index, line] of text.value.split(/\r?\n/).entries()) {
+      for (const [index, line] of linesOf(text.value).entries()) {
         if (!regex.test(line)) continue
         if (lines.length >= limit) {
           stopped = true
@@ -209,6 +279,7 @@ const grepTool = defineTool({
       ...(stopped
         ? [`[Stopped after ${lines.length} matches in ${scanned} files: narrow the path, glob or pattern.]`]
         : []),
+      ...(large > 0 ? [`[${large} files over 512 KiB skipped.]`] : []),
       ...(walked.cut ? [VISIT_NOTE] : []),
     ]
     if (lines.length === 0) return textResult([`No matches in ${scanned} files under ${root}.`, ...notes].join("\n"))

@@ -5,6 +5,7 @@ import {
   type ConversationId,
   defineExtension,
   type DocumentReader,
+  type EnvTarget,
   type Extension,
   hook,
   ROOT_CONVERSATION_ID,
@@ -28,7 +29,6 @@ const MAX_COMMIT_BYTES = 4096
 const SWEEP_EVERY_MS = 7 * 24 * 60 * 60_000
 const ORPHAN_GRACE_MS = 24 * 60 * 60_000
 const SWEEP_KEY = "files:sweep_at"
-/** Types the client can show as text; anything else comes back with `text: null`. */
 
 const Commit = obj({
   path: str({ minLength: 1 }),
@@ -39,11 +39,8 @@ const Commit = obj({
 })
 const parseCommit = compile(Commit)
 
-export type FileScope = (target: {
-  readonly actor: Actor
-  readonly path: string
-  readonly read: DocumentReader
-}) => string | undefined | Promise<string | undefined>
+/** An actor's check: why it may not use a path, or undefined when it may. One check reads the actor's thread once. */
+export type FileScope = (actor: Actor, read: DocumentReader) => (path: string) => Promise<string | undefined>
 
 export type FilesPort = {
   readonly state: DurableObjectState
@@ -74,7 +71,7 @@ export type FilesPlugin = {
 
 const isMe = (path: string): boolean => path === "/me" || path.startsWith("/me/")
 
-const coordinatorOnly: FileScope = ({ actor, path }) => {
+const coordinatorOnly = (actor: Actor, path: string): string | undefined => {
   if (!isMe(path)) return undefined
   if (actor.kind === "owner") return undefined
   if (actor.kind === "agent" && actor.conversationId === ROOT_CONVERSATION_ID) return undefined
@@ -87,28 +84,42 @@ const coordinatorOnly: FileScope = ({ actor, path }) => {
  */
 const projectScoped =
   (grants: ReadonlySet<FileGrant>): FileScope =>
-  async ({ actor, path, read }) => {
-    const blocked = coordinatorOnly({ actor, path, read })
-    if (blocked !== undefined) return blocked
-    if (actor.kind !== "agent" || actor.conversationId === ROOT_CONVERSATION_ID) return undefined
-    const thread = await read.snapshot(ThreadDoc, actor.conversationId, context)
-    if (thread === undefined) return undefined
-    const workspace = await read.snapshot(WorkspaceDoc, context)
-    const project = workspace?.projects[thread.projectId]
-    if (project === undefined) return `thread ${actor.conversationId} has no project`
-    const prefix = `/projects/${project.slug}/`
-    if (path.startsWith(prefix)) return undefined
-    for (const grant of grants) if (await grant({ conversationId: actor.conversationId, path, read })) return undefined
-    return `a thread may only use ${prefix}`
+  (actor, read) => {
+    if (actor.kind !== "agent" || actor.conversationId === ROOT_CONVERSATION_ID)
+      return async (path) => coordinatorOnly(actor, path)
+    const conversationId = actor.conversationId
+    let folder: Promise<{ readonly prefix: string } | { readonly blocked: string } | undefined> | undefined
+    const folderOf = async () => {
+      const thread = await read.snapshot(ThreadDoc, conversationId, context)
+      if (thread === undefined) return undefined
+      const workspace = await read.snapshot(WorkspaceDoc, context)
+      const project = workspace?.projects[thread.projectId]
+      if (project === undefined) return { blocked: `thread ${conversationId} has no project` }
+      return { prefix: `/projects/${project.slug}/` }
+    }
+    return async (path) => {
+      const blocked = coordinatorOnly(actor, path)
+      if (blocked !== undefined) return blocked
+      folder ??= folderOf()
+      const found = await folder
+      if (found === undefined) return undefined
+      if ("blocked" in found) return found.blocked
+      if (path.startsWith(found.prefix)) return undefined
+      for (const grant of grants) if (await grant({ conversationId, path, read })) return undefined
+      return `a thread may only use ${found.prefix}`
+    }
   }
 
 const agentActor = (conversationId: ConversationId): Actor => ({ kind: "agent", conversationId })
 
-/** The path pi resolves for a tool argument: unicode spaces become plain ones and one leading `@` is dropped. */
-/** Tools whose `path` the project scope checks; the listing tools start at the working directory without one. */
+/**
+ * Tools whose `path` the project scope checks; the listing tools start at the working directory without one, and their
+ * env hides every entry under it that the same scope refuses.
+ */
 const LISTING_TOOLS = new Set(["ls", "find", "grep"])
 const SCOPED_TOOLS = new Set(["read", "write", "edit", ...LISTING_TOOLS])
 
+/** The path pi resolves for a tool argument: unicode spaces become plain ones and one leading `@` is dropped. */
 function toolPath(path: string): string {
   return path.replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ").replace(/^@/, "")
 }
@@ -123,7 +134,7 @@ function scoped(scope: FileScope): Extension {
     const absolute = resolvePath(cwd, toolPath(path))
     if (absolute === undefined) return { block: "path escapes the files root" }
     const checked = LISTING_TOOLS.has(call.name) ? `${absolute.replace(/\/$/, "")}/` : absolute
-    const blocked = await scope({ actor: agentActor(api.conversationId), path: checked, read: api })
+    const blocked = await scope(agentActor(api.conversationId), api)(checked)
     return blocked === undefined ? undefined : { block: blocked }
   }
   return defineExtension({
@@ -164,8 +175,11 @@ export function create(deps: FilesPort): FilesPlugin {
     for (const listener of listeners) await listener(path)
   }
   const index = new FileIndex(deps.db, onChange)
-  const envFor = (cwd: string | undefined): R2Env =>
-    new R2Env(deps.env.FILES, deps.db, { cwd: cwd ?? "/", dirs, onChange })
+  const envFor = (target: EnvTarget): R2Env => {
+    const check = scope(agentActor(target.conversationId), target.read)
+    const visible = async (path: string): Promise<boolean> => (await check(path)) === undefined
+    return new R2Env(deps.env.FILES, deps.db, { cwd: target.cwd ?? "/", dirs, onChange, visible })
+  }
 
   /** Writes the share manifest for a path's current bytes; false when the file is missing. */
   const publish = async (id: string, path: string): Promise<boolean> => {
@@ -214,7 +228,7 @@ export function create(deps: FilesPort): FilesPlugin {
   })
 
   const files: FilesService = {
-    env: (target) => envFor(target.cwd),
+    env: envFor,
     list: async (prefix) => (await index.under(prefix ?? "/")).map(entryOf),
     read: async (path) => {
       const row = await index.row(rootedPath(path))
@@ -281,7 +295,7 @@ export function create(deps: FilesPort): FilesPlugin {
       const base = normalizePath("/", prefix ?? "/")
       if (base === undefined) throw new OpRejected("bad_args", "path escapes the files root")
       const target = base === "/" ? "/" : `${base}/`
-      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
+      const blocked = await scope(api.actor, api.harness)(target)
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       return files.list(target)
     },
@@ -295,7 +309,7 @@ export function create(deps: FilesPort): FilesPlugin {
     run: async (api, { path }) => {
       const target = normalizePath("/", path)
       if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
+      const blocked = await scope(api.actor, api.harness)(target)
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       const entry = await files.stat(target)
       if (entry === undefined) throw new OpRejected("bad_args", `no file ${target}`)
@@ -313,7 +327,7 @@ export function create(deps: FilesPort): FilesPlugin {
     run: async (api, { path, sha256 }) => {
       const target = normalizePath("/", path)
       if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
+      const blocked = await scope(api.actor, api.harness)(target)
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       const found = (await index.revisions(target)).find((candidate) => candidate.sha256 === sha256)
       if (found === undefined) throw new OpRejected("bad_args", `no revision of ${target}`)
@@ -331,7 +345,7 @@ export function create(deps: FilesPort): FilesPlugin {
     run: async (api, { path }) => {
       const target = normalizePath("/", path)
       if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
+      const blocked = await scope(api.actor, api.harness)(target)
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       return { path: target, revisions: await index.revisions(target) }
     },
@@ -344,7 +358,7 @@ export function create(deps: FilesPort): FilesPlugin {
     run: async (api, { path }) => {
       const target = normalizePath("/", path)
       if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
+      const blocked = await scope(api.actor, api.harness)(target)
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       return { deleted: await files.remove(target) }
     },
@@ -357,7 +371,7 @@ export function create(deps: FilesPort): FilesPlugin {
     run: async (api, { path, text }) => {
       const target = normalizePath("/", path)
       if (target === undefined) throw new OpRejected("bad_args", "path escapes the files root")
-      const blocked = await scope({ actor: api.actor, path: target, read: api.harness })
+      const blocked = await scope(api.actor, api.harness)(target)
       if (blocked !== undefined) throw new OpRejected("forbidden", blocked)
       return files.write(target, text)
     },
