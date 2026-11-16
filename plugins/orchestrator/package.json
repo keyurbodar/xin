@@ -13,7 +13,8 @@
         "permissions": [
           "conversations",
           "files",
-          "models"
+          "models",
+          "plugins"
         ],
         "contributes": {
           "ops": [

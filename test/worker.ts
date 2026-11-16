@@ -28,6 +28,7 @@ import type { Extension } from "@earendil-works/pi-durable"
 import { testPlugin } from "./kernel.ts"
 import { lastOwnerText } from "./support.ts"
 import { defineOp } from "../src/ops.ts"
+import type { Context } from "@deepseek-ai/cordis"
 import { int, obj, opt } from "@earendil-works/pi-schema"
 import { env } from "cloudflare:workers"
 import { BUNDLES, CATALOG } from "../src/catalog.ts"
@@ -104,6 +105,27 @@ const TEST_CATALOG: Catalog = {
     { contributes: { tools: [], ops: ["k.declared"] } },
   ),
   "k-needs-missing": testPlugin("k-needs-missing", {}, ["ops"], { requires: ["absent@^1"] }),
+  "k-announce": {
+    ...testPlugin("k-announce", {}, ["ops", "wire"]),
+    plugin: {
+      name: "k-announce",
+      inject: ["ops", "wire"],
+      apply(ctx: Context) {
+        ctx.ops.define(
+          defineOp({
+            name: "test.announce",
+            args: obj({}),
+            actors: ["owner"],
+            run: async () => {
+              ctx.wire.announce()
+              await new Promise((resolve) => setTimeout(resolve, 20))
+              return null
+            },
+          }),
+        )
+      },
+    },
+  },
   ...m2.catalog,
   ...fakefiles.catalog,
   ...intakebatch.catalog,
@@ -138,6 +160,7 @@ const TEST_ROWS = [
     "k-needs-missing",
     "k-unpermitted",
     "k-undeclared",
+    "k-announce",
   ].map((id) => ({
     id,
     name: `cordis:${id}`,
