@@ -3,14 +3,23 @@ import { Dynamic } from "solid-js/web"
 import { Brain, CalendarClock, CircleDot, HardDrive, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
 import { activeConversation, host, PluginBoundary, slotItems } from "../../plugins/slots.tsx"
 import { Icon, isIconName } from "../ui/icon.tsx"
-import { MemoryTab } from "../chat/memory.tsx"
-import { AutomationsTab } from "../chat/automations.tsx"
 import { JobsView, ThreadsView } from "./bodies.tsx"
 import { CrewSection, CrewView } from "./crew.tsx"
-import { DriveView } from "./drive.tsx"
-import { IssueView } from "./issue.tsx"
 import { IssuesSection } from "./issues.tsx"
 import { DriveSection, InProgressSection, NeedsYouSection, ThreadsSection, type PaneContext } from "./overview.tsx"
+import { PaneSkeleton } from "../ui/skeleton.tsx"
+import { lazyView } from "../ui/lazy-view.tsx"
+
+const paneSkeleton = (): JSX.Element => <PaneSkeleton rows={6} />
+const MemoryTab = lazyView(() => import("../chat/memory.tsx").then((module) => module.MemoryTab), paneSkeleton)
+const AutomationsTab = lazyView(() => import("../chat/automations.tsx").then((module) => module.AutomationsTab), paneSkeleton)
+const DriveView = lazyView(() => import("./drive.tsx").then((module) => module.DriveView), paneSkeleton)
+const IssueView = lazyView(() => import("./issue.tsx").then((module) => module.IssueView), paneSkeleton)
+
+/** Starts every lazy pane view's chunk, for the moment the pane's tabs or its + menu are about to be used. */
+export function preloadPaneViews(): void {
+  for (const view of [MemoryTab, AutomationsTab, DriveView, IssueView]) void view.preload()
+}
 
 export type { PaneContext }
 
