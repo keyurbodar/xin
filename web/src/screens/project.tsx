@@ -58,6 +58,7 @@ import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 import { Backdrop } from "../appearance/backdrop.tsx"
+import { PolicyApprovals } from "../components/chat/interactive-cards.tsx"
 
 export function ProjectChat(props: {
   project: ProjectSummary
@@ -197,6 +198,9 @@ export function ProjectChat(props: {
       <Show when={snapshot() !== undefined && !started()}>
         <Backdrop ground="panel" class="-z-10" />
       </Show>
+      <div class="mx-auto w-full max-w-[var(--w-column)]">
+        <PolicyApprovals conversationId={props.project.coordinatorId} />
+      </div>
           <Composer
             project={props.project}
             active={props.active}

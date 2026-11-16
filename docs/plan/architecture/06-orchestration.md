@@ -89,6 +89,8 @@ execute(args, api, ctx):
 Job.finish  → doc result; the JobsDoc observer enqueues an intake item kind=job, command_id="job:"+id
 ```
 
+The 8000 ms wait is the jobs row's `waitMs` config (default 8000); the test profile lowers it so job tests detach in a second.
+
 The wrapper is always `replay:"safe"`. A replay of the same tool task finds its call id in `xin.jobs.calls` and waits on the job it already made. A job created inside a thread (the caller has a `xin.thread` doc) is never detached and never reports: the wrapper waits inline until the job settles or the thread's deadline passes.
 
 A pi task cannot call a tool, so the wrapper supplies the tool's work as a runner registered under the tool's name; the Job phase runs it with the task's signal, clock, models and environment. On timeout the wrapper marks the job detached, and only a detached job posts a report: a tool that answered inline never lands twice.

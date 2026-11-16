@@ -77,15 +77,36 @@ export type ModelRefView = {
   readonly modelId: string
 }
 
+/** The tool call a policy approval holds back: its name and a canonical JSON preview of its arguments. */
+export type GatedCall = { readonly tool: string; readonly arguments: string }
+
 export type RequestRow = {
   readonly id: string
+  readonly kind: string
   readonly conversationId: number
-  readonly projectId: string
-  readonly projectName: string
+  readonly projectId: string | undefined
+  readonly projectName: string | undefined
   readonly threadTitle: string | undefined
   readonly question: string
   readonly options: readonly string[]
+  readonly call: GatedCall | undefined
   readonly askedAt: number
+}
+
+function gatedCallOf(value: unknown): GatedCall | undefined {
+  const subject = recordOf(value)
+  const tool = strOf(subject?.tool)
+  const args = strOf(subject?.arguments)
+  return tool === undefined || tool === "" || args === undefined ? undefined : { tool, arguments: args }
+}
+
+/** A request a thread keeps answered, as `request.list` returns it: what an interactive card shows once it is closed. */
+export type SettledRow = {
+  readonly id: string
+  readonly kind: string
+  readonly conversationId: number
+  readonly answer: string
+  readonly answeredAt: number
 }
 
 /** An answer this client sent; `request.list` lists only open requests, so the stamped card is local. */
@@ -341,14 +362,33 @@ export function parseRequestList(value: unknown): readonly RequestRow[] {
     if (id === undefined || conversationId === undefined || question === undefined || askedAt === undefined) continue
     rows.push({
       id,
+      kind: strOf(raw.kind) ?? "ask_user",
       conversationId,
-      projectId: strOf(raw.projectId) ?? "",
-      projectName: strOf(raw.projectName) ?? "",
+      projectId: strOf(raw.projectId),
+      projectName: strOf(raw.projectName),
       threadTitle: strOf(raw.threadTitle),
       question,
       options: stringsOf(raw.options),
+      call: gatedCallOf(raw.subject),
       askedAt,
     })
+  }
+  return rows
+}
+
+export function parseSettledList(value: unknown): readonly SettledRow[] {
+  const list = recordOf(value)?.answered
+  if (!Array.isArray(list)) return []
+  const rows: SettledRow[] = []
+  for (const entry of list) {
+    const raw = recordOf(entry)
+    if (raw === undefined) continue
+    const id = strOf(raw.id)
+    const conversationId = numOf(raw.conversationId)
+    const answer = strOf(raw.answer)
+    const answeredAt = numOf(raw.answeredAt)
+    if (id === undefined || conversationId === undefined || answer === undefined || answeredAt === undefined) continue
+    rows.push({ id, kind: strOf(raw.kind) ?? "ask_user", conversationId, answer, answeredAt })
   }
   return rows
 }
