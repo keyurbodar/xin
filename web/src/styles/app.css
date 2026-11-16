@@ -126,6 +126,25 @@
   .code-block pre .sh__line--diff-meta {
     color: var(--color-icon);
   }
+
+  .block-expand[data-animate] {
+    transition: max-height var(--dur-grow, 200ms) var(--ease-out, var(--ease-enter));
+  }
+
+  .mermaid-diagram {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .mermaid-diagram svg {
+    display: block;
+    margin-inline: auto;
+    max-width: 100%;
+  }
+
+  .mermaid-diagram.is-fit svg {
+    max-height: calc(100vh - 180px);
+  }
 }
 
 @utility label {
@@ -664,4 +683,14 @@
   .pictogram .m-led {
     fill: var(--color-primary);
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .block-expand[data-animate] {
+    transition: none;
+  }
+}
+
+:root[data-motion="reduce"] .block-expand[data-animate] {
+  transition: none;
 }

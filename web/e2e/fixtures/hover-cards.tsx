@@ -19,7 +19,14 @@ function App() {
   const [log, setLog] = createSignal("")
   const [keep, setKeep] = createSignal(true)
   const [version, setVersion] = createSignal(1)
-  Object.assign(window, { drop: () => setKeep(false), bump: () => setVersion((current) => current + 1) })
+  const [status, setStatus] = createSignal("Todo")
+  const [prState, setPrState] = createSignal<"open" | "merged">("open")
+  Object.assign(window, {
+    drop: () => setKeep(false),
+    bump: () => setVersion((current) => current + 1),
+    advance: () => setStatus("Done"),
+    merge: () => setPrState("merged"),
+  })
   return (
     <main class="flex flex-col gap-8 p-6 text-reading text-ink">
       <p id="prose" class="max-w-[640px]">
@@ -59,10 +66,18 @@ function App() {
         </Show>{" "}
         <LinkChip
           kind="pr"
-          state="open"
+          state={prState()}
           label={version() === 1 ? "xin#7" : `xin#7 v${version()}`}
           href="#pr-7"
-          load={later({ repo: "keyurbodar/xin", number: 7, title: `Title version ${version()}`, state: "open", additions: 1, deletions: 0, author: "keyur" }, 0)}
+          version={version()}
+          load={later({ repo: "keyurbodar/xin", number: 7, title: `Title version ${version()}`, state: prState(), additions: 1, deletions: 0, author: "keyur" }, 300)}
+        />{" "}
+        <LinkChip
+          kind="issue"
+          label="AMA-25"
+          href="#ama-25"
+          version={status()}
+          load={later({ key: "AMA-25", title: "Versioned issue", state: status() }, 0)}
         />
       </p>
 

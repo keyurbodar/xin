@@ -1,3 +1,4 @@
+import "@ui-sdk/web/radio"
 import { createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { CalendarClock, Check, Copy, Plus, RefreshCw, Timer, Webhook, X } from "lucide-solid"
 import { count } from "../../lib/format.ts"
@@ -99,19 +100,27 @@ function ScheduleFields(props: { trigger: Extract<TriggerDraft, { kind: "schedul
         onInput={(event) => props.onChange({ ...props.trigger, cron: event.currentTarget.value })}
       />
       <div class="flex flex-wrap items-center gap-1.5">
-        <For each={PRESETS}>
-          {(preset) => (
-            <button
-              type="button"
-              disabled={props.busy}
-              aria-pressed={props.trigger.cron.trim() === preset.cron}
-              onClick={() => props.onChange({ ...props.trigger, cron: preset.cron })}
-              class="im-press im-hover h-6 rounded-sm border border-line-2 px-2 text-xs text-ink-2 aria-pressed:border-line-3 aria-pressed:bg-secondary aria-pressed:text-ink"
-            >
-              {preset.label}
-            </button>
-          )}
-        </For>
+        <ui-radio-group
+          aria-label="Schedule preset"
+          prop:value={PRESETS.find((preset) => preset.cron === props.trigger.cron.trim())?.cron ?? null}
+          disabled={props.busy ? "" : undefined}
+          on:valuechange={(event) => {
+            const cron = event.detail.value
+            if (typeof cron === "string") props.onChange({ ...props.trigger, cron })
+          }}
+          class="flex flex-wrap items-center gap-1.5"
+        >
+          <For each={PRESETS}>
+            {(preset) => (
+              <ui-radio
+                value={preset.cron}
+                class="im-press im-hover flex h-6 cursor-default items-center rounded-sm border border-line-2 px-2 text-xs text-ink-2 outline-none focus-visible:ring-2 focus-visible:ring-primary-soft data-[checked]:border-line-3 data-[checked]:bg-secondary data-[checked]:text-ink data-[disabled]:opacity-50"
+              >
+                {preset.label}
+              </ui-radio>
+            )}
+          </For>
+        </ui-radio-group>
         <span class="ml-auto truncate text-xs text-ink-3">
           <Show when={problem()}>{(text) => <span class="text-failed">{text()}</span>}</Show>
           <Show when={problem() === undefined && words()} fallback={problem() === undefined ? <>5-field cron · {props.trigger.tz}</> : null}>
@@ -205,7 +214,7 @@ export function TriggersEditor(props: {
   }
   return (
     <div class="flex flex-col gap-2">
-      <span class="text-sm font-medium text-ink-2">Triggers</span>
+      <span class="text-sm font-title text-ink-2">Triggers</span>
       <For each={props.triggers.map((trigger) => trigger.key)}>
         {(key) => (
           <Show when={props.triggers.find((trigger) => trigger.key === key)}>
