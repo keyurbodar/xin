@@ -1,11 +1,12 @@
 import type { Token, TokenInputValue, UiTokenInputElement } from "@ui-sdk/web/token-input"
-import { For, Show, createSignal, onMount, type JSX } from "solid-js"
+import { ErrorBoundary, For, Show, createEffect, createSignal, type JSX } from "solid-js"
 import { render } from "solid-js/web"
+import { Stopped } from "../ui/stopped.tsx"
 import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
 import { KIND, KindIcon } from "./kinds.tsx"
 import type { Sources, Suggestion } from "./sources.ts"
 import { loadUiSdk } from "../../lib/ui-sdk-lazy.ts"
-import { composerCodec, fromInputToken, toInputToken, type ComposerToken, type TokenKind } from "./tokens.ts"
+import { composerCodec, formatToken, fromInputToken, toInputToken, type ComposerToken, type TokenKind } from "./tokens.ts"
 
 /** What the composer, the + menu and plugin actions do to the draft. A prompt chip always goes first, replacing any other. */
 export type EditorHandle = {
@@ -22,6 +23,10 @@ const KINDS_FOR: Readonly<Record<string, readonly TokenKind[]>> = {
   "@": ["thread", "file"],
   "/": ["skill", "prompt"],
 }
+
+const FIELD = "block max-h-[320px] min-h-[48px] w-full overflow-y-auto whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-body text-ink outline-none"
+
+type Load = { readonly kind: "waiting" } | { readonly kind: "ready" } | { readonly kind: "failed"; readonly error: unknown }
 
 const CHIP = "inline-flex items-baseline gap-1 rounded-xs text-primary-ink data-[selected]:bg-primary-soft"
 
@@ -64,6 +69,24 @@ function textBeforeCaret(editor: HTMLElement): string | undefined {
   return range.toString()
 }
 
+function pointAt(editor: HTMLElement, offset: number): readonly [Node, number] | undefined {
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+  let seen = 0
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    const length = node.textContent?.length ?? 0
+    if (offset <= seen + length) return [node, offset - seen]
+    seen += length
+  }
+  return undefined
+}
+
+function selectText(editor: HTMLElement, range: { readonly anchor: number; readonly focus: number }): void {
+  const anchor = pointAt(editor, range.anchor)
+  const focus = pointAt(editor, range.focus)
+  if (anchor === undefined || focus === undefined) return
+  document.getSelection()?.setBaseAndExtent(anchor[0], anchor[1], focus[0], focus[1])
+}
+
 function recollapse(editor: HTMLElement): void {
   if (document.activeElement === editor) document.getSelection()?.collapse(editor, 0)
 }
@@ -85,13 +108,78 @@ export function ComposerEditor(props: {
   let root!: HTMLDivElement
   let input!: UiTokenInputElement
   let editor!: HTMLElement
+  let early: HTMLTextAreaElement | undefined
+  let typed = ""
 
   const text = (): string => input.api.getText(composerCodec)
   const kinds = (): readonly TokenKind[] => KINDS_FOR[trigger()] ?? []
   const groups = (): readonly (readonly [TokenKind, readonly Suggestion[]])[] =>
     kinds().map((kind) => [kind, props.sources.list(kind)] as const)
 
-  onMount(() => void loadUiSdk("editor").then(() => {
+  const replace = (start: number, end: number, value: string): void => {
+    typed = typed.slice(0, start) + value + typed.slice(end)
+    props.onChange(typed)
+    if (early === undefined) return
+    early.value = typed
+    early.setSelectionRange(start + value.length, start + value.length)
+  }
+  const caret = (): readonly [number, number] => (early === undefined ? [typed.length, typed.length] : [early.selectionStart, early.selectionEnd])
+  const plain: EditorHandle = {
+    insert: (token) => (token.kind === "prompt" ? plain.prepend(`${formatToken(token)} `) : plain.insertText(`${formatToken(token)} `)),
+    insertText: (value) => {
+      const [start, end] = caret()
+      const before = typed.slice(0, start)
+      replace(start, end, before === "" || /\s$/u.test(before) ? value : ` ${value}`)
+      early?.focus()
+    },
+    prepend: (value) => {
+      replace(0, 0, value)
+      early?.focus()
+    },
+    setText: (value) => replace(0, typed.length, value),
+    text: () => typed,
+    clear: () => replace(0, typed.length, ""),
+    focus: () => early?.focus(),
+  }
+  let live = plain
+  props.ref({
+    insert: (token) => live.insert(token),
+    insertText: (value) => live.insertText(value),
+    prepend: (value) => live.prepend(value),
+    setText: (value) => live.setText(value),
+    text: () => live.text(),
+    clear: () => live.clear(),
+    focus: () => live.focus(),
+  })
+
+  const [load, setLoad] = createSignal<Load>({ kind: "waiting" })
+  let composing = false
+  let landed = false
+  let carried: { readonly anchor: number; readonly focus: number } | undefined
+  const upgrade = (): void => {
+    landed = false
+    carried =
+      early === undefined || document.activeElement !== early
+        ? undefined
+        : early.selectionDirection === "backward"
+          ? { anchor: early.selectionEnd, focus: early.selectionStart }
+          : { anchor: early.selectionStart, focus: early.selectionEnd }
+    setLoad({ kind: "ready" })
+  }
+  const start = (): void => {
+    setLoad({ kind: "waiting" })
+    loadUiSdk("editor").then(
+      () => {
+        if (composing) landed = true
+        else upgrade()
+      },
+      (error: unknown) => setLoad({ kind: "failed", error }),
+    )
+  }
+  start()
+
+  createEffect(() => {
+    if (load().kind !== "ready") return
     const foundInput = root.querySelector("ui-token-input")
     const foundEditor = root.querySelector("ui-token-input-editor")
     const menu = root.querySelector("ui-trigger-menu")
@@ -104,7 +192,7 @@ export function ComposerEditor(props: {
       { char: "@", type: "mention" },
       { char: "/", boundary: "start", type: "command" },
     ]
-    props.ref({
+    live = {
       insert: (token) => {
         if (token.kind === "prompt") {
           input.api.setValue(withPrompt(input.api.getValue(), token))
@@ -127,12 +215,46 @@ export function ComposerEditor(props: {
       text,
       clear: () => input.api.clear(),
       focus: () => input.api.focus({ at: "end" }),
+    }
+    const selection = carried
+    if (selection === undefined) return
+    queueMicrotask(() => {
+      input.api.focus()
+      selectText(editor, selection)
     })
-  }))
+  })
 
-  return (
-    <div ref={root} class="contents">
+  const fallback = (): JSX.Element => (
+    <textarea
+      ref={early}
+      aria-label={props.label}
+      placeholder={props.placeholder}
+      disabled={props.disabled}
+      rows={1}
+      value={typed}
+      onInput={(event) => {
+        typed = event.currentTarget.value
+        props.onChange(typed)
+      }}
+      onCompositionStart={() => {
+        composing = true
+      }}
+      onCompositionEnd={() => {
+        composing = false
+        if (landed) upgrade()
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" || event.shiftKey || event.isComposing) return
+        event.preventDefault()
+        event.currentTarget.form?.requestSubmit()
+      }}
+      class={`${FIELD} resize-none bg-transparent placeholder:text-placeholder disabled:opacity-60`}
+    />
+  )
+
+  const connected = (): JSX.Element => (
     <ui-token-input
+      prop:defaultValue={typed === "" ? undefined : [typed]}
       disabled={props.disabled ? "" : undefined}
       on:valuechange={() =>
         queueMicrotask(() => {
@@ -146,7 +268,7 @@ export function ComposerEditor(props: {
       <ui-token-input-editor
         aria-label={props.label}
         placeholder={props.placeholder}
-        class="block max-h-[320px] min-h-[48px] w-full overflow-y-auto whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-body text-ink outline-none data-[empty]:before:pointer-events-none data-[empty]:before:text-placeholder data-[empty]:before:content-[attr(aria-placeholder)] [&:not(:defined)]:before:text-placeholder [&:not(:defined)]:before:content-[attr(placeholder)] data-[disabled]:opacity-60"
+        class={`${FIELD} data-[empty]:before:pointer-events-none data-[empty]:before:text-placeholder data-[empty]:before:content-[attr(aria-placeholder)] data-[disabled]:opacity-60`}
       />
       <ui-trigger-menu
         on:openchange={(event) => {
@@ -188,6 +310,32 @@ export function ComposerEditor(props: {
         </ui-trigger-menu-content>
       </ui-trigger-menu>
     </ui-token-input>
+  )
+
+  const shown = (): JSX.Element => {
+    const now = load()
+    if (now.kind === "failed") throw now.error
+    return now.kind === "ready" ? connected() : fallback()
+  }
+
+  return (
+    <div ref={root} class="contents">
+      <ErrorBoundary
+        fallback={(error: unknown, reset) => (
+          <Stopped
+            title="The message box didn't load"
+            error={error}
+            onRetry={() => {
+              start()
+              reset()
+              early?.focus()
+            }}
+            class="min-h-[48px] py-3"
+          />
+        )}
+      >
+        <>{shown()}</>
+      </ErrorBoundary>
     </div>
   )
 }

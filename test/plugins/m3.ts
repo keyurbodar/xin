@@ -4,12 +4,14 @@ import type { Catalog } from "../../src/kernel/loader.ts"
 import { lastOwnerText } from "../support.ts"
 
 export const WIDE_MODEL = { provider: "faux-alt", modelId: "alt-wide" } as const
+export const THINKING_MODEL = { provider: "faux-alt", modelId: "alt-think" } as const
 
 const alt = fauxProvider({
   provider: "faux-alt",
   models: [
     { id: "alt-wide", name: "Alt Wide", contextWindow: 128_000, maxTokens: 8_192 },
     { id: "alt-narrow", name: "Alt Narrow", contextWindow: 32_768, maxTokens: 8_192 },
+    { id: "alt-think", name: "Alt Think", contextWindow: 128_000, maxTokens: 8_192, reasoning: true },
   ],
 })
 

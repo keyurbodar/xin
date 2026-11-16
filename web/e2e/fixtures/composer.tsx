@@ -98,6 +98,7 @@ function App(): JSX.Element {
   const [effort, setEffort] = createSignal<ThinkingLevel | undefined>("medium")
   const [busy, setBusy] = createSignal(false)
   const [sent, setSent] = createSignal("")
+  const [sends, setSends] = createSignal<readonly string[]>([])
   const models = (): readonly ModelInfo[] =>
     CATALOG.filter((entry) => entry.name.toLowerCase().includes(query().trim().toLowerCase()))
 
@@ -126,8 +127,9 @@ function App(): JSX.Element {
         onPickEffort={async (level) => {
           setEffort(level)
         }}
-        onSend={async (text) => {
+        onSend={async (text, _key, attachments) => {
           setSent(text)
+          setSends([...sends(), `${text}+${attachments.length}`])
           setBusy(true)
         }}
         onStop={async () => {
@@ -136,6 +138,7 @@ function App(): JSX.Element {
         onAttach={async (file) => ({ path: `/projects/ingle/attachments/${file.name}`, name: file.name, size: file.size, type: file.type })}
       />
       <output id="sent" class="sr-only">{sent()}</output>
+      <output id="sends" class="sr-only">{JSON.stringify(sends())}</output>
       <output id="effort" class="sr-only">{effort() ?? ""}</output>
       <output id="model" class="sr-only">{current()?.modelId ?? ""}</output>
     </main>

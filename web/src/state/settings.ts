@@ -4,7 +4,7 @@ import { THINKING_LEVELS, type ThinkingLevel } from "../lib/thinking.ts"
 import { errorMessage, isKnownOpError, isRecord, remote, type RemoteHandle } from "./extensions.ts"
 
 
-export type ModelRole = "chat" | "thread" | "utility"
+export type ModelRole = "chat" | "thread" | "utility" | "compaction"
 
 export type ModelPrice = { readonly input: number; readonly output: number }
 
@@ -30,12 +30,20 @@ export type ProviderSummary = {
   readonly models: readonly ModelInfo[]
 }
 
-const MODEL_ROLES: readonly ModelRole[] = ["chat", "thread", "utility"]
+const MODEL_ROLES: readonly ModelRole[] = ["chat", "thread", "utility", "compaction"]
 
 export const ROLE_LABEL: Readonly<Record<ModelRole, string>> = {
   chat: "Coordinator",
   thread: "Threads",
-  utility: "Titles + summaries",
+  utility: "Background work",
+  compaction: "Compaction",
+}
+
+export const ROLE_DETAIL: Readonly<Record<ModelRole, string>> = {
+  chat: "Runs the project coordinator.",
+  thread: "Runs delegated threads.",
+  utility: "Runs the memory pass, and compaction when no compaction model is set.",
+  compaction: "Writes the summary when a conversation compacts.",
 }
 
 export const roles = MODEL_ROLES

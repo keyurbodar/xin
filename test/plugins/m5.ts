@@ -68,8 +68,8 @@ const step: FauxResponseStep = async (context, options) => {
   systems.push(system)
   if (system.includes("You are a thread")) {
     const brief = lastOwnerText(messages)
-    if (brief.includes("slow"))
-      await new Promise((resolve) => setTimeout(resolve, brief.includes("very") ? 6_000 : 2_000))
+    if (brief.includes("very slow")) return hang(options)
+    if (brief.includes("slow")) await new Promise((resolve) => setTimeout(resolve, 2_000))
     if (brief.includes("fail"))
       return fauxAssistantMessage("provider exploded", { stopReason: "error", errorMessage: "provider exploded" })
     if (brief.includes("think"))

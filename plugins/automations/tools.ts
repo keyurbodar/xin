@@ -31,6 +31,7 @@ export function apply(ctx: Context): void {
 function saveTool(engine: Engine) {
   return defineTool({
     name: "automation_save",
+    deferred: true,
     description:
       "Create an automation, a stored prompt that starts a run whenever one of its triggers fires, or with id change, " +
       "enable, disable or delete one. triggers replaces the whole set.",
@@ -67,6 +68,7 @@ function saveTool(engine: Engine) {
 function listTool(engine: Engine) {
   return defineTool({
     name: "automation_list",
+    deferred: true,
     description: "List automations with their triggers, next run and last run.",
     parameters: obj({}),
     replay: "safe",
@@ -80,6 +82,7 @@ function listTool(engine: Engine) {
 function triggerTool(engine: Engine) {
   return defineTool({
     name: "automation_trigger",
+    deferred: true,
     description: "Run an automation now, with optional input appended to its prompt.",
     parameters: obj({
       id: str({ minLength: 1, maxLength: 128 }),

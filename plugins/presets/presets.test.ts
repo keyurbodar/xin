@@ -180,7 +180,7 @@ describe("presets", () => {
     await turn(stub, project.coordinatorId, "go", [coordinatorStep(offers)])
 
     for (const name of FILES) expect(offers.latest().tools, name).not.toContain(name)
-    expect(offers.latest().tools).not.toContain("set_model")
+    expect(offers.latest().available).not.toContain("set_model")
     expect(offers.latest().tools).toContain("remember")
     expect(offers.latest().tools).toContain("recall")
   }, 20_000)
@@ -229,7 +229,7 @@ describe("presets", () => {
     await chooseModel(stub, project.coordinatorId)
     const coordinator = recordOffers()
     await turn(stub, project.coordinatorId, "go", [coordinatorStep(coordinator)])
-    expect(coordinator.latest().tools).toEqual(expect.arrayContaining(LEAN_OMITTED))
+    expect(coordinator.latest().available).toEqual(expect.arrayContaining(LEAN_OMITTED))
 
     const offers = recordOffers()
     await delegateThread(stub, project.coordinatorId, offers)
@@ -237,7 +237,7 @@ describe("presets", () => {
     const offered = threadOffer(offers)
     expect(offered, JSON.stringify(offers.seen.map((offer) => offer.tools))).toBeDefined()
     if (offered === undefined) return
-    for (const name of LEAN_OMITTED) expect(offered.tools, name).not.toContain(name)
+    for (const name of LEAN_OMITTED) expect(offered.available, name).not.toContain(name)
     expect(offered.tools).toContain("remember")
     expect(offered.tools).toContain("read")
   }, 20_000)
@@ -254,7 +254,7 @@ describe("presets", () => {
     const offered = threadOffer(offers)
     expect(offered, JSON.stringify(offers.seen.map((offer) => offer.tools))).toBeDefined()
     if (offered === undefined) return
-    for (const name of LEAN_OMITTED) expect(offered.tools, name).not.toContain(name)
+    for (const name of LEAN_OMITTED) expect(offered.available, name).not.toContain(name)
     expect(offered.tools).toContain("remember")
   }, 20_000)
 

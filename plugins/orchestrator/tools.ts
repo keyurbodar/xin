@@ -7,7 +7,7 @@ import {
   type ToolRegistration,
 } from "@earendil-works/pi-durable"
 import { int, obj, oneOf, opt, str } from "@earendil-works/pi-schema"
-import { ModelRefSchema } from "../../src/contracts/models.ts"
+import { ThinkingSchema, type ModelChoice } from "../../src/contracts/models.ts"
 import {
   SendModeSchema,
   type Caller,
@@ -19,6 +19,13 @@ import { RoleSchema, StatusSchema } from "../../src/contracts/threaddoc.ts"
 import { type Context as KernelContext, textResult } from "../../src/kernel/index.ts"
 import { excerpt } from "../../src/transcript.ts"
 import { MAX_FILE_CHARS, NOTES_TOOL, writeOwnFile } from "./captains.ts"
+
+const TargetSchema = obj({ model: opt(str({ minLength: 1 })), thinking: opt(ThinkingSchema) })
+
+const choiceOf = (target: { readonly model?: string; readonly thinking?: ModelChoice["thinking"] }): ModelChoice => ({
+  ...(target.model === undefined ? {} : { query: target.model }),
+  ...(target.thinking === undefined ? {} : { thinking: target.thinking }),
+})
 
 const MAX_READ_CHARS = 16_000
 const MAX_WAIT_MS = 8_000
@@ -94,6 +101,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
 
   const capabilities = defineTool({
     name: "capabilities",
+    deferred: true,
     description: "Show the current model, the project's thread limits, and the installed plugins.",
     parameters: obj({}),
     replay: "safe",
@@ -101,7 +109,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
       const viewed = await threads.capabilities(callerOf(api), callContext)
       const plugins = (await ctx.get("plugins")?.list()) ?? []
       const lines = [
-        `model: ${viewed.model === undefined ? "none; pick a model" : `${viewed.model.provider}/${viewed.model.modelId}`}`,
+        `model: ${viewed.model === undefined ? "none; pick a model" : `${viewed.model.provider}/${viewed.model.modelId}${viewed.thinking === undefined || viewed.thinking === "off" ? "" : ` · ${viewed.thinking}`}`}`,
         `models: ${viewed.models.length === 0 ? "none available" : viewed.models.join(", ")}`,
       ]
       if (viewed.project === undefined) {
@@ -127,13 +135,13 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
   const delegate = defineTool({
     name: "delegate_task",
     description:
-      "Delegate a self-contained brief to a background thread. A Space runs it in its own project; Puck must name one with project. The thread sees only the brief and its role; its result arrives later as a report.",
+      "Delegate a self-contained brief to a background thread. A Space runs it in its own project; Puck must name one with project. The thread sees only the brief and its role; its result arrives later as a report. It runs on your model unless target.model names one: cheaper for research, stronger for builds.",
     parameters: obj({
       task: str({ minLength: 1 }),
       title: str({ minLength: 1, maxLength: 200 }),
       role: opt(RoleSchema),
       project: opt(str({ minLength: 1, maxLength: 200 })),
-      target: opt(obj({ model: ModelRefSchema })),
+      target: opt(TargetSchema),
       mode: ModeSchema,
       timeoutMs: opt(int({ minimum: 1, maximum: MAX_WAIT_MS })),
       clientRequestId: str({ minLength: 1 }),
@@ -150,7 +158,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
             clientRequestId: args.clientRequestId,
             ...(args.role === undefined ? {} : { role: args.role }),
             ...(args.project === undefined ? {} : { project: args.project }),
-            ...(args.target?.model === undefined ? {} : { model: args.target.model }),
+            ...(args.target === undefined ? {} : { choice: choiceOf(args.target) }),
             ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
           },
           callContext,
@@ -168,6 +176,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
       if (found.kind === "none") return textResult(`No thread ${args.threadId}.`, { isError: true })
       const lines = [
         `thread ${args.threadId} "${found.thread.title}": ${found.thread.status}`,
+        ...(found.thread.model === undefined ? [] : [`model: ${found.thread.model}`]),
         ...(found.thread.statusLine === undefined ? [] : [`status: ${found.thread.statusLine}`]),
         ...(found.thread.result === undefined ? [] : [`result: ${excerpt(found.thread.result, 400)}`]),
         ...(found.last === "" ? [] : [`last message: ${excerpt(found.last, 400)}`]),
@@ -180,6 +189,7 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
 
   const taskCancel = defineTool({
     name: "task_cancel",
+    deferred: true,
     description: "Stop a thread's current run or a job. Give exactly one of threadId or jobId.",
     parameters: obj({
       threadId: opt(int({ minimum: 0 })),
@@ -280,13 +290,14 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
           const listed: JsonValue[] = []
           for (const record of found.threads) {
             lines.push(
-              `${record.id} [${record.status}] ${record.title}${record.result === undefined ? "" : ` — ${excerpt(record.result)}`}`,
+              `${record.id} [${record.status}] ${record.title}${record.model === undefined ? "" : ` (${record.model})`}${record.result === undefined ? "" : ` — ${excerpt(record.result)}`}`,
             )
             listed.push({
               id: record.id,
               projectId: found.projectId,
               title: record.title,
               status: record.status,
+              ...(record.model === undefined ? {} : { model: record.model }),
               ...(record.result === undefined ? {} : { result: excerpt(record.result) }),
             })
           }
@@ -297,13 +308,14 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
           const listed: JsonValue[] = []
           for (const record of found.threads) {
             lines.push(
-              `${record.id} [${record.status}] ${record.projectId} — ${record.title}${record.result === undefined ? "" : ` — ${excerpt(record.result)}`}`,
+              `${record.id} [${record.status}] ${record.projectId} — ${record.title}${record.model === undefined ? "" : ` (${record.model})`}${record.result === undefined ? "" : ` — ${excerpt(record.result)}`}`,
             )
             listed.push({
               id: record.id,
               projectId: record.projectId,
               title: record.title,
               status: record.status,
+              ...(record.model === undefined ? {} : { model: record.model }),
               ...(record.result === undefined ? {} : { result: excerpt(record.result) }),
             })
           }
@@ -323,10 +335,12 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
       role: opt(RoleSchema),
       project: opt(str({ minLength: 1 })),
       spaceId: opt(str({ minLength: 1 })),
+      target: opt(TargetSchema),
     }),
     replay: "safe",
     execute: async (args, api) => {
       const created = await threads.create(callerOf(api), {
+        ...(args.target === undefined ? {} : { target: choiceOf(args.target) }),
         title: args.title,
         task: args.task,
         ...(args.role === undefined ? {} : { role: args.role }),

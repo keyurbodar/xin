@@ -1,8 +1,8 @@
-import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
+import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
 import { ArrowUpRight, UserMinus, UserPlus } from "lucide-solid"
 import { ago } from "../../lib/format.ts"
 import { STATE_WORD, visualState } from "../../lib/status.ts"
-import { addToCrew, homeCaptains, removeFromCrew } from "../../state/captains.ts"
+import { addToCrew, captainDetail, homeCaptains, removeFromCrew } from "../../state/captains.ts"
 import { crewOf } from "../../lib/captains.ts"
 import type { CaptainProfile, CrewMember } from "../../lib/captains.ts"
 import { homeProjects, projectThreads, type ProjectSummary, type ThreadSummary } from "../../state/home.ts"
@@ -30,7 +30,7 @@ function createCrew(context: () => CrewContext): () => CrewRead {
   })
 }
 
-function CrewRow(props: { member: CrewMember; at: number; onOpen: (id: number) => void; onRemove?: (() => void) | undefined; busy?: boolean }): JSX.Element {
+function CrewRow(props: { member: CrewMember; at: number; onOpen: (id: number) => void; onRemove?: (() => void) | undefined; busy?: boolean; model?: string | undefined }): JSX.Element {
   const state = () => visualState(props.member.status)
   return (
     <div class="group relative">
@@ -38,9 +38,16 @@ function CrewRow(props: { member: CrewMember; at: number; onOpen: (id: number) =
         <Signal state={state()} size={16} class="mt-0.5 shrink-0" />
         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
           <span class="flex items-baseline gap-1.5">
-            <span class="truncate text-sm text-ink">{props.member.title}</span>
+            <span class="min-w-0 truncate text-sm text-ink">{props.member.title}</span>
             <Show when={props.member.run > 1}>
               <span class="shrink-0 font-mono text-2xs text-icon">run {props.member.run}</span>
+            </Show>
+            <Show when={props.model}>
+              {(model) => (
+                <span class="ml-auto min-w-0 max-w-[45%] truncate font-mono text-2xs text-ink-3" title={model()}>
+                  {model()}
+                </span>
+              )}
             </Show>
           </span>
           <span class="truncate text-xs text-ink-3" classList={{ "im-shimmer": state() === "working" }}>
@@ -98,6 +105,8 @@ export function CrewSection(props: CrewContext & { label: string }): JSX.Element
 export function CrewView(props: CrewContext): JSX.Element {
   const crew = createCrew(() => props)
   const action = createPaneAction()
+  const crewKey = () => `${props.captain.id}:${crew().crew.map((member) => `${member.threadId}.${member.run}`).join(",")}`
+  const [detail] = createResource(crewKey, () => captainDetail(props.captain.id).catch(() => undefined))
   const candidates = createMemo((): readonly ThreadSummary[] => {
     const captainSpaces = new Set(homeCaptains().map((captain) => captain.spaceId))
     const project = homeProjects().find((entry) => entry.id === props.captain.projectId)
@@ -132,6 +141,7 @@ export function CrewView(props: CrewContext): JSX.Element {
               at={crew().at}
               onOpen={props.onOpenThread}
               busy={action.busy() === member.threadId}
+              model={detail.latest?.crewModels[member.threadId]}
               onRemove={() => void action.run(member.threadId, () => removeFromCrew(props.captain.id, member.threadId))}
             />
           )}

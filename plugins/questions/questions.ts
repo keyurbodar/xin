@@ -5,13 +5,18 @@ import { int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
 import {
   type AnsweredRequest,
+  ASK_KIND,
   type AskInput,
   type AskOutcome,
   type OpenOutcome,
   type OpenQuestion,
+  type OpenRequest,
   type QuestionsService,
+  type RequestSubject,
   RequestsDoc,
+  type Admitted,
   type RespondOutcome,
+  type SettleOutcome,
 } from "../../src/contracts/questions.ts"
 import { spaceInScope, ThreadDoc, threadInScope, transition } from "../../src/contracts/threaddoc.ts"
 import type { ThreadsService } from "../../src/contracts/threads.ts"
@@ -28,6 +33,8 @@ const MAX_ANSWERED = 20
 
 type PendingRequest = {
   readonly id: string
+  readonly kind: string
+  readonly subject?: RequestSubject
   readonly conversationId: number
   readonly projectId: string
   readonly projectName: string
@@ -37,9 +44,16 @@ type PendingRequest = {
   readonly askedAt: number
 }
 
-type AnswerOutcome =
-  | { readonly kind: "answered"; readonly run: number }
-  | { readonly kind: "already_answered"; readonly answer: string }
+type SettledRequest = {
+  readonly id: string
+  readonly kind: string
+  readonly conversationId: number
+  readonly answer: string
+  readonly answeredAt: number
+}
+
+/** Refuses an answer this request does not take, or lets it through. */
+type Admit = (open: OpenRequest) => void
 
 const commandId = (value: string): CommandId => value as CommandId
 
@@ -61,9 +75,10 @@ export function createQuestions(port: QuestionsPort): QuestionsService {
         const requests = await tx.doc(RequestsDoc, input.threadId)
         if (requests.open[input.requestId] !== undefined) return
         requests.open[input.requestId] = {
-          kind: "ask_user",
+          kind: input.kind,
           question: input.question,
           ...(input.options === undefined ? {} : { options: [...input.options] }),
+          ...(input.subject === undefined ? {} : { subject: input.subject }),
           at: input.now,
         }
         const doc = await tx.doc(ThreadDoc, input.threadId)
@@ -103,7 +118,39 @@ export function createQuestions(port: QuestionsPort): QuestionsService {
       if (outcome.kind !== "ok") return { kind: "refused", message: outcome.message }
       return answerOutcome(outcome.result) ?? { kind: "refused", message: "The answer had no recognizable outcome." }
     },
+
+    settle: (threadId, requestId, reply, admitted) =>
+      settle(port, threadId, requestId, reply, () => undefined, admitted),
   }
+}
+
+/** A card takes only its options, and only from the owner: no agent may approve, connect or decline for them. */
+const admitAnswer =
+  (actor: Actor, reply: string): Admit =>
+  (open) => {
+    if (open.kind === ASK_KIND) return
+    if (actor.kind !== "owner") throw new OpRejected("forbidden", `only the owner answers this ${open.kind} request`)
+    if (!(open.options ?? []).includes(reply))
+      throw new OpRejected("bad_args", `this ${open.kind} request takes only its own card's answers`)
+  }
+
+async function settle(
+  port: QuestionsPort,
+  threadId: ConversationId,
+  requestId: string,
+  reply: string,
+  admit: Admit,
+  admitted?: Admitted,
+): Promise<SettleOutcome> {
+  const stored = await port.harness.snapshot(ThreadDoc, threadId, context)
+  if (stored === undefined) throw new OpRejected("bad_args", `no thread ${threadId}`)
+  const now = Date.now()
+  const outcome = await port.harness.commit(
+    (tx) => answer(port, tx, threadId, stored.title, requestId, reply, now, admit, admitted),
+    context,
+  )
+  if (outcome.kind === "answered") await port.intake.withdraw(`question:${requestId}`)
+  return outcome
 }
 
 export function respondOp(port: QuestionsPort): Op {
@@ -121,15 +168,13 @@ export function respondOp(port: QuestionsPort): Op {
         (await threadInScope(api.harness, api.actor.conversationId, args.threadId)) === undefined
       )
         throw new OpRejected("bad_args", `no thread ${args.threadId}`)
-      const threadId = args.threadId as ConversationId
-      const stored = await api.harness.snapshot(ThreadDoc, threadId, context)
-      if (stored === undefined) throw new OpRejected("bad_args", `no thread ${args.threadId}`)
-      const now = Date.now()
-      const outcome = await api.harness.commit(
-        (tx) => answer(port, tx, threadId, stored.title, args.requestId, args.answer, now),
-        context,
+      const outcome = await settle(
+        port,
+        args.threadId as ConversationId,
+        args.requestId,
+        args.answer,
+        admitAnswer(api.actor, args.answer),
       )
-      if (outcome.kind === "answered") await port.intake.withdraw(`question:${args.requestId}`)
       return { threadId: args.threadId, requestId: args.requestId, ...outcome }
     },
   })
@@ -144,9 +189,11 @@ export function listOp(): Op {
       projectId: opt(str({ minLength: 1 })),
     }),
     actors: ["owner"],
-    run: async (api, args) => ({
-      requests: await pendingRequests(api.harness, args.limit ?? DEFAULT_LISTED, args.projectId),
-    }),
+    run: async (api, args) => {
+      const limit = args.limit ?? DEFAULT_LISTED
+      const listed = await listedRequests(api.harness, limit, args.projectId)
+      return { requests: listed.pending.slice(0, limit), answered: listed.settled.slice(0, limit) }
+    },
   })
 }
 
@@ -154,53 +201,70 @@ export function listOp(): Op {
 export const HOME_REQUESTS = 5
 
 export async function homeRequests(harness: Harness, limit: number): Promise<JsonObject> {
-  return { requests: await pendingRequests(harness, limit) }
+  return { requests: (await listedRequests(harness, limit)).pending.slice(0, limit) }
 }
 
-async function pendingRequests(harness: Harness, limit: number, projectId?: string): Promise<PendingRequest[]> {
+type Keyed = { readonly conversationId: number; readonly id: string }
+
+const order = (left: Keyed, right: Keyed): number =>
+  left.conversationId - right.conversationId || left.id.localeCompare(right.id)
+
+type Listed = { readonly pending: PendingRequest[]; readonly settled: SettledRequest[] }
+
+/** Open requests of waiting threads and the answers each thread keeps, newest first, from one read of each thread. */
+async function listedRequests(harness: Harness, limit: number, projectId?: string): Promise<Listed> {
   const workspace = await harness.snapshot(WorkspaceDoc, context)
-  if (workspace === undefined) return []
+  if (workspace === undefined) return { pending: [], settled: [] }
   const spaces = Object.entries(workspace.spaces).filter(([, space]) => {
     if (space.archived) return false
     const project = workspace.projects[space.projectId]
     if (project === undefined || project.archived) return false
     return projectId === undefined || projectId === space.projectId || projectId === project.slug
   })
-  const perSpace = await Promise.all(
-    spaces.map(async ([, space]) => {
+  const perThread = await Promise.all(
+    spaces.flatMap(([, space]) => {
       const project = workspace.projects[space.projectId]
       if (project === undefined) return []
-      return (
-        await Promise.all(
-          space.threadIds.map(async (conversationId): Promise<PendingRequest[]> => {
-            const [requests, thread] = await Promise.all([
-              harness.snapshot(RequestsDoc, conversationId as ConversationId, context),
-              harness.snapshot(ThreadDoc, conversationId as ConversationId, context),
-            ])
-            if (requests === undefined) return []
-            if (thread?.status !== "waiting") return []
-            return Object.entries(requests.open).map(([requestId, request]) => ({
-              id: requestId,
-              conversationId,
-              projectId: space.projectId,
-              projectName: project.name,
-              ...(thread === undefined ? {} : { threadTitle: thread.title }),
-              question: request.question,
-              ...(request.options === undefined ? {} : { options: [...request.options] }),
-              askedAt: request.at,
-            }))
-          }),
-        )
-      ).flat()
+      return space.threadIds.map(async (conversationId): Promise<Listed> => {
+        const [requests, thread] = await Promise.all([
+          harness.snapshot(RequestsDoc, conversationId as ConversationId, context),
+          harness.snapshot(ThreadDoc, conversationId as ConversationId, context),
+        ])
+        if (requests === undefined) return { pending: [], settled: [] }
+        const settled = Object.entries(requests.answered).map(([requestId, request]) => ({
+          id: requestId,
+          kind: request.kind,
+          conversationId,
+          answer: request.answer,
+          answeredAt: request.answeredAt,
+        }))
+        if (thread?.status !== "waiting") return { pending: [], settled }
+        const pending = Object.entries(requests.open).map(([requestId, request]) => ({
+          id: requestId,
+          kind: request.kind,
+          conversationId,
+          projectId: space.projectId,
+          projectName: project.name,
+          threadTitle: thread.title,
+          question: request.question,
+          ...(request.options === undefined ? {} : { options: [...request.options] }),
+          ...(request.subject === undefined ? {} : { subject: request.subject }),
+          askedAt: request.at,
+        }))
+        return { pending, settled }
+      })
     }),
   )
-  return perSpace
-    .flat()
-    .toSorted(
-      (left, right) =>
-        right.askedAt - left.askedAt || left.conversationId - right.conversationId || left.id.localeCompare(right.id),
-    )
-    .slice(0, limit)
+  return {
+    pending: perThread
+      .flatMap((listed) => listed.pending)
+      .toSorted((left, right) => right.askedAt - left.askedAt || order(left, right))
+      .slice(0, limit),
+    settled: perThread
+      .flatMap((listed) => listed.settled)
+      .toSorted((left, right) => right.answeredAt - left.answeredAt || order(left, right))
+      .slice(0, limit),
+  }
 }
 
 async function answer(
@@ -211,17 +275,21 @@ async function answer(
   requestId: string,
   reply: string,
   now: number,
-): Promise<AnswerOutcome> {
+  admit: Admit,
+  admitted: Admitted | undefined,
+): Promise<SettleOutcome> {
   const requests = await tx.doc(RequestsDoc, threadId)
   const answered = requests.answered[requestId]
   if (answered !== undefined) return { kind: "already_answered", answer: answered.answer }
   const open = requests.open[requestId]
   if (open === undefined) throw new OpRejected("bad_args", `no request ${requestId}`)
+  admit(open)
   const thread = await tx.doc(ThreadDoc, threadId)
   const next = transition(thread.status, "answer")
   if (next.kind !== "ok") throw new OpRejected("bad_args", next.reason)
   if (thread.parentId === undefined) throw new OpRejected("bad_args", `thread ${threadId} has no parent`)
   const parentId = thread.parentId as ConversationId
+  await admitted?.(open)
   const workspace = await tx.doc(WorkspaceDoc)
   const project = workspace.projects[thread.projectId]
   const run = (thread.run ?? 1) + 1
@@ -230,6 +298,7 @@ async function answer(
     kind: open.kind,
     question: open.question,
     ...(open.options === undefined ? {} : { options: open.options }),
+    ...(open.subject === undefined ? {} : { subject: open.subject }),
     at: open.at,
     answer: reply,
     answeredAt: now,
@@ -282,7 +351,7 @@ function trimAnswered(answered: Record<string, AnsweredRequest>): void {
   for (const key of oldest.slice(0, keys.length - MAX_ANSWERED)) delete answered[key]
 }
 
-function answerOutcome(value: JsonValue): AnswerOutcome | undefined {
+function answerOutcome(value: JsonValue): SettleOutcome | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined
   const kind = Reflect.get(value, "kind")
   if (kind === "answered") {

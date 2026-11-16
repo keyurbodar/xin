@@ -3,7 +3,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { ConversationId, TaskId, ToolExecutionApi, ToolExecutionResult } from "@earendil-works/pi-durable"
 import { obj } from "@earendil-works/pi-schema"
 import { describe, expect, it } from "vitest"
-import { M6_MODEL } from "../../test/plugins/m6.ts"
+import { M6_MODEL, releaseSlowTool } from "../../test/plugins/m6.ts"
 import { addThreads, cmd, eventually, fresh } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { cancelJob, jobTool, JobsDoc } from "./jobs.ts"
@@ -99,6 +99,7 @@ const replayTool = jobTool(
     await held(run.signal)
     return { output: [{ type: "text", text: "replayed" }] }
   },
+  50,
 )
 
 const quickTool = jobTool(
@@ -211,6 +212,7 @@ describe("jobs", () => {
       ],
     })
 
+    releaseSlowTool.resolve()
     await waitFor(
       stub,
       async (home: Home) => {
