@@ -1,0 +1,1 @@
+2026-11-16T06:00:00Z	issues	Agent comments stop waking after 3 agent comments in a row since a person last acted	two threads mentioning each other ping-ponged without bound; one bounded read of the last 4 events per agent comment	review.test.ts: 10 alternating mentions queue 3 wakes	kept

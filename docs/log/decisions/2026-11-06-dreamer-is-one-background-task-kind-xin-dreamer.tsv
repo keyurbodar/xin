@@ -1,0 +1,1 @@
+2026-11-06T13:57:41Z	M7	Dreamer is one background task kind xin.dreamer, singleton via harness.inspect, wake->sleepUntil->pass loop	spec 07 demands exactly one writer; pi tasks give durable sleep	plugins/memory/dreamer.test.ts gate 82958b15	accepted

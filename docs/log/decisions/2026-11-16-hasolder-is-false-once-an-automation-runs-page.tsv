@@ -1,0 +1,1 @@
+2026-11-16T18:00:00Z	XIN-25	hasOlder is false once an automation.runs page comes back short, including an empty one right after a full first page	The old check ignored olderEnded while no older run had loaded, so a history of exactly 20 runs offered Load older forever	e2e: 20 runs, one Next sends one automation.runs and the pager then reads 1 of 1 with Next disabled	adopted

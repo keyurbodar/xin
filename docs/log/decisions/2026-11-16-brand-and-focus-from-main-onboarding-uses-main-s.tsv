@@ -1,0 +1,1 @@
+2026-11-16T18:00:00Z	onboarding v5	brand and focus from main: Onboarding uses main's BrandMark and lib/focus.ts trapTab instead of its own mark and wrap helper	#21 and #31 landed the same primitives first; one source each	web/src/components/ui/brand-mark.tsx, web/src/lib/focus.ts	adopted

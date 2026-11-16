@@ -1,0 +1,1 @@
+2026-11-06T13:50:42Z	M3	pi cannot compact a conversation whose only turn is oversized	selectCut has no cut candidate before the first entry; the lane reproduced it on MemoryStorage	models.test warms with one small turn, then the switch compacts before the next request	05-models edge updated

@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	onboarding v5	first thread in onboarding: 18.4 runs inside the onboarding frame (chat card plus checklist) instead of the full shell with a Getting started pane	the shell has no Captain conversation or pane view yet; this keeps the step working against conv:<coordinatorId> and message.send without touching shell or composer files	frame 18.4	adopted

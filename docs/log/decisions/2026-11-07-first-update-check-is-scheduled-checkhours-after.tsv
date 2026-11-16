@@ -1,0 +1,1 @@
+2026-11-07T06:00	P7	First update check is scheduled checkHours after start, attempts always recorded, request deadlines cleared on settle	Boot-time check plus uncleared AbortSignal.timeout timers delayed DO eviction by 10 s and could hot-loop on failure	P7 review #3 #4; eviction tests 1 s -> 10 s	accepted

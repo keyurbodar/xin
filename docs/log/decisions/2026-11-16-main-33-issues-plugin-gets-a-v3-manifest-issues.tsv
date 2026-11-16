@@ -1,0 +1,1 @@
+2026-11-16T18:00:00Z	plugins	Main #33 issues plugin gets a v3 manifest: issues declares conversations and storage and its eleven issue.* ops; tool-issues contributes the issue tool	every plugin row needs declared permissions and contributes under #19	gate green after merging main through #33	fixed in #19

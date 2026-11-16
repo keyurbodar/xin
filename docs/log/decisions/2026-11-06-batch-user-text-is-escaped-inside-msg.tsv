@@ -1,0 +1,1 @@
+2026-11-06T13:47:09Z	M2	batch user text is escaped inside <msg>	unescaped text could forge a <thread> report line in the coordinator's input	grep escape(body.text); gateway proof passes	fixed by lead in review
