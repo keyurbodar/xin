@@ -3,7 +3,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai"
 import { type Conversation, type EntryRecord, LiveDoc } from "@earendil-works/pi-durable"
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { M2_MODEL, script as scriptM2 } from "../../test/plugins/m2.ts"
+import { M2_MODEL, releasePause, script as scriptM2 } from "../../test/plugins/m2.ts"
 import { connect, eventually, fresh, owner } from "../../test/support.ts"
 import { decrypt, pushTopic, subscriber, type Subscriber } from "../../test/webpush.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
@@ -189,7 +189,7 @@ describe("gateway intake and dispatch", () => {
     const stub = fresh()
     await runInDurableObject(stub, async (home: Home) => {
       scriptM2([
-        fauxAssistantMessage([fauxToolCall("pause", { ms: 3_000 }, { id: "pause-1" })], { stopReason: "toolUse" }),
+        fauxAssistantMessage([fauxToolCall("pause", {}, { id: "pause-1" })], { stopReason: "toolUse" }),
         fauxAssistantMessage("done"),
       ])
       await (await home.root()).configure({ model: M2_MODEL }, context)
@@ -209,6 +209,7 @@ describe("gateway intake and dispatch", () => {
       return inspection.submissions.find((submission) => submission.requestId === `batch:${item.batchId}`)?.status
     })
     expect(status).toBe("queued")
+    releasePause.resolve()
 
     await eventually(stub, async (home: Home) => {
       const page = await (await home.root()).entries({ order: "ascending" }, 500, undefined, context)
