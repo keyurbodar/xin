@@ -1,0 +1,1 @@
+2026-11-07T14:40	P11	The time row drops the current_time tool and injects a durable reading per request instead	dsh context/time-context has no tool; the injection replaces a step the model had to spend	plugins/time; dsh context/time-context/src/index.ts	accepted

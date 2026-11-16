@@ -1,0 +1,1 @@
+2026-11-16T00:00:00Z	issues	Issue wakes go through intake as job items (owner thread on comment/state/assignee change, newly assigned threads, mentioned conversations), never the actor itself	intake already debounces and batches; no new inbound kind is needed and the intake contract stays unchanged	plugins/issues/issues.test.ts wake tests	kept

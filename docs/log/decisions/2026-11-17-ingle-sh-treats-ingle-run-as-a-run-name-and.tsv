@@ -1,0 +1,1 @@
+2026-11-17T01:00:00Z	drive-ui	ingle.sh treats INGLE_RUN as a run name and always keeps its state under .verify/<name>	A run named with a relative INGLE_RUN wrote wrangler state into the repo root, and a PR tool committed it to #49	git status stays clean after INGLE_RUN=share-focus ingle.sh launch; a name with a slash is refused	accepted

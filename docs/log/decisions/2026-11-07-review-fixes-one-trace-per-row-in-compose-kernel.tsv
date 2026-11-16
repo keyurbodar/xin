@@ -1,0 +1,1 @@
+2026-11-07T12:30	P9	Review fixes: one trace per row in compose, kernel-only values() restored, git &path: specs parse, market_indexes owned, shared serial()	thermo review of P9 diff, 12 findings	full gate 299 passed; the .verify scratch artifact is gone	accepted

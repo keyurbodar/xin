@@ -1,0 +1,1 @@
+2026-11-07T11:00	P9	tool-plugins disabled by default until P10 approval	allowAgent was a Xin-only gate; dsh gates tool calls through tools/pre-execute	core/tools/src/events.ts	accepted; superseded 2026-11-10: P10 was dropped (row 284), so nothing waits for it; tool-plugins is still disabled by default (DISABLED_BY_DEFAULT in src/catalog.ts)

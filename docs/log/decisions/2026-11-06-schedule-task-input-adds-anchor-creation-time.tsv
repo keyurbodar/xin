@@ -1,0 +1,1 @@
+2026-11-06T14:01:56Z	M8	Schedule task input adds anchor (creation time)	RRULE has no DTSTART here; COUNT and BYDAY defaults need one	plugins/schedules/schedules.ts	accepted

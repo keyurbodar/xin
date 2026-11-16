@@ -1,0 +1,1 @@
+2026-11-06T13:21:05Z	M1	failed ops store no receipt; ok and deterministic rejections do	a thrown op may be transient, so the retry must run again; rejections are pure functions of the frame	ops.test.ts: duplicate, eviction, rejections	03 spec updated

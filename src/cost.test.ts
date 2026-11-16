@@ -197,7 +197,7 @@ const TURN_TASKS: readonly TurnTask[] = [
       modelCalls: 4,
       promptBytes: 78_000,
       freshBytes: 21_500,
-      schemaBytes: 14_500,
+      schemaBytes: 8_000,
       toolResultBytes: 6_000,
       wallMs: 5_000,
     },

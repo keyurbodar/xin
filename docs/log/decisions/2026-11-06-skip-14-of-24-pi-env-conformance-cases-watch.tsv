@@ -1,0 +1,1 @@
+2026-11-06T13:54:16Z	M4	Skip 14 of 24 pi env conformance cases (watch*, exec*) and symlinks	R2 has no change feed and Xin runs no code	src/r2env.test.ts gate 92b4265f	accepted

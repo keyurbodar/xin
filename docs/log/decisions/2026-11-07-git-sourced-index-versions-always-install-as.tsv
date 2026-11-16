@@ -1,0 +1,1 @@
+2026-11-07T11:00	P9	Git-sourced index versions always install as pending code	The Worker cannot run git; dsh marketInstallTarget builds git+url#commit&path:/dir	plugin-market-index marketInstallTarget	accepted

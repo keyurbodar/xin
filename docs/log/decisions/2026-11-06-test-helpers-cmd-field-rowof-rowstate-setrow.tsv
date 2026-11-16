@@ -1,0 +1,1 @@
+2026-11-06T18:40:00Z	P4	test helpers (cmd, field, rowOf, rowState, setRow, recordOffers, turn) live once in test/support.ts; tool rows build results with textResult from src/kernel/index.ts	the same helpers were copied into every tool-row test (finding 9)	net about -360 lines	gate green

@@ -1,0 +1,1 @@
+2026-11-16T07:00:00Z	web-motion	composer has no context chips today, only attachment chips, so only those got enter/exit motion	the brief named attachments/context chips; nothing renders a context chip	web/src/components/chat/composer.tsx	adopted

@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	onboarding v5	motion classes: the onboarding uses only #22's web/src/styles/ingle-motion.css primitives (.im-arrive, .im-press, .im-hover, .im-reject, .im-stagger, .im-event, .im-content, .im-send, .im-dialog, .im-scrim, .im-shimmer, .im-dots, .sig)	one motion source; the lane keeps no copy of the file	xin#22 c7b2feb	adopted
