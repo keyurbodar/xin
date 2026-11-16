@@ -308,4 +308,4 @@ The open plugin stack (#30) touches `chat/composer.tsx`, `chat/entries.tsx`, `ch
 8. Settings (after #30 and #35).
 9. Mobile: the phone flow in §4.2 across the surfaces above, at 390px.
 
-Every surface PR attaches desktop and 390px renders (also in `renders/XIN-25/` in the Bosun drive), adds Chromium tests for the keyboard and dismissal behaviour it moves, and keeps `bun scripts/gate.ts` and `bun run test src` (in `web/`) green. Plain `bun test` resolves Solid to its server build and cannot compile `.tsx`, so the web `test` script adds the browser condition and the `test/solid-jsx.ts` preload.
+Every surface PR attaches desktop and 390px renders (also in `renders/XIN-25/` in the Bosun drive), adds Chromium tests for the keyboard and dismissal behaviour it moves, and keeps `bun scripts/gate.ts` and `bun run test src` (in `web/`) green. `web/bunfig.toml` loads the `test/solid-jsx.ts` preload for every `bun test` in `web/`: it maps Solid's server build to its browser build and compiles `.tsx` with Solid's universal renderer, so plain `bun test src` and `bun run test src` run the same suite.
