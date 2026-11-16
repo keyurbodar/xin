@@ -12,10 +12,12 @@ async function healthOf(stub: Stub, id: string, provider: string): Promise<Provi
   return (catalog.result as { providers: ProviderRow[] }).providers.find((row) => row.id === provider)?.health
 }
 
-async function withFetch<T>(reply: (url: string) => Response, run: () => Promise<T>): Promise<T> {
+async function withFetch<T>(reply: (url: string, auth: string) => Response, run: () => Promise<T>): Promise<T> {
   const original = globalThis.fetch
-  globalThis.fetch = async (input: RequestInfo | URL) =>
-    reply(typeof input === "string" ? input : input instanceof URL ? input.href : input.url)
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = new Request(input, init)
+    return reply(request.url, request.headers.get("authorization") ?? "")
+  }
   try {
     return await run()
   } finally {
@@ -89,9 +91,58 @@ describe("credential checks", () => {
     expect(providers.providers.some((row) => row.id === "gate")).toBe(false)
   })
 
+  it("saves a key whose test passes and records the provider healthy", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, async (home: Home) => home.script(["OK"]))
+    const saved = await call(stub, "set-pass", "credential.set", {
+      provider: FAUX_MODEL.provider,
+      key: "faux-key",
+      test: true,
+    })
+    expect(saved).toMatchObject({ ok: true, result: { provider: FAUX_MODEL.provider, test: { ok: true } } })
+    expect(await healthOf(stub, "set-pass-health", FAUX_MODEL.provider)).toMatchObject({ state: "ok" })
+  })
+
+  it("keeps the previous key when a tested key fails, and never echoes the key", async () => {
+    const stub = fresh()
+    const endpoint = { baseUrl: "https://gate.test/v1", api: "openai-completions" }
+    const leaked = "sk-SECRET-1234567890abcdef"
+    await withFetch(listing, () =>
+      call(stub, "set-old", "credential.set", { provider: "gate", custom: { ...endpoint, key: "good-key" } }),
+    )
+    const rejected = await withFetch(
+      (url) => (url.endsWith("/models") ? listing() : new Response(`{"error":"bad key ${leaked}"}`, { status: 401 })),
+      () =>
+        call(stub, "set-new", "credential.set", { provider: "gate", custom: { ...endpoint, key: leaked }, test: true }),
+    )
+    expect(rejected).toMatchObject({ ok: false, error: { code: "bad_args" } })
+    expect(JSON.stringify(rejected)).not.toContain(leaked)
+    expect(await healthOf(stub, "set-new-health", "gate")).toBeNull()
+    const used: string[] = []
+    await withFetch(
+      (url, auth) => {
+        if (!url.endsWith("/models")) used.push(auth)
+        return url.endsWith("/models") ? listing() : new Response("{}", { status: 401 })
+      },
+      () => call(stub, "test-old", "credential.test", { provider: "gate" }),
+    )
+    expect(used).toEqual(["Bearer good-key"])
+  })
+
   it("refuses endpoints a Worker cannot reach", async () => {
     const stub = fresh()
-    for (const baseUrl of ["http://api.example.com/v1", "https://localhost:11434/v1", "https://192.168.1.4/v1"])
+    for (const baseUrl of [
+      "http://api.example.com/v1",
+      "https://localhost:11434/v1",
+      "https://localhost./v1",
+      "https://a.localhost/v1",
+      "https://box.local./v1",
+      "https://192.168.1.4/v1",
+      "https://100.64.1.1/v1",
+      "https://0.1.2.3/v1",
+      "https://198.18.0.1/v1",
+      "https://224.0.0.1/v1",
+    ])
       expect(
         await call(stub, `set-${baseUrl}`, "credential.set", {
           provider: "local",

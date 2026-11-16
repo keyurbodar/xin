@@ -15,6 +15,14 @@ export type HealthBoard = {
 }
 
 const MAX_ERROR = 300
+const KEY_SHAPED = /(?:sk|pk|rk|xai|gsk|key|ghp|hf|AIza)[-_A-Za-z0-9]{12,}|[A-Za-z0-9_-]{32,}/g
+
+/** `text` with each of `secrets`, and anything shaped like an API key, replaced, so a provider that echoes a key leaks nothing. */
+export function scrub(text: string, secrets: readonly string[]): string {
+  let clean = text
+  for (const secret of secrets) if (secret.length >= 4) clean = clean.split(secret).join("[redacted]")
+  return clean.replace(KEY_SHAPED, "[redacted]")
+}
 
 /**
  * Each provider's newest outcome, from every model response and every `credential.test`. It lives in memory, so it
@@ -31,7 +39,7 @@ export function createHealthBoard(now: () => number = Date.now): HealthBoard {
       state: "failing",
       at: now(),
       failures: (board.get(provider)?.failures ?? 0) + 1,
-      error: outcome.error.slice(0, MAX_ERROR),
+      error: scrub(outcome.error, []).slice(0, MAX_ERROR),
     })
   }
   const observe = (message: AssistantMessage): void => {

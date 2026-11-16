@@ -7,6 +7,7 @@ import {
   type Api,
   type Credential,
   type CredentialInfo,
+  InMemoryCredentialStore,
   type CredentialStore,
   type Model,
   type Models,
@@ -41,7 +42,7 @@ import {
 import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
 import { conversationCost, createBudget, untag } from "./budget.ts"
 import { FastDoc, fastOn, modesOf } from "./fast.ts"
-import { createHealthBoard } from "./health.ts"
+import { createHealthBoard, scrub } from "./health.ts"
 import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
   FeatureSchema,
@@ -376,7 +377,7 @@ type Settings = {
 const PROBE_TOKENS = 16
 const price = (model: Model<Api>): number => model.cost.input + model.cost.output
 const PRIVATE_HOST =
-  /^(?:localhost|.*\.local|.*\.internal|0\.0\.0\.0|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|\[.*\])$/i
+  /^(?:(?:.*\.)?localhost|.*\.local|.*\.internal|(?:0|10|127)\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+|198\.1[89]\.\d+\.\d+|(?:22[4-9]|2[3-5]\d)\.\d+\.\d+\.\d+|\[.*\])$/i
 
 /** Why a Worker cannot reach `baseUrl`, or undefined when it can: requests leave Cloudflare, so the host must be public https. */
 function unreachable(baseUrl: string): string | undefined {
@@ -387,7 +388,7 @@ function unreachable(baseUrl: string): string | undefined {
     return `${baseUrl} is not a URL`
   }
   if (url.protocol !== "https:") return "the endpoint must use https"
-  if (PRIVATE_HOST.test(url.hostname))
+  if (PRIVATE_HOST.test(url.hostname.replace(/\.+$/, "")))
     return `${url.hostname} is not reachable from Cloudflare; expose a local server through a public https tunnel`
   return undefined
 }
@@ -489,7 +490,11 @@ type Registry = {
   sync(): Promise<void>
   /** Re-register after a credential change; pi-ai caches a provider's auth state until it is set again. */
   restore(provider: string): void
+  /** What `entry` would unlock for `provider`, from a throwaway registry that stores nothing. */
+  candidate(provider: string, entry: StoredEntry): Promise<ProbeTarget>
 }
+
+type ProbeTarget = { readonly models: Models; readonly keyed: readonly Model<Api>[] }
 
 export type ModelsPort = {
   readonly db: SqliteDatabase
@@ -555,7 +560,18 @@ function createRegistry(port: Pick<ModelsPort, "db" | "kek" | "providers">): Reg
     if (endpoints.size > 0) await models.refresh({ providers: [...endpoints.keys()] })
   }
 
-  return { models, store, custom, sync, restore }
+  async function candidate(id: string, entry: StoredEntry): Promise<ProbeTarget> {
+    const credentials = new InMemoryCredentialStore()
+    await credentials.modify(id, async () => entry.credential)
+    const scratch = createModels({ credentials })
+    const provider =
+      entry.endpoint === undefined ? (builtins.get(id) ?? extra.get(id)) : endpointProvider(id, entry.endpoint)
+    if (provider !== undefined) scratch.setProvider(provider)
+    if (entry.endpoint !== undefined) await scratch.refresh({ providers: [id] })
+    return { models: scratch, keyed: (await scratch.getAvailable()).filter((model) => model.provider === id) }
+  }
+
+  return { models, store, custom, sync, restore, candidate }
 }
 
 function endpointProvider(id: string, endpoint: Endpoint): PiProvider {
@@ -886,8 +902,13 @@ export function create(deps: ModelsPort): ModelsParts {
    * One tiny request on a model the provider's stored key unlocks: the named one, else the owner's default, favourite
    * or recent model there, else its cheapest. It proves the key and the chat path together, which a model list cannot.
    */
-  const probe = async (provider: string, modelId?: string): Promise<JsonObject> => {
-    const keyed = (await available(registry)).filter((model) => model.provider === provider)
+  const probe = async (
+    provider: string,
+    target: ProbeTarget,
+    modelId?: string,
+    secret?: string,
+  ): Promise<JsonObject> => {
+    const keyed = target.keyed
     const settings = await readSettings(db)
     const preferred = [...Object.values(settings.defaults), ...settings.favorites, ...settings.recent]
     const model =
@@ -907,7 +928,7 @@ export function create(deps: ModelsPort): ModelsParts {
     const started = Date.now()
     let error: string | undefined
     try {
-      const reply = await registry.models.completeSimple(
+      const reply = await target.models.completeSimple(
         model,
         { messages: [{ role: "user", content: [{ type: "text", text: "Reply with OK." }], timestamp: started }] },
         { maxTokens: PROBE_TOKENS, cacheRetention: "none" },
@@ -916,7 +937,7 @@ export function create(deps: ModelsPort): ModelsParts {
     } catch (thrown) {
       error = thrown instanceof Error ? thrown.message : String(thrown)
     }
-    health.record(provider, error === undefined ? { ok: true } : { ok: false, error })
+    if (error !== undefined) error = scrub(error, secret === undefined ? [] : [secret])
     return {
       ok: error === undefined,
       provider,
@@ -1276,12 +1297,36 @@ export function create(deps: ModelsPort): ModelsParts {
     actors: ["owner"],
     credentials: ["key", "custom"],
     run: async (_api, args) => {
-      const previous = args.test === true ? await store.entry(args.provider) : undefined
       if (args.custom !== undefined) {
         if (API_STREAMS[args.custom.api] === undefined)
           throw new OpRejected("bad_args", `unsupported api ${args.custom.api}`)
         const refused = unreachable(args.custom.baseUrl)
         if (refused !== undefined) throw new OpRejected("bad_args", refused)
+      } else if (args.key === undefined) {
+        throw new OpRejected("bad_args", "give either a key or a custom endpoint")
+      }
+      let test: JsonObject | undefined
+      if (args.test === true) {
+        const secret = args.custom?.key ?? args.key ?? ""
+        const endpoint =
+          args.custom === undefined
+            ? (await store.entry(args.provider))?.endpoint
+            : { baseUrl: args.custom.baseUrl, api: args.custom.api }
+        const entry: StoredEntry = {
+          credential: { type: "api_key", key: secret },
+          ...(endpoint === undefined ? {} : { endpoint }),
+        }
+        let target: ProbeTarget
+        try {
+          target = await registry.candidate(args.provider, entry)
+        } catch (thrown) {
+          const text = thrown instanceof Error ? thrown.message : String(thrown)
+          throw new OpRejected("bad_args", `the key was not saved: ${scrub(text, [secret])}`)
+        }
+        test = await probe(args.provider, target, undefined, secret)
+        if (test["ok"] !== true) throw new OpRejected("bad_args", `the key was not saved: ${String(test["error"])}`)
+      }
+      if (args.custom !== undefined) {
         await store.set(args.provider, {
           credential: { type: "api_key", key: args.custom.key },
           endpoint: { baseUrl: args.custom.baseUrl, api: args.custom.api },
@@ -1289,18 +1334,12 @@ export function create(deps: ModelsPort): ModelsParts {
       } else if (args.key !== undefined) {
         const key = args.key
         await store.modify(args.provider, async () => ({ type: "api_key", key }))
-      } else {
-        throw new OpRejected("bad_args", "give either a key or a custom endpoint")
       }
       registry.restore(args.provider)
       const stored = { provider: args.provider, type: "api_key", custom: args.custom !== undefined }
-      if (args.test !== true) return stored
-      const test = await probe(args.provider)
-      if (test["ok"] === true) return { ...stored, test }
-      if (previous === undefined) await store.delete(args.provider)
-      else await store.set(args.provider, previous)
-      registry.restore(args.provider)
-      throw new OpRejected("bad_args", `the key was not saved: ${String(test["error"])}`)
+      if (test === undefined) return stored
+      health.record(args.provider, { ok: true })
+      return { ...stored, test }
     },
   })
 
@@ -1308,7 +1347,18 @@ export function create(deps: ModelsPort): ModelsParts {
     name: "credential.test",
     args: obj({ provider: str({ minLength: 1, maxLength: 64 }), model: opt(str({ minLength: 1, maxLength: 200 })) }),
     actors: ["owner"],
-    run: (_api, args) => probe(args.provider, args.model),
+    run: async (_api, args) => {
+      const keyed = (await available(registry)).filter((model) => model.provider === args.provider)
+      const secret = (await store.entry(args.provider))?.credential
+      const key = secret?.type === "api_key" ? secret.key : undefined
+      const result = await probe(args.provider, { models: registry.models, keyed }, args.model, key)
+      if (result["model"] !== undefined)
+        health.record(
+          args.provider,
+          result["ok"] === true ? { ok: true } : { ok: false, error: String(result["error"]) },
+        )
+      return result
+    },
   })
 
   const deleteCredential = defineOp({
