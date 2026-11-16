@@ -18,7 +18,8 @@ const later =
 function App() {
   const [log, setLog] = createSignal("")
   const [keep, setKeep] = createSignal(true)
-  Object.assign(window, { drop: () => setKeep(false) })
+  const [version, setVersion] = createSignal(1)
+  Object.assign(window, { drop: () => setKeep(false), bump: () => setVersion((current) => current + 1) })
   return (
     <main class="flex flex-col gap-8 p-6 text-reading text-ink">
       <p id="prose" class="max-w-[640px]">
@@ -55,7 +56,14 @@ function App() {
       <p id="drop">
         <Show when={keep()}>
           <LinkChip kind="issue" label="AMA-24" href="#ama-24" load={later({ key: "AMA-24", title: "Removed while open", state: "Todo" }, 0)} />
-        </Show>
+        </Show>{" "}
+        <LinkChip
+          kind="pr"
+          state="open"
+          label={version() === 1 ? "xin#7" : `xin#7 v${version()}`}
+          href="#pr-7"
+          load={later({ repo: "keyurbodar/xin", number: 7, title: `Title version ${version()}`, state: "open", additions: 1, deletions: 0, author: "keyur" }, 0)}
+        />
       </p>
 
       <nav class="w-[240px]">

@@ -74,7 +74,7 @@ export function HoverCard(props: {
     <ui-hover-card
       class="contents"
       delay={warm() ? 0 : OPEN_DELAY}
-      attr:close-delay={CLOSE_DELAY}
+      close-delay={CLOSE_DELAY}
       on:openchange={(event) => {
         if (event.defaultPrevented || event.detail.value === open()) return
         const next = event.detail.value

@@ -67,15 +67,17 @@ const CHIP =
   "im-focus inline-flex max-w-full items-baseline gap-1 rounded-xs text-primary-ink no-underline decoration-primary-ink/40 underline-offset-2 hover:underline"
 
 /**
- * An inline reference to a PR, thread, issue, commit or file. Its hover card calls `load` once per chip, the first time
- * the card settles, so sweeping the pointer across chips loads none of them.
+ * An inline reference to a PR, thread, issue, commit or file. Its hover card calls `load` when the card settles and the
+ * chip's href, label or PR state differ from the last load, so sweeping the pointer across chips loads none of them and a
+ * changed item reloads on its next settle.
  */
 export function LinkChip(props: LinkChipProps): JSX.Element {
   const mono = (): boolean => props.kind === "commit" || props.kind === "file"
-  const [wanted, setWanted] = createSignal(false)
+  const [settled, setSettled] = createSignal<string | false>(false)
+  const identity = (): string => JSON.stringify([props.href, props.label, props.kind === "pr" ? props.state : ""])
   return (
     <HoverCard
-      onSettle={() => setWanted(true)}
+      onSettle={() => setSettled(identity())}
       trigger={
         <a href={props.href} class={CHIP} data-kind={props.kind}>
           <span class={`shrink-0 self-center ${props.kind === "pr" ? PR_TONE[props.state] : "text-ink-3"}`}>
@@ -87,15 +89,15 @@ export function LinkChip(props: LinkChipProps): JSX.Element {
     >
       <div class="flex flex-col gap-1.5 p-2">
         <Switch>
-          <Match when={props.kind === "pr" && props}>{(chip) => <Loaded when={wanted} load={chip().load} render={PrCard} />}</Match>
+          <Match when={props.kind === "pr" && props}>{(chip) => <Loaded when={settled} load={chip().load} render={PrCard} />}</Match>
           <Match when={props.kind === "thread" && props}>
-            {(chip) => <Loaded when={wanted} load={chip().load} render={ThreadCard} />}
+            {(chip) => <Loaded when={settled} load={chip().load} render={ThreadCard} />}
           </Match>
-          <Match when={props.kind === "issue" && props}>{(chip) => <Loaded when={wanted} load={chip().load} render={IssueCard} />}</Match>
+          <Match when={props.kind === "issue" && props}>{(chip) => <Loaded when={settled} load={chip().load} render={IssueCard} />}</Match>
           <Match when={props.kind === "commit" && props}>
-            {(chip) => <Loaded when={wanted} load={chip().load} render={CommitCard} />}
+            {(chip) => <Loaded when={settled} load={chip().load} render={CommitCard} />}
           </Match>
-          <Match when={props.kind === "file" && props}>{(chip) => <Loaded when={wanted} load={chip().load} render={FileCard} />}</Match>
+          <Match when={props.kind === "file" && props}>{(chip) => <Loaded when={settled} load={chip().load} render={FileCard} />}</Match>
         </Switch>
       </div>
     </HoverCard>
@@ -103,7 +105,7 @@ export function LinkChip(props: LinkChipProps): JSX.Element {
 }
 
 function Loaded<T>(props: {
-  when: Accessor<boolean>
+  when: Accessor<string | false>
   load: () => Promise<T>
   render: (details: T) => JSX.Element
 }): JSX.Element {
@@ -115,6 +117,7 @@ function Loaded<T>(props: {
     >
       <Show
         when={details()}
+        keyed
         fallback={
           <div role="status" aria-busy="true" aria-label="Loading" class="flex flex-col gap-2 py-0.5">
             <Bar width="34%" class="h-2" />
@@ -123,7 +126,7 @@ function Loaded<T>(props: {
           </div>
         }
       >
-        {(loaded) => props.render(loaded())}
+        {(loaded) => props.render(loaded)}
       </Show>
     </Show>
   )
