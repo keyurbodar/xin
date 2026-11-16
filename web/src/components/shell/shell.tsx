@@ -107,7 +107,7 @@ export function Shell(): JSX.Element {
                     </div>
                   </Show>
                   <Switch>
-                    <Match when={first() === "extensions"}>
+                    <Match when={first() === "extensions" || first() === "explore"}>
                       <ExtensionsScreen />
                     </Match>
                     <Match when={first() === "settings"}>
