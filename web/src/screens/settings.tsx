@@ -15,9 +15,20 @@ import { Plugins } from "../components/settings/plugins.tsx"
 import { Members } from "../components/settings/members.tsx"
 import { Profile } from "../components/settings/profile.tsx"
 import { System } from "../components/settings/system.tsx"
+import { Tools } from "../components/settings/tools.tsx"
 import { AppearanceSettings } from "../appearance/page.tsx"
 
-type Tab = "general" | "appearance" | "models" | "usage" | "notifications" | "plugins" | "members" | "profile" | "system"
+type Tab =
+  | "general"
+  | "appearance"
+  | "models"
+  | "usage"
+  | "notifications"
+  | "plugins"
+  | "tools"
+  | "members"
+  | "profile"
+  | "system"
 
 /** `terms` holds the page's section and row labels, so the nav can find a page by a setting it holds. */
 export type Entry = {
@@ -133,6 +144,13 @@ export const SECTIONS: readonly { readonly title: string; readonly entries: read
         icon: "plug",
         about: "Every plugin row in this home. Turn rows on or off and change their settings.",
         terms: ["Optional", "Core", "Packages", "Configure"],
+      },
+      {
+        id: "tools",
+        label: "Tools",
+        icon: "shield",
+        about: "Allow, ask first or turn off each tool the agent can call, for Home or one project.",
+        terms: ["Scope", "Applies to", "Allow", "Ask", "Off", "Inherit", "Approval"],
       },
       {
         id: "usage",
@@ -329,6 +347,9 @@ export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"sett
                       </Match>
                       <Match when={current().id === "plugins"}>
                         <Plugins />
+                      </Match>
+                      <Match when={current().id === "tools"}>
+                        <Tools />
                       </Match>
                       <Match when={current().id === "members"}>
                         <Members />

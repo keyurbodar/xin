@@ -31,6 +31,7 @@ export const READS: Readonly<Record<string, "cached" | "live">> = {
   "skill.list": "cached",
   "skill.read": "cached",
   "system.version": "cached",
+  "tool.policy.read": "cached",
   "workspace.read": "cached",
   "automation.get": "live",
   "automation.runs": "live",
