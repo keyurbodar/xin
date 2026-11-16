@@ -11,6 +11,13 @@ const OPENAI_OTHER = { provider: "openai", modelId: "gpt-5.2" }
 
 type Entry = { provider: string; modelId: string; modes: string[] }
 
+/** conv.configure refuses a model with no key, so a test that runs on OpenAI stores one first. */
+async function keyed(): Promise<ReturnType<typeof fresh>> {
+  const stub = fresh()
+  expect((await call(stub, "openai-key", "credential.set", { provider: "openai", key: "sk-test" })).ok).toBe(true)
+  return stub
+}
+
 describe("fast mode", () => {
   it("lists fast only on models whose provider has a faster tier", async () => {
     const stub = fresh()
@@ -29,7 +36,7 @@ describe("fast mode", () => {
   })
 
   it("turns fast on for a model that lists it, refuses it elsewhere, and drops it on a switch to such a model", async () => {
-    const stub = fresh()
+    const stub = await keyed()
     expect(await call(stub, "fast-faux", "conv.configure", { model: FAUX_MODEL, fast: true })).toMatchObject({
       ok: false,
       error: { code: "bad_args" },
@@ -51,7 +58,7 @@ describe("fast mode", () => {
   })
 
   it("writes no fast doc for a conversation that never turned fast on", async () => {
-    const stub = fresh()
+    const stub = await keyed()
     expect((await call(stub, "never-model", "conv.configure", { model: OPENAI })).ok).toBe(true)
     expect((await call(stub, "never-switch", "conv.configure", { model: FAUX_MODEL })).ok).toBe(true)
     expect((await call(stub, "never-off", "conv.configure", { fast: false })).ok).toBe(true)
@@ -62,7 +69,7 @@ describe("fast mode", () => {
   })
 
   it("clears fast when a disable moves the conversation to a model without it, so switching back keeps it off", async () => {
-    const stub = fresh()
+    const stub = await keyed()
     expect((await call(stub, "move-default", "owner.defaults", { role: "chat", model: FAUX_MODEL })).ok).toBe(true)
     expect(await call(stub, "move-on", "conv.configure", { model: OPENAI, fast: true })).toMatchObject({
       ok: true,
@@ -84,7 +91,7 @@ describe("fast mode", () => {
   })
 
   it("puts service_tier priority on the wire only while fast is on for the model the request goes to", async () => {
-    const stub = fresh()
+    const stub = await keyed()
     const bodies: Record<string, unknown>[] = []
     const original = globalThis.fetch
     globalThis.fetch = async (input, init) => {

@@ -36,6 +36,8 @@ export type CaptainDetail = CaptainProfile & {
   readonly notes: string
   readonly rules: string
   readonly crewRules: string
+  /** Each crew thread's `provider/modelId · thinking`, by thread id. */
+  readonly crewModels: Readonly<Record<number, string>>
 }
 
 export type CaptainFields = {
@@ -108,6 +110,14 @@ export function parseCaptainDetail(value: unknown): CaptainDetail {
     notes: strOf(record.notes) ?? "",
     rules: strOf(record.rules) ?? "",
     crewRules: strOf(record.crewRules) ?? "",
+    crewModels: Object.fromEntries(
+      listOf(record.crew).flatMap((entry) => {
+        const member = recordOf(entry)
+        const threadId = member === undefined ? undefined : numOf(member.threadId)
+        const model = member === undefined ? undefined : strOf(member.model)
+        return threadId === undefined || model === undefined ? [] : [[threadId, model]]
+      }),
+    ),
   }
 }
 
