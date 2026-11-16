@@ -1,8 +1,11 @@
 import { expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import {
-  blobUrl,
+  fetchBlob,
   createAttachments,
+  hasCardThumbnail,
+  isOpenable,
+  THUMBNAIL_BYTES,
   isBlobType,
   kindLabel,
   MAX_ATTACHMENTS,
@@ -111,13 +114,12 @@ test("adding a failed file again aborts its old request and revokes its old prev
   expect(revoked).toEqual(["blob:test/shot.png"])
 })
 
-async function blobWith(response: Response, sha256: string) {
+async function blobWith(response: Response): Promise<{ readonly type: string } | { readonly failure: string }> {
   const original = globalThis.fetch
-  URL.createObjectURL = () => "blob:test/thumb"
   globalThis.fetch = Object.assign(async () => response, { preconnect: original.preconnect })
   try {
-    return await blobUrl(sha256, "image/png").then(
-      (url) => ({ url }),
+    return await fetchBlob("c".repeat(64), "image/png").then(
+      (blob) => ({ type: blob.type }),
       (failure: unknown) => ({ failure: String(failure) }),
     )
   } finally {
@@ -125,9 +127,18 @@ async function blobWith(response: Response, sha256: string) {
   }
 }
 
-test("blobUrl refuses a page served in place of the bytes, like a dev server's index.html", async () => {
+test("fetchBlob refuses a page served in place of the bytes, like a dev server's index.html", async () => {
   const html = new Response("<!doctype html>", { headers: { "content-type": "text/html; charset=utf-8" } })
-  expect(await blobWith(html, "c".repeat(64))).toEqual({ failure: expect.stringContaining("not file bytes") })
+  expect(await blobWith(html)).toEqual({ failure: expect.stringContaining("not file bytes") })
   const bytes = new Response(new Uint8Array([0x89, 0x50]), { headers: { "content-type": "application/octet-stream" } })
-  expect(await blobWith(bytes, "d".repeat(64))).toEqual({ url: "blob:test/thumb" })
+  expect(await blobWith(bytes)).toEqual({ type: "image/png" })
+})
+
+test("only stored raster images open, and only those up to 1 MiB read a card thumbnail", () => {
+  const sent = (type: string, size: number, stored = true) => ({ name: "x", type, size, sha256: stored ? "a".repeat(64) : undefined })
+  expect(isOpenable(sent("image/png", 10))).toBe(true)
+  expect(isOpenable(sent("image/svg+xml", 10))).toBe(false)
+  expect(isOpenable(sent("image/png", 10, false))).toBe(false)
+  expect(hasCardThumbnail(sent("image/png", THUMBNAIL_BYTES))).toBe(true)
+  expect(hasCardThumbnail(sent("image/png", THUMBNAIL_BYTES + 1))).toBe(false)
 })

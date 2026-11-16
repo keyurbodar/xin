@@ -1,11 +1,14 @@
 import "@ui-sdk/web/file-input"
 import "@ui-sdk/web/progress"
 import { CircleAlert, File as FileIcon, X } from "lucide-solid"
-import { For, Show, createEffect, createResource, createSignal, onCleanup, type JSX } from "solid-js"
+import { For, Show, createContext, createEffect, createSignal, on, onCleanup, useContext, type JSX } from "solid-js"
+import { createBlobCache, type BlobCache } from "../../lib/blob-cache.ts"
+import { Tile } from "../ui/tile.tsx"
+import type { Lightbox as LightboxView, LightboxItem } from "../ui/lightbox.tsx"
 import { render } from "solid-js/web"
 import {
-  blobUrl,
-  hasThumbnail,
+  hasCardThumbnail,
+  isOpenable,
   kindLabel,
   sizeLabel,
   statusLabel,
@@ -187,53 +190,157 @@ export function AttachmentCardGrid(props: {
   )
 }
 
-function SentThumbnail(props: { file: SentAttachment }): JSX.Element {
-  const [source] = createResource(
-    () => (props.file.sha256 !== undefined && hasThumbnail(props.file.type) ? props.file.sha256 : undefined),
-    (sha256) => blobUrl(sha256, props.file.type).catch(() => undefined),
-  )
-  return <Thumbnail source={source()} failed={false} />
-}
+const SentBlobs = createContext<BlobCache>()
 
 /**
- * A sent message's files. An image is a button that calls `onOpen` with its index in `attachments`, where the lightbox
- * opens; any other file is shown, not pressed.
+ * One blob cache for a transcript's sent attachments: every card and the lightbox share its object URLs, and all of
+ * them are revoked when `scope` changes (another thread in the same transcript) or the transcript unmounts.
+ */
+export function SentBlobsScope(props: { scope: unknown; children: JSX.Element }): JSX.Element {
+  const blobs = createBlobCache()
+  createEffect(on(() => props.scope, () => blobs.clear(), { defer: true }))
+  onCleanup(blobs.clear)
+  return <SentBlobs.Provider value={blobs}>{props.children}</SentBlobs.Provider>
+}
+
+function useSentBlobs(): BlobCache {
+  const shared = useContext(SentBlobs)
+  if (shared !== undefined) return shared
+  const own = createBlobCache()
+  onCleanup(own.clear)
+  return own
+}
+
+async function decodes(url: string): Promise<string> {
+  const image = new Image()
+  image.src = url
+  await image.decode()
+  return url
+}
+
+type Decoded = "yes" | "no"
+
+/**
+ * A sent message's files. A raster image up to `THUMBNAIL_BYTES` reads its thumbnail once its card scrolls into view
+ * and becomes an Open button only once those bytes decode, so HTML stored as image/png never opens; a larger one keeps
+ * its icon card and is a button from the start, its bytes read only when it is opened. SVG and other files are plain
+ * cards. `onOpen` gets the index in `attachments`.
  */
 export function MessageAttachments(props: {
   attachments: readonly SentAttachment[]
+  decoded: (file: SentAttachment) => Decoded | undefined
+  load: (file: SentAttachment) => Promise<string>
   onOpen: (index: number) => void
 }): JSX.Element {
   const meta = (file: SentAttachment): string =>
     [file.size === undefined ? undefined : sizeLabel(file.size), kindLabel(file.name, file.type)]
       .filter((part) => part !== undefined)
       .join(" · ")
+  const opens = (file: SentAttachment): boolean =>
+    isOpenable(file) && (hasCardThumbnail(file) ? props.decoded(file) === "yes" : props.decoded(file) !== "no")
   return (
-    <ul aria-label="Attachments" class="grid w-full max-w-[520px] grid-cols-1 gap-2 min-[560px]:grid-cols-2">
-      <For each={props.attachments}>
-        {(file, index) => (
-          <li class="min-w-0">
-            <Show
-              when={hasThumbnail(file.type)}
-              fallback={
-                <div class={CARD}>
-                  <SentThumbnail file={file} />
-                  <Label name={file.name} meta={meta(file)} />
-                </div>
-              }
-            >
-              <button
-                type="button"
-                aria-label={`Open ${file.name}`}
-                class={`im-press w-full hover:bg-hover ${CARD}`}
-                onClick={() => props.onOpen(index())}
-              >
-                <SentThumbnail file={file} />
+    <div class="@container w-full">
+      <ul aria-label="Attachments" class="grid grid-cols-1 gap-2 @[400px]:grid-cols-2">
+        <For each={props.attachments}>
+          {(file, index) => (
+            <li class="relative min-w-0">
+              <div class={CARD}>
+                <Show when={hasCardThumbnail(file)} fallback={<Thumbnail source={undefined} failed={false} />}>
+                  <Tile
+                    load={() => props.load(file)}
+                    alt=""
+                    fallback={<FileIcon size={16} stroke-width={1.5} />}
+                    class="h-10 w-10 rounded-sm bg-muted text-icon"
+                  />
+                </Show>
                 <Label name={file.name} meta={meta(file)} />
-              </button>
-            </Show>
-          </li>
-        )}
-      </For>
-    </ul>
+              </div>
+              <Show when={opens(file)}>
+                <button
+                  type="button"
+                  aria-label={`Open ${file.name}`}
+                  class="im-press absolute inset-0 rounded-md outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-1 focus-visible:outline-primary"
+                  onClick={() => props.onOpen(index())}
+                />
+              </Show>
+            </li>
+          )}
+        </For>
+      </ul>
+    </div>
+  )
+}
+
+let lightboxLoader: Promise<typeof LightboxView> | undefined
+
+type Opened = LightboxItem & { readonly file: SentAttachment }
+
+/**
+ * A sent message's files with the lightbox behind them, loaded on the first open so it stays out of the startup
+ * bundle. Opening an image shows it beside every image of the message whose bytes have decoded, each URL from the
+ * transcript's blob cache.
+ */
+export function SentAttachments(props: { attachments: readonly SentAttachment[] }): JSX.Element {
+  const blobs = useSentBlobs()
+  const [Lightbox, setLightbox] = createSignal<typeof LightboxView>()
+  const [decoded, setDecoded] = createSignal<Readonly<Record<string, Decoded>>>({})
+  const [items, setItems] = createSignal<readonly Opened[]>([])
+  const [open, setOpen] = createSignal(false)
+  const [index, setIndex] = createSignal(0)
+  const mark = (file: SentAttachment, state: Decoded): void => {
+    const sha256 = file.sha256
+    if (sha256 !== undefined) setDecoded((all) => ({ ...all, [sha256]: state }))
+  }
+  const stateOf = (file: SentAttachment): Decoded | undefined =>
+    file.sha256 === undefined ? undefined : decoded()[file.sha256]
+  const load = (file: SentAttachment): Promise<string> =>
+    blobs
+      .url(file.sha256 ?? "", file.type)
+      .then(decodes)
+      .then(
+        (url) => {
+          mark(file, "yes")
+          return url
+        },
+        (failure: unknown) => {
+          mark(file, "no")
+          throw failure
+        },
+      )
+  const show = async (pressed: SentAttachment): Promise<void> => {
+    lightboxLoader ??= import("../ui/lightbox.tsx").then((module) => module.Lightbox)
+    const shown = props.attachments.filter((file) => file === pressed || (isOpenable(file) && stateOf(file) === "yes"))
+    const loaded = await Promise.allSettled(shown.map((file) => load(file).then((src) => ({ src, file }))))
+    const opened = loaded.flatMap((result) =>
+      result.status === "fulfilled"
+        ? [{ src: result.value.src, name: result.value.file.name, size: result.value.file.size, type: result.value.file.type, file: result.value.file }]
+        : [],
+    )
+    const at = opened.findIndex((item) => item.file === pressed)
+    if (at < 0) return
+    const view = await lightboxLoader
+    setItems(opened)
+    setIndex(at)
+    setLightbox(() => view)
+    setOpen(true)
+  }
+  return (
+    <>
+      <MessageAttachments
+        attachments={props.attachments}
+        decoded={stateOf}
+        load={load}
+        onOpen={(at) => {
+          const pressed = props.attachments[at]
+          if (pressed !== undefined) void show(pressed)
+        }}
+      />
+      <Show when={Lightbox()}>
+        {(View) => {
+          const Viewer = View()
+          return <Viewer items={items()} index={index()} open={open()} onClose={() => setOpen(false)} onIndexChange={setIndex} />
+        }}
+      </Show>
+    </>
   )
 }
