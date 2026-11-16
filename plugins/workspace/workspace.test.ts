@@ -244,6 +244,26 @@ describe("workspace", () => {
     expect(cleared.latest().system).not.toContain("<owner>")
   })
 
+  it("stores the onboarding flag once and serves it after eviction", async () => {
+    const stub = fresh()
+    expect((await cmd(stub, "onboarded-read-0", "owner.read")).result).not.toHaveProperty("onboardedAt")
+
+    const set = await cmd(stub, "onboarded-set-1", "owner.set", { onboarded: true })
+    const onboardedAt = (set.result as { onboardedAt?: unknown }).onboardedAt
+    expect(typeof onboardedAt).toBe("string")
+    expect(Number.isNaN(Date.parse(String(onboardedAt)))).toBe(false)
+
+    expect((await cmd(stub, "onboarded-set-2", "owner.set", { onboarded: true })).result).toMatchObject({ onboardedAt })
+    expect((await cmd(stub, "onboarded-set-3", "owner.set", { onboarded: false })).ok).toBe(false)
+
+    await evictDurableObject(stub)
+    expect((await cmd(stub, "onboarded-read-1", "owner.read")).result).toEqual({
+      name: "",
+      instructions: "",
+      onboardedAt,
+    })
+  })
+
   it("archives a project without losing its threads", async () => {
     const stub = fresh()
     const created = await cmd(stub, "archive-1", "project.create", { slug: "archived", name: "Archived" })
