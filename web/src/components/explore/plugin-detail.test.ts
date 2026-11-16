@@ -6,6 +6,8 @@ import { invalidateReads } from "../../lib/api.ts"
 
 type Frame = { readonly id: string; readonly op: string; readonly args: { readonly name?: string } }
 
+const PIN = `sha512-ABCDEFGH${"x".repeat(72)}stuvwx==`
+
 const realFetch = globalThis.fetch
 stubGlobals({ window: { location: { hash: "" }, addEventListener: () => undefined } })
 void mock.module("../extensions/install-sheet.tsx", () => ({ InstallSheet: (props: { name: string }) => `Install sheet for ${props.name}` }))
@@ -22,7 +24,15 @@ beforeEach(() => {
     const frames = (Array.isArray(body) ? body : [body]) as Frame[]
     const result = (frame: Frame) =>
       frame.op === "market.entry"
-        ? { name: frame.args.name, kind: "bundle", status: "not-installed", versions: [], rows: [], readme: `Readme of ${frame.args.name}` }
+        ? {
+            name: frame.args.name,
+            kind: frame.args.name?.endsWith("-code") === true ? "code" : "bundle",
+            status: "not-installed",
+            versions: [],
+            rows: [],
+            readme: `Readme of ${frame.args.name}`,
+            integrity: PIN,
+          }
         : { entries: [] }
     const acks = frames.map((frame) => ({ t: "ack", id: frame.id, ok: true, result: result(frame) }))
     return Response.json(Array.isArray(body) ? acks : acks[0])
@@ -63,4 +73,20 @@ test("an install sheet opened on one plugin closes when the owner moves to anoth
   setName("ingle-plugin-beta")
   await Bun.sleep(20)
   expect(textOf(tree)).not.toContain("Install sheet for")
+})
+
+test("a registry code plugin shows its integrity pin and a bundle shows none", async () => {
+  const [name, setName] = createSignal("ingle-plugin-code")
+  const tree = root()
+  createRoot(() => insert(tree, createComponent(PluginDetail, { get name() { return name() } })))
+  await Bun.sleep(20)
+  expect(textOf(tree)).toContain("Registry pinsha512ABCDEFGH…stuvwx==Checked against the tarball when you install.")
+  expect(textOf(tree)).not.toContain("Integrity")
+  expect(find(tree, (node) => node.tag === "code" && node.props["title"] === PIN)).toBeDefined()
+
+  setName("ingle-plugin-bundle")
+  await Bun.sleep(20)
+  expect(textOf(tree)).toContain("Readme of ingle-plugin-bundle")
+  expect(textOf(tree)).not.toContain("Registry pin")
+  expect(textOf(tree)).not.toContain("sha512")
 })
