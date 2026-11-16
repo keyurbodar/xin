@@ -23,6 +23,7 @@ type Fixture = {
     readonly stopWaiting: () => void
     readonly reconnect: () => void
     readonly paginate: () => void
+    readonly frames: (count: number) => void
   }
 }
 
@@ -259,5 +260,28 @@ test("loading older pages of the same day keeps what was on screen where it was"
     expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(1)
   }
   expect(await page.getByRole("separator", { name: "Today" }).count()).toBe(1)
+  await page.close()
+})
+
+test("a sent image keeps its thumbnail across snapshot frames and opens with the one read it made", async () => {
+  const page = await harness.open("timeline")
+  await page.evaluate(() => document.querySelector<HTMLElement>("[data-timeline]")!.scrollTo({ top: 0 }))
+  await settled(page)
+  const opener = page.getByRole("button", { name: "Open error.png" })
+  await opener.waitFor()
+  for (let round = 0; round < 4; round++) {
+    await tl(page, (fixture) => fixture.frames(3))
+    await settled(page)
+  }
+  const thumbnail = page.locator("li", { hasText: "error.png" }).locator("[data-slot=tile][data-phase=shown] img")
+  expect(await thumbnail.count()).toBe(1)
+  expect(await thumbnail.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true)
+  expect(await page.evaluate(() => Reflect.get(window, "live")())).toBeGreaterThan(0)
+  await opener.click()
+  await settled(page)
+  expect(await page.getByRole("dialog").count()).toBe(1)
+  const reads: readonly string[] = await page.evaluate(() => Reflect.get(window, "requested"))
+  expect(reads).toEqual(["a".repeat(64)])
+  await page.keyboard.press("Escape")
   await page.close()
 })

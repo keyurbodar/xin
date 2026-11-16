@@ -2,7 +2,7 @@ import "../../src/styles/app.css"
 import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import { trackMotion } from "../../src/lib/motion.ts"
-import type { ChatMessage, EntryView, Snapshot } from "../../src/state/conversation.ts"
+import type { Attachment, ChatMessage, EntryView, Snapshot } from "../../src/state/conversation.ts"
 import type { ProjectSummary, ThreadSummary } from "../../src/state/home.ts"
 import { registerBlock } from "../../src/components/chat/blocks.tsx"
 import { Transcript, type PendingMessage } from "../../src/components/chat/transcript.tsx"
@@ -18,17 +18,51 @@ let nextId = 1
 const text = (value: string): Part => ({ type: "text", text: value })
 const call = (id: string, name: string, args: Part): Part => ({ type: "toolCall", id, name, arguments: args })
 const entry = (kind: string, model: readonly ChatMessage[], data?: unknown): EntryView => ({ id: nextId++, kind, model, data })
-const user = (at: number, value: string): EntryView =>
-  entry("xin.batch", [], [{ id: nextId, body: { kind: "user", text: value }, clientTs: at }])
+const user = (at: number, value: string, attachments: readonly Attachment[] = []): EntryView =>
+  entry("xin.batch", [], [{ id: nextId, body: { kind: "user", text: value, attachments }, clientTs: at }])
 const assistant = (at: number, content: readonly Part[]): EntryView => entry("pi.assistant", [{ role: "assistant", content, timestamp: at }])
 const result = (at: number, toolCallId: string, output: string, extra: Partial<ChatMessage> = {}): EntryView =>
   entry("pi.tool-result", [{ role: "toolResult", toolCallId, content: [text(output)], timestamp: at, ...extra }])
+
+const SHOT = "a".repeat(64)
+const canvas = document.createElement("canvas")
+canvas.width = 320
+canvas.height = 200
+canvas.getContext("2d")!.fillRect(0, 0, 320, 200)
+const shot = await new Promise<Blob>((resolve) => canvas.toBlob((blob) => resolve(blob!), "image/png"))
+const requested: string[] = []
+const urls = new Set<string>()
+const create = URL.createObjectURL.bind(URL)
+const revoke = URL.revokeObjectURL.bind(URL)
+URL.createObjectURL = (object: Blob | MediaSource) => {
+  const url = create(object)
+  urls.add(url)
+  return url
+}
+URL.revokeObjectURL = (url: string) => {
+  urls.delete(url)
+  revoke(url)
+}
+const realFetch = window.fetch.bind(window)
+Object.assign(window, {
+  requested,
+  live: () => urls.size,
+  fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+    const sha = /\/blobs\/([0-9a-f]{64})$/u.exec(url)?.[1]
+    if (sha === undefined) return realFetch(input, init)
+    requested.push(sha)
+    return sha === SHOT ? new Response(shot, { headers: { "content-type": "application/octet-stream" } }) : new Response("not found", { status: 404 })
+  },
+})
 
 const LONG =
   "The refresh path reads the stored token, checks its expiry and, when it is close, asks the provider for a new one. Two tabs could both see an expiring token and both refresh; the provider rotates on each refresh, so the slower tab saved a token that was already revoked."
 
 const history: EntryView[] = [
-  user(YESTERDAY, "Audit the auth flow and fix the token refresh bug people hit after lunch."),
+  user(YESTERDAY, "Audit the auth flow and fix the token refresh bug people hit after lunch.", [
+    { path: "/projects/auth/attachments/error.png", name: "error.png", type: "image/png", size: 2048, sha256: SHOT },
+  ]),
   assistant(YESTERDAY + 4_000, [
     text("I'll read the auth module and the session store first."),
     call("c1", "read", { path: "src/auth.ts" }),
@@ -185,6 +219,9 @@ Object.assign(window, {
     longer: () => commit(assistant(NOW + 90_000, [text(LONG)])),
     stopWaiting: () => setProject(projectWith("completed")),
     reconnect: () => setEntries((current) => structuredClone(current)),
+    frames: (count: number) => {
+      for (let index = 0; index < count; index++) setLive((current) => ({ ...current }))
+    },
     paginate: () => {
       const today = history.findIndex((item) => item.kind === "xin.batch" && item.id > 1)
       pages = [history.slice(0, today), sameDay(NOW - 3 * 3600_000, "Check the deploy status."), sameDay(NOW - 2 * 3600_000, "Is staging healthy?")]
