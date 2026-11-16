@@ -49,6 +49,59 @@ describe("fast mode", () => {
     expect(await stored()).toEqual({ on: false })
   })
 
+  it("clears fast when a disable moves the conversation to a model without it, so switching back keeps it off", async () => {
+    const stub = fresh()
+    expect((await call(stub, "move-default", "owner.defaults", { role: "chat", model: FAUX_MODEL })).ok).toBe(true)
+    expect(await call(stub, "move-on", "conv.configure", { model: OPENAI, fast: true })).toMatchObject({
+      ok: true,
+      result: { fast: true },
+    })
+    const off = await call(stub, "move-off", "models.enable", { model: OPENAI, enabled: false })
+    expect(off.ok, JSON.stringify(off)).toBe(true)
+    expect(await call(stub, "move-back-on", "models.enable", { model: OPENAI, enabled: true })).toMatchObject({
+      ok: true,
+    })
+    expect(await call(stub, "move-back", "conv.configure", { model: OPENAI })).toMatchObject({
+      ok: true,
+      result: { model: OPENAI, fast: false },
+    })
+    const stored = await runInDurableObject(stub, async (home: Home) =>
+      home.harness.snapshot(FastDoc, (await home.root()).id as ConversationId, BACKGROUND_CONTEXT),
+    )
+    expect(stored).toEqual({ on: false })
+  })
+
+  it("puts service_tier priority on the wire to OpenAI only while fast is on", async () => {
+    const stub = fresh()
+    const bodies: Record<string, unknown>[] = []
+    const original = globalThis.fetch
+    globalThis.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input)
+      if (url.includes("api.openai.com")) {
+        const text = input instanceof Request ? await input.text() : String(init?.body ?? "")
+        bodies.push(JSON.parse(text) as Record<string, unknown>)
+      }
+      return Response.json({ error: { message: "stub" } }, { status: 400 })
+    }
+    try {
+      expect((await call(stub, "wire-cred", "credential.set", { provider: "openai", key: "sk-test" })).ok).toBe(true)
+      const send = async (fast: boolean, requestId: string): Promise<Record<string, unknown> | undefined> => {
+        expect((await call(stub, `${requestId}-cfg`, "conv.configure", { model: OPENAI, fast })).ok).toBe(true)
+        const before = bodies.length
+        await runInDurableObject(stub, async (home: Home) => {
+          const root = await home.root()
+          await root.submit({ type: "input", content: "hi", requestId }, BACKGROUND_CONTEXT)
+          await root.waitForIdle(BACKGROUND_CONTEXT)
+        })
+        return bodies[before]
+      }
+      expect((await send(true, "wire-fast"))?.service_tier).toBe("priority")
+      expect(await send(false, "wire-plain")).not.toHaveProperty("service_tier")
+    } finally {
+      globalThis.fetch = original
+    }
+  }, 30_000)
+
   it("sends OpenAI's priority tier only for a model with fast mode", () => {
     const payload = { model: OPENAI.modelId, input: [] }
     expect(fastPayload({ provider: "openai", api: "openai-responses" }, payload)).toEqual({
