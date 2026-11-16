@@ -11,6 +11,11 @@ if (Reflect.get(globalThis, "window") === undefined)
     value: { location: { hash: "" }, addEventListener: () => undefined, removeEventListener: () => undefined },
     configurable: true,
   })
+if (Reflect.get(globalThis, "document") === undefined)
+  Object.defineProperty(globalThis, "document", {
+    value: { documentElement: { setAttribute: () => undefined }, addEventListener: () => undefined },
+    configurable: true,
+  })
 void mock.module("../extensions/glyph.tsx", () => ({ Glyph: () => undefined }))
 void mock.module("@ark-ui/solid/menu", () => ({ Menu: new Proxy({}, { get: () => () => undefined }) }))
 void mock.module("../../appearance/store.ts", () => ({ isCatalogThemeAdded: () => false }))
