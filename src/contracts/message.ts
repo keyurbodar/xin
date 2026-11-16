@@ -9,7 +9,20 @@ export const AttachmentSchema = obj({
   size: opt(int({ minimum: 0 })),
 })
 
-export type MessageAttachment = Static<typeof AttachmentSchema>
+/** What the client names: a file it already stored with `PUT /files/<path>`. */
+export type AttachmentInput = Static<typeof AttachmentSchema>
+
+/**
+ * What a stored message records: the client's name for the file, and the size, type and blob the files index holds.
+ * Items queued before `message.send` stamped the blob carry no `sha256`, and the client's size if any.
+ */
+export type MessageAttachment = {
+  readonly path: string
+  readonly name: string
+  readonly type: string
+  readonly size?: number
+  readonly sha256?: string
+}
 
 export const MessageSendArgsSchema = obj({
   conv: opt(int({ minimum: 0 })),
