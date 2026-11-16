@@ -94,7 +94,7 @@ function dropFolder(target: EventTarget | null | undefined): string {
   return item?.hasAttribute("data-branch") === true ? value : folderOf(value)
 }
 
-/** The right pane's Drive: the conversation's scopes as a file tree, and the open file. One drive.list for the scope and one per folder the first time it opens. */
+/** The right pane's Drive: the conversation's scopes as a file tree, and the open file. One drive.list for the scope, which lists every folder, and one more after each change. */
 export function DriveView(props: { conversationId: number; prefer: DriveScope; projectSlug: string }): JSX.Element {
   const [scopes, { refetch: refetchScopes }] = createResource(() => props.conversationId, drive.scopes)
   const [picked, setPicked] = createSignal<string | undefined>()
@@ -201,7 +201,7 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
                     <DriveTree
                       label={`${scopeTitle(mounted().scope)} files`}
                       rows={rows()}
-                      load={async (folder) => rowsOf((await drive.list(mounted().scope, folder)).files, folder)}
+                      childrenOf={(folder) => rowsOf(settled(listing)?.files ?? [], folder)}
                       shares={shares()}
                       onOpen={setOpen}
                       onRename={async (from, to) => {

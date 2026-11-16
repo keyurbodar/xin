@@ -1,8 +1,8 @@
 import "@ui-sdk/web/input"
 import "@ui-sdk/web/menu"
 import "@ui-sdk/web/tree"
-import { createEffect, createSignal, For, on, onMount, Show, untrack, type JSX } from "solid-js"
-import { BookText, ChevronRight, Link2, LoaderCircle, RotateCw, Sparkles } from "lucide-solid"
+import { createEffect, createSignal, For, on, onMount, Show, type JSX } from "solid-js"
+import { BookText, ChevronRight, Link2, Sparkles } from "lucide-solid"
 import { folderOf, renameProblem, reservedOf, SKILLS_FOLDER, type DriveRow } from "../../lib/drive.ts"
 import { fileIconUrl } from "../../lib/file-icons.ts"
 import { theme } from "../../lib/theme.ts"
@@ -51,13 +51,13 @@ function RowIcon(props: { row: DriveRow }): JSX.Element {
 const valueOf = (row: DriveRow): string => (row.kind === "folder" ? row.path : row.entry.path)
 
 /**
- * A drive scope's files as a tree, after zeron's file tree: folders load their rows the first time they open, a file
+ * A drive scope's files as a tree, after zeron's file tree: a folder renders its rows the first time it opens, a file
  * opens on press or Enter, F2 renames in place, and a right-click or Shift+F10 opens the row's menu.
  */
 export function DriveTree(props: {
   label: string
   rows: readonly DriveRow[]
-  load: (folder: string) => Promise<readonly DriveRow[]>
+  childrenOf: (folder: string) => readonly DriveRow[]
   shares: Readonly<Record<string, string>>
   onOpen: (path: string) => void
   onRename: (from: string, to: string) => Promise<void>
@@ -66,33 +66,30 @@ export function DriveTree(props: {
 }): JSX.Element {
   let host: HTMLDivElement | undefined
   const tree = (): HTMLElementTagNameMap["ui-tree"] | null | undefined => host?.querySelector("ui-tree")
-  const [children, setChildren] = createSignal<ReadonlyMap<string, readonly DriveRow[]>>(new Map())
+  const [opened, setOpened] = createSignal<ReadonlySet<string>>(new Set())
   const [renaming, setRenaming] = createSignal<string | undefined>()
   const [problem, setProblem] = createSignal<string | undefined>()
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [target, setTarget] = createSignal<Target | undefined>()
   const menu = createOverlayMount(menuOpen)
   let chosen: string | undefined
-
-  const fill = async (folder: string): Promise<void> => {
-    const rows = await props.load(folder)
-    setChildren((now) => new Map(now).set(folder, rows))
-  }
+  let landing: string | undefined
 
   onMount(() => {
     const element = tree()
     if (element === null || element === undefined) return
-    element.loadChildren = (folder) => fill(folder)
+    element.loadChildren = (folder) => {
+      setOpened((now) => new Set(now).add(folder))
+    }
   })
 
   createEffect(
     on(
       () => props.rows,
       () => {
-        const refills = [...untrack(children).keys()].map((folder) => fill(folder).catch(() => undefined))
         const path = landing
         landing = undefined
-        if (path !== undefined) void Promise.all(refills).then(() => focus(path))
+        if (path !== undefined) focus(path)
       },
       { defer: true },
     ),
@@ -100,7 +97,7 @@ export function DriveTree(props: {
 
   const siblingsOf = (path: string): readonly string[] => {
     const folder = folderOf(path)
-    const rows = folder === "" ? props.rows : (children().get(folder) ?? [])
+    const rows = folder === "" ? props.rows : props.childrenOf(folder)
     return rows.map((row) => row.name)
   }
 
@@ -118,7 +115,6 @@ export function DriveTree(props: {
   }
 
   let saving = false
-  let landing: string | undefined
   const finishRename = (path: string, name: string, commit: boolean): void => {
     if (renaming() !== path || saving) return
     const current = path.slice(folderOf(path).length)
@@ -174,10 +170,8 @@ export function DriveTree(props: {
         <ui-tree-item value={valueOf(row)} label={row.name} branch={row.kind === "folder" ? "" : undefined} class="block outline-none">
           <ui-tree-item-label class={ROW}>
             <Show when={row.kind === "folder"} fallback={<span class="size-4 shrink-0" />}>
-              <ui-tree-item-indicator class="im-chevron group/ind grid size-4 shrink-0 place-items-center text-icon data-[expanded]:[transform:rotate(90deg)]">
-                <ChevronRight size={14} stroke-width={1.5} class="group-data-[failed]/ind:hidden group-data-[loading]/ind:hidden" />
-                <LoaderCircle size={14} stroke-width={1.5} class="hidden animate-spin group-data-[loading]/ind:block" />
-                <RotateCw size={12} stroke-width={1.5} class="hidden text-failed group-data-[failed]/ind:block" />
+              <ui-tree-item-indicator class="im-chevron grid size-4 shrink-0 place-items-center text-icon data-[expanded]:[transform:rotate(90deg)]">
+                <ChevronRight size={14} stroke-width={1.5} />
               </ui-tree-item-indicator>
             </Show>
             <RowIcon row={row} />
@@ -203,7 +197,7 @@ export function DriveTree(props: {
               />
             </Show>
           </ui-tree-item-label>
-          <Show when={row.kind === "folder" ? children().get(row.path) : undefined}>
+          <Show when={row.kind === "folder" && opened().has(row.path) ? props.childrenOf(row.path) : undefined}>
             {(rows) => (
               <ui-tree-group class={GROUP}>
                 <Rows rows={rows()} />
@@ -224,12 +218,16 @@ export function DriveTree(props: {
             return
           }
           setMenuOpen(event.detail.value)
-          const was = target()
-          if (!event.detail.value && was !== undefined && event.detail.reason === "escape-key") focus(was.path)
         }}
         on:openchangecomplete={(event) => {
           menu.settle(event)
-          if (event.detail.value || chosen === undefined) return
+          if (event.detail.value) return
+          if (chosen === undefined) {
+            const was = target()
+            const active = document.activeElement
+            if (was !== undefined && (active === null || active === document.body)) focus(was.path)
+            return
+          }
           const command = chosen
           chosen = undefined
           run(command)
@@ -333,7 +331,7 @@ function RenameField(props: {
               props.onDone(field?.value ?? props.name, false)
             }
           }}
-          onBlur={(event) => props.onDone(event.currentTarget.value, props.problem === undefined)}
+          onBlur={() => props.onDone(field?.value ?? props.name, true)}
         />
       </ui-input>
       <Show when={props.problem}>
