@@ -1,3 +1,4 @@
+import "@ui-sdk/web/textarea"
 import { createResource, createSignal, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { cmd } from "../../lib/api.ts"
 import { setToken, token } from "../../lib/auth.ts"
@@ -6,10 +7,10 @@ import { holdConnection, reauthorize, releaseConnection } from "../../state/conn
 import { errorMessage } from "../../state/extensions.ts"
 import { owner, ownerName, rotateSession } from "../../state/settings.ts"
 import { Markdown } from "../chat/markdown.tsx"
-import { Button, Failure, Note, Panel } from "../extensions/chrome.tsx"
+import { Button, Failure, Note } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { MorphIcon } from "../ui/morph-icon.tsx"
-import { Group, Row } from "./parts.tsx"
+import { Card, Group, Row } from "./parts.tsx"
 
 /** A socket's only identity is the origin its browser sent; the scheme is noise in a row. */
 /** `own_••••••••Q7x2`: enough of both ends to recognise a token, nothing to reuse. */
@@ -164,16 +165,16 @@ export function Profile(): JSX.Element {
   }
 
   return (
-    <div class="flex max-w-[820px] flex-col gap-6">
-      <div class="flex items-center gap-3.5">
-        <span class="grid h-11 w-11 place-items-center rounded-full bg-line-2 text-lg text-ink-2">
+    <>
+      <div class="flex items-center gap-3 rounded-lg px-4 py-3 shadow-ring">
+        <span class="grid h-10 w-10 place-items-center rounded-full bg-secondary text-title-mini text-ink-2">
           <Show when={initial()} fallback={<Glyph name="user" size={18} class="text-ink-3" />}>
             {(letter) => <span>{letter()}</span>}
           </Show>
         </span>
         <div class="min-w-0">
-          <span class="block text-[15px] text-ink">{ownerName()}</span>
-          <span class="block text-sm text-ink-3">Owner · local home</span>
+          <span class="block text-small font-title text-ink">{ownerName()}</span>
+          <span class="block text-mini text-ink-3">Owner · local home</span>
         </div>
         <div class="ml-auto">
           <Button size="sm" variant="quiet" onClick={() => navigate("/settings/general")}>
@@ -198,19 +199,19 @@ export function Profile(): JSX.Element {
               <Show
                 when={written() !== ""}
                 fallback={
-                  <Panel>
-                    <p class="px-3.5 py-3 text-sm text-ink-3">
+                  <Card>
+                    <p class="px-4 py-3 text-small text-ink-3">
                       Nothing yet. The dreamer writes durable facts about you here once a conversation has given it
                       something to keep.
                     </p>
-                  </Panel>
+                  </Card>
                 }
               >
-                <Panel>
-                  <div class="px-3.5 py-3">
+                <Card>
+                  <div class="px-4 py-3">
                     <Markdown small text={written()} />
                   </div>
-                </Panel>
+                </Card>
               </Show>
               <div class="flex flex-wrap items-center gap-2 pt-1">
                 <Button size="sm" variant="quiet" onClick={startEditing}>
@@ -218,7 +219,7 @@ export function Profile(): JSX.Element {
                   Edit
                 </Button>
                 <Show when={note()}>
-                  {(message) => <span class="text-xs text-ink-3">{message()}</span>}
+                  {(message) => <span class="text-mini text-ink-3">{message()}</span>}
                 </Show>
               </div>
               <Note>
@@ -228,17 +229,19 @@ export function Profile(): JSX.Element {
             </>
           }
         >
-          <Panel>
-            <textarea
-              value={draft()}
-              onInput={(event) => setDraft(event.currentTarget.value)}
-              maxLength={20_000}
-              rows={10}
-              spellcheck={false}
-              aria-label="Profile markdown"
-              class="w-full resize-y bg-transparent px-3.5 py-3 font-mono text-sm leading-relaxed text-ink outline-none"
-            />
-          </Panel>
+          <Card>
+            <ui-textarea class="flex">
+              <textarea
+                value={draft()}
+                onInput={(event) => setDraft(event.currentTarget.value)}
+                maxLength={20_000}
+                rows={10}
+                spellcheck={false}
+                aria-label="Profile markdown"
+                class="w-full resize-y bg-transparent px-4 py-3 font-mono text-small text-ink outline-none"
+              />
+            </ui-textarea>
+          </Card>
           <div class="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="primary" disabled={savingProfile()} onClick={() => void saveProfile()}>
               {savingProfile() ? "Saving" : "Save profile"}
@@ -247,21 +250,22 @@ export function Profile(): JSX.Element {
             <Button size="sm" variant="quiet" disabled={savingProfile() || written() === ""} onClick={() => void clearProfile()}>
               Clear
             </Button>
-            <span class="ml-auto text-xs text-ink-3">{draft().length} of 20,000</span>
+            <span class="ml-auto text-mini text-ink-3">{draft().length} of 20,000</span>
           </div>
         </Show>
       </Group>
 
       <Group title="Owner token">
+        <Card>
         <Row title="Owner token" detail="Signs you in on a new device; anyone with it has full access">
-          <div class="flex flex-col gap-2.5">
-            <div class="flex h-9 items-center gap-2.5 rounded-sm border border-line-1 bg-bg px-3">
+          <div class="flex w-[min(100%,360px)] flex-col gap-2.5">
+            <div class="flex h-[var(--h-control)] items-center gap-2.5 rounded-sm bg-bg px-3 shadow-ring">
               <Glyph name="key" size={14} class="text-ink-3" />
               <Show
                 when={signedIn()}
-                fallback={<span class="font-mono text-sm text-ink-3">No token in this browser</span>}
+                fallback={<span class="font-mono text-small text-ink-3">No token in this browser</span>}
               >
-                <span class="min-w-0 truncate font-mono text-sm tracking-[0.08em] text-ink">
+                <span class="min-w-0 truncate font-mono text-small tracking-[0.08em] text-ink">
                   {revealed() ? current() : masked(current())}
                 </span>
                 <button
@@ -284,11 +288,11 @@ export function Profile(): JSX.Element {
             </div>
             <Show when={fresh()}>
               {(next) => (
-                <div class="flex flex-col gap-2 rounded-sm border border-line-1 bg-bg p-2.5">
-                  <span class="text-xs text-ink-3">
+                <div class="flex flex-col gap-2 rounded-sm bg-bg p-2.5 shadow-ring">
+                  <span class="text-mini text-ink-3">
                     The new token, shown once. Copy it for any device you want to keep.
                   </span>
-                  <span class="truncate font-mono text-sm text-ink">{next()}</span>
+                  <span class="truncate font-mono text-small text-ink">{next()}</span>
                   <div class="flex flex-wrap items-center gap-2">
                     <Button size="sm" onClick={() => void copy(next())}>
                       <Glyph name="copy" size={13} />
@@ -315,9 +319,9 @@ export function Profile(): JSX.Element {
             </Show>
             <Show when={qr()}>
               {(svg) => (
-                <div class="flex items-start gap-3 rounded-sm border border-line-1 bg-bg p-3">
+                <div class="flex items-start gap-3 rounded-sm bg-bg p-3 shadow-ring">
                   <div class="shrink-0 rounded-sm bg-white p-1" innerHTML={svg()} />
-                  <p class="text-xs leading-snug text-ink-3">
+                  <p class="text-mini text-ink-3">
                     Scan from a phone. The code carries this token, so that phone is signed in with it and nothing else
                     changes.
                   </p>
@@ -338,25 +342,27 @@ export function Profile(): JSX.Element {
                   </Button>
                 }
               >
-                <span class="text-sm text-ink-2">Every other device has to sign in with the new token.</span>
+                <span class="text-small text-ink-2">Every other device has to sign in with the new token.</span>
                 <Button size="sm" variant="quiet" onClick={() => setRotating(false)}>Keep</Button>
                 <Button size="sm" variant="primary" disabled={busy()} onClick={() => void rotate(false)}>
                   {busy() ? "Rotating" : "Rotate"}
                 </Button>
               </Show>
               <Show when={note()}>
-                {(message) => <span class="text-xs text-ink-3">{message()}</span>}
+                {(message) => <span class="text-mini text-ink-3">{message()}</span>}
               </Show>
             </div>
+          </div>
+        </Row>
+        </Card>
             <Note>
               There are no passwords. Rotating replaces the token for this home, closes every live socket, and leaves the
               old token dead. The token in this browser is swapped for you.
             </Note>
-          </div>
-        </Row>
       </Group>
 
       <Group title="Danger">
+        <Card>
         <Row title="Sign out everywhere" detail="Rotates the token: every device, including this one, has to sign in again">
           <div class="flex flex-wrap items-center gap-2">
             <Show
@@ -368,7 +374,7 @@ export function Profile(): JSX.Element {
                 </Button>
               }
             >
-              <span class="text-sm text-ink-2">
+              <span class="text-small text-ink-2">
                 The new token is shown once, so you can keep a device or leave.
               </span>
               <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
@@ -378,11 +384,12 @@ export function Profile(): JSX.Element {
             </Show>
           </div>
         </Row>
+        </Card>
         <Note>
           Rotating is the revocation path: the token is the whole identity, so replacing it signs out every other device at
           once.
         </Note>
       </Group>
-    </div>
+    </>
   )
 }

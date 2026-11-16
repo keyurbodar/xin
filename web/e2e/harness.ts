@@ -25,7 +25,10 @@ export async function startHarness(): Promise<Harness> {
   await server.listen()
   const address = server.httpServer?.address()
   if (address === null || address === undefined || typeof address === "string") throw new Error("vite did not bind a port")
-  const browser: Browser = await chromium.launch()
+  const browser: Browser = await chromium.launch().catch(async (problem: unknown) => {
+    await server.close()
+    throw problem
+  })
   return {
     open: async (fixture, options = {}) => {
       const width = options.width ?? 1280
@@ -36,9 +39,14 @@ export async function startHarness(): Promise<Harness> {
       page.on("console", (message) => {
         if (message.type() === "error" && options.expected?.test(message.text()) !== true) errors.push(message.text())
       })
-      await page.goto(`http://127.0.0.1:${address.port}/e2e/fixtures/${fixture}.html${options.search ?? ""}`)
-      await page.waitForFunction(() => document.body.dataset.ready === "1", undefined, { timeout: 60_000 })
-      if (errors.length > 0) throw new Error(errors.join("\n"))
+      try {
+        await page.goto(`http://127.0.0.1:${address.port}/e2e/fixtures/${fixture}.html${options.search ?? ""}`)
+        await page.waitForFunction(() => document.body.dataset.ready === "1", undefined, { timeout: 60_000 })
+        if (errors.length > 0) throw new Error(errors.join("\n"))
+      } catch (problem) {
+        await page.close()
+        throw problem
+      }
       return page
     },
     close: async () => {
