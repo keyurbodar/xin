@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { ConversationId } from "@earendil-works/pi-durable"
+import { type ConversationId, UsageDoc } from "@earendil-works/pi-durable"
 import type { CommandId } from "../../src/ids.ts"
 import type { Actor } from "../../src/ops.ts"
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
@@ -267,6 +267,98 @@ describe("automations", () => {
     ).toBeUndefined()
   }, 30_000)
 
+  it("books an automation's thread as automation and fails a run at an automation cap of 0", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "capped")
+    const created = await op<AutomationView>(stub, "c1", "automation.create", {
+      title: "Digest",
+      prompt: "Write the digest",
+      project: project.id,
+      target: { kind: "fresh" },
+      triggers: [],
+    })
+    const first = await op<RunView>(stub, "c2", "automation.trigger", { id: created.id })
+    expect(first).toMatchObject({ status: "running" })
+    await op(stub, "c3", "usage.feature.cap.set", { feature: "automation", day: 0 })
+    expect(
+      await runInDurableObject(stub, (home: Home) =>
+        home.loader.ctx.models.admitConversation(first.threadId as ConversationId),
+      ),
+    ).toMatchObject({ kind: "capped", feature: "automation" })
+    const second = await op<RunView>(stub, "c4", "automation.trigger", { id: created.id })
+    expect(second).toMatchObject({ status: "failed", threadId: null })
+    expect(second.error).toContain("automation cap")
+  }, 30_000)
+
+  it("books an old fresh-run thread's spend as automation after an eviction", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "aged")
+    const created = await op<AutomationView>(stub, "aged-1", "automation.create", {
+      title: "Digest",
+      prompt: "Write the digest",
+      project: project.id,
+      target: { kind: "fresh" },
+      triggers: [],
+    })
+    const run = await op<RunView>(stub, "aged-2", "automation.trigger", { id: created.id })
+    await eventually(
+      stub,
+      async (home: Home) => (await home.loader.ctx.automations.store.run(run.id))?.status === "completed",
+    )
+    await op(stub, "aged-seed", "usage.features", {})
+    await runInDurableObject(stub, async (home: Home) => {
+      for (let index = 0; index < 120; index++)
+        await home.db.run(
+          "INSERT INTO automation_runs (id, automation_id, source, status, inputs, created_at) VALUES (?, ?, 'manual', 'completed', 0, ?)",
+          `aged-${index}`,
+          created.id,
+          Date.now() + index,
+        )
+    })
+    await evictDurableObject(stub)
+    await runInDurableObject(stub, (home: Home) =>
+      home.harness.commit(async (tx) => {
+        const models = (await tx.doc(UsageDoc, run.threadId as ConversationId)).models
+        models["faux/aged"] = {
+          input: 50,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 50,
+          cost: { input: 0.5, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.5 },
+        }
+      }, context),
+    )
+    const found = await op<{ byModel: { feature: string; modelId: string; tokens: number }[] }>(
+      stub,
+      "aged-read",
+      "usage.features",
+      {},
+    )
+    expect(found.byModel.find((row) => row.modelId === "aged")).toMatchObject({ feature: "automation", tokens: 50 })
+  }, 30_000)
+
+  it("fails a same-target run into a chat whose chat cap is reached", async () => {
+    const stub = fresh()
+    const root = await runInDurableObject(stub, async (home: Home) => (await home.root()).id)
+    const created = await op<AutomationView>(stub, "chat-cap-1", "automation.create", {
+      title: "Daily note",
+      prompt: "Write the daily note",
+      target: { kind: "same", threadId: root },
+      triggers: [],
+    })
+    await op(stub, "chat-cap-2", "usage.feature.cap.set", { feature: "chat", day: 0 })
+    const run = await op<RunView>(stub, "chat-cap-3", "automation.trigger", { id: created.id })
+    expect(run).toMatchObject({ status: "failed" })
+    expect(run.error).toContain("chat cap")
+    expect(
+      await runInDurableObject(
+        stub,
+        async (home: Home) => (await home.intake()).filter((item) => item.kind === "job").length,
+      ),
+    ).toBe(0)
+  }, 30_000)
+
   it("shows a run's thread its automation's Drive instructions, also after the object restarts", async () => {
     const stub = fresh()
     const project = await makeProject(stub, "drive")
@@ -383,5 +475,108 @@ describe("automations", () => {
     expect(current.runs[0]?.inputs).toBe(2)
     expect(current.runs[0]?.input?.length ?? Infinity).toBeLessThanOrEqual(32 * 1024 + 200)
     expect(current.batches.map((batch) => batch.count)).toEqual([1])
+  }, 30_000)
+
+  it("never repeats the home revision across an eviction, so a client that saw it still reloads", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "revision")
+    const revision = () => runInDurableObject(stub, (home: Home) => home.loader.ctx.automations.revision)
+    const seen: number[] = [await revision()]
+    const created = await op<AutomationView>(stub, "r1", "automation.create", {
+      title: "Rev",
+      prompt: "Count",
+      project: project.id,
+      triggers: [],
+    })
+    seen.push(await revision())
+    await op<AutomationView>(stub, "r2", "automation.update", { id: created.id, enabled: false })
+    seen.push(await revision())
+
+    await evictDurableObject(stub)
+    seen.push(await revision())
+    await op<AutomationView>(stub, "r3", "automation.update", { id: created.id, enabled: true })
+    seen.push(await revision())
+    await op<{ deleted: boolean }>(stub, "r4", "automation.delete", { id: created.id })
+    seen.push(await revision())
+
+    for (let index = 1; index < seen.length; index += 1)
+      expect(seen[index]).toBeGreaterThan(seen[index - 1] ?? Infinity)
+  }, 30_000)
+
+  it("names in the home snapshot the revision of each automation's own latest change", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "touched")
+    const home = () => runInDurableObject(stub, (owner: Home) => owner.loader.ctx.wire.snapshot())
+    const make = (id: string, title: string) =>
+      op<AutomationView>(stub, id, "automation.create", { title, prompt: "Count", project: project.id, triggers: [] })
+    const first = await make("t1", "First")
+    const afterFirst = await home()
+    const second = await make("t2", "Second")
+    const afterSecond = await home()
+    await op<AutomationView>(stub, "t3", "automation.update", { id: second.id, enabled: false })
+    const afterUpdate = await home()
+
+    expect(afterFirst).toMatchObject({ automations: { touched: { [first.id]: expect.any(Number) } } })
+    const touched = (snapshot: typeof afterFirst, id: string) =>
+      (snapshot as { automations: { touched: Record<string, number> } }).automations.touched[id]
+    expect(touched(afterSecond, first.id)).toBe(touched(afterFirst, first.id))
+    expect(touched(afterUpdate, first.id)).toBe(touched(afterFirst, first.id))
+    expect(touched(afterUpdate, second.id)).toBeGreaterThan(touched(afterSecond, second.id) ?? Infinity)
+    expect(afterUpdate).toMatchObject({ automations: { revision: touched(afterUpdate, second.id) } })
+  }, 30_000)
+
+  it("takes back the rules it hands out, nulls included, so a batching webhook can be edited and rotated", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "nullrules")
+    const created = await webhookAutomation(stub, "n1", project.id, [
+      { groupBy: ["repo"], count: 5, quietSeconds: 600 },
+    ])
+    const before = await detail(stub, created.id)
+    const trigger = before.triggers[0]
+    if (trigger?.kind !== "webhook") throw new Error("no webhook trigger")
+    expect(trigger.rules).toEqual([{ when: {}, groupBy: ["repo"], count: 5, maxWaitSeconds: null, quietSeconds: 600 }])
+
+    const edited = await op<AutomationView>(stub, "n2", "automation.update", {
+      id: created.id,
+      triggers: [{ kind: "webhook", id: trigger.id, contains: ["push"], rules: trigger.rules }],
+    })
+    expect(pathOf(edited)).toBe(trigger.path)
+    const rotated = await op<AutomationView>(stub, "n3", "automation.update", {
+      id: created.id,
+      triggers: [{ kind: "webhook", rules: trigger.rules }],
+    })
+    expect(pathOf(rotated)).not.toBe(trigger.path)
+    expect(rotated.triggers[0]).toMatchObject({ rules: trigger.rules })
+  }, 30_000)
+
+  it("runs the open batches of a rotated webhook instead of dropping them, and only once", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "rotate")
+    const created = await webhookAutomation(stub, "o1", project.id, [{ quietSeconds: 600 }])
+    const oldPath = pathOf(created)
+    const accepted = await hook(stub, oldPath, { event: "push" }, { "idempotency-key": "d1" })
+    expect(accepted.status).toBe(202)
+    expect(await accepted.json()).toEqual({ status: "batched", count: 1 })
+    const [open] = await runInDurableObject(stub, (home: Home) => home.loader.ctx.automations.store.batches(created.id))
+    if (open === undefined) throw new Error("no open batch")
+
+    const rotated = await op<AutomationView>(stub, "o2", "automation.update", {
+      id: created.id,
+      triggers: [{ kind: "webhook", rules: [{ quietSeconds: 600 }] }],
+    })
+    let current = await detail(stub, created.id)
+    expect(current.batches).toEqual([])
+    expect(current.runs).toHaveLength(1)
+    expect(current.runs[0]).toMatchObject({ source: "webhook", inputs: 1, triggerId: open.trigger_id })
+    expect((await hook(stub, oldPath, { event: "push" })).status).toBe(404)
+
+    await runInDurableObject(stub, (home: Home) => home.loader.ctx.automations.store.putBatch(open))
+    await op<AutomationView>(stub, "o3", "automation.update", {
+      id: created.id,
+      triggers: rotated.triggers.map(() => ({ kind: "webhook" })),
+    })
+    current = await detail(stub, created.id)
+    expect(current.runs).toHaveLength(1)
+    expect(current.batches).toEqual([])
   }, 30_000)
 })

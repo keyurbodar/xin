@@ -1,4 +1,4 @@
-import { arr, bool, int, lit, map, obj, opt, str, union } from "@earendil-works/pi-schema"
+import { arr, bool, int, lit, map, nullable, obj, opt, str, union } from "@earendil-works/pi-schema"
 import { defineOp, type Op, type OpApi, OpRejected } from "../../src/ops.ts"
 import {
   AutomationError,
@@ -18,9 +18,9 @@ const MAX_RUNS = 50
 const RuleSchema = obj({
   when: opt(map(str({ maxLength: 512 }))),
   groupBy: opt(arr(str({ minLength: 1, maxLength: 128 }), { maxItems: 8 })),
-  count: opt(int({ minimum: 1, maximum: 50 })),
-  maxWaitSeconds: opt(int({ minimum: 1, maximum: 7 * 24 * 3600 })),
-  quietSeconds: opt(int({ minimum: 1, maximum: 7 * 24 * 3600 })),
+  count: opt(nullable(int({ minimum: 1, maximum: 50 }))),
+  maxWaitSeconds: opt(nullable(int({ minimum: 1, maximum: 7 * 24 * 3600 }))),
+  quietSeconds: opt(nullable(int({ minimum: 1, maximum: 7 * 24 * 3600 }))),
 })
 
 const TriggerSchema = union([
@@ -124,6 +124,7 @@ export function automationOps(engine: Engine): readonly Op[] {
     }),
     defineOp({
       name: "automation.list",
+      read: true,
       args: obj({}),
       actors: ACTORS,
       run: (api) =>
@@ -131,6 +132,7 @@ export function automationOps(engine: Engine): readonly Op[] {
     }),
     defineOp({
       name: "automation.get",
+      read: true,
       args: GetArgs,
       actors: ACTORS,
       run: (api, args) => guarded(async () => shown(api, await engine.get(args.id, args.runs ?? 20, callerOf(api)))),
@@ -158,6 +160,7 @@ export function automationOps(engine: Engine): readonly Op[] {
     }),
     defineOp({
       name: "automation.runs",
+      read: true,
       args: RunsArgs,
       actors: ACTORS,
       run: async (api, args) => ({

@@ -4,6 +4,7 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import type { Context } from "../../src/kernel/index.ts"
 import type { IntakeBatch, IntakeBatchResult } from "../../src/contracts/intake.ts"
 import { MessageSendArgsSchema } from "../../src/contracts/message.ts"
+import { capReason } from "../../src/contracts/models.ts"
 import { defineOp, OpRejected } from "../../src/ops.ts"
 import { type BatchLedger, createGateway, enqueue, type IntakeHost, resolve, stop } from "./gateway.ts"
 import { historyOp } from "./history.ts"
@@ -49,6 +50,12 @@ export async function apply(ctx: Context): Promise<void> {
             `the monthly cap of ${spend.cap.toFixed(2)} USD is reached; raise it in Usage first`,
           )
         const target = await resolve(host, args.conv)
+        const conversation = await ctx.harness.conversation(target, BACKGROUND_CONTEXT)
+        const model = conversation === undefined ? undefined : (await conversation.agent(BACKGROUND_CONTEXT)).model
+        if (model !== undefined && (await ctx.models.disabled(model)))
+          throw new OpRejected("bad_args", "this conversation runs a disabled model; pick another first")
+        const admission = await ctx.models.admitConversation(target)
+        if (admission.kind === "capped") throw new OpRejected("forbidden", capReason(admission))
         const inserted = await enqueue(
           host,
           {

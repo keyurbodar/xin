@@ -27,6 +27,7 @@ type Choice = ViewChoice | ThreadChoice
 export function ProjectPane(props: {
   project: ProjectSummary
   captain?: CaptainProfile | undefined
+  conversationId: number
   expanded: boolean
   onExpand: (expanded: boolean) => void
   onOpenThread: (id: number) => void
@@ -38,6 +39,9 @@ export function ProjectPane(props: {
     },
     get captain() {
       return props.captain
+    },
+    get conversationId() {
+      return props.conversationId
     },
     onOpenThread: (id) => props.onOpenThread(id),
   }

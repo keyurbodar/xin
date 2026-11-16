@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest"
 import { appendNote, CURSOR_KEY, PROFILE_KEY, readKv, readNumber, RETRY_KEY, TRANSCRIPT_CURSOR_KEY } from "./dreamer.ts"
 import { PROFILE_LIMIT, validateDreamerOutput } from "./dreamprompt.ts"
 import type { CommandId } from "../../src/ids.ts"
-import { eventually, fresh } from "../../test/support.ts"
+import { eventually, fresh, OWNER_HEADERS } from "../../test/support.ts"
 import { DREAM_MODEL, dreamJson, requests, script } from "../../test/plugins/m7.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 
@@ -222,5 +222,63 @@ describe("Dreamer output", () => {
     expect(requestText(0)).toContain(CHAT)
     expect(await runInDurableObject(stub, (home: Home) => readNumber(home.db, TRANSCRIPT_CURSOR_KEY))).toBeUndefined()
     expect(await runInDurableObject(stub, (home: Home) => readKv(home.db, PROFILE_KEY))).toBeUndefined()
+  })
+
+  it("moves the home revision on after a pass that rewrites the profile and adds a note", async () => {
+    const stub = fresh()
+    const bump = async (): Promise<string> => {
+      const reply = await stub.fetch(
+        new Request("https://ingle.test/v1/cmd", {
+          method: "POST",
+          headers: { ...OWNER_HEADERS, "content-type": "application/json" },
+          body: JSON.stringify({ id: `bump-${crypto.randomUUID()}`, op: "test.bump", args: { by: 1 } }),
+        }),
+      )
+      return String(reply.headers.get("x-ingle-rev"))
+    }
+    await runInDurableObject(stub, seed)
+    const [epoch, before] = (await bump()).split(".")
+    script([
+      dreamJson({ profile_md: "Takes the train.", add: [{ scope: "me", text: "Commutes by train" }], retire: [] }),
+    ])
+    await runInDurableObject(stub, (home: Home) => run(home, "announce-forget", "memory.forget", { query: "dinosaur" }))
+    await eventually(stub, async (home: Home) => (await readKv(home.db, PROFILE_KEY)) !== undefined)
+    expect(await bump()).toBe(`${epoch}.${Number(before) + 2}`)
+  })
+})
+
+describe("Dreamer usage", () => {
+  it("books a real pass under dreamer on the pass model, and runs no pass at a dreamer cap of 0", async () => {
+    const stub = fresh()
+    await runInDurableObject(stub, (home: Home) => seed(home))
+    await runInDurableObject(stub, (home: Home) => run(home, "d7-usage-seed", "usage.features", {}))
+    script([dreamJson({ profile_md: "The owner takes the train to work.", add: [], retire: [] })])
+    await runInDurableObject(stub, (home: Home) => run(home, "d7-usage", "memory.forget", { query: "dinosaur" }))
+    await eventually(stub, async (home: Home) => (await readKv(home.db, PROFILE_KEY)) !== undefined)
+    const read = await runInDurableObject(stub, (home: Home) => run(home, "d7-usage-read", "usage.features", {}))
+    if (read.kind !== "ok") throw new Error(JSON.stringify(read))
+    const found = read.result as {
+      features: { feature: string; today: { tokens: number } }[]
+      byModel: { feature: string; provider: string; modelId: string; tokens: number }[]
+    }
+    expect(requests).toHaveLength(1)
+    expect(found.features.find((entry) => entry.feature === "dreamer")?.today.tokens).toBeGreaterThan(0)
+    expect(found.byModel).toContainEqual(
+      expect.objectContaining({ feature: "dreamer", provider: DREAM_MODEL.provider, modelId: DREAM_MODEL.modelId }),
+    )
+    expect(found.byModel.filter((row) => row.feature !== "dreamer" && row.provider === DREAM_MODEL.provider)).toEqual(
+      [],
+    )
+
+    await runInDurableObject(stub, (home: Home) =>
+      run(home, "d7-usage-cap", "usage.feature.cap.set", { feature: "dreamer", day: 0 }),
+    )
+    script([dreamJson({ profile_md: "Capped.", add: [], retire: [] })])
+    await runInDurableObject(stub, (home: Home) => run(home, "d7-usage-2", "memory.forget", { query: "dinosaur" }))
+    await runInDurableObject(stub, (home: Home) => home.harness.waitForIdle(context))
+    expect(requests).toHaveLength(0)
+    expect(await runInDurableObject(stub, (home: Home) => readKv(home.db, PROFILE_KEY))).toBe(
+      "The owner takes the train to work.",
+    )
   })
 })

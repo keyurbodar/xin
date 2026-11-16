@@ -20,6 +20,7 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy"
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy"
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy"
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models"
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
 import { estimateMessageTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate"
 import {
@@ -27,18 +28,25 @@ import {
   ROOT_CONVERSATION_ID,
   UsageDoc,
   type AgentChange,
+  configure as configureAgent,
   type ConversationId,
   type Harness,
+  type JsonObject,
   type ModelRef,
   type UsageState,
 } from "@earendil-works/pi-durable"
 import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
+import { conversationCost, createBudget, untag } from "./budget.ts"
+import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
+  FeatureSchema,
   ModelRefSchema,
+  resolveModel,
   ThinkingSchema,
   type ModelDefaults,
   type ModelMatch,
   type ModelsService,
+  type Role,
 } from "../../src/contracts/models.ts"
 import type { Notification } from "../../src/contracts/push.ts"
 import { spaceInScope, ThreadDoc } from "../../src/contracts/threaddoc.ts"
@@ -49,6 +57,7 @@ import { defineOp, type Actor, type Command, type Op, OpRejected, type Outcome }
 import { Sealer, SealedSchema } from "../../src/seal.ts"
 
 const MAX_LISTED = 40
+const MAX_CATALOG = 200
 const MAX_RECENT = 8
 
 type UsageBucket = {
@@ -353,6 +362,7 @@ type Settings = {
   readonly defaults: ModelDefaults
   readonly favorites: readonly ModelRef[]
   readonly recent: readonly ModelRef[]
+  readonly disabled: readonly ModelRef[]
 }
 
 const label = (providerId: string): string => `credentials:${providerId}`
@@ -457,16 +467,20 @@ type Registry = {
 export type ModelsPort = {
   readonly db: SqliteDatabase
   readonly harness: Harness
+  readonly conversations: () => Promise<readonly ConversationId[]>
   readonly kek: string
   readonly providers: readonly Provider[]
   run(command: Command, actor: Actor): Promise<Outcome>
   notify?: (notification: Notification) => Promise<void>
   alertsOn?: () => Promise<boolean>
+  goals?: () => GoalsService | undefined
+  publishHome?: () => Promise<void>
 }
 
 export type ModelsParts = {
   readonly service: ModelsService
   readonly ops: readonly Op[]
+  home(): JsonObject
   models(): Models
   flush(): Promise<UsageState>
   flushDue(): Promise<void>
@@ -593,7 +607,8 @@ async function readSettings(db: SqliteDatabase): Promise<Settings> {
   const defaults = (await readKv(db, "owner.defaults", defaultsCheck.check)) ?? {}
   const favorites = (await readKv(db, "owner.favorites", refsCheck.check)) ?? []
   const recent = (await readKv(db, "owner.recent", refsCheck.check)) ?? []
-  return { defaults, favorites, recent }
+  const disabled = (await readKv(db, "owner.disabled", refsCheck.check)) ?? []
+  return { defaults, favorites, recent, disabled }
 }
 
 async function ownerDefaults(db: SqliteDatabase): Promise<ModelDefaults> {
@@ -617,10 +632,21 @@ async function credentialSecrets(db: SqliteDatabase, store: SealedCredentialStor
   return found
 }
 
-async function remember(db: SqliteDatabase, model: ModelRef): Promise<void> {
-  const settings = await readSettings(db)
-  const recent = [model, ...settings.recent.filter((entry) => !same(entry, model))].slice(0, MAX_RECENT)
-  await writeKv(db, "owner.recent", recent)
+const settingsChains = new WeakMap<SqliteDatabase, Promise<unknown>>()
+
+/** One owner-settings read-modify-write at a time per home, so two toggles in flight never overwrite each other. */
+function updateSettings<T>(db: SqliteDatabase, change: (settings: Settings) => Promise<T>): Promise<T> {
+  const previous = settingsChains.get(db) ?? Promise.resolve()
+  const run = previous.catch(() => undefined).then(async () => change(await readSettings(db)))
+  settingsChains.set(db, run)
+  return run
+}
+
+function remember(db: SqliteDatabase, model: ModelRef): Promise<void> {
+  return updateSettings(db, async (settings) => {
+    const recent = [model, ...settings.recent.filter((entry) => !same(entry, model))].slice(0, MAX_RECENT)
+    await writeKv(db, "owner.recent", recent)
+  })
 }
 
 async function available(registry: Registry): Promise<readonly Model<Api>[]> {
@@ -677,6 +703,8 @@ function search(catalog: readonly Model<Api>[], query: string): ModelMatch[] {
     )
 }
 
+const isDisabled = (settings: Settings, ref: ModelRef): boolean => settings.disabled.some((entry) => same(entry, ref))
+
 function describe(model: Model<Api>, keyed: boolean): JsonValue {
   return {
     provider: model.provider,
@@ -685,10 +713,89 @@ function describe(model: Model<Api>, keyed: boolean): JsonValue {
     contextWindow: model.contextWindow,
     vision: model.input.includes("image"),
     reasoning: model.reasoning,
+    thinking: getSupportedThinkingLevels(model),
     cost: { input: model.cost.input, output: model.cost.output },
     keyed,
   }
 }
+
+function catalogEntry(model: Model<Api>, keyed: boolean, settings: Settings): JsonValue {
+  const ref = refOf(model)
+  return {
+    provider: model.provider,
+    modelId: model.id,
+    name: model.name,
+    contextWindow: model.contextWindow,
+    maxTokens: model.maxTokens,
+    vision: model.input.includes("image"),
+    reasoning: model.reasoning,
+    thinking: getSupportedThinkingLevels(model),
+    cost: {
+      input: model.cost.input,
+      output: model.cost.output,
+      cacheRead: model.cost.cacheRead,
+      cacheWrite: model.cost.cacheWrite,
+    },
+    keyed,
+    enabled: !isDisabled(settings, ref),
+    favorite: settings.favorites.some((entry) => same(entry, ref)),
+  }
+}
+
+function defaultRole(defaults: ModelDefaults, ref: ModelRef): Role | undefined {
+  return (["chat", "thread", "utility"] as const).find((role) => {
+    const chosen = defaults[role]
+    return chosen !== undefined && same(chosen, ref)
+  })
+}
+
+/**
+ * Every conversation on a model the owner just disabled moves to the default its role resolves to, from its next
+ * request on; one with no default left has its model cleared, so its next turn asks for one. One commit per moved
+ * conversation, none for the rest.
+ */
+/** Every conversation on the home that runs `ref`, moved to the default its role resolves to (project, then owner). */
+async function moveOff(
+  harness: Harness,
+  conversations: readonly ConversationId[],
+  models: Models,
+  ref: ModelRef,
+  owner: ModelDefaults,
+): Promise<number[]> {
+  const workspace = await harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
+  const parsed = workspace !== undefined && parseWorkspace.check(workspace) ? workspace : undefined
+  const projectModels = (projectId: string | undefined): ModelDefaults | undefined =>
+    projectId === undefined ? undefined : parsed?.projects[projectId]?.settings.models
+  const coordinators = new Map(
+    Object.values(parsed?.spaces ?? {}).map((space) => [String(space.coordinatorId), space.projectId] as const),
+  )
+  const moved: number[] = []
+  for (const id of conversations) {
+    const conversation = await harness.conversation(id, BACKGROUND_CONTEXT)
+    const agent = conversation === undefined ? undefined : await conversation.agent(BACKGROUND_CONTEXT)
+    if (conversation === undefined || agent?.model === undefined || !same(agent.model, ref)) continue
+    const thread = await harness.snapshot(ThreadDoc, id, BACKGROUND_CONTEXT)
+    const project = projectModels(thread?.projectId ?? coordinators.get(String(id)))
+    const resolved = resolveModel({
+      role: thread?.role ?? "chat",
+      ...(project === undefined ? {} : { project }),
+      owner,
+    })
+    const next = resolved.kind === "model" ? resolved.model : null
+    const found = next === null ? undefined : models.getModel(next.provider, next.modelId)
+    await conversation.configure(
+      { model: next, ...(found?.reasoning === true ? {} : { thinkingLevel: null }) },
+      BACKGROUND_CONTEXT,
+    )
+    moved.push(id)
+  }
+  return moved
+}
+
+const toggled = (refs: readonly ModelRef[], model: ModelRef, on: boolean): ModelRef[] => [
+  ...refs.filter((entry) => !same(entry, model)),
+  ...(on ? [model] : []),
+]
 
 function ranked(
   catalog: readonly Model<Api>[],
@@ -718,10 +825,17 @@ const commandId = (value: string): CommandId => value as CommandId
 export function create(deps: ModelsPort): ModelsParts {
   const { db, harness, run } = deps
   const recordUsage = usageRecorder(db, harness)
+  const budget = createBudget({
+    db,
+    harness,
+    conversations: deps.conversations,
+    goals: deps.goals ?? (() => undefined),
+  })
   let flushedAt = 0
   const flush = async (): Promise<UsageState> => {
     flushedAt = Date.now()
     const ledger = await recordUsage()
+    if (await budget.record()) await deps.publishHome?.()
     await alertSpend(db, deps.notify, deps.alertsOn ?? (async () => true))
     return ledger
   }
@@ -733,6 +847,9 @@ export function create(deps: ModelsPort): ModelsParts {
   }
   const registry = createRegistry(deps)
   const store = registry.store
+  let disabledRefs: readonly ModelRef[] = []
+  /** The owner's disabled models, read once at start and updated by `models.enable`, so a check reads no row. */
+  const isOff = (ref: ModelRef): boolean => disabledRefs.some((entry) => same(entry, ref))
 
   const configure = defineOp({
     name: "conv.configure",
@@ -759,9 +876,18 @@ export function create(deps: ModelsPort): ModelsParts {
       if (args.thinking !== undefined) {
         const target = args.model ?? (await conversation.agent(BACKGROUND_CONTEXT)).model
         const found = target === undefined ? undefined : registry.models.getModel(target.provider, target.modelId)
-        if (found?.reasoning === true) change.thinkingLevel = args.thinking
+        if (found?.reasoning === true) {
+          if (!getSupportedThinkingLevels(found).includes(args.thinking))
+            throw new OpRejected("bad_args", `${found.provider}/${found.id} does not support thinking ${args.thinking}`)
+          change.thinkingLevel = args.thinking
+        }
       }
-      await conversation.configure(change satisfies AgentChange, BACKGROUND_CONTEXT)
+      await api.harness.commit(async (tx) => {
+        const chosen = change.model
+        if (chosen !== undefined && chosen !== null && isOff(chosen))
+          throw new OpRejected("bad_args", `model ${chosen.provider}/${chosen.modelId} is disabled`)
+        await configureAgent(tx, conversation.id, change satisfies AgentChange)
+      }, BACKGROUND_CONTEXT)
       if (change.model !== undefined && change.model !== null) await remember(db, change.model)
       const agent = await conversation.agent(BACKGROUND_CONTEXT)
       return {
@@ -775,6 +901,7 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const contextOp = defineOp({
     name: "conv.context",
+    read: true,
     args: obj({ conv: opt(int({ minimum: 0 })) }),
     actors: ["owner", "agent"],
     run: async (api, args) => {
@@ -832,15 +959,17 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const list = defineOp({
     name: "models.list",
+    read: true,
     args: obj({ query: opt(str()), includeUnkeyed: opt(bool()) }),
     actors: ["owner", "agent"],
     run: async (api, { query, includeUnkeyed }) => {
-      const catalog = await available(registry)
       const settings = await readSettings(db)
+      const usable = (model: Model<Api>): boolean => !isDisabled(settings, refOf(model))
+      const catalog = (await available(registry)).filter(usable)
       const current = await currentModel(api.harness, api.actor)
       const keyedIds = new Set(catalog.map((model) => `${model.provider}/${model.id}`))
       const hasKey = (model: Model<Api>): boolean => keyedIds.has(`${model.provider}/${model.id}`)
-      const source = includeUnkeyed === true ? registry.models.getModels() : catalog
+      const source = includeUnkeyed === true ? registry.models.getModels().filter(usable) : catalog
       const ordered = ranked(source, settings, current, query)
       // Keyed models come first so the cap never hides one the owner can run.
       const unkeyed = ordered.filter((model) => !hasKey(model))
@@ -850,6 +979,109 @@ export function create(deps: ModelsPort): ModelsParts {
         models: listed.map((model) => describe(model, hasKey(model))),
         omittedModels: arranged.length - listed.length,
       }
+    },
+  })
+
+  const catalogOp = defineOp({
+    name: "models.catalog",
+    args: obj({
+      query: opt(str({ maxLength: 200 })),
+      provider: opt(str({ minLength: 1, maxLength: 64 })),
+      keyedOnly: opt(bool()),
+      enabledOnly: opt(bool()),
+    }),
+    actors: ["owner"],
+    run: async (api, args) => {
+      const keyed = await available(registry)
+      const settings = await readSettings(db)
+      const keyedIds = new Set(keyed.map((model) => `${model.provider}/${model.id}`))
+      const hasKey = (model: Model<Api>): boolean => keyedIds.has(`${model.provider}/${model.id}`)
+      const isEnabled = (model: Model<Api>): boolean => !isDisabled(settings, refOf(model))
+      const everything = registry.models.getModels()
+      const providers = registry.models
+        .getProviders()
+        .map((provider) => {
+          const own = everything.filter((model) => model.provider === provider.id)
+          return {
+            id: provider.id,
+            name: provider.name,
+            keyed: own.some(hasKey),
+            custom: registry.custom.has(provider.id),
+            models: own.length,
+            enabled: own.filter(isEnabled).length,
+          }
+        })
+        .filter((provider) => provider.models > 0 || provider.custom)
+        .toSorted((left, right) => Number(right.keyed) - Number(left.keyed) || left.id.localeCompare(right.id))
+      const scoped = everything.filter(
+        (model) =>
+          (args.provider === undefined || model.provider === args.provider) &&
+          (args.keyedOnly !== true || hasKey(model)) &&
+          (args.enabledOnly !== true || isEnabled(model)),
+      )
+      const ordered = ranked(scoped, settings, await currentModel(api.harness, api.actor), args.query)
+      const arranged = [...ordered.filter(hasKey), ...ordered.filter((model) => !hasKey(model))]
+      const listed = arranged.slice(0, MAX_CATALOG)
+      return {
+        providers,
+        models: listed.map((model) => catalogEntry(model, hasKey(model), settings)),
+        omittedModels: arranged.length - listed.length,
+        favorites: [...settings.favorites],
+        defaults: { ...settings.defaults },
+      }
+    },
+  })
+
+  const favoriteOp = defineOp({
+    name: "models.favorite",
+    args: obj({ model: ModelRefSchema, favorite: bool() }),
+    actors: ["owner"],
+    run: async (_api, { model, favorite }) => {
+      if (favorite && registry.models.getModel(model.provider, model.modelId) === undefined)
+        throw new OpRejected("bad_args", `unknown model ${model.provider}/${model.modelId}`)
+      const ref = { provider: model.provider, modelId: model.modelId }
+      const favorites = await updateSettings(db, async (settings) => {
+        const next = toggled(settings.favorites, ref, favorite)
+        await writeKv(db, "owner.favorites", next)
+        return next
+      })
+      return { favorites }
+    },
+  })
+
+  const enableOp = defineOp({
+    name: "models.enable",
+    args: obj({ model: ModelRefSchema, enabled: bool() }),
+    actors: ["owner"],
+    run: async (api, { model, enabled }) => {
+      const ref = { provider: model.provider, modelId: model.modelId }
+      const workspace = await api.harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
+      const projects = workspace !== undefined && parseWorkspace.check(workspace) ? workspace.projects : {}
+      const owner = await updateSettings(db, async (settings) => {
+        if (!enabled) {
+          const role = defaultRole(settings.defaults, ref)
+          if (role !== undefined)
+            throw new OpRejected(
+              "bad_args",
+              `${ref.provider}/${ref.modelId} is the ${role} default; pick another first`,
+            )
+          for (const project of Object.values(projects)) {
+            const projectRole =
+              project.settings.models === undefined ? undefined : defaultRole(project.settings.models, ref)
+            if (projectRole !== undefined)
+              throw new OpRejected(
+                "bad_args",
+                `${ref.provider}/${ref.modelId} is the ${projectRole} default of project ${project.name}; pick another first`,
+              )
+          }
+        }
+        const next = toggled(settings.disabled, ref, !enabled)
+        await writeKv(db, "owner.disabled", next)
+        disabledRefs = next
+        return settings.defaults
+      })
+      const moved = enabled ? [] : await moveOff(api.harness, await deps.conversations(), registry.models, ref, owner)
+      return { model: ref, enabled, moved }
     },
   })
 
@@ -899,16 +1131,20 @@ export function create(deps: ModelsPort): ModelsParts {
     run: async (_api, { role, model }) => {
       if (registry.models.getModel(model.provider, model.modelId) === undefined)
         throw new OpRejected("bad_args", `unknown model ${model.provider}/${model.modelId}`)
-      const settings = await readSettings(db)
-      const defaults: MutableDefaults = { ...settings.defaults }
-      defaults[role] = model
-      await writeKv(db, "owner.defaults", defaults)
+      await updateSettings(db, (settings) => {
+        if (isDisabled(settings, model))
+          throw new OpRejected("bad_args", `model ${model.provider}/${model.modelId} is disabled`)
+        const defaults: MutableDefaults = { ...settings.defaults }
+        defaults[role] = model
+        return writeKv(db, "owner.defaults", defaults)
+      })
       return { role, model }
     },
   })
 
   const readCapOp = defineOp({
     name: "usage.cap",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => ({ usd: await readCap(db) }),
@@ -928,6 +1164,7 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const alertOp = defineOp({
     name: "usage.alert",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => ({ usd: await readDailyAlert(db) }),
@@ -945,18 +1182,24 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const summary = defineOp({
     name: "usage.summary",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => {
       const ledger = await flush()
-      const byModel = Object.entries(ledger.models)
+      const merged = new Map<string, UsageBucket>()
+      for (const [key, usage] of Object.entries(ledger.models)) {
+        const { model } = untag(key)
+        merged.set(model, addUsage(merged.get(model) ?? EMPTY_USAGE, bucketOf(usage)))
+      }
+      const byModel = [...merged]
         .map(([key, usage]) => {
           const slash = key.indexOf("/")
           return {
             name: key,
             provider: slash === -1 ? key : key.slice(0, slash),
             modelId: slash === -1 ? "" : key.slice(slash + 1),
-            ...bucketOf(usage),
+            ...usage,
           }
         })
         .toSorted(
@@ -985,6 +1228,96 @@ export function create(deps: ModelsPort): ModelsParts {
     },
   })
 
+  const featuresOp = defineOp({
+    name: "usage.features",
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => {
+      await flush()
+      return await budget.breakdown()
+    },
+  })
+
+  const featureCapOp = defineOp({
+    name: "usage.feature.cap.set",
+    args: obj({
+      feature: FeatureSchema,
+      day: opt(union([num({ minimum: 0 }), lit(null)])),
+      month: opt(union([num({ minimum: 0 }), lit(null)])),
+    }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      if (args.day === undefined && args.month === undefined)
+        throw new OpRejected("bad_args", "give day or month, or null to clear one")
+      const cap = await budget.setCap(args.feature, { day: args.day, month: args.month })
+      await deps.publishHome?.()
+      return { feature: args.feature, cap: { day: cap.day ?? null, month: cap.month ?? null } }
+    },
+  })
+
+  const costOp = defineOp({
+    name: "usage.cost",
+    args: obj({ convs: arr(int({ minimum: 0 }), { minItems: 1, maxItems: 500 }) }),
+    actors: ["owner"],
+    run: async (api, { convs }) => {
+      const rows = await Promise.all(
+        convs.map(async (conv) => {
+          const ledger = await api.harness.snapshot(UsageDoc, conv as ConversationId, BACKGROUND_CONTEXT)
+          return { conv, ...conversationCost(ledger) }
+        }),
+      )
+      return {
+        conversations: rows,
+        spend: rows.reduce((sum, row) => sum + row.spend, 0),
+        tokens: rows.reduce((sum, row) => sum + row.tokens, 0),
+      }
+    },
+  })
+
+  const crewOp = defineOp({
+    name: "usage.crew",
+    args: obj({ spaceId: str({ minLength: 1 }) }),
+    actors: ["owner"],
+    run: async (api, { spaceId }) => {
+      const workspace = await api.harness.snapshot(WorkspaceDoc, BACKGROUND_CONTEXT)
+      const space = workspace !== undefined && parseWorkspace.check(workspace) ? workspace.spaces[spaceId] : undefined
+      if (space === undefined) throw new OpRejected("bad_args", `no space ${spaceId}`)
+      const lead = conversationCost(
+        await api.harness.snapshot(UsageDoc, space.coordinatorId as ConversationId, BACKGROUND_CONTEXT),
+      )
+      const crew = await Promise.all(
+        space.threadIds.map(async (conv) => ({
+          conv,
+          ...conversationCost(await api.harness.snapshot(UsageDoc, conv as ConversationId, BACKGROUND_CONTEXT)),
+        })),
+      )
+      return {
+        spaceId,
+        coordinator: { conv: space.coordinatorId, ...lead },
+        crew,
+        spend: lead.spend + crew.reduce((sum, row) => sum + row.spend, 0),
+        tokens: lead.tokens + crew.reduce((sum, row) => sum + row.tokens, 0),
+      }
+    },
+  })
+
+  const todayOp = defineOp({
+    name: "usage.today",
+    args: obj({}),
+    actors: ["owner"],
+    run: async () => {
+      await flush()
+      const dated = await datedUsage(db)
+      return {
+        today: dated.today,
+        month: dated.month,
+        alert: await readDailyAlert(db),
+        cap: await readCap(db),
+        features: budget.features(),
+      }
+    },
+  })
+
   const service: ModelsService = {
     ownerDefaults: () => ownerDefaults(db),
     vision: async (ref) => {
@@ -992,11 +1325,19 @@ export function create(deps: ModelsPort): ModelsParts {
       return found === undefined ? false : found.input.includes("image")
     },
     credentialSecrets: () => credentialSecrets(db, store),
+    disabled: async (ref) => isOff(ref),
     spend: async () => ({ month: (await datedUsage(db)).month.spend, cap: await readCap(db) }),
     search: async (query) => {
-      const catalog = await available(registry)
+      const { disabled } = await readSettings(db)
+      const catalog = (await available(registry)).filter(
+        (model) => !disabled.some((entry) => same(entry, refOf(model))),
+      )
       return { catalog, matches: search(catalog, query) }
     },
+    admit: async (feature) => budget.admit(feature),
+    admitConversation: (conversation) => budget.admitConversation(conversation),
+    charge: (feature, conversation, message) => budget.charge(feature, conversation, message),
+    track: (tracker) => budget.track(tracker),
     switchModel: ({ conversation, caller, model, thinking, callId }) =>
       run(
         {
@@ -1012,6 +1353,9 @@ export function create(deps: ModelsPort): ModelsParts {
     configure,
     contextOp,
     list,
+    catalogOp,
+    favoriteOp,
+    enableOp,
     setCredential,
     deleteCredential,
     setDefaults,
@@ -1020,17 +1364,26 @@ export function create(deps: ModelsPort): ModelsParts {
     setCapOp,
     alertOp,
     setAlertOp,
+    featuresOp,
+    featureCapOp,
+    costOp,
+    crewOp,
+    todayOp,
   ]
 
   return {
     service,
     ops,
+    home: () => ({ spend: budget.todaySpend() }),
     models: () => registry.models,
     flush,
     flushDue,
     start: async () => {
+      disabledRefs = (await readKv(db, "owner.disabled", refsCheck.check)) ?? []
       await registry.sync()
       await seedUsage(db, harness)
+      await budget.load()
+      await budget.seed()
       // A fresh process records nothing until the ledger has had time to move; the first alarm after boot is usually
       // an eviction recovery, not new spend, and a full pass reads every conversation.
       flushedAt = Date.now()

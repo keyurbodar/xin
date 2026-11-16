@@ -1,121 +1,179 @@
-import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { createMemo, For, Show, type JSX } from "solid-js"
+import { Plus } from "lucide-solid"
 import { firstLoad } from "../lib/loading.ts"
-import { cmd, OpError } from "../lib/api.ts"
-import { type Automation, type AutomationList, describeTriggers, nextRun } from "../lib/automations.ts"
-import { TopBar, TopButton } from "../components/shell/topbar.tsx"
-import { Icon } from "../components/ui/icon.tsx"
-import { MorphIcon } from "../components/ui/morph-icon.tsx"
-import { ago } from "../lib/format.ts"
+import { describeTriggers, nextLabel, TARGET_WORD, type Automation } from "../lib/automations.ts"
+import { firstFocusable, neighbourAfter } from "../lib/focus.ts"
+import { createAutomationList } from "../state/automations.ts"
+import { homeProjects } from "../state/home.ts"
+import { route } from "../lib/router.ts"
+import { AutomationHistoryView } from "../components/automations/history.tsx"
+import { createAutomationActions, createRowDialogs, EnabledToggle, LastRun, RowMenu, type RowAction } from "../components/automations/parts.tsx"
 import { Loading, RowSkeleton } from "../components/ui/skeleton.tsx"
-import { CreateAutomation } from "../components/automations/create.tsx"
-import { EmptyState } from "../components/chat/ui.tsx"
+import { EmptyState, ResourceError } from "../components/chat/ui.tsx"
 
-const TARGET_WORD: Readonly<Record<Automation["target"], string>> = {
-  fresh: "New thread each run",
-  same: "One standing thread",
-}
+const GRID = "md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,240px)_96px_72px_76px] md:items-center md:gap-4"
 
 export function AutomationsScreen(): JSX.Element {
-  const [version, setVersion] = createSignal(0)
-  const [creating, setCreating] = createSignal(false)
-  const [page] = createResource(version, () => cmd<AutomationList>("automation.list", {}))
-  const automations = createMemo(() => page()?.automations ?? [])
-
-  const reload = (): void => {
-    setVersion((value) => value + 1)
+  const id = (): string | undefined => {
+    const part = route().parts[1]
+    return part === undefined ? undefined : decodeURIComponent(part)
   }
+  return (
+    <Show when={id()} keyed fallback={<AutomationList />}>
+      {(current) => <AutomationHistoryView id={current} />}
+    </Show>
+  )
+}
+
+function AutomationList(): JSX.Element {
+  const { list, value, retry } = createAutomationList()
+  const actions = createAutomationActions(() => value())
+  const shown = createMemo(() => (value() ?? []).filter((automation) => !actions.removed(automation)))
+  let heading!: HTMLHeadingElement
+  let rowList: HTMLDivElement | undefined
+  const rows = createRowDialogs(actions, {
+    focusAfter: (automation) => {
+      const next = neighbourAfter(
+        shown().map((item) => item.id),
+        automation.id,
+      )
+      return next === undefined ? heading : firstFocusable(rowList?.querySelector(`[data-automation="${CSS.escape(next)}"]`))
+    },
+  })
 
   return (
     <>
-      <TopBar
-        title="Automations"
-        subtitle="Tasks the agent runs on a schedule or a webhook"
-        actions={<TopButton icon={<Icon name="plus" size={14} />} label="New automation" onClick={() => setCreating(true)} />}
-      />
-      <div class="min-h-0 flex-1 overflow-y-auto px-10 pb-12 pt-7">
-        <Loading when={firstLoad(page)} skeleton={<RowSkeleton rows={3} />} label="Loading automations">
-          <Show
-            when={automations().length > 0}
-            fallback={
-              <EmptyState
-                pictogram="schedules"
-                title="No automations yet"
-                detail="Ask the agent to automate something in a project, or create one here."
-              />
-            }
-          >
-            <AutomationRows items={automations()} onChanged={reload} />
+      <header class="flex h-[var(--h-topbar)] shrink-0 items-center gap-2 border-b border-line-1 px-4">
+        <h1 ref={heading} tabindex={-1} class="text-base font-medium text-ink outline-none">Automations</h1>
+        <Show when={value() !== undefined}>
+          <span class="font-mono text-xs tabular-nums text-ink-3">{shown().length}</span>
+        </Show>
+        <button
+          type="button"
+          onClick={rows.create}
+          class="im-press ml-auto flex h-7 items-center gap-1.5 rounded-sm bg-primary pl-2 pr-2.5 text-sm font-medium text-on-primary hover:opacity-90"
+        >
+          <Plus size={14} stroke-width={1.75} />
+          New automation
+        </button>
+      </header>
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <div class="mx-auto w-full max-w-[1040px] px-4 pb-12 pt-5 md:px-6">
+          <Show when={list.error}>
+            <div class="mb-4 overflow-hidden rounded-md border border-line-1">
+              <ResourceError what="automations" error={list.error} onRetry={retry} />
+            </div>
           </Show>
-        </Loading>
+          <Show when={actions.failed()}>
+            {(message) => (
+              <div role="alert" class="im-event mb-3 rounded-md border border-failed/30 bg-failed-soft px-3 py-2 text-sm text-failed">
+                {message()}
+              </div>
+            )}
+          </Show>
+          <Loading when={firstLoad(list)} skeleton={<RowSkeleton rows={4} />} label="Loading automations">
+            <Show
+              when={shown().length > 0}
+              fallback={
+                <Show when={value() !== undefined}>
+                  <div class="pt-14">
+                    <EmptyState
+                      pictogram="schedules"
+                      title="No automations yet"
+                      detail="An automation runs a prompt on a schedule and posts the result to a project thread. Ask the agent to set one up, or make one here."
+                      action={
+                        <button
+                          type="button"
+                          onClick={rows.create}
+                          class="im-press flex h-8 items-center gap-1.5 rounded-sm border border-line-2 bg-card px-3 text-sm font-medium text-ink hover:border-line-3"
+                        >
+                          <Plus size={14} stroke-width={1.75} />
+                          New automation
+                        </button>
+                      }
+                    />
+                  </div>
+                </Show>
+              }
+            >
+              <div class="overflow-hidden rounded-lg border border-line-1 bg-card">
+                <div class={`hidden h-8 border-b border-line-1 px-4 text-xs text-ink-3 ${GRID}`}>
+                  <span>Name</span>
+                  <span>Trigger</span>
+                  <span>Next run</span>
+                  <span>Last run</span>
+                  <span class="text-right">On</span>
+                </div>
+                <div ref={rowList} class="im-stagger">
+                  <For each={shown()}>
+                    {(automation, index) => (
+                      <Row
+                        automation={automation}
+                        index={index()}
+                        enabled={actions.enabled(automation)}
+                        busy={actions.busy() === automation.id}
+                        onAction={(action) => rows.handle(automation, action)}
+                      />
+                    )}
+                  </For>
+                </div>
+              </div>
+            </Show>
+          </Loading>
+        </div>
       </div>
-      <CreateAutomation open={creating()} onClose={() => setCreating(false)} onCreated={reload} />
+      {rows.dialogs()}
     </>
   )
 }
 
-function AutomationRows(props: { items: readonly Automation[]; onChanged?: (() => void) | undefined }): JSX.Element {
+function Row(props: {
+  automation: Automation
+  index: number
+  enabled: boolean
+  busy: boolean
+  onAction: (action: RowAction) => void
+}): JSX.Element {
+  const project = (): string | undefined => homeProjects().find((item) => item.id === props.automation.project)?.name
+  const view = (): Automation => ({ ...props.automation, enabled: props.enabled })
   return (
-    <div class="flex flex-col overflow-hidden rounded-md border border-line-1">
-      <For each={props.items}>{(item) => <AutomationRow item={item} onChanged={props.onChanged} />}</For>
-    </div>
-  )
-}
-
-function AutomationRow(props: { item: Automation; onChanged?: (() => void) | undefined }): JSX.Element {
-  const [busy, setBusy] = createSignal(false)
-  const [error, setError] = createSignal<string>()
-
-  const send = async (op: string, args: Record<string, unknown>): Promise<void> => {
-    setBusy(true)
-    setError(undefined)
-    try {
-      await cmd(op, { id: props.item.id, ...args })
-      props.onChanged?.()
-    } catch (problem) {
-      setError(problem instanceof OpError ? problem.message : "That did not go through")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div class="flex items-center gap-3 border-b border-line-1 bg-card px-3.5 py-3 last:border-0">
-      <span class="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-line-2 bg-panel text-ink-2">
-        <Icon name="clock" size={16} />
+    <div
+      data-automation={props.automation.id}
+      class={`flex items-start gap-3 border-b border-line-1 px-4 py-3 last:border-0 ${GRID}`}
+      style={{ "--i": props.index }}
+    >
+      <div class="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={() => props.onAction("open")}
+          class="block max-w-full truncate text-left text-base font-medium hover:underline hover:decoration-line-3 hover:underline-offset-4"
+          classList={{ "text-ink": props.enabled, "text-ink-2": !props.enabled }}
+        >
+          {props.automation.title}
+        </button>
+        <div class="mt-0.5 truncate text-sm text-ink-3">
+          {TARGET_WORD[props.automation.target]}
+          <Show when={project()}>{(name) => <> · {name()}</>}</Show>
+        </div>
+        <div class="mt-0.5 truncate text-sm text-ink-2 md:hidden">
+          {describeTriggers(props.automation)} · {nextLabel(view())}
+        </div>
+      </div>
+      <div class="hidden min-w-0 md:block">
+        <div class="truncate text-sm text-ink-2" title={describeTriggers(props.automation)}>
+          {describeTriggers(props.automation)}
+        </div>
+      </div>
+      <span class="hidden font-mono text-xs tabular-nums md:block" classList={{ "text-ink-2": props.enabled, "text-ink-3": !props.enabled }}>
+        {nextLabel(view())}
       </span>
-      <span class="min-w-0 flex-1">
-        <span class="flex items-baseline gap-2">
-          <span class="truncate text-base font-medium">{props.item.title}</span>
-          <Show when={!props.item.enabled}>
-            <span class="label text-working">Paused</span>
-          </Show>
-        </span>
-        <span class="mt-0.5 block truncate text-sm text-ink-3">
-          {describeTriggers(props.item)} · {TARGET_WORD[props.item.target]} · next {nextRun(props.item.nextAt)}
-        </span>
-        <Show when={error() !== undefined}>
-          <span class="mt-0.5 block text-sm text-failed">{error()}</span>
-        </Show>
+      <span class="hidden md:flex">
+        <LastRun automation={props.automation} />
       </span>
-      <span class="mono-meta shrink-0">{ago(Date.parse(props.item.updatedAt))}</span>
-      <button
-        type="button"
-        disabled={busy()}
-        onClick={() => void send("automation.update", { enabled: !props.item.enabled })}
-        class="flex h-7 shrink-0 items-center gap-1.5 rounded-sm border border-line-2 px-2.5 text-sm text-ink-2 hover:border-line-3 hover:text-ink disabled:opacity-50"
-      >
-        <MorphIcon kind="pause" on={!props.item.enabled} size={13} />
-        {props.item.enabled ? "Pause" : "Resume"}
-      </button>
-      <button
-        type="button"
-        disabled={busy()}
-        onClick={() => void send("automation.delete", {})}
-        class="grid h-7 w-7 shrink-0 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink disabled:opacity-50"
-        aria-label={`Delete ${props.item.title}`}
-      >
-        <Icon name="trash" size={14} />
-      </button>
+      <span class="flex shrink-0 items-center justify-end gap-1">
+        <EnabledToggle automation={props.automation} on={props.enabled} busy={props.busy} onToggle={() => props.onAction("toggle")} />
+        <RowMenu automation={props.automation} enabled={props.enabled} busy={props.busy} onAction={props.onAction} />
+      </span>
     </div>
   )
 }

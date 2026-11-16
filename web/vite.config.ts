@@ -10,7 +10,9 @@ export default defineConfig({
     proxy: {
       "/v1": { target: backend, changeOrigin: true, ws: true },
       "/files": { target: backend, changeOrigin: true },
+      "/s/": { target: backend, changeOrigin: true },
       "/health": { target: backend, changeOrigin: true },
+      "/hooks": { target: backend, changeOrigin: true },
     },
   },
 })

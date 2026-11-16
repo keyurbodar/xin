@@ -13,7 +13,7 @@ import type { FileEntry, FilesService } from "../../src/contracts/files.ts"
 import { projectByRef, scopeOf } from "../../src/contracts/scope.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import { defineOp, type Op, OpRejected } from "../../src/ops.ts"
-import { blobKey } from "../../src/r2env.ts"
+import { blobKey, StaleWrite } from "../../src/r2env.ts"
 import { createShares } from "./shares.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -21,6 +21,8 @@ const context = BACKGROUND_CONTEXT
 const INSTRUCTIONS = "AGENTS.md"
 const SKILL_FILE = /^skills\/([a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md$/
 const MAX_INSTRUCTIONS_CHARS = 20_000
+/** Starts the bad_args message of a write whose `base` is no longer current; clients match on it to offer reload or overwrite. */
+export const STALE_BASE = "stale base"
 const PREVIEWABLE = /^(text\/|application\/(json|xml|.*\+json|.*\+xml)|image\/svg\+xml)/
 
 export const ScopeSchema = union([
@@ -214,6 +216,7 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const list = defineOp({
     name: "drive.list",
+    read: true,
     args: obj({ scope: ScopeSchema, prefix: opt(str({ maxLength: 1_000 })) }),
     actors: ["owner", "plugin"],
     run: async (_api, { scope, prefix }) => {
@@ -231,6 +234,7 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const read = defineOp({
     name: "drive.read",
+    read: true,
     args: obj({ scope: ScopeSchema, path: Path, sha256: opt(Sha) }),
     actors: ["owner", "plugin"],
     run: async (_api, { scope, path, sha256 }) => {
@@ -253,11 +257,19 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const write = defineOp({
     name: "drive.write",
-    args: obj({ scope: ScopeSchema, path: Path, text: str({ maxLength: 4 * 1024 * 1024 }) }),
+    args: obj({ scope: ScopeSchema, path: Path, text: str({ maxLength: 4 * 1024 * 1024 }), base: opt(Sha) }),
     actors: ["owner", "plugin"],
-    run: async (_api, { scope, path, text }) => {
+    run: async (_api, { scope, path, text, base }) => {
       const root = await requireRoot(scope)
-      return relative(root, await deps.files.write(inside(root, path), text))
+      try {
+        return relative(root, await deps.files.write(inside(root, path), text, base))
+      } catch (problem) {
+        if (!(problem instanceof StaleWrite)) throw problem
+        throw new OpRejected(
+          "bad_args",
+          `${STALE_BASE}: ${path} changed since ${base} (now ${problem.current ?? "deleted"})`,
+        )
+      }
     },
   })
 
@@ -289,6 +301,7 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const history = defineOp({
     name: "drive.history",
+    read: true,
     args: obj({ scope: ScopeSchema, path: Path }),
     actors: ["owner", "plugin"],
     run: async (_api, { scope, path }) => {
@@ -338,6 +351,7 @@ export function create(deps: DrivePort): DrivePlugin {
 
   const scopes = defineOp({
     name: "drive.scopes",
+    read: true,
     args: obj({ conversationId: opt(int({ minimum: 0 })) }),
     actors: ["owner", "plugin"],
     run: async (api, { conversationId }) => {

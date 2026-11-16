@@ -1,4 +1,3 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { AssistantMessage, Message } from "@earendil-works/pi-ai"
 import { estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate"
 import {
@@ -6,11 +5,9 @@ import {
   type CompactionHooks,
   type ConversationId,
   DEFAULT_COMPACTION_POLICY,
-  type Harness,
   ProviderDoc,
-  UsageDoc,
 } from "@earendil-works/pi-durable"
-import { type ModelDefaults, resolveModel } from "../../src/contracts/models.ts"
+import { type Admission, type ModelDefaults, resolveModel } from "../../src/contracts/models.ts"
 
 /** Longest tool result text a summary source keeps verbatim; longer ones keep half of this from each end. */
 const TOOL_RESULT_CAP = 2000
@@ -62,39 +59,8 @@ type HookContext = Parameters<CompactionHooks["beforeCompact"]>[2]
 
 export type SummaryPorts = {
   readonly ownerDefaults: () => Promise<ModelDefaults>
-  readonly harness: Pick<Harness, "commit">
-}
-
-/** pi's `recordUsage` (not exported in 1.5): add the response's usage to the conversation's `pi.usage`, so it reaches `usage_daily` and the spend cap. */
-function chargeUsage(harness: SummaryPorts["harness"], conversationId: ConversationId, message: AssistantMessage) {
-  const key = `${message.provider}/${message.model}`
-  const { usage } = message
-  return harness.commit(async (tx) => {
-    const models = (await tx.doc(UsageDoc, conversationId)).models
-    if (!Object.hasOwn(models, key))
-      models[key] = {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      }
-    const total = models[key]
-    if (total === undefined) return
-    total.input += usage.input
-    total.output += usage.output
-    total.cacheRead += usage.cacheRead
-    total.cacheWrite += usage.cacheWrite
-    total.totalTokens += usage.totalTokens
-    if (usage.cacheWrite1h !== undefined) total.cacheWrite1h = (total.cacheWrite1h ?? 0) + usage.cacheWrite1h
-    if (usage.reasoning !== undefined) total.reasoning = (total.reasoning ?? 0) + usage.reasoning
-    total.cost.input += usage.cost.input
-    total.cost.output += usage.cost.output
-    total.cost.cacheRead += usage.cost.cacheRead
-    total.cost.cacheWrite += usage.cost.cacheWrite
-    total.cost.total += usage.cost.total
-  }, BACKGROUND_CONTEXT)
+  readonly admit: () => Promise<Admission>
+  readonly charge: (conversation: ConversationId, message: AssistantMessage) => Promise<void>
 }
 
 function prune(text: string): { readonly text: string; readonly pruned: boolean } {
@@ -162,7 +128,7 @@ function summaryText(message: AssistantMessage): string | undefined {
   return text.length === 0 ? undefined : text
 }
 
-async function summarizeOnUtility(
+async function summarize(
   compaction: Compaction,
   source: string,
   api: HookApi,
@@ -170,48 +136,58 @@ async function summarizeOnUtility(
   ports: SummaryPorts,
 ): Promise<string | undefined> {
   const utility = resolveModel({ role: "utility", owner: await ports.ownerDefaults() })
-  if (utility.kind === "none") return undefined
   const current = (await api.snapshot(AgentDoc, api.conversationId, context))?.model
-  if (current?.provider === utility.model.provider && current.modelId === utility.model.modelId) return undefined
-  const model = api.models.getModel(utility.model.provider, utility.model.modelId)
-  if (model === undefined) return undefined
+  const refs = [...(utility.kind === "none" ? [] : [utility.model]), ...(current === undefined ? [] : [current])]
+  const models = refs
+    .filter(
+      (ref, index) =>
+        refs.findIndex((other) => other.provider === ref.provider && other.modelId === ref.modelId) === index,
+    )
+    .flatMap((ref) => {
+      const model = api.models.getModel(ref.provider, ref.modelId)
+      return model === undefined ? [] : [model]
+    })
   const focus = compaction.instructions === undefined ? "" : `\n\nAdditional focus: ${compaction.instructions}`
   const sessionId = (await api.snapshot(ProviderDoc, api.conversationId, context))?.sessionId
   const reserve = Math.floor(0.8 * DEFAULT_COMPACTION_POLICY.reserveTokens)
-  try {
-    const message = await api.models.completeSimple(
-      model,
-      {
-        systemPrompt: SUMMARIZATION_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: `<conversation>\n${source}\n</conversation>\n\n${SUMMARIZATION_PROMPT}${focus}` },
-            ],
-            timestamp: Date.now(),
-          },
-        ],
-      },
-      {
-        cacheRetention: "none",
-        maxTokens: model.maxTokens > 0 ? Math.min(reserve, model.maxTokens) : reserve,
-        ...(sessionId === undefined ? {} : { sessionId }),
-        ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
-      },
-    )
-    await chargeUsage(ports.harness, api.conversationId, message)
-    return summaryText(message)
-  } catch {
-    return undefined
+  for (const model of models) {
+    try {
+      const message = await api.models.completeSimple(
+        model,
+        {
+          systemPrompt: SUMMARIZATION_SYSTEM_PROMPT,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: `<conversation>\n${source}\n</conversation>\n\n${SUMMARIZATION_PROMPT}${focus}` },
+              ],
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        {
+          cacheRetention: "none",
+          maxTokens: model.maxTokens > 0 ? Math.min(reserve, model.maxTokens) : reserve,
+          ...(sessionId === undefined ? {} : { sessionId }),
+          ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
+        },
+      )
+      await ports.charge(api.conversationId, message)
+      const summary = summaryText(message)
+      if (summary !== undefined) return summary
+    } catch {
+      if (context.abortSignal?.aborted === true) return undefined
+    }
   }
+  return undefined
 }
 
 /**
  * `beforeCompact`: a threshold compaction whose source has a long tool result, and fits `PRUNED_BUDGET_TOKENS` once
- * those are cut, is placed as that pruned source with no model call; anything else is summarized on the owner's
- * utility model, its usage charged to the conversation like pi's own summary, or left to pi's summarizer on the
- * conversation's model when there is none, it is the same model, or the call fails.
+ * those are cut, is placed as that pruned source with no model call; anything else is summarized here, on the owner's
+ * utility model and then on the conversation's own model when there is no utility model or its call fails, so every
+ * summary's usage is charged as `compaction`. pi's summarizer runs only when both calls fail.
  */
 export function beforeCompact(ports: SummaryPorts): CompactionHooks["beforeCompact"] {
   return async (compaction, api, context) => {
@@ -222,7 +198,8 @@ export function beforeCompact(ports: SummaryPorts): CompactionHooks["beforeCompa
       estimateTextTokens(source.text) <= PRUNED_BUDGET_TOKENS
     )
       return { summary: `${PRUNED_PREFIX}${source.text}` }
-    const summary = await summarizeOnUtility(compaction, source.text, api, context, ports)
+    if ((await ports.admit()).kind === "capped") return { decline: true }
+    const summary = await summarize(compaction, source.text, api, context, ports)
     return summary === undefined ? undefined : { summary }
   }
 }

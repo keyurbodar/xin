@@ -1,6 +1,8 @@
 import type { ThreadSettled } from "../../src/contracts/threads.ts"
 import type { Context } from "../../src/kernel/index.ts"
-import { captainScopeOf, captainsHome } from "./captains.ts"
+import type { ConversationId } from "@earendil-works/pi-durable"
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
+import { CaptainsDoc, captainScopeOf, captainsHome } from "./captains.ts"
 import { create } from "./orchestrator.ts"
 
 export const name = "orchestrator"
@@ -29,6 +31,9 @@ export function apply(ctx: Context): void {
     watchdog: ctx.watchdog,
     models: ctx.models,
     currentModels: () => ctx.pi.currentModels(),
+    disabled: (ref) => ctx.models.disabled(ref),
+    admit: (feature) => ctx.models.admit(feature),
+    admitConversation: (conversation) => ctx.models.admitConversation(conversation),
     registry: ctx.pi.registry,
     threadRemovals: (parent) => ctx.get("presets")?.threadRemovals(parent) ?? [],
     settled: (event) => emitSettled(ctx, event),
@@ -38,6 +43,17 @@ export function apply(ctx: Context): void {
   ctx.pi.install(built.extension)
   for (const op of built.ops) ctx.ops.define(op)
   ctx.wire.home("captains", () => captainsHome(ctx.harness))
+  ctx.effect(
+    () =>
+      ctx.models.track({
+        feature: "captain",
+        conversations: async () =>
+          Object.values((await ctx.harness.snapshot(CaptainsDoc, BACKGROUND_CONTEXT))?.captains ?? {}).map(
+            (captain) => captain.coordinatorId as ConversationId,
+          ),
+      }),
+    "models.track(captain)",
+  )
   ctx.inject(["drive"], (inner) => {
     inner.effect(() =>
       inner.drive.attach(async (conversationId) => {

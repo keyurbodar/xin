@@ -58,11 +58,16 @@ export function apply(ctx: Context): void {
   ctx.http.route("GET /v1/status", async () =>
     Response.json({ wake: ctx.get("harness")?.wake() ?? null, ...(await version()) }),
   )
-  ctx.ops.define(defineOp({ name: "system.version", args: obj({}), actors: OWNER, run: async () => version() }))
-  ctx.ops.define(defineOp({ name: "system.metrics", args: obj({}), actors: OWNER, run: async () => metrics() }))
+  ctx.ops.define(
+    defineOp({ name: "system.version", read: true, args: obj({}), actors: OWNER, run: async () => version() }),
+  )
+  ctx.ops.define(
+    defineOp({ name: "system.metrics", read: true, args: obj({}), actors: OWNER, run: async () => metrics() }),
+  )
   ctx.ops.define(
     defineOp({
       name: "system.logs",
+      read: true,
       args: obj({}),
       actors: OWNER,
       run: async () => ({ entries: [...logs.entries()] }),

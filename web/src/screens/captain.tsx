@@ -68,6 +68,7 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
       <ProjectPane
         project={props.space}
         captain={props.captain}
+        conversationId={thread()?.id ?? props.captain.coordinatorId}
         expanded={expanded()}
         onExpand={setExpanded}
         onOpenThread={openThread}

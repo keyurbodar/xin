@@ -36,7 +36,7 @@ import type {
 } from "../../src/contracts/threads.ts"
 import type { CommandId, ProjectId } from "../../src/ids.ts"
 import { entryText, detailOf, textOf } from "../../src/transcript.ts"
-import { resolveModel as resolveRoleModel, type ModelsService } from "../../src/contracts/models.ts"
+import { capReason, resolveModel as resolveRoleModel, type ModelsService } from "../../src/contracts/models.ts"
 import { ThreadDoc, defaultSpaceOf, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
 import { canUseThread, projectByRef, scopeOf, type Scope } from "../../src/contracts/scope.ts"
 import { WorkspaceDoc, type ProjectState } from "../../src/contracts/workspace.ts"
@@ -202,7 +202,7 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
     { readonly kind: "model"; readonly model: ModelRef } | { readonly kind: "none"; readonly reason: string }
   > => {
     if (target !== undefined) {
-      if (models().getModel(target.provider, target.modelId) === undefined) {
+      if (models().getModel(target.provider, target.modelId) === undefined || (await deps.models.disabled(target))) {
         return {
           kind: "none",
           reason: `No model ${target.provider}/${target.modelId} is available. Pick another model.`,
@@ -217,10 +217,12 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
       ...(defaults === undefined ? {} : { project: defaults }),
       owner: await deps.models.ownerDefaults(),
     })
-    if (resolved.kind === "model") return { kind: "model", model: resolved.model }
+    if (resolved.kind === "model" && !(await deps.models.disabled(resolved.model)))
+      return { kind: "model", model: resolved.model }
     const parent = await deps.harness.conversation(callerId, callContext)
     const parentModel = parent === undefined ? undefined : (await parent.agent(callContext)).model
-    if (parentModel !== undefined) return { kind: "model", model: parentModel }
+    if (parentModel !== undefined && !(await deps.models.disabled(parentModel)))
+      return { kind: "model", model: parentModel }
     return {
       kind: "none",
       reason:
@@ -243,6 +245,8 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
       callContext,
     )
     if (model.kind === "none") return { kind: "no_model", reason: model.reason }
+    const admission = await deps.models.admit("thread")
+    if (admission.kind === "capped") return { kind: "rejected", reason: capReason(admission) }
     const requestId = `delegate:${caller.conversationId}:${request.clientRequestId}`
     const created = await harness.commit(
       (tx: Tx) =>

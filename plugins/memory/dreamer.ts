@@ -47,6 +47,8 @@ export type MemoryPorts = {
   readonly models: ModelsService
   readonly kek: string
   arm(): Promise<void>
+  /** Notes or the profile changed outside an owner command, so tabs must drop their cached memory reads. */
+  changed(): void
 }
 
 export type NoteRow = {
@@ -214,6 +216,7 @@ async function runPass(
     return
   }
   await apply(ports.db, taskId, output, included, end, transcripts.end, requested)
+  ports.changed()
 }
 
 function withinBudget(notes: readonly NoteRow[]): readonly NoteRow[] {
@@ -243,8 +246,10 @@ async function draft(
   const shown = new Set(notes.map((note) => note.id))
   const secrets = await liveSecrets(ports)
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    if ((await ports.models.admit("dreamer")).kind === "capped") return undefined
     const answer = await complete(runtime, model, prompt)
     if (answer === undefined) return undefined
+    await ports.models.charge("dreamer", runtime.conversationId, answer)
     const output = validateDreamerOutput(parseJson(textOf(answer)), shown, secrets)
     if (output !== undefined) return output
   }
