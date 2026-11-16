@@ -434,6 +434,22 @@ export function apply(ctx: Context, config: { greeting: string }) {
 
 An extension that carries tools is named `tool-*`; the registry refuses one that is not, because a preset tells a tool row from a service row by that prefix.
 
+## Model-written code: the `visual` plugin
+
+`plugins/visual` ports zeron's `show_visual`. The model writes a Lua 5.3 script (fengari, pure JS), the DO checks it with the same runtime the browser runs, and the web app draws it in a sandboxed `srcdoc` iframe (no `allow-same-origin`, CSP with no network). It ships disabled. The script is hostile by assumption, so the runtime bounds every resource for each call (setup, render, handler, draw), in both the DO check and the frame:
+
+| Resource | Bound | Where |
+| --- | --- | --- |
+| Time | 5M steps per call, 1.5M per draw: the instruction hook spends 1000 every 1000 instructions, and fengari's native loops spend one per iteration or byte scanned (`string.rep`, the pattern matcher, plain `find`, string `==`/`<`, `string.byte`, `utf8.len`/`offset`/`codepoint`, `table.insert`/`remove`/`move`/`concat`/`unpack`, each `table.sort` comparison, each hop of an `__index`/`__newindex` chain, every vararg copy, `string.pack`/`packsize`/`unpack` options and `utf8.char`), and a numeral over 200 characters is not converted, as in Lua's `L_MAXLENNUM`), since one native call can run for minutes between hooks | `runtime/limits.ts`, called by fengari through `patches/fengari@0.1.5.patch` |
+| Escaping the budget | the failure is sticky: the hook raises it again until the call returns, `pcall`/`xpcall` re-raise it, and an `xpcall` message handler is skipped once it is set | `runtime/lua.ts` |
+| One allocation | 1 MB (strings and string buffers) | `runtime/limits.ts`, called by fengari through `patches/fengari@0.1.5.patch` |
+| Bytes and entries | 32 MB and 100k per call in the frame; 48 MB and 300k for the whole DO check, since its calls share one state. A string costs 480 bytes plus three times its length, what a short string really retains with the hex key fengari builds when it hashes or orders it; every table entry costs one entry; a table is charged 640 bytes and a closure 160 plus 96 per upvalue, their measured heap size, so empty-table and closure chains run out of bytes rather than heap | same |
+| Lua stack | 100k slots | same |
+| Shader loops | 1024 condition checks per pixel across all loops, injected into every `for`/`while` after comments are blanked; `#define` bodies with a loop, `;`, braces or unbalanced parentheses, function-like macros, `##` and line continuations are refused, and every `for`/`while` must be followed by its own parenthesized header (three clauses for `for`) with no preprocessor line inside it, after `\\r`, `\\v` and `\\f` are read as line breaks the way ANGLE reads them, so no macro or `#if` branch can supply, reopen or disable one | `runtime/shader-check.ts` |
+| Frame height | 0 to 10,000 px | `web/src/components/chat/visual-block.tsx` |
+
+fengari has no allocator hook, so a `bun patch` adds one: before it allocates a string buffer (`luaL_prepbuffsize`, `luaV_concat`), makes a string (`TString`), table or closure, adds a table entry or grows the stack, and inside every native loop that can run long, it calls the meter stored on the state's `l_G`. The meter lives on the state rather than on a module object because test pools and bundlers do not always share fengari's module instances. In the frame the bounds are per call, so state that grows a little on every frame of an animation is limited only by how long the visual stays open, and since a `srcdoc` frame shares the page's renderer process, the page is the blast radius. Moving the frame to its own origin would put it in its own process. The DO check counts all its calls together, so it stays inside the isolate's memory. No I/O library is opened, but fengari's `lualib` still bundles `liolib`, `loslib` and `loadlib`, which costs the Worker about 122 KB gzipped.
+
 ## Slices
 
 | Slice | Builds | Status |
