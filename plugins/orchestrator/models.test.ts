@@ -126,6 +126,9 @@ describe("models for what a Captain starts", () => {
     if (unkeyed === undefined) throw new Error("no unkeyed anthropic model")
     const named = await delegate(stub, lead.coordinatorId, "named", { query: `${unkeyed.provider}/${unkeyed.modelId}` })
     expect((named as { reason: string }).reason).toMatch(/has no key.*Usable: /)
+    const bare = await delegate(stub, lead.coordinatorId, "bare", { query: unkeyed.modelId })
+    expect(bare).toMatchObject({ kind: "no_model" })
+    expect((bare as { reason: string }).reason).toMatch(/No usable model matches .*has no key.*Usable: /)
   })
 
   it("forks a side thread on the Captain's model and thinking level", async () => {

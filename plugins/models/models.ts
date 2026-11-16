@@ -871,31 +871,36 @@ export function create(deps: ModelsPort): ModelsParts {
     (await registry.models.getAvailable(ref.provider)).some((model) => model.id === ref.modelId)
   const usableModels = async (): Promise<readonly Model<Api>[]> =>
     (await registry.models.getAvailable()).filter((model) => !isOff(refOf(model)))
-  const unusable = async (ref: ModelRef): Promise<string | undefined> => {
+  const problemOf = async (ref: ModelRef): Promise<string | undefined> => {
     const name = `${ref.provider}/${ref.modelId}`
-    const problem =
-      registry.models.getModel(ref.provider, ref.modelId) === undefined
-        ? `no model ${name}`
-        : isOff(ref)
-          ? `model ${name} is disabled`
-          : (await isKeyed(ref))
-            ? undefined
-            : `model ${name} has no key; add a ${ref.provider} key in Settings → Models`
-    if (problem === undefined) return undefined
+    if (registry.models.getModel(ref.provider, ref.modelId) === undefined) return `no model ${name}`
+    if (isOff(ref)) return `model ${name} is disabled`
+    return (await isKeyed(ref)) ? undefined : `model ${name} has no key; add a ${ref.provider} key in Settings → Models`
+  }
+  const withUsable = async (problem: string): Promise<string> => {
     const usable = (await usableModels()).slice(0, 3)
     return usable.length === 0
       ? `${problem}. No model is usable yet.`
       : `${problem}. Usable: ${usable.map((model) => `${model.provider}/${model.id}`).join(", ")}.`
+  }
+  const unusable = async (ref: ModelRef): Promise<string | undefined> => {
+    const problem = await problemOf(ref)
+    return problem === undefined ? undefined : withUsable(problem)
   }
   const byName = async (query: string): Promise<ModelRef | string> => {
     const slash = query.trim().indexOf("/")
     const exact =
       slash > 0 ? registry.models.getModel(query.trim().slice(0, slash), query.trim().slice(slash + 1)) : undefined
     if (exact !== undefined) return refOf(exact)
-    const usable = search(await usableModels(), query)
-    const matches = usable.length > 0 ? usable : search(registry.models.getModels(), query)
+    const matches = search(await usableModels(), query)
     const top = matches[0]
-    if (top === undefined) return `No model matches "${query}".`
+    if (top === undefined) {
+      const known = search(registry.models.getModels(), query)
+      const best = known.filter((hit) => hit.score === known[0]?.score).slice(0, 4)
+      if (best.length === 0) return `No model matches "${query}".`
+      const problems = await Promise.all(best.map(async (hit) => problemOf(refOf(hit.model))))
+      return withUsable(`No usable model matches "${query}": ${problems.join("; ")}`)
+    }
     if ((matches[1]?.score ?? 0) === top.score)
       return `Several models match "${query}": ${matches
         .slice(0, 4)
