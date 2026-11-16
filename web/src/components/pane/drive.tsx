@@ -101,6 +101,8 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
   const [open, setOpen] = createSignal<string | undefined>()
   const [moving, setMoving] = createSignal<string | undefined>()
   const [deleting, setDeleting] = createSignal<string | undefined>()
+  const [landing, setLanding] = createSignal<string | undefined>()
+  const [returnTo, setReturnTo] = createSignal<string | undefined>()
   const [version, setVersion] = createSignal(0)
   const action = createPaneAction()
   let treeHost: HTMLDivElement | undefined
@@ -129,10 +131,28 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
       setOpen(undefined)
     })
   const back = (): void => {
-    const path = open()
+    setLanding(open())
     setOpen(undefined)
-    if (path !== undefined) queueMicrotask(() => treeHost?.querySelector("ui-tree")?.api.focus(path))
   }
+  const rowElement = (path: string | undefined): HTMLElement | undefined =>
+    path === undefined || open() !== undefined
+      ? undefined
+      : (treeHost?.querySelector<HTMLElement>(`ui-tree-item[value="${CSS.escape(path)}"]`) ?? undefined)
+  const neighbourOf = (path: string): string | undefined => {
+    const rows = [...(treeHost?.querySelectorAll<HTMLElement>("ui-tree-item") ?? [])].filter((row) => row.checkVisibility())
+    const at = rows.findIndex((row) => row.getAttribute("value") === path)
+    return (rows[at + 1] ?? rows[at - 1])?.getAttribute("value") ?? undefined
+  }
+  const startMove = (path: string): void =>
+    batch(() => {
+      setReturnTo(path)
+      setMoving(path)
+    })
+  const startDelete = (path: string): void =>
+    batch(() => {
+      setReturnTo(path)
+      setDeleting(path)
+    })
 
   const upload = (files: readonly File[], folder: string): void => {
     const mounted = current()
@@ -208,8 +228,10 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
                         await drive.move(mounted().scope, from, to, mounted().scope)
                         reload()
                       }}
-                      onMove={setMoving}
-                      onDelete={setDeleting}
+                      onMove={startMove}
+                      onDelete={startDelete}
+                      landing={landing()}
+                      onLand={setLanding}
                     />
                   </Show>
                 </ui-file-input-dropzone>
@@ -225,8 +247,8 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
                   shareId={shares()[path]}
                   onBack={back}
                   onChanged={reload}
-                  onMove={() => setMoving(path)}
-                  onDelete={() => setDeleting(path)}
+                  onMove={() => startMove(path)}
+                  onDelete={() => startDelete(path)}
                 />
               )}
             </Show>
@@ -236,6 +258,7 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
               scopes={settled(scopes) ?? []}
               mounted={mounted()}
               path={moving() ?? ""}
+              returnFocus={rowElement(returnTo())}
               onClose={() => setMoving(undefined)}
               onMoved={(to, root) => {
                 const from = moving()
@@ -246,6 +269,8 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
                 }
                 batch(() => {
                   if (open() === from) setOpen(to)
+                  setReturnTo(to)
+                  setLanding(to)
                   reload()
                 })
               }}
@@ -255,9 +280,13 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
               scope={mounted().scope}
               path={deleting() ?? ""}
               shared={shares()[deleting() ?? ""] !== undefined}
+              returnFocus={rowElement(returnTo())}
               onClose={() => setDeleting(undefined)}
               onDeleted={() => {
+                const next = neighbourOf(deleting() ?? "")
                 batch(() => {
+                  setReturnTo(next)
+                  setLanding(next)
                   if (open() === deleting()) setOpen(undefined)
                   setDeleting(undefined)
                   reload()
@@ -414,7 +443,13 @@ function FilePanel(props: {
   return (
     <div class="flex flex-1 flex-col">
       <div class="flex items-center gap-1 px-1 pb-2">
-        <button type="button" class={ICON_BUTTON} aria-label="Back to the files" onClick={() => props.onBack()}>
+        <button
+          type="button"
+          class={ICON_BUTTON}
+          aria-label="Back to the files"
+          ref={(element) => queueMicrotask(() => element.focus())}
+          onClick={() => props.onBack()}
+        >
           <ArrowLeft {...SMALL} />
         </button>
         <span class="min-w-0 flex-1">
@@ -690,6 +725,7 @@ function MoveDialog(props: {
   scopes: readonly MountedScope[]
   mounted: MountedScope
   path: string
+  returnFocus: HTMLElement | undefined
   onClose: () => void
   onMoved: (to: string, root: string) => void
 }): JSX.Element {
@@ -719,6 +755,7 @@ function MoveDialog(props: {
       open={props.open}
       onClose={props.onClose}
       title="Move or rename"
+      returnFocus={props.returnFocus}
       width="w-[440px]"
       busy={action.busy() !== undefined}
       onSubmit={submit}
@@ -780,6 +817,7 @@ function DeleteDialog(props: {
   scope: DriveScope
   path: string
   shared: boolean
+  returnFocus: HTMLElement | undefined
   onClose: () => void
   onDeleted: () => void
 }): JSX.Element {
@@ -794,6 +832,7 @@ function DeleteDialog(props: {
       open={props.open}
       onClose={props.onClose}
       title={`Delete ${baseName(props.path)}?`}
+      returnFocus={props.returnFocus}
       width="w-[420px]"
       busy={action.busy() !== undefined}
       onSubmit={submit}

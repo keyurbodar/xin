@@ -1,7 +1,7 @@
 import "@ui-sdk/web/input"
 import "@ui-sdk/web/menu"
 import "@ui-sdk/web/tree"
-import { createEffect, createSignal, For, on, onMount, Show, type JSX } from "solid-js"
+import { createEffect, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { BookText, ChevronRight, Link2, Sparkles } from "lucide-solid"
 import { folderOf, renameProblem, reservedOf, SKILLS_FOLDER, type DriveRow } from "../../lib/drive.ts"
 import { fileIconUrl } from "../../lib/file-icons.ts"
@@ -63,6 +63,8 @@ export function DriveTree(props: {
   onRename: (from: string, to: string) => Promise<void>
   onMove: (path: string) => void
   onDelete: (path: string) => void
+  landing: string | undefined
+  onLand: (path: string | undefined) => void
 }): JSX.Element {
   let host: HTMLDivElement | undefined
   const tree = (): HTMLElementTagNameMap["ui-tree"] | null | undefined => host?.querySelector("ui-tree")
@@ -73,7 +75,6 @@ export function DriveTree(props: {
   const [target, setTarget] = createSignal<Target | undefined>()
   const menu = createOverlayMount(menuOpen)
   let chosen: string | undefined
-  let landing: string | undefined
 
   onMount(() => {
     const element = tree()
@@ -83,17 +84,17 @@ export function DriveTree(props: {
     }
   })
 
-  createEffect(
-    on(
-      () => props.rows,
-      () => {
-        const path = landing
-        landing = undefined
-        if (path !== undefined) focus(path)
-      },
-      { defer: true },
-    ),
-  )
+  createEffect(() => {
+    const path = props.landing
+    void props.rows
+    if (path === undefined) return
+    queueMicrotask(() => {
+      const element = tree()
+      if (element === null || element === undefined || element.querySelector(`ui-tree-item[value="${CSS.escape(path)}"]`) === null) return
+      element.api.focus(path)
+      props.onLand(undefined)
+    })
+  })
 
   const siblingsOf = (path: string): readonly string[] => {
     const folder = folderOf(path)
@@ -135,9 +136,8 @@ export function DriveTree(props: {
       .onRename(path, to)
       .then(
         () => {
-          landing = to
           setRenaming(undefined)
-          focus(to)
+          props.onLand(to)
         },
         (failure: unknown) => setProblem(failure instanceof Error ? failure.message : String(failure)),
       )

@@ -250,3 +250,78 @@ test("blurring the rename field keeps an invalid name open with its message, and
   expect(await visibleRows(page)).toContain("plan.txt")
   await page.close()
 })
+
+async function rowMenu(page: Page, name: string, item: string): Promise<void> {
+  await page.waitForSelector("[role=treeitem]")
+  await page.getByText(name, { exact: true }).click({ button: "right" })
+  await settled(page)
+  await page.getByRole("menuitem", { name: item }).click()
+  await settled(page)
+}
+
+test("Cancel in the Move dialog opened from the row menu returns focus to the row", async () => {
+  const page = await harness.open("drive-view")
+  await rowMenu(page, "notes.txt", "Move…")
+  await page.getByRole("button", { name: "Cancel" }).click()
+  await settled(page)
+  expect(await page.getByRole("dialog").count()).toBe(0)
+  expect(await focused(page)).toBe("notes.txt")
+  await page.close()
+})
+
+test("Escape in the Delete dialog opened from the row menu returns focus to the row", async () => {
+  const page = await harness.open("drive-view")
+  await rowMenu(page, "package.json", "Delete")
+  await page.keyboard.press("Escape")
+  await settled(page)
+  expect(await page.getByRole("dialog").count()).toBe(0)
+  expect(await focused(page)).toBe("package.json")
+  await page.close()
+})
+
+test("deleting a file from the row menu lands focus on the next row", async () => {
+  const page = await harness.open("drive-view")
+  await rowMenu(page, "notes.txt", "Delete")
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click()
+  await settled(page)
+  expect(await visibleRows(page)).not.toContain("notes.txt")
+  expect(await focused(page)).toBe("package.json")
+  await page.close()
+})
+
+test("moving a file from the row menu lands focus on its new row", async () => {
+  const page = await harness.open("drive-view")
+  await rowMenu(page, "notes.txt", "Move…")
+  await page.getByRole("textbox", { name: "Path" }).fill("later.txt")
+  await page.getByRole("button", { name: "Move", exact: true }).click()
+  await settled(page)
+  expect(await focused(page)).toBe("later.txt")
+  await page.close()
+})
+
+test("Open from the row menu moves focus into the file", async () => {
+  const page = await harness.open("drive-view")
+  await rowMenu(page, "notes.txt", "Open")
+  expect(await page.getByText("Ship the tree.").isVisible()).toBe(true)
+  expect(await focused(page)).toBe("Back to the files")
+  await page.close()
+})
+
+test("blurring the rename field while its error shows keeps it open and sends no move", async () => {
+  const page = await harness.open("drive-view")
+  await openTree(page)
+  await page.keyboard.type("notes")
+  await page.keyboard.press("F2")
+  await settled(page)
+  await page.keyboard.press("Control+A")
+  await page.keyboard.type("README.md")
+  await page.keyboard.press("Enter")
+  await settled(page)
+  expect(await page.getByRole("alert").textContent()).toBe("README.md is already in this folder.")
+  await page.mouse.click(900, 700)
+  await settled(page)
+  expect(await page.getByRole("textbox", { name: "Rename notes.txt" }).inputValue()).toBe("README.md")
+  expect(await page.getByRole("alert").textContent()).toBe("README.md is already in this folder.")
+  expect(await calls(page)).not.toContain("drive.move")
+  await page.close()
+})
