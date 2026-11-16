@@ -29,6 +29,7 @@ import {
   UsageDoc,
   type AgentChange,
   configure as configureAgent,
+  type CompactionPolicy,
   type CompactionSettings,
   type ConversationId,
   type Harness,
@@ -860,27 +861,58 @@ export function create(deps: ModelsPort): ModelsParts {
   /** The owner's disabled models, read once at start and updated by `models.enable`, so a check reads no row. */
   const isOff = (ref: ModelRef): boolean => disabledRefs.some((entry) => same(entry, ref))
   let percent: number | undefined
-  let overrides: { readonly models: number; readonly settings: CompactionSettings } | undefined
-  /** Tokens kept free above the compact-at point: the owner's share of the window, or pi's default. */
-  const reserveFor = (contextWindow: number): number =>
-    percent === undefined
-      ? DEFAULT_COMPACTION_POLICY.reserveTokens
-      : Math.max(1, Math.round((contextWindow * (100 - percent)) / 100))
+  let overrides: { readonly models: readonly Model<Api>[]; readonly settings: CompactionSettings } | undefined
+  /**
+   * The owner's threshold as pi's policy for one model. Background compaction starts at `percent` of the window,
+   * clamped so the reply keeps its room (the model's output cap up to 16k, plus 4k); generation blocks only at that
+   * room's edge, and the kept tail is at most a quarter of the threshold, so one compaction lands well below it.
+   */
+  const thresholdFor = (
+    contextWindow: number,
+    maxTokens: number,
+  ): { readonly compactAt: number; readonly policy: Omit<CompactionPolicy, "enabled"> } => {
+    if (percent === undefined) {
+      const { reserveTokens, backgroundTokens, keepRecentTokens } = DEFAULT_COMPACTION_POLICY
+      return {
+        compactAt: Math.max(0, contextWindow - reserveTokens - backgroundTokens),
+        policy: { reserveTokens, backgroundTokens, keepRecentTokens },
+      }
+    }
+    const reserveTokens = Math.min(contextWindow, Math.min(maxTokens > 0 ? maxTokens : 16_384, 16_384) + 4_096)
+    const blocking = contextWindow - reserveTokens
+    const compactAt = Math.min(Math.round((contextWindow * percent) / 100), blocking)
+    return {
+      compactAt,
+      policy: {
+        reserveTokens,
+        backgroundTokens: blocking - compactAt,
+        keepRecentTokens: Math.min(DEFAULT_COMPACTION_POLICY.keepRecentTokens, Math.floor(compactAt / 4)),
+      },
+    }
+  }
   const compaction = (): CompactionSettings | undefined => {
     if (percent === undefined) return undefined
     const models = registry.models.getModels()
-    if (overrides?.models !== models.length)
+    const current = overrides
+    if (
+      current === undefined ||
+      current.models.length !== models.length ||
+      models.some((model, index) => model !== current.models[index])
+    )
       overrides = {
-        models: models.length,
+        models,
         settings: {
           modelOverrides: Object.fromEntries(
             models
               .filter((model) => model.contextWindow > 0)
-              .map((model) => [`${model.provider}/${model.id}`, { reserveTokens: reserveFor(model.contextWindow) }]),
+              .map((model) => [
+                `${model.provider}/${model.id}`,
+                thresholdFor(model.contextWindow, model.maxTokens).policy,
+              ]),
           ),
         },
       }
-    return overrides.settings
+    return overrides?.settings
   }
   const setPercent = (next: number | undefined): void => {
     percent = next
@@ -889,6 +921,7 @@ export function create(deps: ModelsPort): ModelsParts {
 
   const compactionOp = defineOp({
     name: "owner.compaction",
+    read: true,
     args: obj({}),
     actors: ["owner"],
     run: async () => ({ percent: percent ?? null, defaultReserveTokens: DEFAULT_COMPACTION_POLICY.reserveTokens }),
@@ -1030,7 +1063,7 @@ export function create(deps: ModelsPort): ModelsParts {
           { key: "tools", tokens: tools },
           { key: "conversation", tokens: Math.max(0, used - system - tools) },
         ],
-        compactAt: Math.max(0, contextWindow - reserveFor(contextWindow)),
+        compactAt: contextWindow > 0 ? thresholdFor(contextWindow, model?.maxTokens ?? 0).compactAt : 0,
       }
     },
   })
