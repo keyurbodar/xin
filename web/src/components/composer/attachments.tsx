@@ -1,113 +1,19 @@
 import { File as FileIcon, X } from "lucide-solid"
-import { For, Show, createEffect, createSignal, onCleanup, type JSX } from "solid-js"
-import { MAX_UPLOAD_BYTES, OpError, type UploadedFile } from "../../lib/api.ts"
+import { For, Show, createEffect, createSignal, type JSX } from "solid-js"
+import { createAttachments, kindLabel, statusLabel, type ComposerAttachment, type Upload } from "../../lib/attachments.ts"
 import { bytes } from "../../lib/format.ts"
 import { createPresence } from "../shell/presence.ts"
 
 const CHIP_EXIT_MS = 140
 
-export type Upload = (file: File, onProgress: (fraction: number) => void, signal: AbortSignal) => Promise<UploadedFile>
+export type { Upload }
 
-type AttachmentState =
-  | { readonly kind: "uploading"; readonly progress: number }
-  | { readonly kind: "done"; readonly uploaded: UploadedFile }
-  | { readonly kind: "failed"; readonly error: string }
+type Attachment = ComposerAttachment
 
-type Attachment = {
-  readonly id: string
-  readonly file: File
-  readonly preview: string | undefined
-  readonly controller: AbortController
-  readonly state: AttachmentState
-}
-
-function failureText(failure: unknown): string {
-  return failure instanceof Error ? failure.message : String(failure)
-}
-
-/** Every file the composer holds, each with its own XHR, so removing one aborts only that upload. */
-export function useAttachments(upload: () => Upload) {
-  const [items, setItems] = createSignal<readonly Attachment[]>([])
-
-  const patch = (id: string, state: AttachmentState): void => {
-    setItems((current) => current.map((item) => (item.id === id ? { ...item, state } : item)))
-  }
-
-  const add = (files: readonly File[]): void => {
-    const added: readonly Attachment[] = files.map((file) => ({
-      id: crypto.randomUUID(),
-      file,
-      preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
-      controller: new AbortController(),
-      state: { kind: "uploading", progress: 0 },
-    }))
-    setItems((current) => [...current, ...added])
-    for (const item of added) {
-      if (item.file.size > MAX_UPLOAD_BYTES) {
-        patch(item.id, { kind: "failed", error: "Too big · 50 MB max" })
-        continue
-      }
-      upload()(item.file, (progress) => patch(item.id, { kind: "uploading", progress }), item.controller.signal)
-        .then((uploaded) => patch(item.id, { kind: "done", uploaded }))
-        .catch((failure: unknown) => {
-          if (failure instanceof OpError && failure.code === "aborted") return
-          patch(item.id, { kind: "failed", error: failureText(failure) })
-        })
-    }
-  }
-
-  const release = (item: Attachment): void => {
-    item.controller.abort()
-    if (item.preview !== undefined) URL.revokeObjectURL(item.preview)
-  }
-
-  const remove = (id: string): void => {
-    const found = items().find((item) => item.id === id)
-    if (found !== undefined) release(found)
-    setItems((current) => current.filter((item) => item.id !== id))
-  }
-
-  const clear = (): void => {
-    for (const item of items()) release(item)
-    setItems([])
-  }
-
-  onCleanup(clear)
-
-  return {
-    items,
-    add,
-    remove,
-    clear,
-    uploading: (): boolean => items().some((item) => item.state.kind === "uploading"),
-    uploaded: (): readonly UploadedFile[] =>
-      items().flatMap((item) => (item.state.kind === "done" ? [item.state.uploaded] : [])),
-  }
-}
-
-function kindOf(file: File): string {
-  const extension = /\.([a-z0-9]{1,8})$/iu.exec(file.name)?.[1]
-  if (extension !== undefined) return extension.toUpperCase()
-  const subtype = file.type.split("/")[1]
-  return subtype === undefined || subtype === "" ? "File" : subtype.toUpperCase()
-}
+export const useAttachments = createAttachments
 
 function statusOf(item: Attachment): string {
-  const state = item.state
-  switch (state.kind) {
-    case "done":
-      return kindOf(item.file)
-    case "failed":
-      return state.error
-    case "uploading":
-      if (state.progress <= 0) return "Preparing"
-      if (state.progress >= 1) return "Finishing"
-      return `${Math.round(state.progress * 100)}%`
-    default: {
-      const _exhaustive: never = state
-      return _exhaustive
-    }
-  }
+  return statusLabel(item.state) ?? kindLabel(item.file.name, item.file.type)
 }
 
 function AttachmentChip(props: { item: Attachment; leaving: boolean; onRemove: () => void }): JSX.Element {
