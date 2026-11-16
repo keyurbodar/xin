@@ -61,6 +61,9 @@ render(
         <div data-state="open">
           <PolicyApprovals conversationId={7} />
         </div>
+        <div data-state="root">
+          <PolicyApprovals conversationId={1} />
+        </div>
         <For each={["answered", "declined"]}>
           {(state) => (
             <div data-state={state}>

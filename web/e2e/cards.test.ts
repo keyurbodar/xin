@@ -63,7 +63,17 @@ async function open(theme: "dark" | "light"): Promise<Home> {
     switch (frame.op) {
       case "request.list":
         return {
-          requests: [...pending].map((id) => ({
+          requests: [
+            {
+              id: "approval:root-call",
+              kind: "approval",
+              conversationId: 1,
+              question: "Fetch the status page",
+              options: POLICY_OPTIONS,
+              subject: { tool: "web_fetch", arguments: '{"url":"https://example.com/status"}' },
+              askedAt: 1,
+            },
+            ...[...pending].map((id) => ({
             id,
             kind: kindOf(id),
             conversationId: 7,
@@ -75,7 +85,8 @@ async function open(theme: "dark" | "light"): Promise<Home> {
               ? { options: POLICY_OPTIONS, subject: { tool: "web_fetch", arguments: LONG_ARGUMENTS } }
               : {}),
             askedAt: 1,
-          })),
+            })),
+          ],
           answered: [...answered].map(([id, answer]) => ({ id, kind: kindOf(id), conversationId: 7, answer, answeredAt: 2 })),
         }
       case "request.respond":
@@ -240,6 +251,9 @@ for (const theme of ["dark", "light"] as const) {
       expect(style.font).toMatch(/mono/i)
       expect(style.wrap).toBe("pre-wrap")
       expect(await opened.locator("[data-call=web_fetch]").innerText()).toContain("web_fetch")
+      const root = card(page, "approval", "root")
+      expect(await root.getAttribute("data-card"), "a root-chat row with no project renders").toBe("open")
+      expect(await root.innerText()).toContain("Fetch the status page")
 
       const answered = card(page, "approval", "answered")
       expect(await answered.getAttribute("data-card")).toBe("answered")

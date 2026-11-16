@@ -84,8 +84,8 @@ export type RequestRow = {
   readonly id: string
   readonly kind: string
   readonly conversationId: number
-  readonly projectId: string
-  readonly projectName: string
+  readonly projectId: string | undefined
+  readonly projectName: string | undefined
   readonly threadTitle: string | undefined
   readonly question: string
   readonly options: readonly string[]
@@ -364,8 +364,8 @@ export function parseRequestList(value: unknown): readonly RequestRow[] {
       id,
       kind: strOf(raw.kind) ?? "ask_user",
       conversationId,
-      projectId: strOf(raw.projectId) ?? "",
-      projectName: strOf(raw.projectName) ?? "",
+      projectId: strOf(raw.projectId),
+      projectName: strOf(raw.projectName),
       threadTitle: strOf(raw.threadTitle),
       question,
       options: stringsOf(raw.options),
