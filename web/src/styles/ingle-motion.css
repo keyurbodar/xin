@@ -318,6 +318,7 @@
 /* Lightbox image switch: a plain opacity crossfade, so reduced motion keeps it as is. */
 .im-crossfade > * { transition: opacity var(--dur-crossfade) var(--ease-out); }
 .im-crossfade > :not([data-active]) { opacity: 0; pointer-events: none; }
+.im-crossfade[data-instant] > * { transition: none; }
 
 /* ---------- 10. Signal (3×3 D-Grid) with dot-level state morph ---------- */
 
@@ -509,6 +510,7 @@
   .im-swap > *, .im-swap > :not([data-active]), .im-swap-icon > :not([data-active]) { filter: none; transform: none; }
   .im-tab[data-closing] { transform: none; transition-duration: var(--dur-reduce); }
   .im-reject { animation: none; }
+  .im-crossfade[data-instant] > * { transition: none; }
   .sig[data-state] i:nth-child(n), .im-shimmer, .im-caret, .im-dots i, .im-skeleton, .im-progress[data-indeterminate] { animation: none; }
   .im-shimmer { color: var(--color-ink-3); background: none; }
   .im-skeleton { opacity: 1; }
@@ -536,6 +538,7 @@
   .im-swap > *, .im-swap > :not([data-active]), .im-swap-icon > :not([data-active]) { filter: none; transform: none; }
   .im-tab[data-closing] { transform: none; transition-duration: var(--dur-reduce); }
   .im-reject { animation: none; }
+  .im-crossfade[data-instant] > * { transition: none; }
   .sig[data-state] i:nth-child(n), .im-shimmer, .im-caret, .im-dots i, .im-skeleton, .im-progress[data-indeterminate] { animation: none; }
   .im-shimmer { color: var(--color-ink-3); background: none; }
   .im-skeleton { opacity: 1; }

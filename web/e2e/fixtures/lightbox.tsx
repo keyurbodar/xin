@@ -25,11 +25,20 @@ function paint(width: number, height: number, hue: number, label: string): strin
   return canvas.toDataURL("image/png")
 }
 
-const items: LightboxItem[] = [
+const params = new URLSearchParams(location.search)
+const gallery = Number(params.get("count") ?? 0)
+const origin = params.get("origin") ?? ""
+
+const painted: LightboxItem[] = [
   { src: paint(2400, 1500, 210, "One"), name: "screenshot.png", size: 215_000, type: "image/png" },
   { src: paint(800, 600, 140, "Two"), name: "diagram.png", size: 64_000, type: "image/png" },
   { src: paint(600, 1200, 20, "Three"), name: "phone.png", size: 98_000, type: "image/png" },
 ]
+
+const items: LightboxItem[] =
+  gallery > 0
+    ? Array.from({ length: gallery }, (_, at) => ({ src: `${origin}/e2e/img/${at}.png`, name: `image-${at}.png`, type: "image/png" }))
+    : painted
 
 function App() {
   trackMotion()
@@ -49,7 +58,7 @@ function App() {
               setOpen(true)
             }}
           >
-            <img src={item.src} alt="" class="h-full w-full object-cover" />
+            {gallery > 0 ? item.name : <img src={item.src} alt="" class="h-full w-full object-cover" />}
           </button>
         )}
       </For>

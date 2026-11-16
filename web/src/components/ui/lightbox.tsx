@@ -36,11 +36,35 @@ async function pngBlob(src: string): Promise<Blob> {
   return canvas.convertToBlob({ type: "image/png" })
 }
 
-async function copyImage(src: string): Promise<void> {
+async function copyImage(src: string): Promise<boolean> {
   try {
     await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob(src) })])
+    return true
   } catch {
-    await navigator.clipboard.writeText(new URL(src, location.href).href)
+    return navigator.clipboard.writeText(new URL(src, location.href).href).then(
+      () => true,
+      () => false,
+    )
+  }
+}
+
+const crossOrigin = (src: string): boolean => {
+  const url = new URL(src, location.href)
+  return (url.protocol === "http:" || url.protocol === "https:") && url.origin !== location.origin
+}
+
+async function downloadRemote(item: LightboxItem): Promise<void> {
+  try {
+    const response = await fetch(item.src)
+    if (!response.ok) throw new Error(String(response.status))
+    const url = URL.createObjectURL(await response.blob())
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = item.name
+    anchor.click()
+    setTimeout(() => URL.revokeObjectURL(url))
+  } catch {
+    window.open(item.src, "_blank", "noopener")
   }
 }
 
@@ -58,9 +82,15 @@ export function Lightbox(props: {
   const [zoom, setZoom] = createSignal<number | null>(null)
   const [pan, setPan] = createSignal<Point>({ x: 0, y: 0 })
   const [drag, setDrag] = createSignal<{ readonly pointer: number; readonly from: Point; readonly start: Point } | null>(null)
-  const [copied, setCopied] = createSignal(false)
+  const [copied, setCopied] = createSignal<"copied" | "failed">()
   let copiedTimer: ReturnType<typeof setTimeout> | undefined
   let observer: ResizeObserver | undefined
+  let strip: HTMLElement | undefined
+  const [seen, setSeen] = createSignal<ReadonlySet<Element>>(new Set())
+  const thumbs = new IntersectionObserver((entries) => {
+    const shown = entries.filter((entry) => entry.isIntersecting).map((entry) => entry.target)
+    if (shown.length > 0) setSeen((all) => new Set([...all, ...shown]))
+  })
 
   const many = (): boolean => props.items.length > 1
   const current = (): LightboxItem | undefined => props.items[props.index]
@@ -105,9 +135,15 @@ export function Lightbox(props: {
 
   resetOnOpen(() => props.open, reset)
   createEffect(on(() => props.index, reset, { defer: true }))
+  createEffect(() => {
+    const index = props.index
+    if (!props.open) return
+    strip?.querySelectorAll("ui-listbox-item")[index]?.scrollIntoView({ block: "nearest", inline: "nearest" })
+  })
   onCleanup(() => {
     clearTimeout(copiedTimer)
     observer?.disconnect()
+    thumbs.disconnect()
   })
 
   const measure = (element: HTMLDivElement): void => {
@@ -121,10 +157,10 @@ export function Lightbox(props: {
   const copy = async (): Promise<void> => {
     const item = current()
     if (item === undefined) return
-    await copyImage(item.src)
-    setCopied(true)
+    const outcome = (await copyImage(item.src)) ? "copied" : "failed"
+    setCopied(outcome)
     clearTimeout(copiedTimer)
-    copiedTimer = setTimeout(() => setCopied(false), COPIED_MS)
+    if (outcome === "copied") copiedTimer = setTimeout(() => setCopied(undefined), COPIED_MS)
   }
 
   const onKey = (event: KeyboardEvent): void => {
@@ -188,7 +224,7 @@ export function Lightbox(props: {
           class="im-dialog fixed inset-0 m-0 h-full max-h-none w-full max-w-none bg-bg/70 p-0 text-ink outline-none"
           on:keydown={onKey}
         >
-          <div class="grid h-full grid-rows-[var(--h-header)_minmax(0,1fr)_auto]">
+          <div class="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[var(--h-header)_minmax(0,1fr)_auto]">
             <header class="relative flex items-center gap-2 px-3 sm:px-4">
               <ui-dialog-title class="flex min-w-0 max-w-[calc(50%-2.5rem)] items-baseline gap-2 text-small">
                 <span class="truncate text-ink">{current()?.name}</span>
@@ -197,18 +233,44 @@ export function Lightbox(props: {
               <Show when={many()}>
                 <span
                   data-testid="lightbox-counter"
+                  aria-live="polite"
+                  aria-atomic="true"
                   class="pointer-events-none absolute left-1/2 -translate-x-1/2 text-small font-title tabular-nums text-ink"
                 >
                   {props.index + 1} / {props.items.length}
                 </span>
               </Show>
               <div class="ml-auto flex items-center gap-2">
-                <button type="button" aria-label={copied() ? "Copied" : "Copy image"} class={ICON_BUTTON} onClick={() => void copy()}>
-                  <Show when={copied()} fallback={<Copy size={15} />}>
+                <Show when={copied() === "failed"}>
+                  <p
+                    role="status"
+                    class="absolute right-3 top-full z-10 rounded-sm border border-line-2 bg-card px-2 py-1 text-micro text-failed sm:right-4"
+                  >
+                    The browser blocked the clipboard.
+                  </p>
+                </Show>
+                <button
+                  type="button"
+                  aria-label={copied() === "copied" ? "Copied" : "Copy image"}
+                  class={ICON_BUTTON}
+                  onClick={() => void copy()}
+                >
+                  <Show when={copied() === "copied"} fallback={<Copy size={15} />}>
                     <Check size={15} />
                   </Show>
                 </button>
-                <a href={current()?.src} download={current()?.name} aria-label="Download" class={ICON_BUTTON}>
+                <a
+                  href={current()?.src}
+                  download={current()?.name}
+                  aria-label="Download"
+                  class={ICON_BUTTON}
+                  onClick={(event) => {
+                    const item = current()
+                    if (item === undefined || !crossOrigin(item.src)) return
+                    event.preventDefault()
+                    void downloadRemote(item)
+                  }}
+                >
                   <Download size={15} />
                 </a>
                 <button type="button" aria-label="Close" class={ICON_BUTTON} onClick={() => props.onClose()}>
@@ -247,6 +309,7 @@ export function Lightbox(props: {
                     const at = (): number => (active() ? scale() : fitOf(item))
                     const offset = (): Point => (active() ? pan() : { x: 0, y: 0 })
                     return (
+                      <Show when={Math.abs(index() - props.index) <= 1}>
                       <img
                         src={item.src}
                         alt={active() ? item.name : ""}
@@ -264,6 +327,7 @@ export function Lightbox(props: {
                           setNatural((all) => ({ ...all, [item.src]: { width: image.naturalWidth, height: image.naturalHeight } }))
                         }}
                       />
+                      </Show>
                     )
                   }}
                 </For>
@@ -314,6 +378,7 @@ export function Lightbox(props: {
               </div>
               <Show when={many()}>
                 <ui-listbox
+                  ref={strip}
                   aria-label="Images"
                   orientation="horizontal"
                   loop="false"
@@ -326,15 +391,34 @@ export function Lightbox(props: {
                   }}
                 >
                   <For each={props.items}>
-                    {(item, index) => (
+                    {(item, index) => {
+                      let thumb: HTMLElement | undefined
+                      onCleanup(() => {
+                        if (thumb !== undefined) thumbs.unobserve(thumb)
+                      })
+                      return (
                       <ui-listbox-item
+                        ref={(element: HTMLElement) => {
+                          thumb = element
+                          thumbs.observe(element)
+                        }}
                         value={String(index())}
                         aria-label={item.name}
                         class="block h-12 w-16 shrink-0 cursor-default overflow-hidden rounded-sm border border-line-2 opacity-60 outline-none hover:opacity-90 data-[selected]:border-ink data-[selected]:opacity-100"
                       >
-                        <img src={item.src} alt="" draggable={false} class="h-full w-full object-cover" />
+                        <img
+                          src={thumb !== undefined && seen().has(thumb) ? item.src : undefined}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          width="64"
+                          height="48"
+                          draggable={false}
+                          class="h-full w-full object-cover"
+                        />
                       </ui-listbox-item>
-                    )}
+                      )
+                    }}
                   </For>
                 </ui-listbox>
               </Show>

@@ -148,3 +148,128 @@ test("the close button closes it and returns focus too", async () => {
   expect(await focused(page)).toBe("Open screenshot.png")
   await page.close()
 })
+
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+)
+const IMAGE = { status: 200, contentType: "image/png", body: PNG, headers: { "access-control-allow-origin": "*" } }
+
+async function gallery(options: { width?: number; origin?: string; requests?: string[] } = {}): Promise<Page> {
+  const origin = options.origin ?? ""
+  const page = await harness.open("lightbox", {
+    width: options.width ?? 1280,
+    search: `?count=12${origin === "" ? "" : `&origin=${encodeURIComponent(origin)}`}`,
+    before: (page) =>
+      page.route(/\/e2e\/img\/\d+\.png$/, (route) => {
+        options.requests?.push(route.request().url())
+        return route.fulfill(IMAGE)
+      }),
+  })
+  await page.click("#thumb-0")
+  await settled(page)
+  return page
+}
+
+test("at 390px a long gallery keeps every control inside the viewport", async () => {
+  const page = await gallery({ width: 390 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  const outside = await page.evaluate(() =>
+    [...document.querySelectorAll("[data-slot=dialog-content] :is(button, a, ui-listbox)")].flatMap((element) => {
+      const box = element.getBoundingClientRect()
+      return box.left < 0 || box.right > innerWidth ? [element.getAttribute("aria-label") ?? element.tagName] : []
+    }),
+  )
+  expect(outside).toEqual([])
+  await page.close()
+})
+
+test("only the current image and its neighbour load on the stage, and thumbnails load lazily", async () => {
+  const requests: string[] = []
+  const page = await gallery({ width: 390, requests })
+  expect(await page.locator("[data-testid=lightbox-stage] img").count()).toBe(2)
+  expect(await page.locator("ui-listbox-item img[loading=lazy]").count()).toBe(12)
+  expect(new Set(requests).size).toBeLessThan(12)
+  await page.getByRole("button", { name: "Next image" }).click()
+  expect(await page.locator("[data-testid=lightbox-stage] img").count()).toBe(3)
+  await page.close()
+})
+
+test("the selected thumbnail scrolls into view when the image changes", async () => {
+  const page = await gallery({ width: 390 })
+  const next = page.getByRole("button", { name: "Next image" })
+  for (let step = 0; step < 11; step++) await next.click()
+  expect(await counter(page)).toBe("12 / 12")
+  const strip = await page.locator("ui-listbox").boundingBox()
+  const last = await page.getByRole("option", { name: "image-11.png" }).boundingBox()
+  expect(last!.x + last!.width).toBeLessThanOrEqual(strip!.x + strip!.width + 1)
+  expect(last!.x).toBeGreaterThanOrEqual(strip!.x - 1)
+  await page.close()
+})
+
+test("a refused clipboard shows a status instead of failing silently", async () => {
+  const page = await openAt(0)
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(String(error)))
+  await page.evaluate(() => {
+    const refuse = () => Promise.reject(new DOMException("denied", "NotAllowedError"))
+    Object.defineProperty(navigator, "clipboard", { value: { write: refuse, writeText: refuse } })
+  })
+  await page.getByRole("button", { name: "Copy image" }).click()
+  await settled(page)
+  expect(await page.getByText("The browser blocked the clipboard.").getAttribute("role")).toBe("status")
+  expect(errors).toEqual([])
+  await page.close()
+})
+
+test("a cross-origin image downloads as a file without navigating the app", async () => {
+  const page = await gallery({ origin: "https://images.example" })
+  const before = page.url()
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Download" }).click()])
+  expect(download.suggestedFilename()).toBe("image-0.png")
+  expect(page.url()).toBe(before)
+  await page.close()
+})
+
+test("a cross-origin download that cannot be fetched opens in a new tab", async () => {
+  const page = await gallery({ origin: "https://images.example" })
+  const before = page.url()
+  await page.unroute(/\/e2e\/img\/\d+\.png$/)
+  await page.route(/\/e2e\/img\/\d+\.png$/, (route) => route.abort())
+  await page.context().route(/\/e2e\/img\/\d+\.png$/, (route) => route.fulfill(IMAGE))
+  const [tab] = await Promise.all([page.context().waitForEvent("page"), page.getByRole("link", { name: "Download" }).click()])
+  expect(tab.url()).toContain("images.example/e2e/img/0.png")
+  expect(page.url()).toBe(before)
+  await page.close()
+})
+
+test("the counter is a polite live region", async () => {
+  const page = await openAt(0)
+  expect(await page.getAttribute("[data-testid=lightbox-counter]", "aria-live")).toBe("polite")
+  await page.close()
+})
+
+test("a keyboard switch is instant and a pointer switch crossfades", async () => {
+  const page = await openAt(0)
+  const duration = () =>
+    page.locator("[data-testid=lightbox-stage] img[data-active]").evaluate((image) => getComputedStyle(image).transitionDuration)
+  await page.getByRole("button", { name: "Next image" }).click()
+  expect(await duration()).toBe("0.15s")
+  await page.keyboard.press("ArrowRight")
+  expect(await duration()).toBe("0s")
+  await page.close()
+})
+
+test("a pan stops at the image's edge", async () => {
+  const page = await openAt(1)
+  await page.getByRole("button", { name: "200%" }).click()
+  const stage = await page.locator("[data-testid=lightbox-stage]").boundingBox()
+  await page.mouse.move(640, 400)
+  await page.mouse.down()
+  await page.mouse.move(1140, 700, { steps: 8 })
+  await page.mouse.up()
+  const image = await page.locator("[data-testid=lightbox-stage] img[data-active]").boundingBox()
+  expect(Math.round(image!.x)).toBe(Math.round(stage!.x))
+  expect(Math.round(image!.y)).toBe(Math.round(stage!.y))
+  await page.close()
+})
