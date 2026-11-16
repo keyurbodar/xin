@@ -15,6 +15,7 @@ import {
   entryBatchRows,
   parseHistoryPage,
   type AnsweredView,
+  type Attachment,
   type EntryView,
   type RequestRow,
   type Snapshot,
@@ -45,7 +46,9 @@ import { navigate, param } from "../lib/router.ts"
 import { Loading, ThreadSkeleton } from "../components/ui/skeleton.tsx"
 import { Transcript } from "../components/chat/lazy-transcript.tsx"
 import type { PendingMessage } from "../components/chat/transcript.tsx"
-import { Composer } from "../components/chat/composer.tsx"
+import { Composer, type SendKey } from "../components/chat/composer.tsx"
+import { CaptainWelcome } from "../components/captain/welcome.tsx"
+import type { CaptainProfile } from "../lib/captains.ts"
 import { ThreadConversation } from "../components/chat/panel.tsx"
 import { ConversationTabs, type ConversationAction } from "../components/shell/conversation-tabs.tsx"
 import { SideThreadDialog } from "../components/shell/side-thread.tsx"
@@ -64,6 +67,7 @@ export function ProjectChat(props: {
   project: ProjectSummary
   snapshot: Snapshot | undefined
   active: boolean
+  captain?: CaptainProfile | undefined
   onOpenThread: (id: number) => void
 }): JSX.Element {
   void Transcript.preload()
@@ -172,9 +176,27 @@ export function ProjectChat(props: {
     const value = snapshot()
     return value !== undefined && busier(value)
   }
+  const send = async (text: string, key: SendKey, attachments: readonly Attachment[]): Promise<void> => {
+    const loaded = prompts.state()
+    const expanded = expandSlash(text, loaded.kind === "ready" ? loaded.value : [])
+    const result = await cmd<{ readonly accepted: boolean }>(
+      "message.send",
+      {
+        conv: props.project.coordinatorId,
+        text: expanded,
+        clientTs: key.at,
+        ...(attachments.length === 0 ? {} : { attachments }),
+      },
+      { id: key.id },
+    )
+    if (result.accepted) {
+      setOptimistic((current) => [...current, { key: key.id, text: expanded, at: key.at, attachments }])
+    }
+  }
 
+  let root: HTMLDivElement | undefined
   return (
-    <div class="relative isolate flex min-h-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
+    <div ref={root} class="relative isolate flex min-h-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
       <Loading when={snapshot() === undefined} skeleton={<ThreadSkeleton />} label="Loading conversation">
         <Show when={snapshot()}>
           {(value) => (
@@ -192,6 +214,17 @@ export function ProjectChat(props: {
                 await cmd("message.retry", { entryId })
               }}
               onLoadOlder={loadOlder}
+              welcome={
+                props.captain === undefined ? undefined : (
+                  <CaptainWelcome
+                    captain={props.captain}
+                    onStart={async (text: string) => {
+                      await send(text, { id: crypto.randomUUID(), at: Date.now() }, [])
+                      root?.querySelector<HTMLElement>("ui-token-input-editor")?.focus()
+                    }}
+                  />
+                )
+              }
             />
           )}
         </Show>
@@ -230,23 +263,7 @@ export function ProjectChat(props: {
               forgetProjectFiles(props.project.slug)
               return uploaded
             }}
-            onSend={async (text, key, attachments) => {
-              const loaded = prompts.state()
-              const expanded = expandSlash(text, loaded.kind === "ready" ? loaded.value : [])
-              const result = await cmd<{ readonly accepted: boolean }>(
-                "message.send",
-                {
-                  conv: props.project.coordinatorId,
-                  text: expanded,
-                  clientTs: key.at,
-                  ...(attachments.length === 0 ? {} : { attachments }),
-                },
-                { id: key.id },
-              )
-              if (result.accepted) {
-                setOptimistic((current) => [...current, { key: key.id, text: expanded, at: key.at, attachments }])
-              }
-            }}
+            onSend={send}
             onStop={async () => {
               await cmd("conv.stop", { conv: props.project.coordinatorId })
             }}

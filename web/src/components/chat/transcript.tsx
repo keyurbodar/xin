@@ -72,6 +72,7 @@ export function Transcript(props: {
   onAnswer: (request: RequestRow, answer: string) => Promise<void>
   onRetry: (entryId: number) => Promise<void>
   onLoadOlder: () => Promise<void>
+  welcome?: JSX.Element
 }): JSX.Element {
   const entries = createMemo(() => [...props.older, ...props.snapshot.entries])
   bindConversation(() => (props.snapshot.id === undefined ? undefined : { id: props.snapshot.id, entries: entries() }))
@@ -172,7 +173,7 @@ export function Transcript(props: {
       renderLink={renderLink}
       header={
         <Show when={items().length === 0 && !live().busy}>
-          <Welcome project={props.project} />
+          {props.welcome ?? <Welcome project={props.project} />}
         </Show>
       }
       footer={
