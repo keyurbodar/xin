@@ -7,7 +7,7 @@
     "fmt": "oxfmt src plugins test scripts",
     "fmt:check": "oxfmt --check src plugins test scripts",
     "lint": "oxlint --deny-warnings src plugins test scripts && bun scripts/boundaries.ts && bun scripts/decisions.ts --check && bun scripts/ingle.ts plugin generate --check",
-    "typecheck": "tsgo --noEmit -p tsconfig.json && tsgo --noEmit -p web/tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json && tsgo --noEmit -p web/tsconfig.json && tsgo --noEmit -p scripts/ci/tsconfig.json",
     "test": "vitest run",
     "bundle": "wrangler deploy --dry-run --outdir .wrangler/bundle && bun run dev:smoke",
     "dev:smoke": "bun scripts/devsmoke.ts",
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.4.10",
     "@cloudflare/workers-types": "^5.20261106.1",
+    "@types/bun": "^1.4.4",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "oxfmt": "^0.77.0",
     "oxlint": "^1.92.0",

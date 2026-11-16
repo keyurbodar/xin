@@ -1,0 +1,1 @@
+2026-11-16T13:09:00Z	ci	a SHA whose git tree already passed gets instabox/ci success at once, without running	Keyur: drop CI work that only repeats a check already done. A squash merge of an up-to-date PR puts the same tree on main that the PR head already passed	tree hash read from the GitHub commits API; ctl rerun --fresh forgets the cache	kept

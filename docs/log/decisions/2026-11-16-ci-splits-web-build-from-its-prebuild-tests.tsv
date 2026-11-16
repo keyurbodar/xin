@@ -1,0 +1,1 @@
+2026-11-16T13:10:00Z	ci	CI runs web's prebuild tests (bun test src) and vite build as two parallel jobs instead of bun run build	bun run build runs the tests and then the build in series. Splitting them takes the tests off the build's critical path, and both still run on every SHA	web-test 3.3 s and web-build 13.6 s, run side by side on the PR 123 head	kept
