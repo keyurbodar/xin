@@ -328,7 +328,7 @@ const addUsage = (sum: UsageBucket, usage: UsageBucket): UsageBucket => ({
   cost: sum.cost + usage.cost,
 })
 
-const RoleSchema = oneOf(["chat", "thread", "utility"] as const)
+const RoleSchema = oneOf(["chat", "thread", "utility", "compaction"] as const)
 const CustomSchema = obj({ baseUrl: str({ minLength: 1 }), key: str({ minLength: 1 }), api: str({ minLength: 1 }) })
 
 const API_STREAMS: Readonly<Record<string, () => ProviderStreams>> = {
@@ -348,6 +348,7 @@ const DefaultsSchema = obj({
   chat: opt(ModelRefSchema),
   thread: opt(ModelRefSchema),
   utility: opt(ModelRefSchema),
+  compaction: opt(ModelRefSchema),
 })
 const RefsSchema = arr(ModelRefSchema)
 const ListedSchema = obj({ data: opt(arr(unknown())), models: opt(arr(unknown())) }, { open: true })
@@ -365,7 +366,7 @@ const listedModelCheck = compile(ListedModelSchema)
 
 type Endpoint = { readonly baseUrl: string; readonly api: string }
 type StoredEntry = { readonly credential: Credential; readonly endpoint?: Endpoint }
-type MutableDefaults = { chat?: ModelRef; thread?: ModelRef; utility?: ModelRef }
+type MutableDefaults = { chat?: ModelRef; thread?: ModelRef; utility?: ModelRef; compaction?: ModelRef }
 type Settings = {
   readonly defaults: ModelDefaults
   readonly favorites: readonly ModelRef[]
@@ -759,7 +760,7 @@ function catalogEntry(model: Model<Api>, keyed: boolean, settings: Settings): Js
 }
 
 function defaultRole(defaults: ModelDefaults, ref: ModelRef): Role | undefined {
-  return (["chat", "thread", "utility"] as const).find((role) => {
+  return (["chat", "thread", "utility", "compaction"] as const).find((role) => {
     const chosen = defaults[role]
     return chosen !== undefined && same(chosen, ref)
   })

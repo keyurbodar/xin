@@ -4,7 +4,7 @@ import { MODEL_THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-sch
 import { obj, oneOf, opt, str } from "@earendil-works/pi-schema"
 import type { Outcome } from "../ops.ts"
 
-export type Role = "chat" | "thread" | "utility"
+export type Role = "chat" | "thread" | "utility" | "compaction"
 export type ModelDefaults = { readonly [K in Role]?: ModelRef }
 export type ResolvedModel =
   | { readonly kind: "model"; readonly model: ModelRef; readonly source: "conversation" | "project" | "owner" }
