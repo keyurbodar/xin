@@ -1,6 +1,5 @@
 import { createEffect, createSignal, For, onMount, Show, type JSX } from "solid-js"
-import { Dynamic, Portal } from "solid-js/web"
-import { Menu, useMenu } from "@ark-ui/solid/menu"
+import { Dynamic } from "solid-js/web"
 import { Ellipsis, ExternalLink, Menu as MenuIcon, PanelRight, Plus, X, type LucideProps } from "lucide-solid"
 import { money } from "../../lib/format.ts"
 import { keyStarted } from "../../lib/motion.ts"
@@ -18,10 +17,13 @@ import {
   toggleSidebar,
   wideShell,
 } from "../../state/tabs.ts"
+import { Breadcrumb, type Crumb } from "../ui/breadcrumb.tsx"
 import { Signal } from "../ui/signal.tsx"
 import { showToast } from "../../state/toasts.ts"
 import { nearestKept } from "../../lib/tab-order.ts"
-import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from "./menu.ts"
+import { replayWhenReady, warmUiSdk } from "../../lib/ui-sdk-lazy.ts"
+import { POPUP, POPUP_ITEM, POPUP_SEPARATOR } from "../ui/surface.ts"
+import { ICON_BUTTON } from "./menu.ts"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
 const GAP = 4
@@ -38,8 +40,6 @@ type Drag = {
   readonly centres: readonly number[]
 }
 
-type Point = { readonly x: number; readonly y: number }
-
 /** One row of the conversation's menu; `separated` draws a rule above it. */
 export type ConversationAction = {
   readonly value: string
@@ -50,6 +50,13 @@ export type ConversationAction = {
 
 const TAB =
   "group relative flex h-[var(--h-tab)] items-center gap-2 rounded-sm px-2 text-sm"
+
+const warm = (): void => warmUiSdk("menu")
+
+const threadOf = (target: EventTarget | null): number | undefined => {
+  const tab = target instanceof Element ? target.closest<HTMLElement>("[data-thread]") : null
+  return tab === null ? undefined : Number(tab.dataset.thread)
+}
 
 export function ConversationTabs(props: {
   project: ProjectSummary
@@ -137,23 +144,12 @@ export function ConversationTabs(props: {
   }
 
   const [menuTarget, setMenuTarget] = createSignal<number | undefined>()
-  const menu = useMenu({
-    positioning: { placement: "bottom-start", gutter: 4 },
-    onSelect: (details) => act(details.value),
-    onOpenChange: (details) => {
-      if (!details.open) focusTab(menuTarget())
-    },
-  })
-
-  const openMenu = (id: number, point: Point): void => {
-    setMenuTarget(id)
-    menu.api().setOpen(true)
-    menu.api().reposition({ getAnchorRect: () => ({ ...point, width: 0, height: 0 }) })
-  }
-
-  const belowTab = (element: HTMLElement): Point => {
-    const rect = element.getBoundingClientRect()
-    return { x: rect.left, y: rect.bottom }
+  const activeThread = (): ThreadSummary | undefined =>
+    props.threads.find((thread) => thread.id === props.activeThreadId)
+  const crumbs = (): Crumb[] => {
+    const project = { label: props.project.name, href: `#${props.base}`, lead: props.mark }
+    const thread = activeThread()
+    return thread === undefined ? [project] : [project, { label: thread.title, href: `#${props.base}/t/${thread.id}` }]
   }
 
   const act = (action: string): void => {
@@ -216,185 +212,199 @@ export function ConversationTabs(props: {
   }
 
   return (
-    <div class="flex h-[var(--h-topbar)] shrink-0 items-center gap-1 border-b border-line-1 px-2">
-      <Show when={!wideShell() || sidebarHidden()}>
-        <button type="button" class={ICON_BUTTON} aria-label="Open the sidebar" onClick={toggleSidebar}>
-          <MenuIcon {...ICON} />
-        </button>
-      </Show>
-      <div role="tablist" class="focus-inset flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-        <button
-          type="button"
-          ref={projectTab}
-          role="tab"
-          aria-selected={props.activeThreadId === undefined}
-          onClick={() => openTab(undefined)}
-          class={`${TAB} min-w-0 max-w-[200px] shrink-0`}
-          classList={{
-            "bg-hover text-ink": props.activeThreadId === undefined,
-            "im-hover text-ink-3": props.activeThreadId !== undefined,
+    <header class="shrink-0 border-b border-line-1" onPointerEnter={warm} onFocusIn={warm}>
+      <div class="flex h-[var(--h-topbar)] items-center gap-1 px-2">
+        <Show when={!wideShell() || sidebarHidden()}>
+          <button type="button" class={ICON_BUTTON} aria-label="Open the sidebar" onClick={toggleSidebar}>
+            <MenuIcon {...ICON} />
+          </button>
+        </Show>
+        <Breadcrumb class="flex-1 pl-1" crumbs={crumbs()} />
+        <Show when={props.cost !== undefined && props.cost > 0}>
+          <span class="px-1.5 font-mono text-sm tabular-nums text-ink-2" title="Spend on this conversation">
+            {money(props.cost ?? 0)}
+          </span>
+        </Show>
+        <ui-menu on:action={(event) => props.onAction(event.detail.value)}>
+          <ui-menu-trigger>
+            <button
+              type="button"
+              class={ICON_BUTTON}
+              aria-label={`${props.project.name} actions`}
+              onClick={(event) => replayWhenReady(["menu"], event)}
+            >
+              <Ellipsis {...ICON} />
+            </button>
+          </ui-menu-trigger>
+          <ui-menu-content hidden side="bottom" align="end" side-offset="6" class={`${POPUP} w-[220px]`}>
+            <For each={props.actions}>
+              {(action) => (
+                <>
+                  <Show when={action.separated === true}>
+                    <ui-menu-separator class={POPUP_SEPARATOR} />
+                  </Show>
+                  <ui-menu-item value={action.value} class={POPUP_ITEM}>
+                    <span class="text-ink-3">
+                      <Dynamic component={action.icon} {...ICON} />
+                    </span>
+                    {action.label}
+                  </ui-menu-item>
+                </>
+              )}
+            </For>
+          </ui-menu-content>
+        </ui-menu>
+        <Show when={!paneOpen()}>
+          <button type="button" class={ICON_BUTTON} aria-label="Show the pane" onClick={() => setPaneOpen(true)}>
+            <PanelRight {...ICON} />
+          </button>
+        </Show>
+      </div>
+      <div class="flex items-center gap-1 px-2 pb-1.5">
+        <ui-menu
+          class="min-w-0"
+          on:openchange={(event) => {
+            if (event.detail.value && menuTarget() === undefined) event.preventDefault()
           }}
+          on:openchangecomplete={(event) => {
+            if (!event.detail.value) focusTab(menuTarget())
+          }}
+          on:action={(event) => act(event.detail.value)}
         >
-          {props.mark}
-          <span class="truncate">{props.project.name}</span>
-        </button>
-        <For each={props.threads}>
-          {(thread, index) => {
-            const active = (): boolean => props.activeThreadId === thread.id
-            const lifted = (): boolean => drag()?.id === thread.id && moved
-            return (
-              <div
-                ref={(element) => {
-                  refs.set(thread.id, element)
-                  createEffect(() => {
-                    if (active()) element.scrollIntoView({ block: "nearest", inline: "nearest" })
-                  })
-                }}
+          <ui-menu-context-trigger class="min-w-0">
+            <div
+              role="tablist"
+              class="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]"
+              on:pointerdown={(event) => setMenuTarget(threadOf(event.target))}
+              on:contextmenu={(event) => {
+                setMenuTarget(threadOf(event.target))
+                if (menuTarget() === undefined) return
+                replayWhenReady(["menu"], event)
+              }}
+            >
+              <button
+                type="button"
+                ref={projectTab}
                 role="tab"
-                tabIndex={0}
-                aria-selected={active()}
-                title={thread.title}
-                data-dragging={lifted() ? "" : undefined}
-                data-closing={closing().includes(thread.id) ? "" : undefined}
-                data-instant={settled() ? undefined : ""}
-                onPointerDown={(event) => down(event, thread.id, index())}
-                onPointerMove={move}
-                onPointerUp={up}
-                onPointerCancel={up}
-                onClick={() => {
-                  if (!moved) openTab(thread.id)
-                }}
-                onKeyDown={(event) => {
-                  if (event.target !== event.currentTarget) return
-                  if (event.key === "Enter" || event.key === " ") openTab(thread.id)
-                  if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-                    event.preventDefault()
-                    openMenu(thread.id, belowTab(event.currentTarget))
-                  }
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault()
-                  openMenu(
-                    thread.id,
-                    event.button === 2 ? { x: event.clientX, y: event.clientY } : belowTab(event.currentTarget),
-                  )
-                }}
-                onAuxClick={(event) => {
-                  if (event.button === 1) close([thread.id])
-                }}
-                class={`${TAB} im-tab im-lift im-flip min-w-[88px] max-w-[240px] flex-1 basis-[240px] cursor-default touch-none select-none pr-1`}
+                aria-selected={props.activeThreadId === undefined}
+                onClick={() => openTab(undefined)}
+                class={`${TAB} min-w-0 max-w-[200px] shrink-0`}
                 classList={{
-                  "bg-hover text-ink": active(),
-                  "im-hover text-ink-3": !active(),
-                  "bg-popover": lifted(),
-                }}
-                style={{
-                  translate: shift(index()),
-                  "--drag-x": lifted() ? `${drag()?.dx ?? 0}px` : undefined,
+                  "bg-hover text-ink": props.activeThreadId === undefined,
+                  "im-hover text-ink-3": props.activeThreadId !== undefined,
                 }}
               >
-                <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
-                <span class="min-w-0 flex-1 truncate">{thread.title}</span>
-                <button
-                  type="button"
-                  aria-label={`Close ${thread.title}`}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    close([thread.id])
-                  }}
-                  class="grid h-5 w-5 shrink-0 place-items-center rounded-xs text-ink-3 opacity-0 hover:bg-secondary hover:text-ink group-hover:opacity-100 focus-visible:opacity-100"
-                  classList={{ "opacity-100": active() }}
-                >
-                  <X size={12} stroke-width={1.5} />
-                </button>
-              </div>
-            )
-          }}
-        </For>
-      </div>
-      <Menu.RootProvider value={menu} lazyMount unmountOnExit>
-        <Portal>
-          <Menu.Positioner>
-            <Menu.Content class={MENU_CONTENT} aria-label="Tab actions">
-              <Menu.Item value="window" class={MENU_ITEM}>
-                <span class="text-ink-3">
-                  <ExternalLink {...ICON} />
-                </span>
-                Open in new window
-              </Menu.Item>
-              <Menu.Separator class={MENU_SEPARATOR} />
-              <Menu.Item value="close" class={MENU_ITEM}>
-                <span class="text-ink-3">
-                  <X {...ICON} />
-                </span>
-                Close
-              </Menu.Item>
-              <Menu.Item value="others" class={MENU_ITEM} disabled={props.threads.length < 2}>
-                <span class="text-ink-3">
-                  <X {...ICON} />
-                </span>
-                Close others
-              </Menu.Item>
-              <Menu.Item value="right" class={MENU_ITEM} disabled={isLast()}>
-                <span class="text-ink-3">
-                  <X {...ICON} />
-                </span>
-                Close to the right
-              </Menu.Item>
-            </Menu.Content>
-          </Menu.Positioner>
-        </Portal>
-      </Menu.RootProvider>
-      <Show when={props.onNewThread}>
-        {(open) => (
-          <button type="button" class={ICON_BUTTON} aria-label="New thread" onClick={() => open()()}>
-            <Plus {...ICON} />
-          </button>
-        )}
-      </Show>
-      <span class="flex-1" />
-      <Show when={props.cost !== undefined && props.cost > 0}>
-        <span class="px-1.5 font-mono text-sm tabular-nums text-ink-2" title="Spend on this conversation">
-          {money(props.cost ?? 0)}
-        </span>
-      </Show>
-      <Menu.Root
-        lazyMount
-        unmountOnExit
-        positioning={{ placement: "bottom-end", gutter: 6 }}
-        onSelect={(details) => props.onAction(details.value)}
-      >
-        <Menu.Trigger class={ICON_BUTTON} aria-label={`${props.project.name} actions`}>
-          <Ellipsis {...ICON} />
-        </Menu.Trigger>
-        <Portal>
-          <Menu.Positioner>
-            <Menu.Content class={MENU_CONTENT}>
-              <For each={props.actions}>
-                {(action) => (
-                  <>
-                    <Show when={action.separated === true}>
-                      <Menu.Separator class={MENU_SEPARATOR} />
-                    </Show>
-                    <Menu.Item value={action.value} class={MENU_ITEM}>
-                      <span class="text-ink-3">
-                        <Dynamic component={action.icon} {...ICON} />
-                      </span>
-                      {action.label}
-                    </Menu.Item>
-                  </>
-                )}
+                {props.mark}
+                <span class="truncate">{props.project.name}</span>
+              </button>
+              <For each={props.threads}>
+                {(thread, index) => {
+                  const active = (): boolean => props.activeThreadId === thread.id
+                  const lifted = (): boolean => drag()?.id === thread.id && moved
+                  return (
+                    <div
+                      ref={(element) => {
+                        refs.set(thread.id, element)
+                        createEffect(() => {
+                          if (active()) element.scrollIntoView({ block: "nearest", inline: "nearest" })
+                        })
+                      }}
+                      role="tab"
+                      data-thread={thread.id}
+                      tabIndex={0}
+                      aria-selected={active()}
+                      title={thread.title}
+                      data-dragging={lifted() ? "" : undefined}
+                      data-closing={closing().includes(thread.id) ? "" : undefined}
+                      data-instant={settled() ? undefined : ""}
+                      onPointerDown={(event) => down(event, thread.id, index())}
+                      onPointerMove={move}
+                      onPointerUp={up}
+                      onPointerCancel={up}
+                      onClick={() => {
+                        if (!moved) openTab(thread.id)
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return
+                        if (event.key === "Enter" || event.key === " ") openTab(thread.id)
+                      }}
+                      onAuxClick={(event) => {
+                        if (event.button === 1) close([thread.id])
+                      }}
+                      class={`${TAB} im-tab im-lift im-flip min-w-[88px] max-w-[240px] flex-1 basis-[240px] cursor-default touch-none select-none pr-1`}
+                      classList={{
+                        "bg-hover text-ink": active(),
+                        "im-hover text-ink-3": !active(),
+                        "bg-popover": lifted(),
+                      }}
+                      style={{
+                        translate: shift(index()),
+                        "--drag-x": lifted() ? `${drag()?.dx ?? 0}px` : undefined,
+                      }}
+                    >
+                      <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
+                      <span class="min-w-0 flex-1 truncate">{thread.title}</span>
+                      <button
+                        type="button"
+                        aria-label={`Close ${thread.title}`}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          close([thread.id])
+                        }}
+                        class="grid h-5 w-5 shrink-0 place-items-center rounded-xs text-ink-3 opacity-0 hover:bg-secondary hover:text-ink group-hover:opacity-100 focus-visible:opacity-100"
+                        classList={{ "opacity-100": active() }}
+                      >
+                        <X size={12} stroke-width={1.5} />
+                      </button>
+                    </div>
+                  )
+                }}
               </For>
-            </Menu.Content>
-          </Menu.Positioner>
-        </Portal>
-      </Menu.Root>
-      <Show when={!paneOpen()}>
-        <button type="button" class={ICON_BUTTON} aria-label="Show the pane" onClick={() => setPaneOpen(true)}>
-          <PanelRight {...ICON} />
-        </button>
-      </Show>
-    </div>
+            </div>
+          </ui-menu-context-trigger>
+          <ui-menu-content
+            hidden
+            final-focus="none"
+            side-offset="4"
+            class={`${POPUP} w-[220px]`}
+            aria-label="Tab actions"
+          >
+            <ui-menu-item value="window" class={POPUP_ITEM}>
+              <span class="text-ink-3">
+                <ExternalLink {...ICON} />
+              </span>
+              Open in new window
+            </ui-menu-item>
+            <ui-menu-separator class={POPUP_SEPARATOR} />
+            <ui-menu-item value="close" class={POPUP_ITEM}>
+              <span class="text-ink-3">
+                <X {...ICON} />
+              </span>
+              Close
+            </ui-menu-item>
+            <ui-menu-item value="others" class={POPUP_ITEM} disabled={props.threads.length < 2}>
+              <span class="text-ink-3">
+                <X {...ICON} />
+              </span>
+              Close others
+            </ui-menu-item>
+            <ui-menu-item value="right" class={POPUP_ITEM} disabled={isLast()}>
+              <span class="text-ink-3">
+                <X {...ICON} />
+              </span>
+              Close to the right
+            </ui-menu-item>
+          </ui-menu-content>
+        </ui-menu>
+        <Show when={props.onNewThread}>
+          {(open) => (
+            <button type="button" class={ICON_BUTTON} aria-label="New thread" onClick={() => open()()}>
+              <Plus {...ICON} />
+            </button>
+          )}
+        </Show>
+      </div>
+    </header>
   )
 }
