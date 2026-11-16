@@ -26,7 +26,9 @@ const step: FauxResponseStep = (context, _options, _state, model) => {
   return fauxAssistantMessage(`answered by ${model.id}`)
 }
 
-alt.setResponses(Array.from({ length: 64 }, () => step))
+export const resetAlt = (): void => alt.setResponses(Array.from({ length: 64 }, () => step))
+
+resetAlt()
 
 export const catalog: Catalog = {}
 export const providers: readonly Provider[] = [alt.provider]
