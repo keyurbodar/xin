@@ -46,6 +46,8 @@ The queue is one session document, `xin.intake` (§02), not a host table: `enque
 - **Text-like files** (`text/*`, JSON, XML, SVG: the `isText` types `file.read` previews) are inlined as `<file>` blocks within one `TEXT_BUDGET_BYTES` (64 KiB) per turn; a file over what is left is listed as `not inlined` and the model reads it with its own tools.
 - **Any other file** is the reference line alone.
 - A recorded blob R2 no longer holds is listed as `no longer stored`.
+- An item queued before `message.send` recorded blobs (no `sha256`) keeps its files and lists them by path alone.
+- Nothing a file brings can forge the markup: names, types and paths are escaped (`&`, `<`, `>`, control characters folded to spaces, and `"` in the path attribute), an inlined file's own `<file`, `</file`, `<attachments` and `</attachments` tags are escaped, and an image whose bytes do not start with its type's signature is listed as `not shown, its bytes are not image/png` instead of being sent.
 
 Budgets are spent against the recorded size before any bytes are read, so a file that does not fit never enters the isolate and the stored entry stays far under a Durable Object row.
 

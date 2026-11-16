@@ -63,7 +63,7 @@ test("a card's remove button removes only that file", async () => {
 test("the grid is one Tab stop, arrows move between cards and Delete or Backspace removes the focused one", async () => {
   const page = await harness.open("attachments")
   await settled(page)
-  await page.focus("#before")
+  await page.focus("#field")
   await page.keyboard.press("Tab")
   expect(await focusedCard(page)).toBe("screenshot.png")
   await page.keyboard.press("ArrowRight")
@@ -87,14 +87,20 @@ test("the grid is one Tab stop, arrows move between cards and Delete or Backspac
   await page.close()
 })
 
-test("removing the last card leaves no list behind and new files fill it again", async () => {
+test("removing the last card by keyboard hands focus to the message field, never the page", async () => {
   const page = await harness.open("attachments")
   await settled(page)
   await page.focus("#before")
   await page.keyboard.press("Tab")
-  for (let index = 0; index < 5; index++) await page.keyboard.press("Delete")
-  await settled(page)
+  await page.keyboard.press("Tab")
+  expect(await focusedCard(page)).toBe("screenshot.png")
+  for (let index = 0; index < 5; index++) {
+    await page.keyboard.press("Delete")
+    await settled(page)
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false)
+  }
   expect(await page.locator("ui-file-input-item").count()).toBe(0)
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe("field")
   expect(await page.locator("ui-file-input").isHidden()).toBe(true)
   await page.evaluate(() => Reflect.get(window, "addAgain")())
   await settled(page)
@@ -113,5 +119,21 @@ test("a sent image opens by click or keyboard with its index, and other files ar
   expect(await page.getByRole("button", { name: "Open brief.md" }).count()).toBe(0)
   const thumbnail = page.getByRole("button", { name: "Open screenshot.png" }).locator("img")
   expect(await thumbnail.getAttribute("src")).toStartWith("blob:")
+  await page.close()
+})
+
+test("hostile names render as text, an SVG preview runs no script and HTML sent as PNG shows a file icon", async () => {
+  const page = await harness.open("attachments")
+  await settled(page)
+  await page.evaluate(() => Reflect.get(window, "addHostile")())
+  await settled(page)
+  expect(await cards(page)).toContain('<img src=x onerror="window.pwned=1">.png')
+  expect(await cards(page)).toContain("../../x.txt")
+  expect(await page.locator('ui-file-input-item img[src="x"]').count()).toBe(0)
+  expect(await page.getByRole("button", { name: 'Remove <img src=x onerror="window.pwned=1">.png' }).count()).toBe(1)
+  const fake = page.locator("ui-file-input-item", { hasText: "page.png" })
+  expect(await fake.locator("img").count()).toBe(0)
+  expect(await fake.locator("svg").count()).toBeGreaterThan(0)
+  expect(await page.evaluate(() => Reflect.get(window, "pwned"))).toBeUndefined()
   await page.close()
 })

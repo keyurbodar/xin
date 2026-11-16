@@ -1,5 +1,15 @@
 import { expect, test } from "bun:test"
-import { kindLabel, MAX_ATTACHMENTS, rejectionOf, sizeLabel, statusLabel } from "./attachments.ts"
+import { createRoot } from "solid-js"
+import {
+  createAttachments,
+  isBlobType,
+  kindLabel,
+  MAX_ATTACHMENTS,
+  rejectionOf,
+  sizeLabel,
+  statusLabel,
+  type Upload,
+} from "./attachments.ts"
 
 const file = (size: number, name = "a.png", type = "image/png") => new File([new Uint8Array(size)], name, { type })
 
@@ -27,4 +37,61 @@ test("upload status reads Preparing, a percent, then Finishing", () => {
   expect(statusLabel({ kind: "uploading", progress: 0.42 })).toBe("42%")
   expect(statusLabel({ kind: "uploading", progress: 1 })).toBe("Finishing")
   expect(statusLabel({ kind: "failed", error: "HTTP 500" })).toBe("HTTP 500")
+})
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+function harness(upload: Upload) {
+  const revoked: string[] = []
+  URL.createObjectURL = (blob: Blob) => `blob:test/${blob instanceof File ? blob.name : "blob"}`
+  URL.revokeObjectURL = (url: string) => void revoked.push(url)
+  let store!: ReturnType<typeof createAttachments>
+  const dispose = createRoot((disposer) => {
+    store = createAttachments(() => upload)
+    return disposer
+  })
+  return { store, revoked, dispose }
+}
+
+test("removing a file aborts its upload and revokes its preview", async () => {
+  const signals: AbortSignal[] = []
+  const { store, revoked } = harness((_file, _progress, signal) => {
+    signals.push(signal)
+    return new Promise(() => undefined)
+  })
+  store.add([file(10, "shot.png")])
+  const [item] = store.items()
+  store.remove(item!.id)
+  expect(signals[0]?.aborted).toBe(true)
+  expect(revoked).toEqual(["blob:test/shot.png"])
+  expect(store.items()).toHaveLength(0)
+})
+
+test("clearing aborts every upload and revokes every preview", () => {
+  const signals: AbortSignal[] = []
+  const { store, revoked, dispose } = harness((_file, _progress, signal) => {
+    signals.push(signal)
+    return new Promise(() => undefined)
+  })
+  store.add([file(10, "a.png"), file(10, "b.png")])
+  dispose()
+  expect(signals.map((signal) => signal.aborted)).toEqual([true, true])
+  expect(revoked).toEqual(["blob:test/a.png", "blob:test/b.png"])
+})
+
+test("adding a failed file again replaces its card instead of adding a second", async () => {
+  let calls = 0
+  const { store } = harness(() => (++calls === 1 ? Promise.reject(new Error("shot.png: HTTP 500")) : new Promise(() => undefined)))
+  store.add([file(10, "shot.png")])
+  await settle()
+  expect(store.items().map((item) => item.state)).toEqual([{ kind: "failed", error: "HTTP 500" }])
+  store.add([file(10, "shot.png")])
+  expect(store.items().map((item) => item.state.kind)).toEqual(["uploading"])
+})
+
+test("only octet-stream or image bytes count as a blob", () => {
+  expect(isBlobType("application/octet-stream")).toBe(true)
+  expect(isBlobType("image/png")).toBe(true)
+  expect(isBlobType("text/html; charset=utf-8")).toBe(false)
+  expect(isBlobType("")).toBe(false)
 })

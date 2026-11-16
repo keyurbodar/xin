@@ -23,8 +23,28 @@ function base64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
-const attribute = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;")
+const plain = (value: string): string =>
+  value
+    .replace(/\p{Cc}+/gu, " ")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+
+const attribute = (value: string): string => plain(value).replaceAll('"', "&quot;")
+
+/** A file's own `<file` or `</attachments` tags would forge the markup around it, so only those are escaped. */
+const fenced = (text: string): string => text.replace(/<(\/?(?:file|attachments)\b)/giu, "&lt;$1")
+
+const SIGNATURES: Readonly<Record<string, (bytes: Uint8Array) => boolean>> = {
+  "image/png": (bytes) => bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47,
+  "image/jpeg": (bytes) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
+  "image/gif": (bytes) => new TextDecoder().decode(bytes.subarray(0, 4)) === "GIF8",
+  "image/webp": (bytes) =>
+    new TextDecoder().decode(bytes.subarray(0, 4)) === "RIFF" &&
+    new TextDecoder().decode(bytes.subarray(8, 12)) === "WEBP",
+}
+
+const isImage = (type: string, bytes: Uint8Array): boolean => SIGNATURES[type]?.(bytes) === true
 
 /**
  * One user message for a turn's files. Every file is listed; an image goes to a vision model as an image part and a
@@ -32,7 +52,9 @@ const attribute = (value: string): string =>
  *
  * Budgets are spent against the size the message recorded from the files index, before any bytes are read, so a file
  * that does not fit is named and never loaded into the isolate. Bytes are read by content address, so a replay after a
- * crash renders the same turn even when the path has been overwritten since.
+ * crash renders the same turn even when the path has been overwritten since. An item queued before blobs were recorded
+ * is listed by path alone. Names, types and paths are escaped and an inlined file cannot close its wrapper, so a crafted
+ * file cannot forge the markup around it; an image whose bytes do not match its type is never sent as one.
  */
 export async function renderTurn(
   port: AttachmentPort,
@@ -48,7 +70,12 @@ export async function renderTurn(
   const inlined: string[] = []
   const images: ImageContent[] = []
   for (const file of files) {
-    const line = `- ${file.name} (${file.type}, ${file.size} bytes) at ${file.path}`
+    const size = file.size === undefined ? "" : `, ${file.size} bytes`
+    const line = `- ${plain(file.name)} (${plain(file.type)}${size}) at ${plain(file.path)}`
+    if (file.sha256 === undefined || file.size === undefined) {
+      listed.push(line)
+      continue
+    }
     if (IMAGE_PART.test(file.type)) {
       if (!sees) {
         listed.push(`${line}: not shown, this model does not take images`)
@@ -61,6 +88,10 @@ export async function renderTurn(
       const bytes = await port.readBlob(file.sha256)
       if (bytes === undefined) {
         listed.push(`${line}: no longer stored`)
+        continue
+      }
+      if (!isImage(file.type, bytes)) {
+        listed.push(`${line}: not shown, its bytes are not ${file.type}`)
         continue
       }
       imageBudget -= bytes.byteLength
@@ -79,7 +110,7 @@ export async function renderTurn(
         continue
       }
       textBudget -= bytes.byteLength
-      inlined.push(`<file path="${attribute(file.path)}">\n${new TextDecoder().decode(bytes)}\n</file>`)
+      inlined.push(`<file path="${attribute(file.path)}">\n${fenced(new TextDecoder().decode(bytes))}\n</file>`)
       listed.push(`${line}: inlined below`)
       continue
     }

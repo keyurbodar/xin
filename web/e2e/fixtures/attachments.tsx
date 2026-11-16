@@ -1,7 +1,8 @@
 import "../../src/styles/app.css"
 import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
-import { AttachmentCardGrid, MessageAttachments } from "../../src/components/composer/attachment-card.tsx"
+import { MessageAttachments } from "../../src/components/composer/attachment-card.tsx"
+import { AttachmentGrid } from "../../src/components/composer/attachments.tsx"
 import type { UploadedFile } from "../../src/lib/api.ts"
 import { createAttachments, type SentAttachment, type Upload } from "../../src/lib/attachments.ts"
 
@@ -42,6 +43,13 @@ const files = [
   new File([new Uint8Array(51 * 1024 * 1024)], "capture.mov", { type: "video/quicktime" }),
 ]
 
+const hostile = [
+  new File([shots[0]!], '<img src=x onerror="window.pwned=1">.png', { type: "image/png" }),
+  new File(["x"], "../../x.txt", { type: "text/plain" }),
+  new File(['<svg xmlns="http://www.w3.org/2000/svg" onload="window.pwned=2"><script>window.pwned=3</script></svg>'], "evil.svg", { type: "image/svg+xml" }),
+  new File(["<html><script>window.pwned=4</script></html>"], "page.png", { type: "image/png" }),
+]
+
 const blobs = new Map<string, Blob>([["a".repeat(64), shots[0]!], ["b".repeat(64), shots[1]!]])
 const realFetch = window.fetch.bind(window)
 Object.assign(window, {
@@ -69,6 +77,7 @@ function App() {
     finish: (name: string) => pending.get(name)?.done(),
     fail: (name: string, message: string) => pending.get(name)?.fail(message),
     addAgain: () => attachments.add(files.slice(0, 2)),
+    addHostile: () => attachments.add(hostile),
   })
   attachments.add(files)
   queueMicrotask(() => {
@@ -82,14 +91,17 @@ function App() {
       <button id="before" type="button">
         Before
       </button>
-      <AttachmentCardGrid
+      <div class="rounded-lg bg-card shadow-composer">
+        <textarea id="field" aria-label="Message" class="block w-full bg-transparent px-4 pt-3 text-base text-ink outline-none" />
+        <AttachmentGrid
         items={attachments.items()}
         onRemove={(id) => {
           const name = attachments.items().find((item) => item.id === id)?.file.name ?? id
           setRemoved((current) => [...current, name])
           attachments.remove(id)
         }}
-      />
+        />
+      </div>
       <output id="removed">{removed().join(",")}</output>
       <output id="ready">{attachments.uploaded().map((file) => file.name).join(",")}</output>
       <div class="flex justify-end">

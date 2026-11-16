@@ -1,7 +1,7 @@
 import "@ui-sdk/web/file-input"
 import "@ui-sdk/web/progress"
 import { CircleAlert, File as FileIcon, X } from "lucide-solid"
-import { For, Show, createEffect, createResource, onCleanup, type JSX } from "solid-js"
+import { For, Show, createEffect, createResource, createSignal, onCleanup, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import {
   blobUrl,
@@ -46,17 +46,18 @@ function ProgressRing(props: { name: string; fraction: number }): JSX.Element {
 }
 
 function Thumbnail(props: { source: string | undefined; failed: boolean; children?: JSX.Element }): JSX.Element {
+  const [broken, setBroken] = createSignal<string>()
   return (
     <span class="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-sm bg-muted text-icon">
       <Show
-        when={props.failed ? undefined : props.source}
+        when={props.failed || props.source === broken() ? undefined : props.source}
         fallback={
           <Show when={props.failed} fallback={<FileIcon size={16} stroke-width={1.5} />}>
             <CircleAlert size={16} stroke-width={1.5} class="text-failed" />
           </Show>
         }
       >
-        {(source) => <img src={source()} alt="" class="h-full w-full object-cover" />}
+        {(source) => <img src={source()} alt="" class="h-full w-full object-cover" onError={() => setBroken(source())} />}
       </Show>
       {props.children}
     </span>
@@ -118,12 +119,13 @@ const filesOf = (value: unknown): readonly File[] =>
 /**
  * The composer's files as a two-column grid of cards. UI SDK's file input owns the items and the keys: the list is one
  * Tab stop, arrows and Home/End move between cards, and Delete, Backspace or a card's × removes one, with focus moving
- * to a neighbour. Solid draws each card into the item the list made for its file. A removal is instant, so a keyboard
- * run of deletes never waits on an exit.
+ * to a neighbour, or to `fallbackFocus` when none is left. Solid draws each card into the item the list made for its
+ * file. A removal is instant, so a keyboard run of deletes never waits on an exit.
  */
 export function AttachmentCardGrid(props: {
   items: readonly ComposerAttachment[]
   onRemove: (id: string) => void
+  fallbackFocus?: () => HTMLElement | undefined
 }): JSX.Element {
   let root: HTMLElement | undefined
   let list: HTMLElement | undefined
@@ -160,11 +162,15 @@ export function AttachmentCardGrid(props: {
     <ui-file-input
       ref={root}
       multiple
-      class="block"
-      hidden={props.items.length === 0}
+      classList={{ block: props.items.length > 0, hidden: props.items.length === 0 }}
       on:valuechange={(event) => {
         const kept = filesOf(event.detail.value)
+        const hadFocus = root?.contains(document.activeElement) === true
         for (const item of props.items) if (!kept.includes(item.file)) props.onRemove(item.id)
+        if (hadFocus)
+          setTimeout(() => {
+            if (root?.contains(document.activeElement) !== true) props.fallbackFocus?.()?.focus()
+          })
       }}
     >
       <ui-file-input-list

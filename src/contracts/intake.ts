@@ -49,8 +49,13 @@ function attachmentOf(value: unknown): MessageAttachment | undefined {
   const sha256 = stringField(value, "sha256")
   const size: unknown = typeof value === "object" && value !== null ? Reflect.get(value, "size") : undefined
   if (path === undefined || name === undefined || type === undefined) return undefined
-  if (sha256 === undefined || !SHA256.test(sha256) || typeof size !== "number") return undefined
-  return { path, name, type, size, sha256 }
+  return {
+    path,
+    name,
+    type,
+    ...(typeof size === "number" ? { size } : {}),
+    ...(sha256 !== undefined && SHA256.test(sha256) ? { sha256 } : {}),
+  }
 }
 
 export function parseInboundBody(body: string): InboundBody {

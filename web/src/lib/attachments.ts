@@ -86,7 +86,10 @@ function failureText(file: File, failure: unknown): string {
   return message.startsWith(`${file.name}: `) ? message.slice(file.name.length + 2) : message
 }
 
-/** Every file the composer holds, each with its own request, so removing one aborts only that upload. */
+/**
+ * Every file the composer holds, each with its own request, so removing one aborts only that upload. Adding a file again
+ * replaces its failed card instead of sitting beside it.
+ */
 export function createAttachments(upload: () => Upload) {
   const [items, setItems] = createSignal<readonly ComposerAttachment[]>([])
 
@@ -95,6 +98,11 @@ export function createAttachments(upload: () => Upload) {
   }
 
   const add = (files: readonly File[]): void => {
+    const retried = items().filter(
+      (item) => item.state.kind === "failed" && files.some((file) => file.name === item.file.name && file.size === item.file.size),
+    )
+    for (const item of retried) release(item)
+    if (retried.length > 0) setItems((current) => current.filter((item) => !retried.includes(item)))
     const held = items().length
     const added = files.map((file, index) => ({
       item: {
@@ -150,6 +158,9 @@ export function createAttachments(upload: () => Upload) {
   }
 }
 
+/** `/blobs` answers octet-stream; anything else, like a dev server's index.html, is not the file. */
+export const isBlobType = (type: string): boolean => /^(application\/octet-stream|image\/[\w.+-]+)(;|$)/u.test(type.trim())
+
 const blobUrls = new Map<string, Promise<string>>()
 
 /**
@@ -161,6 +172,8 @@ export function blobUrl(sha256: string, type: string): Promise<string> {
   if (known !== undefined) return known
   const loading = fetch(`/blobs/${sha256}`, { headers: { authorization: `Bearer ${token()}` } }).then(async (response) => {
     if (!response.ok) throw new OpError("http", `blob ${sha256.slice(0, 8)}: HTTP ${response.status}`)
+    if (!isBlobType(response.headers.get("content-type") ?? ""))
+      throw new OpError("http", `blob ${sha256.slice(0, 8)}: not file bytes`)
     return URL.createObjectURL(new Blob([await response.arrayBuffer()], { type }))
   })
   loading.catch(() => blobUrls.delete(sha256))
