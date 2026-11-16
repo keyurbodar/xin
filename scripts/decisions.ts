@@ -27,7 +27,8 @@ function read(): { readonly rows: readonly Row[]; readonly problems: readonly st
       continue
     }
     if (fields.some((field) => field.trim() === "")) problems.push(`${file}: has an empty field`)
-    if (!new RegExp(`^${name[1] ?? ""}T\\d\\d:\\d\\d`).test(fields[0] ?? "")) problems.push(`${file}: time ${fields[0]} is not on ${name[1]}`)
+    if (!new RegExp(`^${name[1] ?? ""}T\\d\\d:\\d\\d`).test(fields[0] ?? ""))
+      problems.push(`${file}: time ${fields[0]} is not on ${name[1]}`)
     rows.push({ file, fields })
   }
   return { rows, problems }
