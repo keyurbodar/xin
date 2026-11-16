@@ -184,9 +184,17 @@ async function run(port: IssueToolPort, args: ToolArgs, api: ToolExecutionApi): 
   switch (args.action) {
     case "create": {
       if (args.title === undefined) return fail("create needs a title")
-      if (args.link?.remove === true) return fail("create cannot remove a link")
+      const { link } = args
+      if (link?.remove === true) return fail("create cannot remove a link")
+      if (link !== undefined && (await issues.get(actor, link.other)) === undefined)
+        return fail(`no issue #${link.other} to link`)
       const created = issueOf(await write(port, api, "issue.create", { ...fieldsOf(args), title: args.title }))
-      return `Created ${line(await withLink(port, api, created, args.link))}`
+      try {
+        return `Created ${line(await withLink(port, api, created, link))}`
+      } catch (error) {
+        if (error instanceof OpRejected) return `Created ${line(created)}, but not linked: ${error.message}.`
+        throw error
+      }
     }
     case "read": {
       if (args.id !== undefined) {

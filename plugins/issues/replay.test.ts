@@ -37,6 +37,9 @@ const withTools = <T>(stub: Stub, work: (tools: Tools, root: number) => Promise<
 const detail = async (stub: Stub, id: number): Promise<IssueDetail> =>
   (await cmd(stub, `replay-get-${crypto.randomUUID()}`, "issue.get", { id })).result as IssueDetail
 
+const linkedCreate = (other: number) =>
+  ({ action: "create", with: { title: "Linked", link: { kind: "blocks", other } } }) as const
+
 const kinds = (issue: IssueDetail): string[] => issue.timeline.map((event) => event.kind)
 
 /**
@@ -146,6 +149,39 @@ describe("issue tool replay keys", () => {
     const texts = await evictMidCall(stub, "issue_comment", { id: 1, body: "once" }, "issue.comment")
     expect(texts).toEqual([expect.stringMatching(/^Commented on #1 /)])
     expect(kinds(await detail(stub, 1))).toEqual(["created", "comment"])
+  })
+
+  it("refuses a create whose link target is missing or in another project, and writes nothing", async () => {
+    const stub = fresh()
+    const mine = (await cmd(stub, "link-mine", "project.create", { slug: "mine", name: "mine" })).result as {
+      readonly coordinatorId: number
+    }
+    const theirs = (await cmd(stub, "link-theirs", "project.create", { slug: "theirs", name: "theirs" })).result as {
+      readonly coordinatorId: number
+    }
+    await cmd(stub, "link-their-issue", "issue.create", { title: "Theirs", threads: [theirs.coordinatorId] })
+    const texts = await withTools(stub, async ({ issue }) => [
+      textOf(await issue.execute(linkedCreate(1), heldApi(mine.coordinatorId, 41), BACKGROUND_CONTEXT)),
+      textOf(await issue.execute(linkedCreate(99), heldApi(mine.coordinatorId, 42), BACKGROUND_CONTEXT)),
+    ])
+    expect(texts).toEqual(["Not done: no issue #1 to link.", "Not done: no issue #99 to link."])
+    const page = (await cmd(stub, "link-refused-list", "issue.list", {})).result as IssuePage
+    expect(page.issues.map((found) => found.title)).toEqual(["Theirs"])
+  })
+
+  it("creates one issue when a refused linked create is retried after its target exists", async () => {
+    const stub = fresh()
+    const call = { action: "create", with: { title: "Retry", link: { kind: "related", other: 1 } } } as const
+    const texts = await withTools(stub, async ({ issue }, root) => {
+      const first = textOf(await issue.execute(call, heldApi(root, 51), BACKGROUND_CONTEXT))
+      await issue.execute({ action: "create", with: { title: "Target" } }, heldApi(root, 52), BACKGROUND_CONTEXT)
+      return [first, textOf(await issue.execute(call, heldApi(root, 53), BACKGROUND_CONTEXT))]
+    })
+    expect(texts[0]).toBe("Not done: no issue #1 to link.")
+    expect(texts[1]).toMatch(/^Created #2 /)
+    const page = (await cmd(stub, "retry-list", "issue.list", {})).result as IssuePage
+    expect(page.issues.map((found) => found.title).toSorted()).toEqual(["Retry", "Target"])
+    expect((await detail(stub, 2)).links.related.map((other) => other.id)).toEqual([1])
   })
 
   it("applies a link given to create, once, under its own key", async () => {
