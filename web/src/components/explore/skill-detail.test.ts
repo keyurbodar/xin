@@ -19,6 +19,7 @@ if (Reflect.get(globalThis, "document") === undefined)
   Object.defineProperty(globalThis, "document", {
     value: { documentElement: { setAttribute: () => undefined }, addEventListener: () => undefined },
     configurable: true,
+    writable: true,
   })
 void mock.module("../extensions/glyph.tsx", () => ({ Glyph: () => undefined }))
 const { SkillDetail } = await import("./skill-detail.tsx")

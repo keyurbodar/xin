@@ -1,15 +1,18 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeEach, expect, test } from "bun:test"
 
 const location = { hash: "" }
-Object.assign(globalThis, {
-  window: {
+const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window")
+Object.defineProperty(globalThis, "window", {
+  value: {
     location,
     addEventListener: () => undefined,
     matchMedia: () => ({ matches: false, addEventListener: () => undefined }),
   },
+  configurable: true,
+  writable: true,
 })
 const { invalidateReads } = await import("../lib/api.ts")
-const { createFirstCaptain, onboardingCaptain, skipStep } = await import("./onboarding.ts")
+const { createFirstCaptain, loadProgress, onboardingCaptain, skipStep } = await import("./onboarding.ts")
 
 type Sent = { readonly id: string; readonly op: string; readonly args: Record<string, unknown> }
 
@@ -32,10 +35,21 @@ function serve(results: Record<string, () => unknown>, failing: readonly string[
   }) as typeof fetch
 }
 
+beforeEach(async () => {
+  serve({ "models.list": () => ({ models: [] }), "captain.list": () => [] })
+  await loadProgress()
+  sent.length = 0
+})
+
 afterEach(() => {
   globalThis.fetch = realFetch
   sent.length = 0
   location.hash = ""
+})
+
+afterAll(() => {
+  if (previousWindow === undefined) Reflect.deleteProperty(globalThis, "window")
+  else Object.defineProperty(globalThis, "window", previousWindow)
 })
 
 const bosun = {

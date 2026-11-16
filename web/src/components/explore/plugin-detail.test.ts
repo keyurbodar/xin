@@ -10,6 +10,7 @@ if (Reflect.get(globalThis, "window") === undefined)
   Object.defineProperty(globalThis, "window", {
     value: { location: { hash: "" }, addEventListener: () => undefined },
     configurable: true,
+    writable: true,
   })
 void mock.module("../extensions/install-sheet.tsx", () => ({ InstallSheet: (props: { name: string }) => `Install sheet for ${props.name}` }))
 void mock.module("../extensions/glyph.tsx", () => ({ Glyph: () => undefined }))
