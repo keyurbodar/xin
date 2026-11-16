@@ -1,6 +1,6 @@
-import { createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { navigate } from "../../lib/router.ts"
-import type { RequestRow } from "../../state/conversation.ts"
+import type { GatedCall, RequestRow } from "../../state/conversation.ts"
 import { openRequests, provideSecret, respondToQuestion, settledRequests } from "../../state/requests.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
 import { Spinner } from "../ui/loaders.tsx"
@@ -19,6 +19,11 @@ export type CardState =
   | { readonly kind: "failed"; readonly message: string }
 
 const DECLINED = "declined"
+
+/** A request the tool policy opens when a call it marks "ask" is held back: answered with one of its options. */
+export const POLICY_KIND = "approval"
+const POLICY_DENY = "Deny"
+const PREVIEW_CHARS = 500
 
 const text = (args: Record<string, unknown>, key: string): string => {
   const value = args[key]
@@ -40,12 +45,17 @@ export function cardState(call: Call): CardState {
   if (call.status === "error") return { kind: "failed", message: call.output ?? "The card could not open." }
   if (call.status !== "done") return { kind: "asking" }
   const id = requestIdOf(call.details)
-  if (id === undefined) return { kind: "closed" }
+  return id === undefined ? { kind: "closed" } : requestState(id)
+}
+
+/** Open while `request.list` lists the request, then its kept answer; a policy approval declines with Deny. */
+function requestState(id: string): CardState {
   const request = openRequests().find((row) => row.id === id)
   if (request !== undefined) return { kind: "open", request }
   const settled = settledRequests().find((row) => row.id === id)
   if (settled === undefined) return { kind: "closed" }
-  return settled.answer === DECLINED ? { kind: "declined" } : { kind: "answered", answer: settled.answer }
+  const declined = settled.answer === (settled.kind === POLICY_KIND ? POLICY_DENY : DECLINED)
+  return declined ? { kind: "declined" } : { kind: "answered", answer: settled.answer }
 }
 
 const STATUS: { readonly [K in CardState["kind"]]: string } = {
@@ -236,33 +246,118 @@ export function AskCard(call: Call): JSX.Element {
   )
 }
 
-export function ApprovalCard(call: Call): JSX.Element {
-  const state = (): CardState => cardState(call)
+type Decision = { readonly label: string; readonly answer: string; readonly primary?: true }
+
+/** The one approval card: an action, optionally the held-back call, and the decisions the request takes. */
+function Approval(props: {
+  state: CardState
+  action: string
+  detail?: string | undefined
+  call?: GatedCall | undefined
+  decisions: readonly Decision[]
+  answered: (answer: string) => string
+}): JSX.Element {
   const sender = createSender()
-  const decide = (request: RequestRow, answer: "approved" | "declined"): void =>
-    void sender.send(() => respondToQuestion(request, answer))
   return (
-    <CardFrame icon="check" title="Approval" label="Approval request" state={state()}>
-      <p class="text-base font-medium leading-[1.5] text-ink">{text(call.args, "action")}</p>
-      <Show when={text(call.args, "detail") !== ""}>
-        <p class="whitespace-pre-wrap text-sm leading-[1.6] text-ink-2">{text(call.args, "detail")}</p>
+    <CardFrame icon="check" title="Approval" label="Approval request" state={props.state}>
+      <p class="text-base font-medium leading-[1.5] text-ink">{props.action}</p>
+      <Show when={props.detail}>
+        {(detail) => <p class="whitespace-pre-wrap text-sm leading-[1.6] text-ink-2">{detail()}</p>}
       </Show>
-      <Show when={openOf(state())} fallback={<Outcome state={state()} answered={() => "Approved"} />}>
+      <Show when={props.call}>
+        {(call) => (
+          <div class="flex flex-col overflow-hidden rounded-sm border border-line-1 bg-panel" data-call={call().tool}>
+            <span class="border-b border-line-1 px-2.5 py-1.5 font-mono text-sm text-ink">{call().tool}</span>
+            <pre class="max-h-48 overflow-auto whitespace-pre-wrap px-2.5 py-2 font-mono text-xs leading-[1.6] text-ink-2 [overflow-wrap:anywhere]">
+              {call().arguments.slice(0, PREVIEW_CHARS)}
+            </pre>
+          </div>
+        )}
+      </Show>
+      <Show when={openOf(props.state)} fallback={<Outcome state={props.state} answered={props.answered} />}>
         {(request) => (
           <>
-            <div class="flex gap-2">
-              <Button size="sm" variant="primary" class="im-focus im-press" disabled={sender.sending()} onClick={() => decide(request(), "approved")}>
-                Approve
-              </Button>
-              <Button size="sm" class="im-focus im-press" disabled={sender.sending()} onClick={() => decide(request(), "declined")}>
-                Decline
-              </Button>
+            <div class="flex flex-wrap gap-2" role="group" aria-label="Decision">
+              <For each={props.decisions}>
+                {(decision) => (
+                  <Button
+                    size="sm"
+                    variant={decision.primary === true ? "primary" : "ghost"}
+                    class="im-focus im-press"
+                    disabled={sender.sending()}
+                    onClick={() => void sender.send(() => respondToQuestion(request(), decision.answer))}
+                  >
+                    {decision.label}
+                  </Button>
+                )}
+              </For>
             </div>
             <SendLine sending={sender.sending()} error={sender.error()} />
           </>
         )}
       </Show>
     </CardFrame>
+  )
+}
+
+const ASKED_DECISIONS: readonly Decision[] = [
+  { label: "Approve", answer: "approved", primary: true },
+  { label: "Decline", answer: DECLINED },
+]
+
+export function ApprovalCard(call: Call): JSX.Element {
+  return (
+    <Approval
+      state={cardState(call)}
+      action={text(call.args, "action")}
+      detail={text(call.args, "detail") || undefined}
+      decisions={ASKED_DECISIONS}
+      answered={() => "Approved"}
+    />
+  )
+}
+
+/** A policy approval: the held-back call with its arguments, answered with the request's own option strings. */
+export function PolicyApprovalCard(props: { request: RequestRow }): JSX.Element {
+  const decisions = (): readonly Decision[] =>
+    props.request.options.map((option, index) => ({ label: option, answer: option, ...(index === 0 ? { primary: true as const } : {}) }))
+  return (
+    <Approval
+      state={requestState(props.request.id)}
+      action={props.request.question}
+      call={props.request.call}
+      decisions={decisions()}
+      answered={(answer) => answer}
+    />
+  )
+}
+
+/**
+ * The policy approvals open on one conversation, for the views that show no tool block for them: a thread, a
+ * coordinator or a root chat. A card stays after it is answered, showing the answer, until the view changes.
+ */
+export function PolicyApprovals(props: { conversationId: number }): JSX.Element {
+  const open = createMemo(() =>
+    openRequests().filter((row) => row.kind === POLICY_KIND && row.conversationId === props.conversationId),
+  )
+  const [kept, setKept] = createSignal<ReadonlyMap<string, RequestRow>>(new Map())
+  createEffect(() => {
+    const now = open()
+    if (now.length > 0) setKept((current) => new Map([...current, ...now.map((row) => [row.id, row] as const)]))
+  })
+  const rows = createMemo(() =>
+    [...new Map([...kept(), ...open().map((row) => [row.id, row] as const)]).values()]
+      .filter((row) => row.conversationId === props.conversationId)
+      .toSorted((left, right) => left.askedAt - right.askedAt),
+  )
+  return (
+    <For each={rows()}>
+      {(row) => (
+        <div class="px-3 pt-3" data-approval={row.id}>
+          <PolicyApprovalCard request={row} />
+        </div>
+      )}
+    </For>
   )
 }
 

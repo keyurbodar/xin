@@ -22,6 +22,7 @@ const request = (id: string, conversationId: number): RequestRow => ({
   threadTitle: undefined,
   question: `Question ${id}?`,
   options: [],
+  call: undefined,
   askedAt: 1,
 })
 

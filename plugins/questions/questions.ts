@@ -12,6 +12,7 @@ import {
   type OpenQuestion,
   type OpenRequest,
   type QuestionsService,
+  type RequestSubject,
   RequestsDoc,
   type Admitted,
   type RespondOutcome,
@@ -33,6 +34,7 @@ const MAX_ANSWERED = 20
 type PendingRequest = {
   readonly id: string
   readonly kind: string
+  readonly subject?: RequestSubject
   readonly conversationId: number
   readonly projectId: string
   readonly projectName: string
@@ -246,6 +248,7 @@ async function listedRequests(harness: Harness, limit: number, projectId?: strin
           threadTitle: thread.title,
           question: request.question,
           ...(request.options === undefined ? {} : { options: [...request.options] }),
+          ...(request.subject === undefined ? {} : { subject: request.subject }),
           askedAt: request.at,
         }))
         return { pending, settled }

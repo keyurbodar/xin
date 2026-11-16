@@ -47,7 +47,7 @@ export function provideOp(port: SecretPort): Op {
           }
         const open = requests?.open[args.requestId]
         const subject = open?.subject
-        if (open?.kind !== SECRET_KIND || subject === undefined)
+        if (open?.kind !== SECRET_KIND || typeof subject !== "string")
           throw new OpRejected("bad_args", `no open secret request ${args.requestId}`)
         const { value } = args
         const outcome = await port.questions.settle(

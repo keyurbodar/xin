@@ -15,6 +15,8 @@ const ANSWERS: Record<(typeof TOOLS)[number], string> = {
   request_connection: "connected",
   request_secret: "stored as GITHUB_TOKEN",
 }
+const POLICY_OPTIONS = ["Approve", "Always allow", "Deny"]
+const LONG_ARGUMENTS = JSON.stringify({ url: "https://example.com/pricing", note: "x".repeat(600) })
 
 let browser: Browser | undefined
 let server: ViteDevServer | undefined
@@ -47,13 +49,15 @@ async function open(theme: "dark" | "light"): Promise<Home> {
   const page = await browser.newPage({ viewport: { width: 900, height: 2400 } })
   const sent: Frame[] = []
   const bodies: string[] = []
-  const pending = new Set(TOOLS.map((tool) => `${tool}-open`))
-  const answered = new Map<string, string>(
-    TOOLS.flatMap((tool) => [
+  const pending = new Set([...TOOLS.map((tool) => `${tool}-open`), "approval-open"])
+  const answered = new Map<string, string>([
+    ...TOOLS.flatMap((tool): [string, string][] => [
       [`${tool}-answered`, ANSWERS[tool]],
       [`${tool}-declined`, "declined"],
     ]),
-  )
+    ["approval-answered", "Always allow"],
+    ["approval-declined", "Deny"],
+  ])
   const kindOf = (id: string): string => id.slice(0, id.lastIndexOf("-"))
   const result = (frame: Frame): unknown => {
     switch (frame.op) {
@@ -66,7 +70,10 @@ async function open(theme: "dark" | "light"): Promise<Home> {
             projectId: "prj_1",
             projectName: "Demo",
             threadTitle: "Cards",
-            question: "q",
+            question: kindOf(id) === "approval" ? "Fetch the pricing page" : "q",
+            ...(kindOf(id) === "approval"
+              ? { options: POLICY_OPTIONS, subject: { tool: "web_fetch", arguments: LONG_ARGUMENTS } }
+              : {}),
             askedAt: 1,
           })),
           answered: [...answered].map(([id, answer]) => ({ id, kind: kindOf(id), conversationId: 7, answer, answeredAt: 2 })),
@@ -95,6 +102,7 @@ async function open(theme: "dark" | "light"): Promise<Home> {
   })
   await page.goto(`${base}e2e/fixtures/cards.html?theme=${theme}`)
   await page.waitForSelector('[data-tool="request_secret"] [data-state="declined"] [data-card="declined"]')
+  await page.waitForSelector('[data-tool="approval"] [data-state="open"] [data-card="open"]')
   return { page, sent, bodies }
 }
 
@@ -209,6 +217,61 @@ test("declining a secret card stores nothing", async () => {
       () => document.querySelector('[data-tool="request_secret"] [data-state="open"] section')?.getAttribute("data-card") === "declined",
     )
     expect(sent.find((frame) => frame.op === "secret.provide")?.args).toEqual({ threadId: 7, requestId: "request_secret-open" })
+  } finally {
+    await page.close()
+  }
+}, 60_000)
+
+for (const theme of ["dark", "light"] as const) {
+  test(`a policy approval shows the held-back call and its open, answered and denied states in ${theme}`, async () => {
+    const { page } = await open(theme)
+    try {
+      const opened = card(page, "approval", "open")
+      expect(await opened.getAttribute("data-card")).toBe("open")
+      expect(await opened.getByRole("group", { name: "Decision" }).getByRole("button").allInnerTexts()).toEqual(POLICY_OPTIONS)
+      const preview = opened.locator("[data-call=web_fetch] pre")
+      const shown = await preview.innerText()
+      expect(shown.length).toBeLessThanOrEqual(500)
+      expect(LONG_ARGUMENTS.startsWith(shown)).toBe(true)
+      const style = await preview.evaluate((node) => {
+        const computed = getComputedStyle(node)
+        return { font: computed.fontFamily, wrap: computed.whiteSpace }
+      })
+      expect(style.font).toMatch(/mono/i)
+      expect(style.wrap).toBe("pre-wrap")
+      expect(await opened.locator("[data-call=web_fetch]").innerText()).toContain("web_fetch")
+
+      const answered = card(page, "approval", "answered")
+      expect(await answered.getAttribute("data-card")).toBe("answered")
+      expect(await answered.innerText()).toContain("Always allow")
+      const denied = card(page, "approval", "declined")
+      expect(await denied.getAttribute("data-card")).toBe("declined")
+      for (const closed of [answered, denied]) expect(await closed.locator("button").count()).toBe(0)
+      if (renders !== undefined) await page.screenshot({ path: join(renders, `approval-${theme}.png`), fullPage: true })
+    } finally {
+      await page.close()
+    }
+  }, 60_000)
+}
+
+test("a policy approval answers Always allow from the keyboard with the option string", async () => {
+  const { page, sent } = await open("light")
+  try {
+    const approval = card(page, "approval", "open")
+    await approval.getByRole("button", { name: "Approve" }).focus()
+    await page.keyboard.press("Tab")
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Always allow")
+    await page.keyboard.press("Enter")
+    await page.waitForFunction(
+      () => document.querySelector('[data-tool="approval"] [data-state="open"] section')?.getAttribute("data-card") === "answered",
+    )
+    expect(sent.find((frame) => frame.op === "request.respond")?.args).toEqual({
+      threadId: 7,
+      requestId: "approval-open",
+      answer: "Always allow",
+    })
+    expect(await approval.innerText()).toContain("Always allow")
+    expect(await approval.locator("button").count()).toBe(0)
   } finally {
     await page.close()
   }

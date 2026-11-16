@@ -77,6 +77,9 @@ export type ModelRefView = {
   readonly modelId: string
 }
 
+/** The tool call a policy approval holds back: its name and a canonical JSON preview of its arguments. */
+export type GatedCall = { readonly tool: string; readonly arguments: string }
+
 export type RequestRow = {
   readonly id: string
   readonly kind: string
@@ -86,7 +89,15 @@ export type RequestRow = {
   readonly threadTitle: string | undefined
   readonly question: string
   readonly options: readonly string[]
+  readonly call: GatedCall | undefined
   readonly askedAt: number
+}
+
+function gatedCallOf(value: unknown): GatedCall | undefined {
+  const subject = recordOf(value)
+  const tool = strOf(subject?.tool)
+  const args = strOf(subject?.arguments)
+  return tool === undefined || args === undefined ? undefined : { tool, arguments: args }
 }
 
 /** A request a thread keeps answered, as `request.list` returns it: what an interactive card shows once it is closed. */
@@ -358,6 +369,7 @@ export function parseRequestList(value: unknown): readonly RequestRow[] {
       threadTitle: strOf(raw.threadTitle),
       question,
       options: stringsOf(raw.options),
+      call: gatedCallOf(raw.subject),
       askedAt,
     })
   }

@@ -1,6 +1,6 @@
 import type { Context as ChordContext } from "@earendil-works/chord"
 import { defineDoc, type ConversationId, type ToolExecutionApi } from "@earendil-works/pi-durable"
-import { arr, compile, map, num, obj, opt, str, type Static } from "@earendil-works/pi-schema"
+import { arr, compile, map, num, obj, opt, str, type Static, union } from "@earendil-works/pi-schema"
 
 /** `ask_user` is a free question. Any other kind is a card: only the owner answers it, and only with one of its options. */
 export const ASK_KIND = "ask_user"
@@ -11,7 +11,7 @@ export type AskInput = {
   readonly requestId: string
   readonly question: string
   readonly options?: readonly string[]
-  readonly subject?: string
+  readonly subject?: RequestSubject
   readonly now: number
 }
 
@@ -51,24 +51,28 @@ export interface QuestionsService {
   settle(threadId: ConversationId, requestId: string, answer: string, admitted?: Admitted): Promise<SettleOutcome>
 }
 
+/** What a request is about: a card's name (a secret's ref, a service), or the gated call a policy approval holds. */
+const SubjectSchema = union([str(), obj({ tool: str(), arguments: str() })])
+
 const RequestSchema = obj({
   kind: str({ minLength: 1 }),
   question: str(),
   options: opt(arr(str())),
-  subject: opt(str()),
+  subject: opt(SubjectSchema),
   at: num(),
 })
 export const AnsweredSchema = obj({
   kind: str({ minLength: 1 }),
   question: str(),
   options: opt(arr(str())),
-  subject: opt(str()),
+  subject: opt(SubjectSchema),
   at: num(),
   answer: str(),
   answeredAt: num(),
 })
 const RequestsSchema = obj({ open: map(RequestSchema), answered: map(AnsweredSchema) })
 
+export type RequestSubject = Static<typeof SubjectSchema>
 export type OpenRequest = Static<typeof RequestSchema>
 export type AnsweredRequest = Static<typeof AnsweredSchema>
 export type RequestsState = Static<typeof RequestsSchema>
