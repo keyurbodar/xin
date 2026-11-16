@@ -34,6 +34,7 @@ export type SpaceSummary = {
   readonly coordinatorId: number
   readonly threads: ThreadGroups
   readonly openRequests: number
+  readonly requestsRev: number
 }
 
 export type ProjectSummary = {
@@ -45,6 +46,7 @@ export type ProjectSummary = {
   readonly coordinatorId: number
   readonly threads: ThreadGroups
   readonly openRequests: number
+  readonly requestsRev: number
   readonly spaces: readonly SpaceSummary[]
 }
 
@@ -97,7 +99,15 @@ function spacesOf(value: unknown): readonly SpaceSummary[] {
     const id = strOf(record?.id)
     const coordinatorId = numOf(record?.coordinatorId)
     if (record === undefined || id === undefined || coordinatorId === undefined || record.archived === true) return []
-    return [{ id, coordinatorId, threads: groupsOf(record.threads), openRequests: numOf(record.openRequests) ?? 0 }]
+    return [
+      {
+        id,
+        coordinatorId,
+        threads: groupsOf(record.threads),
+        openRequests: numOf(record.openRequests) ?? 0,
+        requestsRev: numOf(record.requestsRev) ?? 0,
+      },
+    ]
   })
 }
 
@@ -118,6 +128,7 @@ function projectOf(value: unknown): ProjectSummary | undefined {
     archived: record.archived === true,
     threads: groupsOf(record.threads),
     openRequests: numOf(record.openRequests) ?? 0,
+    requestsRev: numOf(record.requestsRev) ?? 0,
     spaces: spacesOf(record.spaces),
     ...(goal === undefined ? {} : { goal }),
   }

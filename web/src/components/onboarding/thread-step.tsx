@@ -169,7 +169,7 @@ export function ThreadStep(): JSX.Element {
           <p class="text-base text-ink-2">Create a Captain first, then send it the first thing to work on.</p>
           <div class="mt-4 flex items-center justify-between">
             <QuietButton label="Back" back onClick={previousStep} />
-            <QuietButton label="Skip for now" onClick={() => skipStep(3)} />
+            <QuietButton label="Skip for now" onClick={() => void skipStep(3)} />
           </div>
         </section>
       }

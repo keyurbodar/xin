@@ -50,6 +50,7 @@ export function captainSpace(captain: CaptainProfile): ProjectSummary | undefine
     coordinatorId: captain.coordinatorId,
     threads: space?.threads ?? NO_THREADS,
     openRequests: space?.openRequests ?? 0,
+    requestsRev: space?.requestsRev ?? 0,
     spaces: [],
     ...(captain.description === "" ? {} : { goal: captain.description }),
   }

@@ -21,6 +21,7 @@ import {
 } from "../state/conversation.ts"
 import { modelSwitch, type ThinkingLevel } from "../lib/thinking.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
+import { onRequestsRev } from "../lib/requests.ts"
 import { spaceRequests } from "../lib/spaces.ts"
 import { recordOf, numOf } from "../lib/parse.ts"
 import { openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
@@ -297,10 +298,8 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     void prompts.reload()
     void presetStore.reload()
   })
-  createEffect(() => {
-    void props.project.openRequests
-    void refreshRequests()
-  })
+  const noteRequestsRev = onRequestsRev(() => void refreshRequests())
+  createEffect(() => noteRequestsRev(props.project))
 
   const openThread = (id: number): void => {
     openThreadTab(props.project.id, id)

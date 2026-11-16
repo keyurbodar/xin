@@ -213,7 +213,7 @@ export function CaptainStep(): JSX.Element {
         <QuietButton label="Back" back onClick={previousStep} />
         <span class="mr-auto" />
         <Show when={canSkip(2)}>
-          <QuietButton label="Skip for now" onClick={() => skipStep(2)} />
+          <QuietButton label="Skip for now" onClick={() => void skipStep(2)} />
         </Show>
         <PrimaryButton
           label={created() === undefined ? "Create Captain" : "Continue"}

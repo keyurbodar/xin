@@ -7,7 +7,7 @@ import { navigate, route } from "./lib/router.ts"
 import { Shell } from "./components/shell/shell.tsx"
 import { BootLoader } from "./components/ui/loaders.tsx"
 import { SignIn } from "./screens/signin.tsx"
-import { readProgress } from "./lib/onboarding.ts"
+import { needsOnboarding } from "./lib/onboarding.ts"
 import { WelcomeScreen } from "./screens/welcome.tsx"
 import { BootFailedScreen } from "./screens/boot-failed.tsx"
 import { cutOff, OfflineScreen } from "./screens/offline.tsx"
@@ -75,8 +75,7 @@ export function App(): JSX.Element {
         <SignIn
           onSignedIn={async () => {
             await start()
-            const progress = await readProgress().catch(() => undefined)
-            if (progress?.captain === undefined) navigate("/welcome")
+            if (await needsOnboarding()) navigate("/welcome")
           }}
         />
       </Match>

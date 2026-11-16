@@ -34,15 +34,17 @@
   transition-duration: var(--dur-press);
 }
 
-.composer-send-icon {
-  transition: opacity var(--dur-fast) var(--ease-enter), filter var(--dur-fast) var(--ease-enter),
-    transform var(--dur-fast) var(--ease-enter);
+.im-send[data-state="stop"] {
+  background: var(--color-inverse);
+  color: var(--color-on-inverse);
 }
 
-.composer-send-icon[data-shown="false"] {
+.composer-chip[data-closing] {
   opacity: 0;
-  filter: blur(2px);
-  transform: scale(0.9);
+  transform: scale(var(--arrive-from));
+  transition-duration: var(--dur-dialog-exit);
+  transition-timing-function: var(--ease-out);
+  pointer-events: none;
 }
 
 .composer-bar {
@@ -72,4 +74,13 @@
   .composer-press:active:not(:disabled) {
     transform: none;
   }
+  .composer-chip[data-closing] {
+    transform: none;
+    transition-duration: var(--dur-reduce);
+  }
+}
+
+:root[data-motion="reduce"] .composer-chip[data-closing] {
+  transform: none;
+  transition-duration: var(--dur-reduce);
 }
