@@ -1,0 +1,1 @@
+2026-11-08T00:12	P14	Schedule rows show when the schedule last ran	D6 gives each row a run trace; lastDelivery already carries the delivered time, so the row prints it instead of inventing dot history	web/src/components/chat/panel.tsx Schedule.lastDelivery	P14-live-panel-schedules.png: "next not scheduled · last ran 35m"

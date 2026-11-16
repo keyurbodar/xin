@@ -1,0 +1,1 @@
+2026-11-07T11:00	P9	Presets are rows; registry config is only default; selection per conversation at creation, changeable while blank	dsh agent-preset-registry: definitions are rows, presetForSession records one id per session, blank-session selection, current definition used after restart	packages/preset/agent-preset-registry/README.md	accepted

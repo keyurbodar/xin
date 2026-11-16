@@ -1,0 +1,1 @@
+2026-11-06T14:29:41Z	M5	thread.stop only aborts in the background; the Reporter is the single writer of terminal status	the op wrote cancelled itself and raced the Reporter's transition	plugins/orchestrator/threads.ts stopThread; 06-orchestration section 9 updated	accepted

@@ -4,7 +4,7 @@ import type { ConversationId } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 import { respond } from "../../test/plugins/m8.ts"
-import { addThreads, cmd, fresh, setRow, turn } from "../../test/support.ts"
+import { addThreads, cmd, fresh, loadDeferred, setRow, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 import { extractHtml, parseSearchResults, publicUrl } from "./web.ts"
 
@@ -127,6 +127,7 @@ describe("web tools", () => {
     try {
       const stub = fresh()
       await setRow(stub, "tool-web", true)
+      await loadDeferred(stub, ["web_search", "web_fetch"])
       respond([
         () => fauxAssistantMessage([fauxToolCall("web_search", { query: "ingle" })], { stopReason: "toolUse" }),
         () =>
@@ -151,6 +152,7 @@ describe("web tools", () => {
     try {
       const stub = fresh()
       await setRow(stub, "tool-web", true)
+      await loadDeferred(stub, ["web_fetch"])
       respond([
         () => long({}),
         () => long({ offset: 8_000 }),
@@ -189,6 +191,7 @@ describe("web tools", () => {
       const project = created.result as { id: string }
       const [thread] = await addThreads(stub, project.id, ["web thread"])
       if (thread === undefined) throw new Error("no thread")
+      await loadDeferred(stub, ["web_fetch"], thread.id)
       respond([
         () =>
           fauxAssistantMessage([fauxToolCall("web_fetch", { url: "https://example.com/page" })], {

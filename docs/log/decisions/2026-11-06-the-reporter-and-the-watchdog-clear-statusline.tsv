@@ -1,0 +1,1 @@
+2026-11-06T16:30:00Z	M6	the Reporter and the watchdog clear statusLine when they write a terminal thread status	a stale "running" outlived the run and showed in workspace.read	plugins/orchestrator/threads.ts deliver deletes statusLine; plugins/questions/questions.test.ts completed thread has none	adopted

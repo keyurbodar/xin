@@ -3,6 +3,7 @@ import type { Context } from "../../src/kernel/index.ts"
 import { FEATURE_MIGRATIONS } from "./budget.ts"
 import { fastRequests } from "./fast.ts"
 import { create } from "./models.ts"
+import { transientRetries } from "./resilience.ts"
 
 export const name = "models"
 export const inject = ["host", "db", "pi", "ops", "harness", "clock", "wire"]
@@ -24,6 +25,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.provide("models", parts.service)
   ctx.pi.models(parts.models)
   ctx.pi.install(defineExtension({ name: "fast-mode", hooks: [fastRequests] }))
+  ctx.pi.install(defineExtension({ name: "provider-retries", hooks: [transientRetries] }))
   ctx.pi.install(defineExtension({ name: "provider-health", hooks: [parts.health] }))
   ctx.pi.compaction(() => parts.compaction())
   ctx.wire.home("spend", async () => parts.home())

@@ -1,0 +1,1 @@
+2026-11-06T16:20:43Z	P1	code arrives at build (catalog of compiled plugins + bundles); activation and config change live in the owner patch in SQLite; install = rebuild + redeploy, then the DO reconciles	a Worker cannot npm install or import code at run time; dsh likewise separates install from activation	BRIEF.md §3.1, §9	accepted

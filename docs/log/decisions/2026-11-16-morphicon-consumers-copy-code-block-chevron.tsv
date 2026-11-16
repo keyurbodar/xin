@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	client	MorphIcon consumers: copy (code block), chevron (report card Show all), plus (memory Add), reveal (owner token), pause (schedule row); send→stop is for the composer (#14)	the same component covers every 16.4 tile that has a control in the client today	web/src/components/ui/morph-icon.tsx	adopted

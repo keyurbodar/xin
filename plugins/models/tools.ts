@@ -29,6 +29,7 @@ const refOf = (model: Model<Api>): ModelRef => ({ provider: model.provider, mode
 function setModel(models: ModelsService) {
   return defineTool({
     name: "set_model",
+    deferred: true,
     description: "Switch the model a chat or thread uses. The switch applies from the next request.",
     parameters: obj({
       target: str({ minLength: 1, description: "this_chat, thread:<id>, new_threads or project_default" }),

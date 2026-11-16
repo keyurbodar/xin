@@ -1,0 +1,1 @@
+2026-11-16T18:00:00Z	AMA-23 (XIN-25)	The composer's top notice slot and the device scope chip are not built	Nothing feeds a queue or usage notice or a device to the client yet, so both slots would be dead code; they come back with their first consumer	xin#70	adopted
