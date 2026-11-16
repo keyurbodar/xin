@@ -9,6 +9,7 @@ import { createAutomationActions, createRowDialogs, EnabledToggle, LastRun, RowM
 import { ICON_BUTTON } from "../shell/menu.ts"
 import { PaneSkeleton, Loading } from "../ui/skeleton.tsx"
 import { EmptyState, ResourceError } from "./ui.tsx"
+import { Kiko } from "../ui/kiko.tsx"
 
 export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element {
   const { list, value, retry } = createAutomationList()
@@ -52,6 +53,7 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
             <Show when={value() !== undefined}>
               <EmptyState
                 pictogram="schedules"
+                art={<Kiko scene="calendar" />}
                 title="No automations"
                 detail="An automation runs a prompt on a schedule; its results land in this project."
                 action={

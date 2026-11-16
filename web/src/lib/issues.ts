@@ -255,6 +255,43 @@ export function stateTone(state: IssueState | undefined): StateTone {
   return SEEDED_TONES[state.id] ?? (state.closed ? "done" : "todo")
 }
 
+const ACTIVE_TONES: ReadonlySet<StateTone> = new Set(["needs", "progress", "review", "waiting"])
+
+/** Open issues someone is working on: their state is Needs you, In progress, In review or Waiting, most urgent first. */
+export function activeIssues(states: readonly IssueState[], issues: readonly IssueSummary[]): readonly IssueSummary[] {
+  const byId = new Map(states.map((state) => [state.id, state]))
+  return issues
+    .filter((issue) => {
+      const state = byId.get(issue.state)
+      return state !== undefined && !state.closed && ACTIVE_TONES.has(stateTone(state))
+    })
+    .toSorted((left, right) => PRIORITY_RANK[left.priority] - PRIORITY_RANK[right.priority])
+}
+
+export type LinkedPull = { readonly url: string; readonly issues: readonly IssueSummary[] }
+
+/** Every pull request linked from these issues, once each, with the issues that link it, newest issue first. */
+export function linkedPulls(issues: readonly IssueSummary[]): readonly LinkedPull[] {
+  const pulls = new Map<string, IssueSummary[]>()
+  for (const issue of issues.toSorted((left, right) => right.updatedAt - left.updatedAt))
+    for (const url of new Set(issue.prs)) pulls.set(url, [...(pulls.get(url) ?? []), issue])
+  return [...pulls].map(([url, linked]) => ({ url, issues: linked }))
+}
+
+/** How many distinct pull requests the issues a thread works on link to. */
+export function threadPulls(issues: readonly IssueSummary[]): ReadonlyMap<number, number> {
+  const pulls = new Map<number, Set<string>>()
+  for (const issue of issues)
+    for (const thread of issue.threads) pulls.set(thread, new Set([...(pulls.get(thread) ?? []), ...issue.prs]))
+  return new Map([...pulls].map(([thread, urls]) => [thread, urls.size]))
+}
+
+/** A pull request URL as a reader names it: `owner/repo #12` for GitHub-style paths, else the URL without its scheme. */
+export function pullLabel(url: string): string {
+  const match = /^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/pulls?\/(\d+)/u.exec(url)
+  return match === null ? url.replace(/^https?:\/\//u, "") : `${match[1]} #${match[2]}`
+}
+
 /** Today as the contract writes dates, in the viewer's own calendar. */
 export function localDay(now: Date): string {
   const pad = (n: number): string => String(n).padStart(2, "0")

@@ -1,7 +1,7 @@
 import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Popover } from "@ark-ui/solid/popover"
-import { Archive, MessagesSquare, Plus } from "lucide-solid"
+import { Archive, ArrowUpRight, GitPullRequest, MessagesSquare, Plus } from "lucide-solid"
 import {
   assigneeName,
   closedGroups,
@@ -11,6 +11,9 @@ import {
   newIssueArgs,
   createCommandIds,
   openGroups,
+  activeIssues,
+  linkedPulls,
+  pullLabel,
   PRIORITIES,
   PRIORITY_LABEL,
   stateTone,
@@ -22,6 +25,7 @@ import {
 } from "../../lib/issues.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { createIssue, issuesRev, projectIssueList, statesRev } from "../../state/issues.ts"
+import { ago } from "../../lib/format.ts"
 import { homeCaptains } from "../../state/captains.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { createPaneAction } from "../chat/ui.tsx"
@@ -29,7 +33,7 @@ import { Button } from "../ui/button.tsx"
 import { ICON_BUTTON, MENU_CONTENT } from "../shell/menu.ts"
 import { PANE_ROW } from "./bodies.tsx"
 import { AssigneeChip, PriorityMark, StateMark } from "./issue-marks.tsx"
-import { Section, type PaneContext } from "./overview.tsx"
+import { createPaneIssues, Section, type PaneContext } from "./overview.tsx"
 
 export const mintCommandId = (): string => crypto.randomUUID()
 
@@ -111,6 +115,76 @@ export function IssuesSection(props: PaneContext & { label: string }): JSX.Eleme
           {(group) => <IssueGroupRows group={group} project={props.project} names={names()} today={today} />}
         </For>
       </Show>
+    </Section>
+  )
+}
+
+/** Issues someone is working on, with a side column of priority over age. */
+export function InProgressSection(props: PaneContext & { label: string }): JSX.Element {
+  const { issues } = createPaneIssues(() => props)
+  const rows = () => {
+    const loaded = issues()
+    return loaded === undefined ? [] : activeIssues(loaded.states, loaded.issues)
+  }
+  const stateOf = (id: string): IssueState | undefined => issues()?.states.find((state) => state.id === id)
+  const names = createMemo(() => issueNames(props.project))
+  return (
+    <Section
+      label={props.label}
+      count={rows().length}
+      action={
+        <button type="button" class={ICON_BUTTON} aria-label="All issues" onClick={() => showPaneView(props.project.id, "issues")}>
+          <ArrowUpRight size={14} stroke-width={1.5} />
+        </button>
+      }
+    >
+      <For each={rows()} fallback={<span class="px-2 py-1.5 text-sm text-ink-3">{issues() === undefined ? "Loading issues" : "Nothing in progress"}</span>}>
+        {(issue) => (
+          <button type="button" onClick={() => showPaneView(props.project.id, issueView(issue.id))} class={PANE_ROW}>
+            <StateMark tone={stateTone(stateOf(issue.state))} label={stateOf(issue.state)?.name} class="mt-0.5" />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm text-ink">{issue.title}</span>
+              <span class="block truncate text-xs text-ink-3">
+                <span class="font-mono text-2xs">#{issue.id}</span>
+                <Show when={issue.assignees[0]}>{(first) => <> with {assigneeName(first(), names())}</>}</Show>
+              </span>
+            </span>
+            <span class="flex shrink-0 flex-col items-end gap-0.5 pt-0.5">
+              <PriorityMark priority={issue.priority} />
+              <span class="font-mono text-2xs text-ink-3">{ago(issue.updatedAt)}</span>
+            </span>
+          </button>
+        )}
+      </For>
+    </Section>
+  )
+}
+
+/** Pull requests linked from the pane's open issues, once each, with the issue that links them. */
+export function PullsSection(props: PaneContext & { label: string }): JSX.Element {
+  const { issues } = createPaneIssues(() => props)
+  const pulls = () => linkedPulls(issues()?.issues ?? [])
+  return (
+    <Section
+      label={props.label}
+      count={pulls().length}
+      action={
+        <button type="button" class={ICON_BUTTON} aria-label="All pull requests" onClick={() => showPaneView(props.project.id, "pulls")}>
+          <ArrowUpRight size={14} stroke-width={1.5} />
+        </button>
+      }
+    >
+      <For each={pulls()} fallback={<span class="px-2 py-1.5 text-sm text-ink-3">No linked pull requests</span>}>
+        {(pull) => (
+          <a href={pull.url} target="_blank" rel="noreferrer" class={PANE_ROW}>
+            <GitPullRequest size={16} stroke-width={1.5} class="mt-0.5 shrink-0 text-merged" />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm text-ink">{pullLabel(pull.url)}</span>
+              <span class="block truncate text-xs text-ink-3">{pull.issues.map((issue) => issue.title).join(", ")}</span>
+            </span>
+          </a>
+        )}
+      </For>
     </Section>
   )
 }

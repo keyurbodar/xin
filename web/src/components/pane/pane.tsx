@@ -13,8 +13,12 @@ import { ICON_BUTTON } from "../shell/menu.ts"
 import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM, POPUP_LABEL, POPUP_SEPARATOR } from "../ui/surface.ts"
 import { paneEntry, paneView, paneViews, preloadPaneViews, type PaneContext, type PaneEntry } from "./views.tsx"
+import { createPaneIssues, ThreadMeta } from "./overview.tsx"
+import { linkedPulls } from "../../lib/issues.ts"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
+const LATER: ReadonlySet<string> = new Set(["threads", "pulls"])
+const TWO_LINE_ITEM = POPUP_ITEM.replace("h-[var(--h-control)]", "min-h-[var(--h-control)] py-1.5")
 
 export function ProjectPane(props: {
   project: ProjectSummary
@@ -37,6 +41,7 @@ export function ProjectPane(props: {
     },
     onOpenThread: (id) => props.onOpenThread(id),
   }
+  const issues = createPaneIssues(() => context)
   const open = (): readonly PaneEntry[] =>
     [OVERVIEW, ...tabs().pane].flatMap((id) => {
       const entry = paneEntry(id, context)
@@ -107,7 +112,14 @@ export function ProjectPane(props: {
             )}
           </For>
         </div>
-        <ViewMenu views={paneViews(context)} project={props.project} current={view().id} onOpenThread={props.onOpenThread} />
+        <ViewMenu
+          views={paneViews(context)}
+          project={props.project}
+          current={view().id}
+          onOpenThread={props.onOpenThread}
+          pulls={linkedPulls(issues.issues()?.issues ?? []).length}
+          pullsOf={issues.pullsOf}
+        />
         <button
           type="button"
           class={`${ICON_BUTTON} ml-auto`}
@@ -138,12 +150,15 @@ export function ViewMenu(props: {
   project: ProjectSummary
   current: string
   onOpenThread: (id: number) => void
+  pulls?: number
+  pullsOf?: (thread: number) => number
 }): JSX.Element {
   const [open, setOpen] = createSignal(false)
   const { mounted, settle } = createOverlayMount(open)
   const threads = () => projectThreads(props.project)
-  const views = () => props.views.filter((entry) => entry.id !== "threads")
+  const views = () => props.views.filter((entry) => !LATER.has(entry.id))
   const all = () => props.views.filter((entry) => entry.id === "threads")
+  const pullsView = () => props.views.find((entry) => entry.id === "pulls")
 
   const pick = (value: string): void => {
     setOpen(false)
@@ -206,9 +221,12 @@ export function ViewMenu(props: {
                   <ui-command-group-label class={POPUP_LABEL}>Crew</ui-command-group-label>
                   <For each={threads()}>
                     {(thread) => (
-                      <ui-command-item value={`thread:${thread.id}`} label={thread.title} class={POPUP_ITEM}>
-                        <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
-                        <span class="flex-1 truncate">{thread.title}</span>
+                      <ui-command-item value={`thread:${thread.id}`} label={thread.title} class={TWO_LINE_ITEM}>
+                        <Signal state={visualState(thread.status)} size={14} class="mt-0.5 shrink-0 self-start" />
+                        <span class="flex min-w-0 flex-1 flex-col">
+                          <span class="truncate">{thread.title}</span>
+                          <ThreadMeta thread={thread} pulls={props.pullsOf?.(thread.id) ?? 0} />
+                        </span>
                         <ChevronRight size={14} stroke-width={1.5} class="text-icon" />
                       </ui-command-item>
                     )}
@@ -221,10 +239,26 @@ export function ViewMenu(props: {
                         </span>
                         <span class="flex-1">{entry.label}</span>
                         <span class="font-mono text-mini text-ink-3">{threads().length}</span>
+                        <ChevronRight size={14} stroke-width={1.5} class="text-icon" />
                       </ui-command-item>
                     )}
                   </For>
                 </ui-command-group>
+              </Show>
+              <Show when={pullsView()}>
+                {(entry) => (
+                  <>
+                    <ui-command-separator class={POPUP_SEPARATOR} />
+                    <ui-command-item value={`view:${entry().id}`} label={entry().label} class={POPUP_ITEM}>
+                      <span class="text-ink-3">
+                        <Dynamic component={entry().icon} {...ICON} />
+                      </span>
+                      <span class="flex-1">{entry().label}</span>
+                      <span class="font-mono text-mini text-ink-3">{props.pulls ?? 0}</span>
+                      <ChevronRight size={14} stroke-width={1.5} class="text-icon" />
+                    </ui-command-item>
+                  </>
+                )}
               </Show>
             </ui-command-list>
           </ui-command>
