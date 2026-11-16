@@ -1,10 +1,9 @@
 import "../../src/styles/app.css"
 import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
-import { MessageAttachments } from "../../src/components/composer/attachment-card.tsx"
 import { AttachmentGrid } from "../../src/components/composer/attachments.tsx"
 import type { UploadedFile } from "../../src/lib/api.ts"
-import { createAttachments, type SentAttachment, type Upload } from "../../src/lib/attachments.ts"
+import { createAttachments, type Upload } from "../../src/lib/attachments.ts"
 
 type Pending = { readonly progress: (fraction: number) => void; readonly done: () => void; readonly fail: (message: string) => void }
 
@@ -50,28 +49,9 @@ const hostile = [
   new File(["<html><script>window.pwned=4</script></html>"], "page.png", { type: "image/png" }),
 ]
 
-const blobs = new Map<string, Blob>([["a".repeat(64), shots[0]!], ["b".repeat(64), shots[1]!]])
-const realFetch = window.fetch.bind(window)
-Object.assign(window, {
-  fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
-    const sha = /\/blobs\/([0-9a-f]{64})$/u.exec(url)?.[1]
-    const blob = sha === undefined ? undefined : blobs.get(sha)
-    if (blob !== undefined) return new Response(blob)
-    return realFetch(input, init)
-  },
-})
-
-const sent: readonly SentAttachment[] = [
-  { name: "screenshot.png", type: "image/png", size: 215 * 1024, sha256: "a".repeat(64) },
-  { name: "diagram.png", type: "image/png", size: 1_363_149, sha256: "b".repeat(64) },
-  { name: "brief.md", type: "text/markdown", size: 26 },
-]
-
 function App() {
   const attachments = createAttachments(() => upload)
   const [removed, setRemoved] = createSignal<readonly string[]>([])
-  const [opened, setOpened] = createSignal("")
   Object.assign(window, {
     progress: (name: string, fraction: number) => pending.get(name)?.progress(fraction),
     finish: (name: string) => pending.get(name)?.done(),
@@ -104,10 +84,6 @@ function App() {
       </div>
       <output id="removed">{removed().join(",")}</output>
       <output id="ready">{attachments.uploaded().map((file) => file.name).join(",")}</output>
-      <div class="flex justify-end">
-        <MessageAttachments attachments={sent} onOpen={(index) => setOpened(String(index))} />
-      </div>
-      <output id="opened">{opened()}</output>
     </main>
   )
 }
