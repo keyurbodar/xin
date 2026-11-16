@@ -1,3 +1,4 @@
+import { MessagesSquare } from "lucide-solid"
 import { For, Show, createMemo, type JSX } from "solid-js"
 import { visualState } from "../../lib/status.ts"
 import { bindConversation, rendererFor, ToolRenderer } from "../../plugins/slots.tsx"
@@ -13,7 +14,9 @@ import {
 } from "../../state/conversation.ts"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { SentBlobsScope } from "../composer/attachment-card.tsx"
-import { LinkChip } from "../ui/link-chip.tsx"
+import { ChipFace } from "../ui/chip-face.tsx"
+import { lazyView } from "../ui/lazy-view.tsx"
+import type { LinkChipProps } from "../ui/link-chip.tsx"
 import { Thinking } from "../ui/loaders.tsx"
 import { hasBlock, renderBlock } from "./blocks.tsx"
 import { AnsweredQuestionCard, ThreadFan } from "./cards.tsx"
@@ -22,6 +25,11 @@ import { ProjectGlyph } from "./project-glyph.tsx"
 import type { RenderLink } from "./timeline/dividers.tsx"
 import { buildTimeline, liveTimelineOf, waitTarget, type TimelineItem, type TimelineLink, type ToolCall } from "./timeline/model.ts"
 import { Timeline } from "./timeline/timeline.tsx"
+
+const ThreadChip = lazyView<Extract<LinkChipProps, { kind: "thread" }>>(
+  () => import("../ui/link-chip.tsx").then((module) => module.LinkChip),
+  (props) => <ChipFace href={props.href} kind={props.kind} label={props.label} tone="text-ink-3" icon={MessagesSquare} mono={false} />,
+)
 
 export type PendingMessage = {
   readonly key: string
@@ -137,7 +145,7 @@ export function Transcript(props: {
   const renderLink: RenderLink = (link) => {
     const thread = (): ThreadSummary | undefined => threads().find((candidate) => candidate.id === link.threadId)
     return (
-      <LinkChip
+      <ThreadChip
         kind="thread"
         label={link.label}
         href={`#/p/${props.project.slug}/t/${link.threadId}`}
