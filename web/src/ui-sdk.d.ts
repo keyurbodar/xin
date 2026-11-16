@@ -20,6 +20,7 @@ declare module "solid-js" {
       action: CustomEvent<{ readonly value: string }>
       valuechange: UiChange
       pressedchange: UiChange<boolean>
+      checkedchange: UiChange<boolean>
       querychange: CustomEvent<{ readonly value: string; readonly trigger: string }>
       itemselect: CustomEvent<{
         readonly value: string

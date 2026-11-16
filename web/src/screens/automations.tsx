@@ -11,7 +11,6 @@ import { createAutomationActions, createRowDialogs, EnabledToggle, LastRun, RowM
 import { Loading, RowSkeleton } from "../components/ui/skeleton.tsx"
 import { EmptyState, ResourceError } from "../components/chat/ui.tsx"
 
-const GRID = "md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,240px)_96px_72px_76px] md:items-center md:gap-4"
 
 export function AutomationsScreen(): JSX.Element {
   const id = (): string | undefined => {
@@ -44,14 +43,14 @@ function AutomationList(): JSX.Element {
   return (
     <>
       <header class="flex h-[var(--h-topbar)] shrink-0 items-center gap-2 border-b border-line-1 px-4">
-        <h1 ref={heading} tabindex={-1} class="text-base font-medium text-ink outline-none">Automations</h1>
+        <h1 ref={heading} tabindex={-1} class="text-body font-title text-ink outline-none">Automations</h1>
         <Show when={value() !== undefined}>
-          <span class="font-mono text-xs tabular-nums text-ink-3">{shown().length}</span>
+          <span class="font-mono text-mini tabular-nums text-ink-3">{shown().length}</span>
         </Show>
         <button
           type="button"
           onClick={rows.create}
-          class="im-press ml-auto flex h-7 items-center gap-1.5 rounded-sm bg-primary pl-2 pr-2.5 text-sm font-medium text-on-primary hover:opacity-90"
+          class="im-press ml-auto flex h-7 items-center gap-1.5 rounded-sm bg-primary pl-2 pr-2.5 text-sm font-title text-on-primary hover:opacity-90"
         >
           <Plus size={14} stroke-width={1.75} />
           New automation
@@ -85,7 +84,7 @@ function AutomationList(): JSX.Element {
                         <button
                           type="button"
                           onClick={rows.create}
-                          class="im-press flex h-8 items-center gap-1.5 rounded-sm border border-line-2 bg-card px-3 text-sm font-medium text-ink hover:border-line-3"
+                          class="im-press flex h-8 items-center gap-1.5 rounded-sm border border-line-2 bg-card px-3 text-sm font-title text-ink hover:border-line-3"
                         >
                           <Plus size={14} stroke-width={1.75} />
                           New automation
@@ -97,13 +96,6 @@ function AutomationList(): JSX.Element {
               }
             >
               <div class="overflow-hidden rounded-lg border border-line-1 bg-card">
-                <div class={`hidden h-8 border-b border-line-1 px-4 text-xs text-ink-3 ${GRID}`}>
-                  <span>Name</span>
-                  <span>Trigger</span>
-                  <span>Next run</span>
-                  <span>Last run</span>
-                  <span class="text-right">On</span>
-                </div>
                 <div ref={rowList} class="im-stagger">
                   <For each={shown()}>
                     {(automation, index) => (
@@ -139,35 +131,37 @@ function Row(props: {
   return (
     <div
       data-automation={props.automation.id}
-      class={`flex items-start gap-3 border-b border-line-1 px-4 py-3 last:border-0 ${GRID}`}
+      class="flex h-[var(--h-list-row)] items-center gap-3 border-b border-line-1 px-4 last:border-0 hover:bg-hover"
       style={{ "--i": props.index }}
     >
-      <div class="min-w-0 flex-1">
+      <div class="min-w-0 flex-1 md:flex md:items-baseline md:gap-2">
         <button
           type="button"
           onClick={() => props.onAction("open")}
-          class="block max-w-full truncate text-left text-base font-medium hover:underline hover:decoration-line-3 hover:underline-offset-4"
-          classList={{ "text-ink": props.enabled, "text-ink-2": !props.enabled }}
+          class="block max-w-full shrink-0 truncate text-left text-small font-title hover:underline hover:decoration-line-3 hover:underline-offset-4 md:max-w-[60%]"
+          classList={{ "text-ink": props.enabled, "text-ink-3": !props.enabled }}
         >
           {props.automation.title}
         </button>
-        <div class="mt-0.5 truncate text-sm text-ink-3">
+        <div class="min-w-0 truncate text-mini text-ink-3">
           {TARGET_WORD[props.automation.target]}
           <Show when={project()}>{(name) => <> · {name()}</>}</Show>
-        </div>
-        <div class="mt-0.5 truncate text-sm text-ink-2 md:hidden">
-          {describeTriggers(props.automation)} · {nextLabel(view())}
-        </div>
-      </div>
-      <div class="hidden min-w-0 md:block">
-        <div class="truncate text-sm text-ink-2" title={describeTriggers(props.automation)}>
-          {describeTriggers(props.automation)}
+          <span class="md:hidden">
+            {" "}
+            · {describeTriggers(props.automation)} · {nextLabel(view())}
+          </span>
         </div>
       </div>
-      <span class="hidden font-mono text-xs tabular-nums md:block" classList={{ "text-ink-2": props.enabled, "text-ink-3": !props.enabled }}>
+      <span class="hidden w-[220px] shrink-0 truncate text-small text-ink-2 lg:block" title={describeTriggers(props.automation)}>
+        {describeTriggers(props.automation)}
+      </span>
+      <span
+        class="hidden w-24 shrink-0 font-mono text-mini tabular-nums md:block"
+        classList={{ "text-ink-2": props.enabled, "text-ink-3": !props.enabled }}
+      >
         {nextLabel(view())}
       </span>
-      <span class="hidden md:flex">
+      <span class="hidden w-[72px] shrink-0 md:flex">
         <LastRun automation={props.automation} />
       </span>
       <span class="flex shrink-0 items-center justify-end gap-1">
