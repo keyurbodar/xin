@@ -260,13 +260,7 @@ export function ConversationTabs(props: {
               type="button"
               class={ICON_BUTTON}
               aria-label={`${props.project.name} actions`}
-              onClick={(event) =>
-                replayWhenReady(
-                  "menu",
-                  event,
-                  () => new MouseEvent("click", { bubbles: true, cancelable: true, detail: event.detail }),
-                )
-              }
+              onClick={(event) => replayWhenReady(["menu"], event)}
             >
               <Ellipsis {...ICON} />
             </button>
@@ -313,18 +307,7 @@ export function ConversationTabs(props: {
               on:contextmenu={(event) => {
                 setMenuTarget(threadOf(event.target))
                 if (menuTarget() === undefined) return
-                replayWhenReady(
-                  "menu",
-                  event,
-                  () =>
-                    new MouseEvent("contextmenu", {
-                      bubbles: true,
-                      cancelable: true,
-                      button: event.button,
-                      clientX: event.clientX,
-                      clientY: event.clientY,
-                    }),
-                )
+                replayWhenReady(["menu"], event)
               }}
             >
               <button
