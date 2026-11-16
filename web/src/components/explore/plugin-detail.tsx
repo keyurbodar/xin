@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onMount, Show, type JSX } from "solid-js"
 import { ago } from "../../lib/format.ts"
 import { navigate } from "../../lib/router.ts"
 import {
@@ -45,6 +45,7 @@ export function PluginDetail(props: { name: string }): JSX.Element {
   const [sheet, setSheet] = createSignal(false)
 
   createEffect(() => void handle().reload())
+  createEffect(on(() => props.name, () => setSheet(false), { defer: true }))
   onMount(() => {
     void market.reload()
   })

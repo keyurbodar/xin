@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from "bun:test"
 import { createComponent, createRoot, createSignal } from "solid-js"
-import { insert, root, textOf } from "../../../test/universal.ts"
+import { insert, root, textOf, type TestNode } from "../../../test/universal.ts"
 import { invalidateReads } from "../../lib/api.ts"
 
 type Frame = { readonly id: string; readonly op: string; readonly args: { readonly name?: string } }
@@ -11,7 +11,7 @@ if (Reflect.get(globalThis, "window") === undefined)
     value: { location: { hash: "" }, addEventListener: () => undefined },
     configurable: true,
   })
-void mock.module("../extensions/install-sheet.tsx", () => ({ InstallSheet: () => undefined }))
+void mock.module("../extensions/install-sheet.tsx", () => ({ InstallSheet: (props: { name: string }) => `Install sheet for ${props.name}` }))
 void mock.module("../extensions/glyph.tsx", () => ({ Glyph: () => undefined }))
 const { PluginDetail } = await import("./plugin-detail.tsx")
 
@@ -44,4 +44,23 @@ test("moving from one plugin's page to another shows the second plugin's entry",
   await Bun.sleep(20)
   expect(textOf(tree)).toContain("Readme of ingle-plugin-beta")
   expect(textOf(tree)).not.toContain("Readme of ingle-plugin-alpha")
+})
+
+const find = (node: TestNode, match: (node: TestNode) => boolean): TestNode | undefined =>
+  match(node) ? node : node.children.map((child) => find(child, match)).find((found) => found !== undefined)
+
+test("an install sheet opened on one plugin closes when the owner moves to another", async () => {
+  const [name, setName] = createSignal("ingle-plugin-alpha")
+  const tree = root()
+  createRoot(() => insert(tree, createComponent(PluginDetail, { get name() { return name() } })))
+  await Bun.sleep(20)
+  const add = find(tree, (node) => typeof node.props["onClick"] === "function" && textOf(node).includes("Add"))
+  const click = add?.props["onClick"]
+  if (typeof click !== "function") throw new Error("no Add button")
+  click()
+  expect(textOf(tree)).toContain("Install sheet for ingle-plugin-alpha")
+
+  setName("ingle-plugin-beta")
+  await Bun.sleep(20)
+  expect(textOf(tree)).not.toContain("Install sheet for")
 })
