@@ -246,6 +246,40 @@
   border-bottom: 1px solid var(--color-line-3);
 }
 
+@utility halftone {
+  position: relative;
+  isolation: isolate;
+}
+
+.halftone::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: var(--color-accent);
+  opacity: 0;
+  mask-image: var(--halftone), linear-gradient(to left, black, transparent 75%);
+  mask-size: var(--halftone-size), 100% 100%;
+  mask-composite: intersect;
+  transition: opacity var(--dur-base) var(--ease-out);
+  pointer-events: none;
+}
+
+.halftone:is([aria-checked="true"], [aria-pressed="true"])::before {
+  opacity: var(--halftone-alpha);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .halftone::before {
+    transition: none;
+  }
+}
+
+:root[data-motion="reduce"] .halftone::before {
+  transition: none;
+}
+
 /* I3: a project's glyph is geometry, not an icon. 1.5 stroke at every size, one solid part. */
 .project-mark {
   fill: none;

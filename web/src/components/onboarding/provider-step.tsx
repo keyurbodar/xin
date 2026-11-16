@@ -1,5 +1,6 @@
 import { createSignal, For, Show, type JSX } from "solid-js"
 import { Box, Check, KeyRound } from "lucide-solid"
+import { HALFTONE_STYLE } from "../../lib/halftone.ts"
 import { Spinner } from "../ui/loaders.tsx"
 import { Field, INPUT_BOX, PrimaryButton, QuietButton, StatusLine, StepCard, TextInput } from "./controls.tsx"
 import {
@@ -119,7 +120,8 @@ export function ProviderStep(): JSX.Element {
                 setChoice(item.id)
                 touch()
               }}
-              class="im-press im-hover flex h-[58px] items-center gap-3 rounded-md border px-2.5 text-left"
+              class="halftone im-press im-hover flex h-[58px] items-center gap-3 rounded-md border px-2.5 text-left"
+              style={HALFTONE_STYLE}
               classList={{
                 "border-line-2 bg-panel": choice() === item.id,
                 "border-transparent": choice() !== item.id,
@@ -130,7 +132,9 @@ export function ProviderStep(): JSX.Element {
               </span>
               <span class="min-w-0 flex-1">
                 <span class="block text-base text-ink">{item.name}</span>
-                <span class="block text-sm text-ink-3">{item.detail}</span>
+                <span class="block text-sm" classList={{ "text-ink-2": choice() === item.id, "text-ink-3": choice() !== item.id }}>
+                  {item.detail}
+                </span>
               </span>
               <Show when={choice() === item.id}>
                 <Check size={16} stroke-width={1.75} class="im-arrive shrink-0 text-accent-ink" aria-hidden="true" />
