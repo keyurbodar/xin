@@ -130,7 +130,7 @@ export function Sources(): JSX.Element {
           <span class="label">Extensions › Sources</span>
           <h2 class="mt-1.5 text-lg font-medium tracking-[-0.02em]">Where extensions come from</h2>
           <p class="mt-1.5 max-w-[560px] text-sm leading-relaxed text-ink-3">
-            Discover searches every index URL that is on. Each index is one https document in the market format; packages from
+            Explore searches every index URL that is on. Each index is one https document in the market format; packages from
             a URL or git build stay off until you enable them.
           </p>
         </div>
@@ -175,7 +175,7 @@ export function Sources(): JSX.Element {
                       when={indexes().length > 0}
                       fallback={
                         <div class="px-3.5 py-3 text-sm text-ink-3">
-                          No index is configured. Discover has nothing to read until you add one.
+                          No index is configured. Explore has nothing to read until you add one.
                         </div>
                       }
                     >
