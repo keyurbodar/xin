@@ -14,8 +14,8 @@ import { resolveModel } from "../../src/contracts/models.ts"
 import { WorkspaceDoc } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
 import type { Actor } from "../../src/ops.ts"
-import { addThreads, api, cmd as call, fresh, owner } from "../../test/support.ts"
-import { WIDE_MODEL } from "../../test/plugins/m3.ts"
+import { addThreads, api, cmd as call, eventually, field, fresh, owner, turn } from "../../test/support.ts"
+import { resetAlt, WIDE_MODEL } from "../../test/plugins/m3.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -150,6 +150,11 @@ const readContext = async (stub: ReturnType<typeof fresh>, id: string) => {
   expect(reply.ok, JSON.stringify(reply)).toBe(true)
   if (!contextCheck.check(reply.result)) throw new Error(`bad conv.context result ${JSON.stringify(reply.result)}`)
   return reply.result
+}
+
+const compactionsIn = async (home: Home): Promise<number> => {
+  const page = await (await home.root()).entries({ order: "ascending" }, 500, undefined, context)
+  return page.items.filter((entry) => entry.kind === "pi.compaction").length
 }
 
 describe("models", () => {
@@ -679,6 +684,78 @@ describe("models", () => {
     expect(outcome.model).not.toEqual(narrow)
   })
 
+  it("compacts at the owner's share of each model's window and reports that point in conv.context", async () => {
+    const stub = fresh()
+    await call(stub, "compact-at-model", "conv.configure", { model: WIDE_MODEL })
+    const compactAt = async (id: string): Promise<unknown> => {
+      const reply = await call(stub, id, "conv.context", {})
+      expect(reply.ok, JSON.stringify(reply)).toBe(true)
+      return field(reply.result, "compactAt")
+    }
+    expect(await compactAt("compact-at-default")).toBe(
+      128_000 - DEFAULT_COMPACTION_POLICY.reserveTokens - DEFAULT_COMPACTION_POLICY.backgroundTokens,
+    )
+    expect(await call(stub, "compact-at-set", "owner.compaction.set", { percent: 80 })).toMatchObject({
+      ok: true,
+      result: { percent: 80 },
+    })
+    expect(await compactAt("compact-at-80")).toBe(102_400)
+    const reserve = await runInDurableObject(
+      stub,
+      (home: Home) =>
+        home.loader.ctx.pi.compactionSources[0]?.()?.modelOverrides?.[`${WIDE_MODEL.provider}/${WIDE_MODEL.modelId}`],
+    )
+    expect(reserve).toEqual({ reserveTokens: 12_288, backgroundTokens: 13_312, keepRecentTokens: 20_000 })
+    expect(await call(stub, "compact-at-low", "owner.compaction.set", { percent: 30 })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+    await call(stub, "compact-at-clear", "owner.compaction.set", { percent: null })
+    expect(await compactAt("compact-at-cleared")).toBe(
+      128_000 - DEFAULT_COMPACTION_POLICY.reserveTokens - DEFAULT_COMPACTION_POLICY.backgroundTokens,
+    )
+    expect(await runInDurableObject(stub, (home: Home) => home.loader.ctx.pi.compactionSources[0]?.())).toBeUndefined()
+  })
+
+  for (const percent of [90, 95])
+    it(`keeps room for the reply on a 32k model at ${percent}%`, async () => {
+      const stub = fresh()
+      const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+      await call(stub, `narrow-model-${percent}`, "conv.configure", { model: narrow })
+      expect((await call(stub, `narrow-set-${percent}`, "owner.compaction.set", { percent })).ok).toBe(true)
+      const reply = await call(stub, `narrow-context-${percent}`, "conv.context", {})
+      const room = 8_192 + 4_096
+      expect(field(reply.result, "compactAt")).toBe(32_768 - room)
+      const policy = await runInDurableObject(
+        stub,
+        (home: Home) =>
+          home.loader.ctx.pi.compactionSources[0]?.()?.modelOverrides?.[`${narrow.provider}/${narrow.modelId}`],
+      )
+      expect(policy).toEqual({
+        reserveTokens: room,
+        backgroundTokens: 0,
+        keepRecentTokens: Math.floor((32_768 - room) / 4),
+      })
+    })
+
+  for (const percent of [50, 80])
+    it(`compacts once near ${percent}% of a 128k window and not again on the next turn`, async () => {
+      resetAlt()
+      const stub = fresh()
+      expect((await call(stub, `fire-set-${percent}`, "owner.compaction.set", { percent })).ok).toBe(true)
+      const threshold = (128_000 * percent) / 100
+      const chunk = "word ".repeat(Math.round((threshold * 0.28 * 4) / 5))
+      const compactions = (): Promise<number> => runInDurableObject(stub, compactionsIn)
+      for (let index = 0; index < 3; index++)
+        await turn(stub, `fire-${percent}-${index}`, { text: chunk, model: WIDE_MODEL })
+      expect(await compactions()).toBe(0)
+      await turn(stub, `fire-${percent}-over`, { text: chunk, model: WIDE_MODEL })
+      await eventually(stub, async (home: Home) => (await compactionsIn(home)) >= 1)
+      await turn(stub, `fire-${percent}-next`, { text: "ok", model: WIDE_MODEL })
+      await runInDurableObject(stub, (home: Home) => home.harness.waitForIdle(context))
+      expect(await compactions()).toBe(1)
+    }, 60_000)
+
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {
     const original = globalThis.fetch
     globalThis.fetch = async () =>
@@ -743,7 +820,9 @@ describe("models", () => {
     const [system, tools] = before.categories
     expect(system?.tokens).toBeGreaterThan(0)
     expect(tools?.tokens).toBeGreaterThan(0)
-    expect(before.compactAt).toBe(before.contextWindow - DEFAULT_COMPACTION_POLICY.reserveTokens)
+    expect(before.compactAt).toBe(
+      before.contextWindow - DEFAULT_COMPACTION_POLICY.reserveTokens - DEFAULT_COMPACTION_POLICY.backgroundTokens,
+    )
 
     const entries = await runInDurableObject(stub, async (home: Home) => {
       await home.submit("hello", "ctx-turn")
