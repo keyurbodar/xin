@@ -34,6 +34,15 @@ const ditherChart = (props: string): Node =>
     `return ui.chart { type = "bar", ${props}, x = { "a" }, series = { { name = "n", values = { 1 } } } }`,
     1,
   ).render()
+const UPVALUES = Array.from({ length: 190 }, (_, index) => "v" + index)
+const CLOSURE_CHAIN =
+  "local f while true do local " +
+  UPVALUES.join(", ") +
+  " = " +
+  UPVALUES.map(() => "1").join(", ") +
+  " local g = f f = function() return g, " +
+  UPVALUES.join(" + ") +
+  " end end"
 
 describe("visual runtime", () => {
   it("renders a view, and handlers change its state", () => {
@@ -107,10 +116,8 @@ describe("visual runtime", () => {
     ).toContain("too much text")
     expect(failure(`local s = string.rep("x", 1100) local r = s:gsub("x", s)`)).toContain("over 1 MB")
     expect(failure(`for i = 1, 1e7 do _G["k" .. i] = true end`)).toContain("too many entries")
-    expect(failure(`local t = {} while true do t = setmetatable({}, { __index = t }) end`)).toContain(
-      "too many entries",
-    )
-    expect(failure(`local f while true do local g = f f = function() return g end end`)).toContain("too many entries")
+    expect(failure("local t = {} while true do t = setmetatable({}, t) end")).toContain("too many tables")
+    expect(failure(CLOSURE_CHAIN)).toContain("too many tables or functions")
     expect(failure(`local function f(n) return f(n + 1) + 1 end f(1)`)).toContain("too deeply")
     expect(failure(`local t = table.unpack({}, 1, 5e5)`)).toContain("too deeply")
   }, 30_000)
@@ -131,6 +138,30 @@ describe("visual runtime", () => {
     ).toContain("time budget")
     expect(failure(`local s = string.rep("a", 1 << 19) for i = 1, 1e6 do utf8.len(s) end`)).toContain("time budget")
     expect(failure(`table.move({}, 1, 1e9, 2)`)).toContain("time budget")
+    expect(
+      failure(
+        `local t = {} for i = 1, 1999 do t = setmetatable({}, { __index = t }) end for i = 1, 1e6 do local _ = t.x end`,
+      ),
+    ).toContain("time budget")
+    expect(
+      failure(
+        `local t = {} for i = 1, 1999 do t = setmetatable({}, { __newindex = t }) end for i = 1, 1e6 do t.x = nil end`,
+      ),
+    ).toContain("time budget")
+    expect(
+      failure(
+        `local t = {} for i = 1, 5e4 do t[i] = i end for i = 1, 1e3 do table.sort(t, function(a, b) return a > b end) end`,
+      ),
+    ).toContain("time budget")
+    expect(
+      failure(`local t = {} for i = 1, 3e4 do t[i] = i end for i = 1, 1e4 do local _ = table.unpack(t) end`),
+    ).toContain("time budget")
+    expect(failure(`local s = string.rep("a", 3e4) for i = 1, 1e4 do local _ = s:byte(1, -1) end`)).toContain(
+      "time budget",
+    )
+    expect(
+      failure(`local s = string.rep("a", 3e4) for i = 1, 1e4 do local _ = utf8.codepoint(s, 1, -1) end`),
+    ).toContain("time budget")
     expect(
       failure(`local t = {} for i = 1, 5e4 do t[i] = i end for i = 1, 1e4 do table.insert(t, 1, i) end`),
     ).toContain("time budget")
@@ -273,6 +304,17 @@ describe("shader loop guard", () => {
     expect(shader("#define S ;\nfor (int i = 0 S i < 9 S i++) {}")).toContain("balanced parentheses")
     expect(shader("#define A B\n#define B 1\nint i = 0; while A {}")).toContain("parenthesized header")
     expect(shader("for (int i = 0; i < 9) {}")).toContain("(init; condition; step)")
+    expect(shader("for (\n#if 0\n;;)\n#else\nint i = 0; i < 9; i++)\n#endif\n{}")).toContain("preprocessor directives")
+    expect(shader("while (\n#ifdef X\nfalse\n#else\ntrue\n#endif\n) {}")).toContain("preprocessor directives")
+    expect(
+      check(
+        `return ui.shader { height = 200, code = [[#if 1
+#define K 2.0
+#endif
+void mainImage(out vec4 c, in vec2 p) { float t = 0.0; for (int i = 0; i < 9; i++) { t += K; } c = vec4(t); }]] }`,
+        1,
+      ).nodes,
+    ).toBe(1)
     expect(guardLoops(stripComments("for/**/(int i = 0; i < 9; i++) {}"))).toContain("ingle_step()")
   })
 

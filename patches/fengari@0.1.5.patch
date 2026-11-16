@@ -23,14 +23,14 @@ index 9c89ff756c22452b4eae13c8956dcb9aa7799ef2..e333ddbf52a788f90522f2a73036be3e
      lua_assert(L.stack_last == L.stack.length - lstate.EXTRA_STACK);
      L.stack.length = newsize;
 diff --git a/src/lobject.js b/src/lobject.js
-index c83439c776d976b8eb4297c7f3047862b693098c..c5e70d7026cd004b23ea4619dd5765d9bf8f5437 100644
+index c83439c776d976b8eb4297c7f3047862b693098c..77d26146c13bd17c081838099c9bb6784239f082 100644
 --- a/src/lobject.js
 +++ b/src/lobject.js
 @@ -295,6 +295,7 @@ module.exports.luaO_nilobject = luaO_nilobject;
  class LClosure {
  
      constructor(L, n) {
-+        if (L.l_G.meter) L.l_G.meter.entry();
++        if (L.l_G.meter) L.l_G.meter.closure(n);
          this.id = L.l_G.id_counter++;
  
          this.p = null;
@@ -38,7 +38,7 @@ index c83439c776d976b8eb4297c7f3047862b693098c..c5e70d7026cd004b23ea4619dd5765d9
  class CClosure {
  
      constructor(L, f, n) {
-+        if (L.l_G.meter) L.l_G.meter.entry();
++        if (L.l_G.meter) L.l_G.meter.closure(n);
          this.id = L.l_G.id_counter++;
  
          this.f = f;
@@ -55,7 +55,7 @@ index 4769866c3e21a38d9c8161a3627f8a3b07c550eb..f57c7bad981643833d501c4811ae549b
          this.realstring = str;
      }
 diff --git a/src/lstrlib.js b/src/lstrlib.js
-index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..de5273382c20afe4a417ac45b65702dd9eb9bca9 100644
+index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..4567436cf8c8feea4895375e5be9765dae0e6394 100644
 --- a/src/lstrlib.js
 +++ b/src/lstrlib.js
 @@ -714,6 +714,7 @@ const str_rep = function(L) {
@@ -66,7 +66,15 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..de5273382c20afe4a417ac45b65702dd
          while (n-- > 1) {  /* first n-1 copies (followed by separator) */
              p.set(s, pi);
              pi += l;
-@@ -968,6 +969,7 @@ const matchbracketclass = function(ms, c, p, ec) {
+@@ -742,6 +743,7 @@ const str_byte = function(L) {
+ 
+     let n = (pose - posi) + 1;
+     luaL_checkstack(L, n, "string slice too long");
++    if (L.l_G.meter) L.l_G.meter.step(n);
+     for (let i = 0; i < n; i++)
+         lua_pushinteger(L, s[posi + i - 1]);
+     return n;
+@@ -968,6 +970,7 @@ const matchbracketclass = function(ms, c, p, ec) {
          p++;  /* skip the '^' */
      }
      while (++p < ec) {
@@ -74,7 +82,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..de5273382c20afe4a417ac45b65702dd
          if (ms.p[p] === L_ESC) {
              p++;
              if (match_class(c, ms.p[p]))
-@@ -1005,6 +1007,7 @@ const matchbalance = function(ms, s, p) {
+@@ -1005,6 +1008,7 @@ const matchbalance = function(ms, s, p) {
          let e = ms.p[p + 1];
          let cont = 1;
          while (++s < ms.src_end) {
@@ -82,7 +90,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..de5273382c20afe4a417ac45b65702dd
              if (ms.src[s] === e) {
                  if (--cont === 0) return s + 1;
              }
-@@ -1016,8 +1019,10 @@ const matchbalance = function(ms, s, p) {
+@@ -1016,8 +1020,10 @@ const matchbalance = function(ms, s, p) {
  
  const max_expand = function(ms, s, p, ep) {
      let i = 0;  /* counts maximum expand for item */
@@ -94,7 +102,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..de5273382c20afe4a417ac45b65702dd
      /* keeps trying to match with the maximum repetitions */
      while (i >= 0) {
          let res = match(ms, s + i, ep + 1);
-@@ -1081,6 +1086,7 @@ const match = function(ms, s, p) {
+@@ -1081,6 +1087,7 @@ const match = function(ms, s, p) {
          luaL_error(ms.L, to_luastring("pattern too complex"));
  
      while (gotoinit || gotodefault) {
@@ -102,7 +110,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..de5273382c20afe4a417ac45b65702dd
          gotoinit = false;
          if (p !== ms.p_end) {  /* end of pattern? */
              switch (gotodefault ? void 0 : ms.p[p]) {
-@@ -1229,17 +1235,19 @@ const reprepstate = function(ms) {
+@@ -1229,17 +1236,19 @@ const reprepstate = function(ms) {
      lualib.lua_assert(ms.matchdepth === MAXCCALLS);
  };
  
@@ -124,7 +132,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..de5273382c20afe4a417ac45b65702dd
  
      return -1;
  };
-@@ -1258,7 +1266,7 @@ const str_find_aux = function(L, find) {
+@@ -1258,7 +1267,7 @@ const str_find_aux = function(L, find) {
      /* explicit request or no special characters? */
      if (find && (lua_toboolean(L, 4) || nospecials(p, lp))) {
          /* do a plain search */
@@ -134,14 +142,14 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..de5273382c20afe4a417ac45b65702dd
              lua_pushinteger(L, init + f);
              lua_pushinteger(L, init + f + lp - 1);
 diff --git a/src/ltable.js b/src/ltable.js
-index fdc34bf21da2dd2be8e9086ffee8caefe3f0303c..ea43f6902e9d804e30dedc1d428e803e562558a9 100644
+index fdc34bf21da2dd2be8e9086ffee8caefe3f0303c..9d6bc422a9121bccd70c79b1261fb26445c3da75 100644
 --- a/src/ltable.js
 +++ b/src/ltable.js
 @@ -103,7 +103,9 @@ const table_hash = function(L, key) {
  
  class Table {
      constructor(L) {
-+        if (L.l_G.meter) L.l_G.meter.entry();
++        if (L.l_G.meter) L.l_G.meter.table();
          this.id = L.l_G.id_counter++;
 +        this.l_G = L.l_G;
          this.strong = new Map();
@@ -156,7 +164,7 @@ index fdc34bf21da2dd2be8e9086ffee8caefe3f0303c..ea43f6902e9d804e30dedc1d428e803e
      t.dead_weak = void 0;
      let prev = null;
 diff --git a/src/ltablib.js b/src/ltablib.js
-index 0a1d9510ab393ecea3033dedcf9aad493fb92932..75162e8e3d8504dec1394154308128d42c19e5a6 100644
+index 0a1d9510ab393ecea3033dedcf9aad493fb92932..7ad6d7e000e04d1fc83d490beaf6b5a42cfedd37 100644
 --- a/src/ltablib.js
 +++ b/src/ltablib.js
 @@ -106,6 +106,7 @@ const tinsert = function(L) {
@@ -191,8 +199,24 @@ index 0a1d9510ab393ecea3033dedcf9aad493fb92932..75162e8e3d8504dec1394154308128d4
      for (; i < last; i++) {
          addfield(L, b, i);
          luaL_addlstring(b, sep, lsep);
+@@ -212,6 +216,7 @@ const unpack = function(L) {
+     let n = e - i;  /* number of elements minus 1 (avoid overflows) */
+     if (n >= Number.MAX_SAFE_INTEGER || !lua_checkstack(L, ++n))
+         return luaL_error(L, to_luastring("too many results to unpack"));
++    if (L.l_G.meter) L.l_G.meter.step(n);
+     for (; i < e; i++)  /* push arg[i..e - 1] (to avoid overflows) */
+         lua_geti(L, 1, i);
+     lua_geti(L, 1, e);  /* push last element */
+@@ -230,6 +235,7 @@ const set2 = function(L, i, j) {
+ };
+ 
+ const sort_comp = function(L, a, b) {
++    if (L.l_G.meter) L.l_G.meter.step(1);
+     if (lua_isnil(L, 2))  /* no function? */
+         return lua_compare(L, a, b, LUA_OPLT);  /* a < b */
+     else {  /* function */
 diff --git a/src/lutf8lib.js b/src/lutf8lib.js
-index d3dc3a25e62e7257c58f3744bf8be8ea0504764e..c581896f4dd13a321370e80bddf109a34f95b370 100644
+index d3dc3a25e62e7257c58f3744bf8be8ea0504764e..7a5025ca2f9d7522fd9d8b99aba3cd6b92870a51 100644
 --- a/src/lutf8lib.js
 +++ b/src/lutf8lib.js
 @@ -87,6 +87,7 @@ const utflen = function(L) {
@@ -211,8 +235,16 @@ index d3dc3a25e62e7257c58f3744bf8be8ea0504764e..c581896f4dd13a321370e80bddf109a3
  
      if (n === 0) {
          /* find beginning of current byte sequence */
+@@ -190,6 +192,7 @@ const codepoint = function(L) {
+         return luaL_error(L, "string slice too long");
+     let n = (pose - posi) + 1;
+     luaL_checkstack(L, n, "string slice too long");
++    if (L.l_G.meter) L.l_G.meter.step(n);
+     n = 0;
+     for (posi -= 1; posi < pose;) {
+         let dec = utf8_decode(s, posi);
 diff --git a/src/lvm.js b/src/lvm.js
-index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..a3ad7ca6265c6f5fadab83d160d1ab6276f87445 100644
+index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..27ea9d617ccdbe3a63db2437f8a9cb4d28d00fbc 100644
 --- a/src/lvm.js
 +++ b/src/lvm.js
 @@ -710,8 +710,10 @@ const donextjump = function(L, ci) {
@@ -255,3 +287,19 @@ index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..a3ad7ca6265c6f5fadab83d160d1ab62
              let buff = new Uint8Array(tl);
              copy2buff(L, top, n, buff);
              let ts = luaS_bless(L, buff);
+@@ -1077,6 +1083,7 @@ const MAXTAGLOOP = 2000;
+ 
+ const luaV_gettable = function(L, t, key, ra) {
+     for (let loop = 0; loop < MAXTAGLOOP; loop++) {
++        if (L.l_G.meter) L.l_G.meter.step(1);
+         let tm;
+ 
+         if (!t.ttistable()) {
+@@ -1110,6 +1117,7 @@ const luaV_gettable = function(L, t, key, ra) {
+ 
+ const settable = function(L, t, key, val) {
+     for (let loop = 0; loop < MAXTAGLOOP; loop++) {
++        if (L.l_G.meter) L.l_G.meter.step(1);
+         let tm;
+         if (t.ttistable()) {
+             let h = t.value; /* save 't' table */

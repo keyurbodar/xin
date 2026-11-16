@@ -8,6 +8,8 @@ declare module "fengari/src/lua.js" {
     buffer(size: number): void
     string(size: number): void
     entry(): void
+    table(): void
+    closure(upvalues: number): void
     stack(slots: number): void
     step(count: number): void
   }
