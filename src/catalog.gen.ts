@@ -496,7 +496,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: ["presets"],
-      permissions: ["conversations", "files", "models"],
+      permissions: ["conversations", "files", "models", "plugins"],
       contributes: {
         tools: [],
         ops: ["captain.*", "thread.archive", "thread.create", "thread.send", "thread.side", "thread.stop"],
