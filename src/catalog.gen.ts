@@ -543,6 +543,7 @@ export const CATALOG: Catalog = {
           "conv.context",
           "credential.delete",
           "credential.set",
+          "credential.test",
           "models.catalog",
           "models.enable",
           "models.favorite",
