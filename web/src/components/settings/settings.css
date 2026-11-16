@@ -1,0 +1,27 @@
+.settings-sections {
+  counter-reset: settings-section;
+}
+
+.settings-section:not([hidden]) {
+  counter-increment: settings-section;
+}
+
+.settings-index::before {
+  content: counter(settings-section, decimal-leading-zero);
+}
+
+.settings-switch > [data-slot="switch-thumb"] {
+  transition:
+    translate 150ms var(--ease-in-out),
+    background-color 150ms var(--ease-in-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-switch > [data-slot="switch-thumb"] {
+    transition-property: background-color;
+  }
+}
+
+:root[data-motion="reduce"] .settings-switch > [data-slot="switch-thumb"] {
+  transition-property: background-color;
+}
