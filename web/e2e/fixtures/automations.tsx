@@ -103,7 +103,8 @@ const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<
       return { t: "ack", id: frame.id, ok: false, error: { code: "bad_args", message: String(problem) } }
     }
   })
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  await new Promise((resolve) => setTimeout(resolve, Number(params.get("delay") ?? 20)))
+  if (frames.some((frame) => frame.op === "automation.update")) queueMicrotask(bump)
   return new Response(JSON.stringify(Array.isArray(body) ? acks : acks[0]), { headers: { "content-type": "application/json" } })
 }
 
@@ -118,14 +119,12 @@ const streams = {
   },
 }
 
-Object.assign(window, {
-  fetch: fakeFetch,
-  calls,
-  bump: () => {
-    revision += 1
-    home?.value(snapshot(), String(revision))
-  },
-})
+const bump = (): void => {
+  revision += 1
+  home?.value(snapshot(), String(revision))
+}
+
+Object.assign(window, { fetch: fakeFetch, calls, bump })
 if (params.get("view") !== null) location.hash = `/automations/${params.get("view")}`
 else location.hash = "/automations"
 trackMotion()
