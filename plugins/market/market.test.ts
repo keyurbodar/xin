@@ -92,7 +92,7 @@ const GUARDED_INGLE = { plugins: { tools: { module: "./index.ts", permissions: [
 const SECRETIVE_1 = { bundle: [{ id: "secretive-reader", plugin: "k-secret-mount" }] }
 const PATCHER_1 = {
   bundle: [{ id: "patcher-time", plugin: "time", config: { timezone: "Asia/Tokyo" } }],
-  patch: [{ id: "tool-web", disabled: false }],
+  patch: [{ id: "tool-git", disabled: false }],
 }
 const KERNEL_PATCHER_1 = {
   bundle: [{ id: "kpatch-time", plugin: "time", config: { timezone: "Asia/Tokyo" } }],
@@ -611,7 +611,12 @@ describe("market", () => {
       ok: false,
       error: {
         code: "consent_required",
-        details: { permissions: [{ id: "network", why: "its patch enables tool-web" }] },
+        details: {
+          permissions: [
+            { id: "network", why: "its patch enables tool-git" },
+            { id: "secrets", why: "its patch enables tool-git" },
+          ],
+        },
       },
     })
     expect((await op(stub, "bundle.list")).result).not.toContainEqual(expect.objectContaining({ package: PATCHER }))
@@ -623,7 +628,7 @@ describe("market", () => {
       ok: false,
       error: { code: "bad_args", message: expect.stringContaining("install it from the market first") },
     })
-    expect(await op(stub, "market.install", { name: PATCHER, grant: ["network"] })).toMatchObject({
+    expect(await op(stub, "market.install", { name: PATCHER, grant: ["network", "secrets"] })).toMatchObject({
       ok: true,
       result: { application: "applied" },
     })
