@@ -1,6 +1,7 @@
+import "@ui-sdk/web/menu"
+import "@ui-sdk/web/segmented-control"
 import { createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js"
-import { Dynamic, Portal } from "solid-js/web"
-import { Menu } from "@ark-ui/solid/menu"
+import { Dynamic } from "solid-js/web"
 import { Blocks, CalendarClock, Check, ChevronsUpDown, Flower2, HardDrive, Moon, Palette, PanelLeft, Plus, Search, Settings, SquarePen, Sun, X } from "lucide-solid"
 import { activeProjects, projectThreads, routeProject, routeThreadId, type ProjectSummary } from "../../state/home.ts"
 import { homeCaptains, routeCaptain } from "../../state/captains.ts"
@@ -19,14 +20,26 @@ import { Signal } from "../ui/signal.tsx"
 import { openNewThread } from "./new-thread.tsx"
 import { CaptainAvatar } from "../captain/avatar.tsx"
 import { openNewCaptain } from "../captain/captain-dialog.tsx"
-import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL, MENU_SEPARATOR } from "./menu.ts"
+import { POPUP, POPUP_ITEM, POPUP_LABEL, POPUP_SEPARATOR } from "../ui/surface.ts"
+import { ICON_BUTTON } from "./menu.ts"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
 
 const THEME_ICONS: Readonly<Record<string, typeof Moon>> = { dark: Moon, light: Sun, rose: Flower2 }
 
 const ROW =
-  "flex h-[var(--h-row)] w-full shrink-0 items-center gap-2.5 rounded-sm px-2 text-left text-sm im-hover"
+  "im-hover flex h-[var(--h-row)] w-full shrink-0 items-center gap-2 rounded-sm px-2 text-left text-small outline-none focus-visible:shadow-[inset_2px_0_0_var(--color-primary)] disabled:opacity-50"
+
+const SELECTED = "bg-secondary text-ink"
+
+const SECTION_KEY = "ingle.sidebar.section"
+
+type Section = "threads" | "captains"
+
+const storedSection = (): Section => (localStorage.getItem(SECTION_KEY) === "captains" ? "captains" : "threads")
+
+const SEGMENT =
+  "im-focus flex h-full flex-1 cursor-default select-none items-center justify-center rounded-xs text-small text-ink-3 outline-none hover:text-ink-2 data-[checked]:text-ink"
 
 export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; drawer: boolean }): JSX.Element {
   onMount(() => void owner.reload())
@@ -88,27 +101,16 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
           </button>
         </SectionHead>
         <div ref={projects} class="flex flex-col gap-px px-2">
-          <For each={activeProjects()} fallback={<span class="px-2 py-1 text-sm text-ink-3">No projects yet</span>}>
+          <For each={activeProjects()} fallback={<Empty>No projects yet</Empty>}>
             {(project) => <ProjectRow project={project} />}
           </For>
         </div>
 
-        <SectionHead label="Captains">
-          <button type="button" class={ICON_BUTTON} aria-label="New Captain" onClick={openNewCaptain}>
-            <Plus {...ICON} />
-          </button>
-        </SectionHead>
-        <div class="flex flex-col gap-px px-2">
-          <For each={homeCaptains()} fallback={<span class="px-2 py-1 text-sm text-ink-3">No Captains yet</span>}>
-            {(captain) => <CaptainRowButton captain={captain} />}
-          </For>
-        </div>
-
-        <Show when={routeProject()}>{(project) => <ThreadList project={project()} />}</Show>
+        <LowerSection />
         <SlotList slot="sidebar.section" />
       </div>
 
-      <OwnerMenu />
+      <AccountChip />
     </aside>
   )
 }
@@ -125,8 +127,8 @@ function NavRow(props: {
       type="button"
       disabled={props.disabled === true}
       onClick={() => props.onClick()}
-      class={`${ROW} disabled:opacity-50`}
-      classList={{ "bg-hover text-ink": props.active === true, "text-ink-2": props.active !== true }}
+      class={ROW}
+      classList={{ [SELECTED]: props.active === true, "text-ink-2": props.active !== true }}
     >
       <span class="text-ink-3">{props.children}</span>
       {props.label}
@@ -137,10 +139,14 @@ function NavRow(props: {
 function SectionHead(props: { label: string; children?: JSX.Element }): JSX.Element {
   return (
     <div class="flex h-9 shrink-0 items-center gap-0.5 pl-4 pr-3 pt-3">
-      <span class="mr-auto text-xs text-ink-3">{props.label}</span>
+      <span class="mr-auto text-mini font-title text-ink-3">{props.label}</span>
       {props.children}
     </div>
   )
+}
+
+function Empty(props: { children: JSX.Element }): JSX.Element {
+  return <span class="px-2 py-1 text-small text-ink-3">{props.children}</span>
 }
 
 function ProjectRow(props: { project: ProjectSummary }): JSX.Element {
@@ -151,7 +157,7 @@ function ProjectRow(props: { project: ProjectSummary }): JSX.Element {
       type="button"
       onClick={() => navigate(`/p/${props.project.slug}`)}
       class={ROW}
-      classList={{ "bg-hover text-ink": current(), "text-ink-2": !current() }}
+      classList={{ [SELECTED]: current(), "text-ink-2": !current() }}
     >
       <span class="grid h-5 w-5 shrink-0 place-items-center rounded-xs border border-line-2 bg-card text-ink-2">
         <ProjectMark slug={props.project.slug} name={props.project.name} goal={props.project.goal} size={13} />
@@ -178,7 +184,7 @@ function CaptainRowButton(props: { captain: CaptainRow }): JSX.Element {
       onClick={() => navigate(`/c/${props.captain.alias}`)}
       title={props.captain.description === "" ? crewSummary(props.captain) : `${props.captain.description}\n${crewSummary(props.captain)}`}
       class={ROW}
-      classList={{ "bg-hover text-ink hover:bg-hover": current(), "text-ink-2": !current() }}
+      classList={{ [SELECTED]: current(), "text-ink-2": !current() }}
     >
       <CaptainAvatar name={props.captain.name} size={20} />
       <span class="min-w-0 flex-1 truncate">{props.captain.name}</span>
@@ -193,16 +199,101 @@ function CaptainRowButton(props: { captain: CaptainRow }): JSX.Element {
       <Show when={props.captain.crew.working > 0}>
         <Signal state="working" size={14} />
       </Show>
-      <span class="w-4 shrink-0 text-right font-mono text-2xs tabular-nums text-ink-3">{props.captain.crew.total}</span>
+      <span class="w-4 shrink-0 text-right font-mono text-micro tabular-nums text-ink-3">{props.captain.crew.total}</span>
     </button>
   )
 }
 
-function ThreadList(props: { project: ProjectSummary }): JSX.Element {
+/** Threads or Captains, picked on a segmented control and remembered on this device. */
+function LowerSection(): JSX.Element {
+  const initial = storedSection()
+  const [section, setSection] = createSignal<Section>(initial)
   const [searching, setSearching] = createSignal(false)
   const [query, setQuery] = createSignal("")
+  const pick = (value: unknown): void => {
+    if (value !== "threads" && value !== "captains") return
+    setSection(value)
+    localStorage.setItem(SECTION_KEY, value)
+  }
+  return (
+    <>
+      <div class="flex shrink-0 items-center gap-1 px-2 pb-1 pt-4">
+        <ui-segmented-control
+          aria-label="Sidebar list"
+          default-value={initial}
+          on:valuechange={(event) => pick(event.detail.value)}
+          class="relative isolate flex h-[var(--h-control-sm)] flex-1 items-center rounded-sm bg-secondary p-0.5"
+        >
+          <ui-segmented-control-indicator class="im-pill absolute inset-y-0.5 left-0 -z-10 w-[var(--segmented-control-indicator-width)] rounded-xs bg-card shadow-[var(--shadow-ring)] [translate:var(--segmented-control-indicator-left)_0]" />
+          <ui-segmented-control-item value="threads" class={SEGMENT}>
+            Threads
+          </ui-segmented-control-item>
+          <ui-segmented-control-item value="captains" class={SEGMENT}>
+            Captains
+          </ui-segmented-control-item>
+        </ui-segmented-control>
+        <Show
+          when={section() === "captains"}
+          fallback={
+            <button
+              type="button"
+              class={ICON_BUTTON}
+              classList={{ "bg-hover text-ink": searching() }}
+              aria-label="Search threads"
+              aria-pressed={searching()}
+              disabled={routeProject() === undefined}
+              onClick={() => {
+                setSearching((value) => !value)
+                setQuery("")
+              }}
+            >
+              <Search {...ICON} />
+            </button>
+          }
+        >
+          <button type="button" class={ICON_BUTTON} aria-label="New Captain" onClick={openNewCaptain}>
+            <Plus {...ICON} />
+          </button>
+        </Show>
+      </div>
+      <Show
+        when={section() === "captains"}
+        fallback={
+          <Show when={routeProject()} fallback={<Empty>Open a project to see its threads</Empty>}>
+            {(project) => (
+              <ThreadList
+                project={project()}
+                searching={searching()}
+                query={query()}
+                onQuery={setQuery}
+                onStop={() => {
+                  setSearching(false)
+                  setQuery("")
+                }}
+              />
+            )}
+          </Show>
+        }
+      >
+        <div class="flex flex-col gap-px px-2">
+          <For each={homeCaptains()} fallback={<Empty>No Captains yet</Empty>}>
+            {(captain) => <CaptainRowButton captain={captain} />}
+          </For>
+        </div>
+      </Show>
+    </>
+  )
+}
+
+function ThreadList(props: {
+  project: ProjectSummary
+  searching: boolean
+  query: string
+  onQuery: (query: string) => void
+  onStop: () => void
+}): JSX.Element {
   const threads = createMemo(() => {
-    const text = query().trim().toLowerCase()
+    const text = props.query.trim().toLowerCase()
     return projectThreads(props.project)
       .filter((thread) => text === "" || thread.title.toLowerCase().includes(text))
       .toSorted((left, right) => (right.beatAt ?? 0) - (left.beatAt ?? 0))
@@ -216,44 +307,23 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
 
   return (
     <>
-      <SectionHead label="Threads">
-        <button
-          type="button"
-          class={ICON_BUTTON}
-          classList={{ "bg-hover text-ink": searching() }}
-          aria-label="Search threads"
-          aria-pressed={searching()}
-          onClick={() => {
-            setSearching((value) => !value)
-            setQuery("")
-          }}
-        >
-          <Search {...ICON} />
-        </button>
-      </SectionHead>
-      <Show when={searching()}>
+      <Show when={props.searching}>
         <div class="px-2 pb-1">
           <input
             ref={(element) => queueMicrotask(() => element.focus())}
-            value={query()}
-            onInput={(event) => setQuery(event.currentTarget.value)}
+            value={props.query}
+            onInput={(event) => props.onQuery(event.currentTarget.value)}
             onKeyDown={(event) => {
-              if (event.key !== "Escape") return
-              setSearching(false)
-              setQuery("")
+              if (event.key === "Escape") props.onStop()
             }}
+            aria-label={`Filter ${props.project.name} threads`}
             placeholder="Filter threads"
-            class="h-[var(--h-control-sm)] w-full rounded-sm bg-secondary px-2 text-sm text-ink outline-none placeholder:text-placeholder"
+            class="h-[var(--h-control-sm)] w-full rounded-sm bg-secondary px-2 text-small text-ink outline-none placeholder:text-placeholder"
           />
         </div>
       </Show>
       <div ref={list} class="flex flex-col gap-px px-2">
-        <For
-          each={threads()}
-          fallback={
-            <span class="px-2 py-1 text-sm text-ink-3">{query() === "" ? "No threads in this project" : "No match"}</span>
-          }
-        >
+        <For each={threads()} fallback={<Empty>{props.query === "" ? "No threads in this project" : "No match"}</Empty>}>
           {(thread) => {
             const current = (): boolean => routeThreadId() === thread.id
             return (
@@ -261,11 +331,12 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
                 type="button"
                 onClick={() => open(thread.id)}
                 class={ROW}
-                classList={{ "bg-hover text-ink": current(), "text-ink-2": !current() }}
+                classList={{ [SELECTED]: current(), "text-ink-2": !current() }}
+                aria-current={current() ? "page" : undefined}
               >
                 <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
                 <span class="min-w-0 flex-1 truncate">{thread.title}</span>
-                <span class="shrink-0 font-mono text-2xs text-ink-3">{ago(thread.beatAt)}</span>
+                <span class="shrink-0 font-mono text-micro tabular-nums text-ink-3">{ago(thread.beatAt)}</span>
               </button>
             )
           }}
@@ -275,57 +346,64 @@ function ThreadList(props: { project: ProjectSummary }): JSX.Element {
   )
 }
 
-function OwnerMenu(): JSX.Element {
+/** The account chip at the foot: the owner's monogram, name and this home's host; it opens the owner menu. */
+function AccountChip(): JSX.Element {
   const initial = (): string => ownerName().trim().slice(0, 1).toUpperCase() || "O"
   return (
     <div class="shrink-0 border-t border-line-1 p-2">
-      <Menu.Root
-        lazyMount
-        unmountOnExit
-        positioning={{ placement: "top-start", sameWidth: true, gutter: 6 }}
-        onSelect={(details) => {
-          if (details.value === "settings") navigate("/settings/general")
+      <ui-menu
+        on:action={(event) => {
+          if (event.detail.value === "settings") navigate("/settings/general")
         }}
       >
-        <Menu.Trigger class={`${ROW} h-[var(--h-control)] text-ink data-[state=open]:bg-hover`}>
-          <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-medium text-on-primary">
-            {initial()}
-          </span>
-          <span class="min-w-0 flex-1 truncate">{ownerName()}</span>
-          <span class="text-icon">
-            <ChevronsUpDown size={14} stroke-width={1.5} />
-          </span>
-        </Menu.Trigger>
-        <Portal>
-          <Menu.Positioner>
-            <Menu.Content class={MENU_CONTENT}>
-              <Menu.Item value="settings" class={MENU_ITEM}>
-                <span class="text-ink-3">
-                  <Settings {...ICON} />
-                </span>
-                Settings
-              </Menu.Item>
-              <Menu.Separator class={MENU_SEPARATOR} />
-              <Menu.RadioItemGroup value={theme()} onValueChange={(details) => applyTheme(details.value)}>
-                <Menu.ItemGroupLabel class={MENU_LABEL}>Theme</Menu.ItemGroupLabel>
-                <For each={themes()}>
-                  {(entry) => (
-                    <Menu.RadioItem value={entry.id} closeOnSelect={false} class={MENU_ITEM}>
-                      <span class="text-ink-3">
-                        <Dynamic component={THEME_ICONS[entry.id] ?? Palette} {...ICON} />
-                      </span>
-                      <Menu.ItemText class="flex-1">{entry.label}</Menu.ItemText>
-                      <Menu.ItemIndicator class="text-ink-2">
-                        <Check {...ICON} />
-                      </Menu.ItemIndicator>
-                    </Menu.RadioItem>
-                  )}
-                </For>
-              </Menu.RadioItemGroup>
-            </Menu.Content>
-          </Menu.Positioner>
-        </Portal>
-      </Menu.Root>
+        <ui-menu-trigger>
+          <button
+            type="button"
+            class="im-hover im-focus flex h-[var(--h-row-2)] w-full items-center gap-2.5 rounded-sm px-2 text-left data-[open]:bg-hover"
+          >
+            <span
+              aria-hidden="true"
+              class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary text-small font-title text-on-primary"
+            >
+              {initial()}
+            </span>
+            <span class="flex min-w-0 flex-1 flex-col">
+              <span class="truncate text-small text-ink">{ownerName()}</span>
+              <span class="truncate text-mini text-ink-3">{location.host}</span>
+            </span>
+            <span class="text-icon">
+              <ChevronsUpDown size={14} stroke-width={1.5} />
+            </span>
+          </button>
+        </ui-menu-trigger>
+        <ui-menu-content side="top" align="start" side-offset="6" class={`${POPUP} w-[var(--anchor-width)]`}>
+          <ui-menu-item value="settings" class={POPUP_ITEM}>
+            <span class="text-ink-3">
+              <Settings {...ICON} />
+            </span>
+            Settings
+          </ui-menu-item>
+          <ui-menu-separator class={POPUP_SEPARATOR} />
+          <ui-menu-group>
+            <ui-menu-group-label class={POPUP_LABEL}>Theme</ui-menu-group-label>
+            <ui-menu-radio-group value={theme()} on:valuechange={(event) => applyTheme(String(event.detail.value))}>
+              <For each={themes()}>
+                {(entry) => (
+                  <ui-menu-radio-item value={entry.id} class={POPUP_ITEM}>
+                    <span class="text-ink-3">
+                      <Dynamic component={THEME_ICONS[entry.id] ?? Palette} {...ICON} />
+                    </span>
+                    <span class="flex-1">{entry.label}</span>
+                    <ui-menu-item-indicator class="text-ink-2">
+                      <Check {...ICON} />
+                    </ui-menu-item-indicator>
+                  </ui-menu-radio-item>
+                )}
+              </For>
+            </ui-menu-radio-group>
+          </ui-menu-group>
+        </ui-menu-content>
+      </ui-menu>
     </div>
   )
 }
