@@ -1,0 +1,1 @@
+2026-11-07T11:00	P9	Preset selects tool-* extensions instead of child plugin rows	Xin's agent shares one Cordis tree and pi extension set; per-preset trees would need dsh's scoped loaders, out of scope	09-plugins.md Presets	deviation

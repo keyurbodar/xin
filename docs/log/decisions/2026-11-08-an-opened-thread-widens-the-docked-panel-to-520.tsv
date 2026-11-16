@@ -1,0 +1,1 @@
+2026-11-08T02:32	P14	An opened thread widens the docked panel to 520	`V3-a` ships "Takes over panel at 520", so the coordinator stays visible while a thread is read	the docked aside measures 520 with a thread open and 440 at 1440 otherwise; the drawer and sheet keep full width	measured in the browser: aside widths 264 and 520, thread header visible (P17-thread-520-1440.png)

@@ -1,0 +1,1 @@
+2026-11-16T00:00:00Z	AMA-15	the Worker forwards /hooks/* without a token	the secret in the path is the credential, one DO request per delivery as the brief asks	src/worker.ts, automations.test.ts webhook cases	kept

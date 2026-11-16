@@ -1,0 +1,1 @@
+2026-11-07T17:00	P14	Client built as SolidJS in web/, not React: the owner asked to follow kiko's stack and Solid is what kiko ships	kiko is the named reference for frontend engineering; a separate package keeps the Worker gate from compiling it	web/package.json, docs/plan/architecture/14-client.md	accepted

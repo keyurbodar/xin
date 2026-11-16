@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	client	Signal (.sig, 3×3 round dots) replaces the D Grid StatusGlyph everywhere; status.css and status-glyph.tsx are deleted	v5 page 16.1 makes Signal the one status family, and ingle-motion.css already draws every state	cd web && bun run typecheck && bun run build; ~/.capy/work/shots/p16/specimen-*.png	adopted
