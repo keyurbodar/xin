@@ -399,6 +399,7 @@ export const CATALOG: Catalog = {
           "market.policy.set",
           "market.refresh",
           "market.rollback",
+          "market.add",
           "market.search",
           "market.skip",
           "market.skipped",
