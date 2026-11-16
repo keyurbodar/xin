@@ -1,7 +1,10 @@
 import { File as FileIcon, X } from "lucide-solid"
-import { For, Show, createSignal, onCleanup, type JSX } from "solid-js"
+import { For, Show, createEffect, createSignal, onCleanup, type JSX } from "solid-js"
 import { MAX_UPLOAD_BYTES, OpError, type UploadedFile } from "../../lib/api.ts"
 import { bytes } from "../../lib/format.ts"
+import { createPresence } from "../shell/presence.ts"
+
+const CHIP_EXIT_MS = 140
 
 export type Upload = (file: File, onProgress: (fraction: number) => void, signal: AbortSignal) => Promise<UploadedFile>
 
@@ -107,14 +110,16 @@ function statusOf(item: Attachment): string {
   }
 }
 
-function AttachmentChip(props: { item: Attachment; onRemove: () => void }): JSX.Element {
+function AttachmentChip(props: { item: Attachment; leaving: boolean; onRemove: () => void }): JSX.Element {
   const failed = (): boolean => props.item.state.kind === "failed"
   const progress = (): number | undefined =>
     props.item.state.kind === "uploading" ? props.item.state.progress : undefined
   return (
     <div
-      class="relative flex h-14 min-w-0 items-center gap-3 overflow-hidden rounded-md bg-secondary py-2 pl-2 pr-1.5 shadow-ring"
+      class="im-arrive composer-chip relative flex h-14 min-w-0 items-center gap-3 overflow-hidden rounded-md bg-secondary py-2 pl-2 pr-1.5 shadow-ring"
       classList={{ "shadow-[0_0_0_0.5px_var(--color-failed)]": failed() }}
+      data-closing={props.leaving ? "" : undefined}
+      inert={props.leaving}
     >
       <span class="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-sm bg-muted text-icon">
         <Show
@@ -150,11 +155,49 @@ function AttachmentChip(props: { item: Attachment; onRemove: () => void }): JSX.
   )
 }
 
-export function AttachmentGrid(props: { items: readonly Attachment[]; onRemove: (id: string) => void }): JSX.Element {
+function PresentChip(props: { item: Attachment; live: boolean; onRemove: () => void; onGone: () => void }): JSX.Element {
+  const presence = createPresence(() => props.live, CHIP_EXIT_MS)
+  createEffect(() => {
+    if (!presence.mounted()) props.onGone()
+  })
   return (
-    <Show when={props.items.length > 0}>
+    <Show when={presence.mounted()}>
+      <AttachmentChip item={props.item} leaving={presence.leaving()} onRemove={props.onRemove} />
+    </Show>
+  )
+}
+
+/** Chips are keyed by id so an upload's progress never remounts one, and a removed chip stays through its exit. */
+export function AttachmentGrid(props: { items: readonly Attachment[]; onRemove: (id: string) => void }): JSX.Element {
+  const seen = new Map<string, Attachment>()
+  const [shown, setShown] = createSignal<readonly string[]>([])
+  createEffect(() => {
+    const live = props.items
+    for (const item of live) seen.set(item.id, item)
+    setShown((current) => [...current, ...live.flatMap((item) => (current.includes(item.id) ? [] : [item.id]))])
+  })
+  const itemOf = (id: string): Attachment | undefined => props.items.find((item) => item.id === id) ?? seen.get(id)
+  const gone = (id: string): void => {
+    seen.delete(id)
+    setShown((current) => current.filter((entry) => entry !== id))
+  }
+  return (
+    <Show when={shown().length > 0}>
       <div class="grid max-w-[680px] grid-cols-1 gap-2 px-3 pb-1 pt-1 min-[560px]:grid-cols-2">
-        <For each={props.items}>{(item) => <AttachmentChip item={item} onRemove={() => props.onRemove(item.id)} />}</For>
+        <For each={shown()}>
+          {(id) => (
+            <Show when={itemOf(id)}>
+              {(item) => (
+                <PresentChip
+                  item={item()}
+                  live={props.items.some((entry) => entry.id === id)}
+                  onRemove={() => props.onRemove(id)}
+                  onGone={() => gone(id)}
+                />
+              )}
+            </Show>
+          )}
+        </For>
       </div>
     </Show>
   )

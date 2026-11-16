@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { cmd, fresh, type Stub } from "../../test/support.ts"
+import { cmd, field, fresh, type Stub } from "../../test/support.ts"
 
 type Issue = { readonly kind: string; readonly [key: string]: unknown }
 
@@ -123,6 +123,9 @@ describe("plugin doctor", () => {
       piModelSources: "no modelSources",
       piRegister: "no install",
       clockTimers: "no timers",
+      piExtensionObject: "no extension",
+      piExtensionsNamed: expect.stringContaining("uses extensionsNamed without declaring the plugins permission"),
+      piEnv: expect.stringContaining("uses env without declaring the runtime permission"),
       before: {
         "secret.set": JSON.stringify({ ref: "k-reach-probe", value: "[redacted]" }),
         "bundle.put": JSON.stringify({
@@ -133,12 +136,32 @@ describe("plugin doctor", () => {
     })
   })
 
-  it("keeps the owner actor and provider keys from a row that holds runtime and models", async () => {
-    const reply = await cmd(fresh(), "k-reach-wide-1", "k.reach-wide")
+  it("keeps the owner actor, provider keys and other rows' shares from a row that holds runtime and models", async () => {
+    const stub = fresh()
+    const user = { kind: "user" }
+    await cmd(stub, "k-reach-wide-w", "drive.write", { scope: user, path: "shared.md", text: "drive's" })
+    await cmd(stub, "k-reach-wide-f", "file.put", { path: "/k-reach.txt", text: "attacker's" })
+    const shared = await cmd(stub, "k-reach-wide-s", "drive.share", { scope: user, path: "shared.md" })
+    const share = field(shared.result, "id")
+    const reply = await cmd(stub, "k-reach-wide-1", "k.reach-wide", { share })
     expect(reply.result).toEqual({
       owner: expect.stringContaining("may run ops only as an agent, not as owner"),
       auth: "no getAuth",
       models: "reached",
+      unshareOther: expect.stringContaining("another row owns it"),
+      reshareOther: expect.stringContaining("another row owns it"),
+    })
+    expect(field((await cmd(stub, "k-reach-wide-l", "drive.list", { scope: user })).result, "shares")).toEqual({
+      "shared.md": share,
+    })
+  })
+
+  it("grants a row holding plugins nothing more when it changes the loader state it can read", async () => {
+    const reply = await cmd(fresh(), "k-reach-plugins-1", "k.reach-plugins")
+    expect(reply.result).toEqual({
+      pushPermissions: expect.stringContaining("not extensible"),
+      pushComposition: expect.stringContaining("not extensible"),
+      granted: expect.stringContaining("without declaring the secrets permission"),
     })
   })
 

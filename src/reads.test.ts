@@ -23,6 +23,28 @@ describe("reads the home declares", () => {
   })
 })
 
+describe("automation reads", () => {
+  it("serves automation.get and automation.runs as live reads that announce no change", async () => {
+    expect([READS["automation.get"], READS["automation.runs"]]).toEqual(["live", "live"])
+    const project = await (
+      await post({ id: `read-${crypto.randomUUID()}`, op: "project.create", args: { name: "Reads", slug: "reads" } })
+    ).json<{ result: { id: string } }>()
+    const created = await post({
+      id: `read-${crypto.randomUUID()}`,
+      op: "automation.create",
+      args: { title: "Reads", prompt: "p", project: project.result.id, triggers: [] },
+    })
+    expect(created.headers.get("x-ingle-rev")).not.toBeNull()
+    const { result } = await created.json<{ result: { id: string } }>()
+    const reads = await post([
+      { id: `read-${crypto.randomUUID()}`, op: "automation.get", args: { id: result.id, runs: 20 } },
+      { id: `read-${crypto.randomUUID()}`, op: "automation.runs", args: { id: result.id, limit: 20 } },
+    ])
+    expect((await reads.json<{ ok: boolean }[]>()).map((ack) => ack.ok)).toEqual([true, true])
+    expect(reads.headers.get("x-ingle-rev")).toBeNull()
+  })
+})
+
 describe("agent writes the read cache cannot see coming", () => {
   it("moves the home revision on when the agent remembers a note, so tabs drop their cached memory reads", async () => {
     const stub = fresh()

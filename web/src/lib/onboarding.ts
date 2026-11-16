@@ -134,6 +134,22 @@ export async function readProgress(): Promise<Progress> {
   return { provider, captain: captainOf(detail, { model: undefined }) ?? first, reported }
 }
 
+export function showsOnboarding(state: { readonly onboarded: boolean; readonly hasCaptain: boolean }): boolean {
+  return !state.onboarded && !state.hasCaptain
+}
+
+export async function needsOnboarding(): Promise<boolean> {
+  const [owner, captains] = await Promise.all([cmd<unknown>("owner.read"), liveCaptains()])
+  return showsOnboarding({
+    onboarded: strOf(recordOf(owner)?.["onboardedAt"]) !== undefined,
+    hasCaptain: captains.some((entry) => captainOf(entry, { model: undefined }) !== undefined),
+  })
+}
+
+export async function markOnboarded(): Promise<void> {
+  await cmd("owner.set", { onboarded: true })
+}
+
 export function firstOpenStep(progress: Progress): 1 | 2 | 3 {
   if (progress.captain !== undefined) return 3
   return progress.provider === undefined ? 1 : 2

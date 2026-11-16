@@ -31,10 +31,11 @@ export async function apply(ctx: Context, config: PresetConfig): Promise<void> {
     db: ctx.db,
     harness: ctx.harness,
     extensions: () =>
-      ctx.pi.extensions().map(({ extension, row }) => ({
-        extension,
-        plugin: row === undefined ? undefined : ctx.kernel.pluginOfRow(row),
+      ctx.pi.extensions().map((installed) => ({
+        name: installed.name,
+        plugin: installed.row === undefined ? undefined : ctx.kernel.pluginOfRow(installed.row),
       })),
+    named: (names) => ctx.pi.extensionsNamed(names),
     config,
   })
   ctx.provide("presets", feature.service)

@@ -97,31 +97,29 @@ function SendButton(props: {
   onStop: () => void
 }): JSX.Element {
   const box = (): string => (props.size === "base" ? "h-8 w-8" : "h-7 w-7")
+  const state = (): string => (props.stop ? "stop" : props.ready ? "ready" : "idle")
   return (
     <button
       type="button"
       onClick={() => (props.stop ? props.onStop() : props.onSend())}
       disabled={props.pending || (!props.stop && !props.ready)}
       aria-label={props.stop ? "Stop the run" : props.label}
-      class={`composer-press relative grid ${box()} shrink-0 place-items-center rounded-sm transition-[background-color,color] duration-[var(--dur-fast)] ease-[var(--ease-enter)] disabled:cursor-default`}
-      classList={{
-        "bg-inverse text-on-inverse": props.stop,
-        "bg-primary text-on-primary": !props.stop && props.ready,
-        "bg-secondary text-icon": !props.stop && !props.ready,
-      }}
+      data-state={state()}
+      class={`im-send grid ${box()} shrink-0 place-items-center rounded-sm disabled:cursor-default`}
     >
-      <Show when={props.pending} fallback={
-        <>
-          <span class="composer-send-icon absolute inset-0 grid place-items-center" data-shown={String(!props.stop)}>
-            <ArrowUp size={16} stroke-width={2} />
-          </span>
-          <span class="composer-send-icon absolute inset-0 grid place-items-center" data-shown={String(props.stop)}>
-            <Square size={11} stroke-width={0} fill="currentColor" />
-          </span>
-        </>
-      }>
-        <Spinner />
-      </Show>
+      <span class="im-swap im-swap-icon place-items-center">
+        <span class="grid place-items-center" data-active={!props.pending && !props.stop ? "" : undefined}>
+          <ArrowUp size={16} stroke-width={2} />
+        </span>
+        <span class="grid place-items-center" data-active={!props.pending && props.stop ? "" : undefined}>
+          <Square size={11} stroke-width={0} fill="currentColor" />
+        </span>
+        <span class="grid place-items-center" data-active={props.pending ? "" : undefined}>
+          <Show when={props.pending}>
+            <Spinner />
+          </Show>
+        </span>
+      </span>
     </button>
   )
 }
@@ -432,7 +430,7 @@ export function SteerComposer(props: {
               </span>
             }
           >
-            <span class="shimmer">Working</span>
+            <span class="im-shimmer">Working</span>
           </Show>
           <span class="truncate text-xs text-icon">{props.threadTitle}</span>
         </div>

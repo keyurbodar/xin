@@ -21,17 +21,21 @@ type State = {
   changes: number
   /** Home snapshots published so far: a batch that published one needs no separate `changed` frame. */
   published: number
+  /** HTTP batches running now: their changes are told once, when the last one ends. */
+  batches: number
+  /** A change not yet told to home subscribers. */
+  untold: boolean
+  /** A tell is queued for the end of this tick. */
+  queued: boolean
 }
 
 const state = hidden<Wire, State>()
 
-/** Moves the home revision on, and tells home subscribers unless a snapshot already told them. */
-function bump(wire: Wire, tell: boolean): string {
-  const held = state.get(wire)
-  held.changes += 1
-  const rev = `${held.epoch}.${held.changes}`
-  if (tell) held.sockets?.publishChanged(rev)
-  return rev
+/** Tells home subscribers the newest revision, once for however many changes came since the last tell. */
+function tell(held: State): void {
+  if (!held.untold || held.batches > 0) return
+  held.untold = false
+  held.sockets?.publishChanged(`${held.epoch}.${held.changes}`)
 }
 
 const socketsOf = (wire: Wire): Sockets | undefined => state.get(wire).sockets
@@ -47,6 +51,9 @@ export class Wire extends Service {
       epoch: crypto.randomUUID().slice(0, 8),
       changes: 0,
       published: 0,
+      batches: 0,
+      untold: false,
+      queued: false,
     })
     ctx.http.route("POST /v1/cmd", async (request) => {
       const body: unknown = await request.json().catch(() => undefined)
@@ -59,22 +66,30 @@ export class Wire extends Service {
       await ctx.clock.arm()
       const acks: ServerFrame[] = []
       let wrote = false
-      const published = state.get(this).published
       let broken: string | undefined
-      for (const command of commands) {
-        if (broken !== undefined) {
-          acks.push({ t: "ack", id: command.id, ok: false, error: { code: "not_run", message: broken } })
-          continue
+      const held = state.get(this)
+      const published = held.published
+      held.batches += 1
+      try {
+        for (const command of commands) {
+          if (broken !== undefined) {
+            acks.push({ t: "ack", id: command.id, ok: false, error: { code: "not_run", message: broken } })
+            continue
+          }
+          if (!ctx.ops.reads(command.op)) wrote = true
+          try {
+            acks.push(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
+          } catch (error) {
+            broken = `an earlier command threw: ${messageOf(error)}`
+            acks.push({ t: "ack", id: command.id, ok: false, error: { code: "failed", message: messageOf(error) } })
+          }
         }
-        if (!ctx.ops.reads(command.op)) wrote = true
-        try {
-          acks.push(ack(command.id, await ctx.ops.run(command, { kind: "owner" })))
-        } catch (error) {
-          broken = `an earlier command threw: ${messageOf(error)}`
-          acks.push({ t: "ack", id: command.id, ok: false, error: { code: "failed", message: messageOf(error) } })
-        }
+      } finally {
+        held.batches -= 1
       }
-      const headers = wrote ? { "x-ingle-rev": bump(this, state.get(this).published === published) } : undefined
+      const headers = wrote ? { "x-ingle-rev": this.announce() } : undefined
+      if (held.published !== published) held.untold = false
+      tell(held)
       return Response.json(batch ? acks : acks[0], headers === undefined ? {} : { headers })
     })
     ctx.http.route("POST /v1/auth", async () => new Response(null, { status: 204 }))
@@ -132,9 +147,23 @@ export class Wire extends Service {
     })
   }
 
-  /** Owner state changed (a batch that ran a non-read op, or an agent's write): tells every home subscriber, so tabs drop their cached reads, and returns the new revision. */
+  /**
+   * Owner state changed (a batch that ran a non-read op, or an agent's write): moves the revision on and returns it.
+   * Home subscribers hear one `changed` frame per batch, or per tick for changes outside a batch, so tabs drop their
+   * cached reads once however many writes landed.
+   */
   announce(): string {
-    return bump(this, true)
+    const held = state.get(this)
+    held.changes += 1
+    held.untold = true
+    if (!held.queued) {
+      held.queued = true
+      setTimeout(() => {
+        held.queued = false
+        tell(held)
+      }, 0)
+    }
+    return `${held.epoch}.${held.changes}`
   }
 
   home(part: string, read: HomePart): () => void {
