@@ -29,6 +29,8 @@ export const READS: Readonly<Record<string, "cached" | "live">> = {
   "skill.read": "cached",
   "system.version": "cached",
   "workspace.read": "cached",
+  "automation.get": "live",
+  "automation.runs": "live",
   "captain.get": "live",
   "captain.list": "live",
   "conv.context": "live",

@@ -1,6 +1,6 @@
 import { batch, createSignal } from "solid-js"
 import type { Streams } from "../lib/api.ts"
-import { automationsRevisionOf } from "../lib/automations.ts"
+import { automationsRevisionOf, automationsTouchedOf } from "../lib/automations.ts"
 import { parseIssuesRev, parseStatesRev } from "../lib/issues.ts"
 import { trailing } from "../lib/trailing.ts"
 import { isRecord, listOf, numOf, recordOf, strOf } from "../lib/parse.ts"
@@ -54,16 +54,26 @@ const [loaded, setLoaded] = createSignal(false)
 const [automationsRevision, setAutomationsRevision] = createSignal<number>()
 
 /** Home frames re-send the same revision for unrelated changes; only a new value arms the reload, and a burst of them coalesces. */
+const [automationsTouched, setAutomationsTouched] = createSignal<ReadonlyMap<string, number>>(new Map())
 let latestRevision: number | undefined
-const settleRevision = trailing(() => setAutomationsRevision(latestRevision), { wait: 275, maxWait: 1000 })
+let latestTouched: ReadonlyMap<string, number> = new Map()
+const settle = (): void => {
+  setAutomationsRevision(latestRevision)
+  setAutomationsTouched(latestTouched)
+}
+const settleRevision = trailing(settle, { wait: 275, maxWait: 1000 })
 
-function receiveRevision(next: number | undefined): void {
+function receiveRevision(next: number | undefined, touched: ReadonlyMap<string, number>): void {
   if (next === latestRevision) return
   const first = latestRevision === undefined
   latestRevision = next
-  if (first) setAutomationsRevision(next)
+  latestTouched = touched
+  if (first) settle()
   else settleRevision.poke()
 }
+
+/** One automation's own revision, settled with the home-wide one; undefined until it changes after boot. */
+export const automationTouched = (id: string): number | undefined => automationsTouched().get(id)
 
 export const homeProjects = projects
 export const homeLoaded = loaded
@@ -128,7 +138,7 @@ export function subscribeHome(streams: Streams): () => void {
       batch(() => {
         setProjects(parse(value))
         setRequests(parseRequestList(value))
-        receiveRevision(automationsRevisionOf(value))
+        receiveRevision(automationsRevisionOf(value), automationsTouchedOf(value))
         noteIssuesRev(parseIssuesRev(value))
         noteStatesRev(parseStatesRev(value))
         setLoaded(true)
