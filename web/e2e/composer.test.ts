@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, setDefaultTimeout, test } from "bun:test"
-import type { Page } from "playwright"
+import type { Page, Route } from "playwright"
 import { startHarness, type Harness } from "./harness.ts"
 
 setDefaultTimeout(60_000)
@@ -228,6 +228,45 @@ test("the reasoning menu is a radio group that keeps the menu open on a choice",
   await settled(page)
   expect(await page.getByRole("menu").count()).toBe(0)
   await page.close()
+})
+
+const LAZY_FAMILIES = ["combobox", "menu", "command", "token-input", "trigger-menu"]
+const LAZY_CONTENT = "ui-combobox-content, ui-menu-content, ui-menu-sub-content, ui-trigger-menu-content"
+
+test("held UI SDK chunks leave every lazy popup part without a box, and the pickers open once they land", async () => {
+  const held: Route[] = []
+  const pattern = new RegExp(`/\\.vite/deps/@ui-sdk_web_(${LAZY_FAMILIES.join("|")})\\.js`)
+  const page = await harness.open("composer", { before: (page) => page.route(pattern, (route) => void held.push(route)) })
+  try {
+    await page.waitForFunction(() => document.querySelector("ui-combobox-content") !== null && document.querySelector("ui-menu-content") !== null)
+    await settled(page)
+    const boxed = await page.evaluate((selector) => {
+      const parts = [...document.querySelectorAll(selector)]
+      return {
+        parts: parts.length,
+        defined: parts.filter((part) => customElements.get(part.localName) !== undefined).map((part) => part.localName),
+        boxed: parts
+          .filter((part) => [part, ...part.querySelectorAll("*")].some((node) => node.getClientRects().length > 0))
+          .map((part) => part.localName),
+      }
+    }, LAZY_CONTENT)
+    expect(boxed.parts).toBeGreaterThanOrEqual(2)
+    expect(boxed.defined).toEqual([])
+    expect(boxed.boxed).toEqual([])
+    await Promise.all(held.map((route) => route.continue()))
+    await page.unroute(pattern)
+    await page.getByRole("button", { name: "Model: Opus Test" }).click()
+    await page.getByRole("listbox").waitFor({ state: "visible", timeout: 5000 })
+    await settled(page)
+    expect(await focused(page)).toBe("Search models")
+    await page.keyboard.press("Escape")
+    await settled(page)
+    await page.getByRole("button", { name: "Medium" }).click()
+    await page.getByRole("menu").waitFor({ state: "visible", timeout: 5000 })
+    expect(await page.getByRole("menuitemradio", { name: "Medium" }).getAttribute("aria-checked")).toBe("true")
+  } finally {
+    await page.close()
+  }
 })
 
 test("an input method composition after select-all and delete commits only its own text", async () => {
