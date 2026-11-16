@@ -11,6 +11,7 @@ import {
   Harness,
   type Registry,
   type Report,
+  type ToolRegistration,
 } from "@earendil-works/pi-durable"
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
 import { loaderRow } from "../contributions.ts"
@@ -31,6 +32,10 @@ export type InstalledName = {
 type EnvProvider = (target: EnvTarget) => ExecutionEnv | undefined
 
 const own = hidden<Pi, Context>()
+
+const refuseHandle = async (): Promise<never> => {
+  throw new Error("a tool handle names a tool for configure and cannot run")
+}
 
 export class Pi extends Service {
   static readonly inject = ["host", "clock"]
@@ -147,9 +152,32 @@ export class Pi extends Service {
     )
   }
 
-  /** The installed extensions with these names, for a row that reconfigures conversations, such as presets. */
+  /**
+   * Handles for the installed extensions with these names, for a row that reconfigures conversations, such as presets.
+   * `configure` keeps only the names it is given, so a handle carries its name and nothing an extension runs.
+   */
   extensionsNamed(names: readonly string[]): readonly Extension[] {
-    return names.flatMap((name) => this.installed.get(name)?.extension ?? [])
+    return Object.freeze(names.flatMap((name) => (this.installed.has(name) ? [Object.freeze({ name })] : [])))
+  }
+
+  /**
+   * Handles for the registered tools with these names, for a row that removes or loads tools through `configure`, such
+   * as the orchestrator. `configure` keeps only names, so a handle carries its name and an `execute` that refuses.
+   */
+  toolsNamed(names: readonly string[]): readonly ToolRegistration[] {
+    const registered = new Set(
+      this.registry
+        .snapshot()
+        .tools()
+        .map(({ tool }) => tool.name),
+    )
+    return Object.freeze(
+      names
+        .filter((name) => registered.has(name))
+        .map((name): ToolRegistration =>
+          Object.freeze({ name, description: "", parameters: Object.freeze({}), execute: refuseHandle }),
+        ),
+    )
   }
 
   currentModels(): Models {

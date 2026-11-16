@@ -8,7 +8,6 @@ import {
   type Extension,
   type Harness,
   type ModelRef,
-  type Registry,
   type Task,
   type TaskRuntime,
   type ToolRegistration,
@@ -112,22 +111,12 @@ const CHILD_TOOLS = [
   "captain_notes",
 ] as const
 
-export function childTools(registry: Registry): readonly ToolRegistration[] {
-  const registered = new Map(
-    registry
-      .snapshot()
-      .tools()
-      .map(({ tool }) => [tool.name, tool]),
-  )
-  return CHILD_TOOLS.flatMap((name) => {
-    const tool = registered.get(name)
-    return tool === undefined ? [] : [tool]
-  })
-}
+/** The orchestration tools a delegated child must not get, as handles for `configure`. */
+export const childTools = (toolsNamed: ThreadDeps["toolsNamed"]): readonly ToolRegistration[] => toolsNamed(CHILD_TOOLS)
 
 export type ThreadDeps = {
   readonly harness: Harness
-  readonly registry: Registry
+  readonly toolsNamed: (names: readonly string[]) => readonly ToolRegistration[]
   arm(wake?: Wake): Promise<void>
   readonly intake: IntakeService
   readonly watchdog: WatchdogService
@@ -669,7 +658,7 @@ export function lifecycle(deps: ThreadDeps): Threads {
             model,
             clientRequestId: requestId,
             requestId,
-            removeTools: childTools(deps.registry),
+            removeTools: childTools(deps.toolsNamed),
           }),
         context,
       )
@@ -724,7 +713,7 @@ export function lifecycle(deps: ThreadDeps): Threads {
             model,
             clientRequestId: requestId,
             requestId,
-            removeTools: childTools(deps.registry),
+            removeTools: childTools(deps.toolsNamed),
             forkFrom: parentId,
           }),
         context,
