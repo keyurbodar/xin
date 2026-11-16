@@ -7,6 +7,7 @@ import {
   type Api,
   type Credential,
   type CredentialInfo,
+  InMemoryCredentialStore,
   type CredentialStore,
   type Model,
   type Models,
@@ -33,6 +34,7 @@ import {
   type CompactionSettings,
   type ConversationId,
   type Harness,
+  type HookRegistration,
   type JsonObject,
   type ModelRef,
   type UsageState,
@@ -40,6 +42,7 @@ import {
 import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
 import { conversationCost, createBudget, untag } from "./budget.ts"
 import { FastDoc, fastOn, modesOf } from "./fast.ts"
+import { createHealthBoard, scrub } from "./health.ts"
 import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
   FeatureSchema,
@@ -374,6 +377,26 @@ type Settings = {
   readonly disabled: readonly ModelRef[]
 }
 
+const PROBE_TOKENS = 16
+const PROBE_TIMEOUT_MS = 20_000
+const price = (model: Model<Api>): number => model.cost.input + model.cost.output
+const PRIVATE_HOST =
+  /^(?:(?:.*\.)?localhost|.*\.local|.*\.internal|(?:0|10|127)\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+|198\.1[89]\.\d+\.\d+|(?:22[4-9]|2[3-5]\d)\.\d+\.\d+\.\d+|\[.*\])$/i
+
+/** Why a Worker cannot reach `baseUrl`, or undefined when it can: requests leave Cloudflare, so the host must be public https. */
+function unreachable(baseUrl: string): string | undefined {
+  let url: URL
+  try {
+    url = new URL(baseUrl)
+  } catch {
+    return `${baseUrl} is not a URL`
+  }
+  if (url.protocol !== "https:") return "the endpoint must use https"
+  if (PRIVATE_HOST.test(url.hostname.replace(/\.+$/, "")))
+    return `${url.hostname} is not reachable from Cloudflare; expose a local server through a public https tunnel`
+  return undefined
+}
+
 const label = (providerId: string): string => `credentials:${providerId}`
 const same = (left: ModelRef, right: ModelRef): boolean =>
   left.provider === right.provider && left.modelId === right.modelId
@@ -471,7 +494,11 @@ type Registry = {
   sync(changed?: string): Promise<void>
   /** Re-register after a credential change; pi-ai caches a provider's auth state until it is set again. */
   restore(provider: string): void
+  /** What `entry` would unlock for `provider`, from a throwaway registry that stores nothing. */
+  candidate(provider: string, entry: StoredEntry, signal: AbortSignal): Promise<ProbeTarget>
 }
+
+type ProbeTarget = { readonly models: Models; readonly keyed: readonly Model<Api>[] }
 
 export type ModelsPort = {
   readonly db: SqliteDatabase
@@ -490,6 +517,8 @@ export type ModelsParts = {
   readonly service: ModelsService
   readonly ops: readonly Op[]
   compaction(): CompactionSettings | undefined
+  /** Records each provider's newest response outcome for `models.catalog`'s health. */
+  readonly health: HookRegistration
   home(): JsonObject
   models(): Models
   flush(): Promise<UsageState>
@@ -540,7 +569,18 @@ function createRegistry(port: Pick<ModelsPort, "db" | "kek" | "providers">): Reg
     if (endpoints.size > 0) await models.refresh({ providers: [...endpoints.keys()] })
   }
 
-  return { models, store, custom, sync, restore }
+  async function candidate(id: string, entry: StoredEntry, signal: AbortSignal): Promise<ProbeTarget> {
+    const credentials = new InMemoryCredentialStore()
+    await credentials.modify(id, async () => entry.credential)
+    const scratch = createModels({ credentials })
+    const provider =
+      entry.endpoint === undefined ? (builtins.get(id) ?? extra.get(id)) : endpointProvider(id, entry.endpoint)
+    if (provider !== undefined) scratch.setProvider(provider)
+    if (entry.endpoint !== undefined) await scratch.refresh({ providers: [id], signal })
+    return { models: scratch, keyed: (await scratch.getAvailable()).filter((model) => model.provider === id) }
+  }
+
+  return { models, store, custom, sync, restore, candidate }
 }
 
 function endpointProvider(id: string, endpoint: Endpoint): PiProvider {
@@ -865,6 +905,67 @@ export function create(deps: ModelsPort): ModelsParts {
   }
   const registry = createRegistry(deps)
   const store = registry.store
+  let storedSecrets: readonly string[] = []
+  const refreshSecrets = async (): Promise<void> => {
+    storedSecrets = await credentialSecrets(db, store)
+  }
+  const health = createHealthBoard(() => storedSecrets)
+
+  /**
+   * One tiny request on a model the provider's stored key unlocks: the named one, else the owner's default, favourite
+   * or recent model there, else its cheapest. It proves the key and the chat path together, which a model list cannot.
+   */
+  const probe = async (
+    provider: string,
+    target: ProbeTarget,
+    modelId?: string,
+    secret?: string,
+    deadline: AbortSignal = AbortSignal.timeout(PROBE_TIMEOUT_MS),
+  ): Promise<JsonObject> => {
+    const keyed = target.keyed
+    const settings = await readSettings(db)
+    const preferred = [...Object.values(settings.defaults), ...settings.favorites, ...settings.recent]
+    const model =
+      modelId === undefined
+        ? (preferred.flatMap((ref) => keyed.filter((candidate) => same(ref, refOf(candidate))))[0] ??
+          keyed.toSorted((left, right) => price(left) - price(right))[0])
+        : keyed.find((candidate) => candidate.id === modelId)
+    if (model === undefined)
+      return {
+        ok: false,
+        provider,
+        error:
+          modelId === undefined
+            ? `no ${provider} model is unlocked by a stored key`
+            : `${provider}/${modelId} is not unlocked by a stored key`,
+      }
+    const started = Date.now()
+    let error: string | undefined
+    try {
+      const reply = await target.models.completeSimple(
+        model,
+        { messages: [{ role: "user", content: [{ type: "text", text: "Reply with OK." }], timestamp: started }] },
+        {
+          maxTokens: PROBE_TOKENS,
+          cacheRetention: "none",
+          sessionId: crypto.randomUUID(),
+          timeoutMs: PROBE_TIMEOUT_MS,
+          signal: deadline,
+        },
+      )
+      if (reply.stopReason === "error" || reply.stopReason === "aborted") error = reply.errorMessage ?? "provider error"
+    } catch (thrown) {
+      error = thrown instanceof Error ? thrown.message : String(thrown)
+    }
+    if (error !== undefined) error = scrub(error, secret === undefined ? [] : [secret])
+    return {
+      ok: error === undefined,
+      provider,
+      model: refOf(model),
+      latencyMs: Date.now() - started,
+      ...(error === undefined ? {} : { error }),
+    }
+  }
   let disabledRefs: readonly ModelRef[] = []
   /** The owner's disabled models, read once at start and updated by `models.enable`, so a check reads no row. */
   const isOff = (ref: ModelRef): boolean => disabledRefs.some((entry) => same(entry, ref))
@@ -1217,6 +1318,7 @@ export function create(deps: ModelsPort): ModelsParts {
             custom: registry.custom.has(provider.id),
             models: own.length,
             enabled: own.filter(isEnabled).length,
+            health: health.get(provider.id) ?? null,
           }
         })
         .filter((provider) => provider.models > 0 || provider.custom)
@@ -1299,6 +1401,7 @@ export function create(deps: ModelsPort): ModelsParts {
       provider: str({ minLength: 1, maxLength: 64 }),
       key: opt(str({ minLength: 1 })),
       custom: opt(CustomSchema),
+      test: opt(bool()),
     }),
     actors: ["owner"],
     credentials: ["key", "custom"],
@@ -1306,6 +1409,34 @@ export function create(deps: ModelsPort): ModelsParts {
       if (args.custom !== undefined) {
         if (API_STREAMS[args.custom.api] === undefined)
           throw new OpRejected("bad_args", `unsupported api ${args.custom.api}`)
+        const refused = unreachable(args.custom.baseUrl)
+        if (refused !== undefined) throw new OpRejected("bad_args", refused)
+      } else if (args.key === undefined) {
+        throw new OpRejected("bad_args", "give either a key or a custom endpoint")
+      }
+      let test: JsonObject | undefined
+      if (args.test === true) {
+        const deadline = AbortSignal.timeout(PROBE_TIMEOUT_MS)
+        const secret = args.custom?.key ?? args.key ?? ""
+        const endpoint =
+          args.custom === undefined
+            ? (await store.entry(args.provider))?.endpoint
+            : { baseUrl: args.custom.baseUrl, api: args.custom.api }
+        const entry: StoredEntry = {
+          credential: { type: "api_key", key: secret },
+          ...(endpoint === undefined ? {} : { endpoint }),
+        }
+        let target: ProbeTarget
+        try {
+          target = await registry.candidate(args.provider, entry, deadline)
+        } catch (thrown) {
+          const text = thrown instanceof Error ? thrown.message : String(thrown)
+          throw new OpRejected("bad_args", `the key was not saved: ${scrub(text, [secret])}`)
+        }
+        test = await probe(args.provider, target, undefined, secret, deadline)
+        if (test["ok"] !== true) throw new OpRejected("bad_args", `the key was not saved: ${String(test["error"])}`)
+      }
+      if (args.custom !== undefined) {
         await store.set(args.provider, {
           credential: { type: "api_key", key: args.custom.key },
           endpoint: { baseUrl: args.custom.baseUrl, api: args.custom.api },
@@ -1313,11 +1444,31 @@ export function create(deps: ModelsPort): ModelsParts {
       } else if (args.key !== undefined) {
         const key = args.key
         await store.modify(args.provider, async () => ({ type: "api_key", key }))
-      } else {
-        throw new OpRejected("bad_args", "give either a key or a custom endpoint")
       }
       registry.restore(args.provider)
-      return { provider: args.provider, type: "api_key", custom: args.custom !== undefined }
+      await refreshSecrets()
+      const stored = { provider: args.provider, type: "api_key", custom: args.custom !== undefined }
+      if (test === undefined) return stored
+      health.record(args.provider, { ok: true })
+      return { ...stored, test }
+    },
+  })
+
+  const testCredential = defineOp({
+    name: "credential.test",
+    args: obj({ provider: str({ minLength: 1, maxLength: 64 }), model: opt(str({ minLength: 1, maxLength: 200 })) }),
+    actors: ["owner"],
+    run: async (_api, args) => {
+      const keyed = (await available(registry)).filter((model) => model.provider === args.provider)
+      const secret = (await store.entry(args.provider))?.credential
+      const key = secret?.type === "api_key" ? secret.key : undefined
+      const result = await probe(args.provider, { models: registry.models, keyed }, args.model, key)
+      if (result["model"] !== undefined)
+        health.record(
+          args.provider,
+          result["ok"] === true ? { ok: true } : { ok: false, error: String(result["error"]) },
+        )
+      return result
     },
   })
 
@@ -1328,6 +1479,7 @@ export function create(deps: ModelsPort): ModelsParts {
     run: async (_api, { provider }) => {
       await store.delete(provider)
       registry.restore(provider)
+      await refreshSecrets()
       return { provider, deleted: true }
     },
   })
@@ -1569,6 +1721,7 @@ export function create(deps: ModelsPort): ModelsParts {
     favoriteOp,
     enableOp,
     setCredential,
+    testCredential,
     deleteCredential,
     setDefaults,
     summary,
@@ -1587,6 +1740,7 @@ export function create(deps: ModelsPort): ModelsParts {
     service,
     ops,
     compaction,
+    health: health.hook,
     home: () => ({ spend: budget.todaySpend() }),
     models: () => registry.models,
     flush,
@@ -1594,6 +1748,7 @@ export function create(deps: ModelsPort): ModelsParts {
     start: async () => {
       disabledRefs = (await readKv(db, "owner.disabled", refsCheck.check)) ?? []
       await registry.sync()
+      await refreshSecrets()
       setPercent((await readKv(db, COMPACTION_KEY, compactionCheck.check))?.percent)
       await seedUsage(db, harness)
       await budget.load()
