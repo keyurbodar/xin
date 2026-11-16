@@ -13,6 +13,7 @@ import {
   ROSE,
   parseAppearance,
   pickedInMenu,
+  withCatalogTheme,
   tokensOf,
   variantOf,
   type Appearance,
@@ -142,6 +143,16 @@ export function palettesOf(id: string): { readonly dark: Palette; readonly light
     foreground: plugin.tokens["ink"] ?? INGLE_DARK.foreground,
   }
   return { dark: palette, light: palette }
+}
+
+/** Explore's theme kind: adds a copy to your themes (once) and applies it with its background. */
+export function addCatalogTheme(entry: CustomTheme): void {
+  const freshId = newThemeId(entry.label)
+  update((current) => withCatalogTheme(current, entry, freshId))
+}
+
+export function isCatalogThemeAdded(source: string): boolean {
+  return appearance_().custom.some((theme) => theme.source === source)
 }
 
 const sheet = document.createElement("style")
