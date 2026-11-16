@@ -11,8 +11,9 @@ import { Plugins } from "../components/settings/plugins.tsx"
 import { Members } from "../components/settings/members.tsx"
 import { Profile } from "../components/settings/profile.tsx"
 import { System } from "../components/settings/system.tsx"
+import { AppearanceSettings } from "../appearance/page.tsx"
 
-type Tab = "general" | "models" | "usage" | "notifications" | "plugins" | "members" | "profile" | "system"
+type Tab = "general" | "appearance" | "models" | "usage" | "notifications" | "plugins" | "members" | "profile" | "system"
 
 type Entry = { readonly id: Tab; readonly label: string; readonly icon: GlyphName; readonly about: string }
 
@@ -25,6 +26,7 @@ const GENERAL: Entry = {
 
 const ENTRIES: readonly Entry[] = [
   GENERAL,
+  { id: "appearance", label: "Appearance", icon: "monitor", about: "Theme, background, sizing and code display. Changes show as you make them." },
   { id: "models", label: "Models + providers", icon: "cpu", about: "Provider keys and the catalog they unlock." },
   { id: "usage", label: "Usage + cost", icon: "chart-column", about: "What this home spent, by day, project, model and tool." },
   { id: "notifications", label: "Notifications", icon: "bell", about: "Which reports reach this browser, and when they wait." },
@@ -96,6 +98,9 @@ export function SettingsScreen(): JSX.Element {
                 <p class="mt-1 text-sm text-ink-3">{current().about}</p>
                 <div class="mt-7">
                   <Switch fallback={<General />}>
+                    <Match when={current().id === "appearance"}>
+                      <AppearanceSettings />
+                    </Match>
                     <Match when={current().id === "models"}>
                       <Models />
                     </Match>

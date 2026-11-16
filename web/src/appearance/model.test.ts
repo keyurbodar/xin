@@ -1,0 +1,55 @@
+import { expect, test } from "bun:test"
+import { contrast, parseColor } from "./color.ts"
+import { DEFAULT_APPEARANCE, INGLE_DARK, INGLE_LIGHT, parseAppearance, tokensOf, type Palette } from "./model.ts"
+
+const rgb = (value: string | undefined) => {
+  const parsed = parseColor(value ?? "")
+  if (parsed === undefined) throw new Error(`not a colour: ${value}`)
+  return parsed
+}
+
+const PALETTES: readonly (readonly [string, Palette, "light" | "dark"])[] = [
+  ["ingle dark", INGLE_DARK, "dark"],
+  ["ingle light", INGLE_LIGHT, "light"],
+  ["low-contrast dark pick", { accent: "#222244", background: "#101010", foreground: "#333333" }, "dark"],
+  ["low-contrast light pick", { accent: "#eeeeff", background: "#f4f4f4", foreground: "#cccccc" }, "light"],
+  ["saturated", { accent: "#ff00aa", background: "#001a33", foreground: "#88ccff" }, "dark"],
+]
+
+for (const [name, palette, variant] of PALETTES)
+  test(`derived text passes WCAG AA on the background: ${name}`, () => {
+    const tokens = tokensOf(palette, variant)
+    const bg = rgb(tokens["bg"])
+    expect(contrast(rgb(tokens["ink"]), bg)).toBeGreaterThanOrEqual(7)
+    expect(contrast(rgb(tokens["ink-2"]), bg)).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(rgb(tokens["ink-3"]), bg)).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(rgb(tokens["accent-ink"]), bg)).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(rgb(tokens["on-accent"]), rgb(tokens["accent"]))).toBeGreaterThanOrEqual(3)
+  })
+
+test("an empty or hostile doc parses to the defaults, keeping Ingle's own theme", () => {
+  expect(parseAppearance({})).toEqual(DEFAULT_APPEARANCE)
+  expect(parseAppearance(null)).toEqual(DEFAULT_APPEARANCE)
+  const parsed = parseAppearance({
+    mode: "sepia",
+    ui: { textScale: 900, sidebar: -4 },
+    background: { blur: 999, effect: "melt", image: { url: "javascript:alert(1)" } },
+    custom: [{ id: "bad id!", label: "x" }],
+  })
+  expect(parsed.mode).toBe("dark")
+  expect(parsed.theme).toBe("ingle")
+  expect(parsed.ui.textScale).toBe(125)
+  expect(parsed.ui.sidebar).toBe(200)
+  expect(parsed.background.blur).toBe(24)
+  expect(parsed.background.effect).toBe("dither")
+  expect(parsed.background.image).toBeUndefined()
+  expect(parsed.custom).toEqual([])
+})
+
+test("a custom theme keeps valid colours and repairs invalid ones from Ingle's palette", () => {
+  const parsed = parseAppearance({
+    custom: [{ id: "mine", label: "Mine", dark: { accent: "#ABCDEF", background: "nope", foreground: "#eee" } }],
+  })
+  expect(parsed.custom[0]?.dark).toEqual({ accent: "#abcdef", background: INGLE_DARK.background, foreground: "#eee" })
+  expect(parsed.custom[0]?.light).toEqual(INGLE_LIGHT)
+})
