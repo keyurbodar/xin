@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	plugins	runtime grants every other permission in the checks, as the spec already said it implies them	files declares runtime and its ops read api.harness; withholding the harness from a row that holds the raw Home would refuse nothing it cannot already reach	files.test passes with the harness check on	fixed in #19

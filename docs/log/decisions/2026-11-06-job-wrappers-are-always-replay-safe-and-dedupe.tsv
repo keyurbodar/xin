@@ -1,0 +1,1 @@
+2026-11-06T16:30:00Z	M6	job wrappers are always replay:"safe" and dedupe by a calls[toolTaskId]=jobId index in xin.jobs	an unsafe wrapper loses the result on a rerun; a safe one without the index creates a second Job	replay probe: two executes with one task id leave one job and one job:<id> row (plugins/jobs/jobs.test.ts)	adopted

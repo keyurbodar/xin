@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	client	ContextRing ships at 16px only, with no number inside	its one consumer is the composer footer (#14, 13.10); the 32px numbered rings on 16.2 are specimen sizes	web/src/components/ui/loaders.tsx	adopted

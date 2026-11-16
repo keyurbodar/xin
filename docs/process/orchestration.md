@@ -53,7 +53,7 @@ for each wave in docs/plan/goal.md:
   5. all lanes in: gate submit all → wait (background) → fix until green
   6. /pstack:thermo-nuclear-code-quality-review and /pstack:no-comments on the wave diff → fix
   7. /pstack:maintain-verification-skill (from M1 on) → drive the new behaviour once
-  8. decisions.tsv rows · commit "M<n>: …" · remove merged worktrees
+  8. one docs/log/decisions/ file per decision · commit "M<n>: …" · remove merged worktrees
 ```
 
 - The lead runs long waits (`gate wait`, worker results) in the background, never sleeping in the foreground, and reviews other lanes meanwhile.

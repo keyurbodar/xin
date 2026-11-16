@@ -1,0 +1,1 @@
+2026-11-06T13:47:09Z	M2	verify-xin KEK was 34 bytes; sealer requires 32	the throwaway key was never decoded until a module used the sealer	wrangler dev returned 500 KEK must be 32 bytes; fixed and redriven	fixed

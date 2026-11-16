@@ -1,0 +1,1 @@
+2026-11-06T16:30:00Z	M6	a job started inside a thread waits inline to the thread deadline and never detaches	detaching would report to the thread conversation, which has no intake of its own	plugins/jobs/jobs.test.ts thread slow tool returns "thread slow done" with no job row	adopted

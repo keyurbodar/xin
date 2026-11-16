@@ -1,0 +1,1 @@
+2026-11-07T20:06	P14	owner_settings leaves the kv list in 02-state; nothing reads or writes it	the spec listed a singleton that no code ever wrote, so the general pane's "Not stored yet" for a workspace name was true and the table was wrong	docs/plan/architecture/02-state.md; grep for owner_settings across src, plugins, web finds nothing	spec corrected

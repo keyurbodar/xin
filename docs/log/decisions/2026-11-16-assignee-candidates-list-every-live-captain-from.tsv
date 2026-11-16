@@ -1,0 +1,1 @@
+2026-11-16T17:00:00Z	web-issues-edit	Assignee candidates list every live Captain from the captains store, plus any project coordinator that is not a Captain row	#25 made Captains first-class; a Captain's coordinatorId is what an assignee of kind captain names	web/src/components/pane/issue.tsx assignableCandidates	adopted

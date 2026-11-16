@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	onboarding v5	first message key: The first-message field keeps one command id and clientTs per draft until message.send is acknowledged	intake dedupes by command id; a retry after a lost reply ran the turn twice (Devin on #29)	web/src/lib/onboarding.test.ts	adopted

@@ -1,0 +1,1 @@
+2026-11-09T06:42	P15	api 1 is frozen and the user-facing word stays "preset"	owner decisions; freezing now gives external plugins a contract, and renaming would churn every row and test for no user gain	09-plugins.md Decisions (settled); PLUGIN_API = 1 is checked at mount and documented as the breaking-change boundary	kept

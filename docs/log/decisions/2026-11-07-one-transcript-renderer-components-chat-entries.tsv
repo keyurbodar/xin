@@ -1,0 +1,1 @@
+2026-11-07T18:22	P14	One transcript renderer: `components/chat/entries.tsx` maps entries to items and renders them for both the project chat and a thread body	the thread body reimplemented a subset and dropped jobs and reset notices, so a new entry kind had to be added in two switches	web/src/components/chat/entries.tsx; transcript.tsx; panel.tsx	accepted

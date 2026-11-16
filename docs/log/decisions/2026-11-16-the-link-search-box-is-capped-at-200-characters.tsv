@@ -1,0 +1,1 @@
+2026-11-16T22:00:00Z	web-issues	The link search box is capped at 200 characters (maxLength and linkQuery), and a failed search shows no results instead of throwing	XIN-23 and Devin on #44: #33 caps q at 200, and a rejected search threw when its resource was read	web/src/lib/issues.ts linkQuery	adopted
