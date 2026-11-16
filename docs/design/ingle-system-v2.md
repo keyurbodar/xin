@@ -1,6 +1,6 @@
 # Ingle design system v2
 
-Status: spec, 16 Nov 2026 (AMA-23). It supersedes the structure parts of the v4/v5 handoff (`handoffs/design-system.md` in the Bosun drive): metrics, type, radii, layout and component anatomy. Colour and motion carry over unchanged. Each surface PR lands the tokens it consumes and rebuilds that surface's behaviour on UI SDK in the same pass, so every component changes once.
+Status: spec, 16 Nov 2026 (issue AMA-23, built by thread XIN-25). It supersedes the structure parts of the v4/v5 handoff (`handoffs/design-system.md` in the Bosun drive): metrics, type, radii, layout and component anatomy. Colour and motion carry over unchanged. Each surface PR lands the tokens it consumes and rebuilds that surface's behaviour on UI SDK in the same pass, so every component changes once.
 
 ## 1. Sources and what we may take
 
@@ -19,7 +19,7 @@ capy.ai's literal values stay out, as before.
 
 ## 2. Colour (unchanged)
 
-Every colour token in `web/src/styles/tokens.css` carries over exactly: `bg`, `panel`, `card`, `card-hover`, `popover`, `muted`, `secondary`, `hover`, `line-1..3`, `ink`, `ink-2`, `ink-3`, `icon`, `placeholder`, `accent`, `accent-ink`, `on-accent`, `primary*`, `inverse`, the status set (`working`, `needs`, `done`, `failed`, `merged`, with `-text` and `-soft`), `diff-add`, `diff-del`, `scrim`, and the `light` and `rose` themes plus the Custom accent. v2 adds no colour. Where Linear or Palermo use a fill, we use the nearest existing Ingle role:
+Every colour token in `web/src/styles/tokens.css` carries over exactly: `bg`, `panel`, `card`, `card-hover`, `popover`, `muted`, `secondary`, `hover`, `line-1..3`, `ink`, `ink-2`, `ink-3`, `icon`, `placeholder`, `accent`, `accent-ink`, `on-accent`, `primary*`, `inverse`, the status set as it exists today (`working`, `working-text`, `working-soft`, `needs`, `needs-text`, `done`, `done-text`, `done-soft`, `failed`, `failed-soft`, `merged`), `diff-add`, `diff-del`, `scrim`, and the `light` and `rose` themes plus the Custom accent. v2 adds no colour. Where Linear or Palermo use a fill, we use the nearest existing Ingle role:
 
 | Their role | Ingle role |
 |---|---|
@@ -160,7 +160,7 @@ Adopt means we build it as described. Change means we take the idea with a state
 | Floating New thread button, bottom right, pill with label | Adopt | Opens the new-thread screen |
 | New thread screen: close X, title, centred prompt, composer with project and branch chips | Adopt | Replaces the New thread dialog on phones |
 | Thread screen header: back, title with a subtitle line, companions button with a count badge, overflow menu | Adopt | Companions is the right pane (overview, files, issues, crew); overflow holds side thread, pin, copy transcript, archive, delete |
-| Capsule composer pinned to the bottom ("+ Message", send), growing into a card with chips when focused | Adopt | Chips: model, reasoning, context; keyboard-safe through `--keyboard-inset` |
+| Capsule composer pinned to the bottom ("+ Message", send), growing into a card with chips when focused | Adopt | Chips: model, reasoning, context. It stays above the on-screen keyboard through `--keyboard-inset`, which UI SDK's Dialog and Drawer content set themselves; Ingle defines no such token |
 | Floating activity pills above the composer ("1 working", side threads count) | Adopt | Tap opens the companions sheet at the crew section |
 | Bottom sheets: grabber, large title, close X, grouped options with section labels, selected row filled with a check | Adopt | Model picker (with segmented provider tabs), project picker, session menu, companions |
 | Swipe down to dismiss with momentum | Adopt | UI SDK Drawer (`side="bottom"`), per emil momentum dismissal |
@@ -260,7 +260,25 @@ Two adapter facts each surface must respect: options are set as attributes or pr
 | `extensions/chrome.tsx` toggle | Hand-rolled `role="switch"` | Switch | Settings |
 | `settings/plugins.tsx`, `pane/overview.tsx` disclosures | `inert` + `im-grow` by hand | Collapsible (keeps `im-grow` motion) | Settings; Shell and sidebar |
 | `ui/toast.tsx` + `state/toasts.ts` | Hand-rolled stack, swipe, Escape, timers | Toast with `ui-overlay-host`; Sonner motion kept | Overlays and menus (after #30) |
-| `screens/offline.tsx`, `screens/boot-failed.tsx` | `role="alertdialog"` full-screen states | Skip: full-screen app states, not dialogs over a page; they keep `role="alertdialog"` with `aria-labelledby` and take focus | — |
+| `screens/offline.tsx` | Full-screen `role="alertdialog"` over an `inert` app (`app.tsx`), Tab trapped with `trapTab` | Alert Dialog, `dismissible="false"`; its modal makes the page inert, so the `inert` wrapper and `trapTab` go | Shell and sidebar |
+| `screens/boot-failed.tsx` screen | Full-screen `role="alertdialog"`, no app behind it | Skip: nothing sits behind it to trap or make inert; it keeps `role="alertdialog"` with `aria-labelledby` | — |
+| `screens/boot-failed.tsx` confirm | Inline `role="group"` with type-to-confirm, Escape closes it, focus moves in on mount | Skip: an inline confirmation inside the page, not a popup; Escape-to-cancel stays app code | — |
+| `chat/composer.tsx` drop and paste, `pane/drive.tsx` drop, `screens/file.tsx` drop | `onDragOver`/`onDragLeave`/`onDrop` and `onPaste` by hand | File Input (dropzone and paste); our upload code stays | Composer and thread (after #30), Drive, Drive |
+| `chat/automations.tsx`, `screens/automations.tsx` focus after delete | `neighbourAfter` + `firstFocusable` from `lib/focus.ts` | `createFocusRecovery` from `@ui-sdk/core` on the row list | Automations |
+| `composer/attachments.tsx` chips leaving | `createPresence` keeps a chip mounted through its exit | Skip: app-driven list motion (the Sonner rule), not a popup behaviour. `shell/presence.ts` shrinks to this one use as the overlays above move to UI SDK, which keeps closing content shown until its exit ends | — |
+| `automations/history.tsx` `RunRow` | `aria-expanded` disclosure by hand | Collapsible (keeps `im-grow`) | Automations |
+| `pane/issues.tsx` priority and state pickers | Single-choice button groups with `aria-pressed` | Radio Group styled as segments (priority), Select (state) | Issues |
+| `automations/triggers.tsx` cron presets | Single-choice `aria-pressed` buttons | Radio Group styled as segments | Automations |
+| `onboarding/captain-step.tsx` templates | Single-choice `aria-pressed` buttons | Radio Group | Settings (onboarding) |
+| `pane/drive.tsx` content/history mode | Two `aria-pressed` buttons | Segmented Control | Drive |
+| `pane/drive.tsx` version list | `aria-pressed` per version row, one selected | Listbox | Drive |
+| Independent toggles: `chat/markdown.tsx` wrap, `composer/model-picker.tsx` favourite, `shell/sidebar.tsx` search, `pane/issues.tsx` show closed | `aria-pressed` buttons | Toggle | Composer and thread, Composer and thread, Shell and sidebar, Issues |
+| `screens/signin.tsx` reveal | `aria-pressed` show/hide on a password field | Password Input (its own toggle) | Settings (sign-in) |
+| Native `<select>`: `captain/captain-dialog.tsx` (2), `automations/dialog.tsx`, `settings/parts.tsx`, `settings/models.tsx`, `extensions/config-form.tsx`, `onboarding/provider-step.tsx`, `onboarding/captain-step.tsx`, `pane/drive.tsx` | Native select | Select, styled with our tokens; it keeps form submission through `name` and adds typeahead that agents can see | Captains, Automations, Settings ×3, Settings (after #35), Settings (onboarding) ×2, Drive |
+| `settings/models.tsx` native checkbox | `type="checkbox"` | Checkbox | Settings |
+| Enter or mod+Enter to submit: `chat/composer.tsx` (2), `chat/cards.tsx`, `onboarding/thread-step.tsx`, `settings/usage.tsx`, `pane/issue.tsx` | `onKeyDown` on native inputs and textareas | Input and Textarea; the submit key stays app code, because submitting is the app's action and not a control behaviour | The surface that owns each field |
+| `composer/model-picker.tsx` mod+D favourite | `onKeyDown` on the list | Moves with the picker to Combobox; the shortcut stays app code on the highlighted item | Composer and thread |
+| `shell/conversation-tabs.tsx` ContextMenu / Shift+F10 | Hand-rolled key handler | Menu context trigger (handles both keys) | Shell and sidebar |
 | `lib/motion.ts` keyboard/pointer tracking | Window listeners for `data-instant` | Skip: motion policy, not a behaviour UI SDK owns | — |
 | Tooltips (`title` attributes today) | Native | Tooltip where a control has no visible text, with delay skip on subsequent hovers | Each surface |
 
