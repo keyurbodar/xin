@@ -7,6 +7,8 @@ export const MAX_STACK = 100_000
 export const TABLE_BYTES = 640
 export const CLOSURE_BYTES = 160
 export const UPVALUE_BYTES = 96
+/** A short string retains about this much beyond its bytes (the TString, its array, and the hex key fengari builds when it hashes it). */
+export const STRING_BYTES = 480
 
 export type Allowance = { readonly bytes: number; readonly entries: number }
 
@@ -24,7 +26,7 @@ const TIME_FAILURE =
 
 /**
  * A Lua state's allowance, called by fengari itself (patches/fengari@0.1.5.patch): memory before every string buffer, string, table, closure, table entry and stack growth (a table or closure charged its heap size, a closure per upvalue), and time for every thousand instructions and for every native loop (string.rep, pattern matching, plain find, string comparison, string.byte, utf8 scans, table shifts, unpack and sort comparisons, __index and __newindex chains), which the instruction hook cannot see.
- * A string is charged three times its length because fengari also builds a hex key for it when it is hashed or ordered.
+ * A string is charged STRING_BYTES plus three times its length, because fengari also builds a hex key for it when it is hashed or ordered.
  * `failure` is sticky: once set, the instruction hook and the pcall wrappers raise it again until the call returns, so `pcall` cannot swallow it.
  */
 export class Meter implements LuaMeter {
@@ -54,7 +56,7 @@ export class Meter implements LuaMeter {
   }
 
   string(size: number): void {
-    this.allocate(size, 3)
+    this.allocate(size, 3, STRING_BYTES)
   }
 
   stack(slots: number): void {
@@ -95,13 +97,13 @@ export class Meter implements LuaMeter {
     if (this.bytes > this.allowance.bytes) this.refuse(OBJECTS_FAILURE)
   }
 
-  private allocate(size: number, weight = 1): void {
+  private allocate(size: number, weight = 1, base = 0): void {
     if (this.failure !== undefined) {
       if (size <= SMALL_ALLOCATION) return
       throw new RangeError(this.failure)
     }
     if (size > MAX_ALLOCATION) this.refuse("the script built a string over 1 MB")
-    this.bytes += size * weight
+    this.bytes += size * weight + base
     if (this.bytes > this.allowance.bytes) this.refuse(BYTES_FAILURE)
   }
 

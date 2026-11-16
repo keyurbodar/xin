@@ -37,9 +37,11 @@ export function validInputName(name: string): boolean {
   )
 }
 
-/** Blank out comments, keeping every newline, so a comment can neither hide a loop from the guard nor shift a line number. */
+/** Make every line break ANGLE honours (\r\n, \r, \v, \f) a \n, then blank out comments, keeping every newline, so neither can hide a loop or a directive from the guard nor shift a line number. */
 export function stripComments(code: string): string {
-  return code.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (comment) => comment.replace(/[^\n]/g, " "))
+  return code
+    .replace(/\r\n?|[\v\f]/g, "\n")
+    .replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (comment) => comment.replace(/[^\n]/g, " "))
 }
 
 function loopEscape(code: string): string | undefined {

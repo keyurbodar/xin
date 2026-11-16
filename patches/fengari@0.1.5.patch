@@ -11,7 +11,7 @@ index 2b8a5bf7ef5423c533d65c8a63e0c5366dbe3dc7..e4986d85a0dcf77f7b3dd27d4ccba646
          newbuff.set(B.b);  /* copy original content */
          B.b = newbuff;
 diff --git a/src/ldo.js b/src/ldo.js
-index 9c89ff756c22452b4eae13c8956dcb9aa7799ef2..e333ddbf52a788f90522f2a73036be3eb9d4699f 100644
+index 9c89ff756c22452b4eae13c8956dcb9aa7799ef2..20180e9fbcc3ad67bb6a06e2b73da747f7f94ec6 100644
 --- a/src/ldo.js
 +++ b/src/ldo.js
 @@ -85,6 +85,7 @@ const seterrorobj = function(L, errcode, oldtop) {
@@ -22,8 +22,16 @@ index 9c89ff756c22452b4eae13c8956dcb9aa7799ef2..e333ddbf52a788f90522f2a73036be3e
      lua_assert(newsize <= LUAI_MAXSTACK || newsize == ERRORSTACKSIZE);
      lua_assert(L.stack_last == L.stack.length - lstate.EXTRA_STACK);
      L.stack.length = newsize;
+@@ -318,6 +319,7 @@ const adjust_varargs = function(L, p, actual) {
+     let base = L.top; /* final position of first argument */
+ 
+     let i;
++    if (L.l_G.meter) L.l_G.meter.step(actual);
+     for (i = 0; i < nfixargs && i < actual; i++) {
+         lobject.pushobj2s(L, L.stack[fixed + i]);
+         L.stack[fixed + i].setnilvalue();
 diff --git a/src/lobject.js b/src/lobject.js
-index c83439c776d976b8eb4297c7f3047862b693098c..77d26146c13bd17c081838099c9bb6784239f082 100644
+index c83439c776d976b8eb4297c7f3047862b693098c..c86d0a31637a753407d888a8317304c70e341f97 100644
 --- a/src/lobject.js
 +++ b/src/lobject.js
 @@ -295,6 +295,7 @@ module.exports.luaO_nilobject = luaO_nilobject;
@@ -42,6 +50,14 @@ index c83439c776d976b8eb4297c7f3047862b693098c..77d26146c13bd17c081838099c9bb678
          this.id = L.l_G.id_counter++;
  
          this.f = f;
+@@ -569,6 +571,7 @@ const l_str2int = function(s) {
+ };
+ 
+ const luaO_str2num = function(s, o) {
++    if (s.length > 200) return 0;  /* like Lua's L_MAXLENNUM: no numeral is this long, and scanning one costs time no hook sees */
+     let s2i = l_str2int(s);
+     if (s2i !== null) {   /* try as an integer */
+         o.setivalue(s2i.n);
 diff --git a/src/lstring.js b/src/lstring.js
 index 4769866c3e21a38d9c8161a3627f8a3b07c550eb..f57c7bad981643833d501c4811ae549bccda2352 100644
 --- a/src/lstring.js
@@ -55,10 +71,18 @@ index 4769866c3e21a38d9c8161a3627f8a3b07c550eb..f57c7bad981643833d501c4811ae549b
          this.realstring = str;
      }
 diff --git a/src/lstrlib.js b/src/lstrlib.js
-index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..4567436cf8c8feea4895375e5be9765dae0e6394 100644
+index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..d4fc575f42aceb4cf3b6886c833f636c403aec28 100644
 --- a/src/lstrlib.js
 +++ b/src/lstrlib.js
-@@ -714,6 +714,7 @@ const str_rep = function(L) {
+@@ -589,6 +589,7 @@ const str_pack = function(L) {
+     lua_pushnil(L);  /* mark to separate arguments from string buffer */
+     luaL_buffinit(L, b);
+     while (fmt.off < fmt.s.length) {
++        if (L.l_G.meter) L.l_G.meter.step(1);
+         let details = getdetails(h, totalsize, fmt);
+         let opt = details.opt;
+         let size = details.size;
+@@ -714,6 +715,7 @@ const str_rep = function(L) {
          let b = new luaL_Buffer();
          let p = luaL_buffinitsize(L, b, totallen);
          let pi = 0;
@@ -66,7 +90,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..4567436cf8c8feea4895375e5be9765d
          while (n-- > 1) {  /* first n-1 copies (followed by separator) */
              p.set(s, pi);
              pi += l;
-@@ -742,6 +743,7 @@ const str_byte = function(L) {
+@@ -742,6 +744,7 @@ const str_byte = function(L) {
  
      let n = (pose - posi) + 1;
      luaL_checkstack(L, n, "string slice too long");
@@ -74,7 +98,23 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..4567436cf8c8feea4895375e5be9765d
      for (let i = 0; i < n; i++)
          lua_pushinteger(L, s[posi + i - 1]);
      return n;
-@@ -968,6 +970,7 @@ const matchbracketclass = function(ms, c, p, ec) {
+@@ -755,6 +758,7 @@ const str_packsize = function(L) {
+     };
+     let totalsize = 0;  /* accumulate total size of result */
+     while (fmt.off < fmt.s.length) {
++        if (L.l_G.meter) L.l_G.meter.step(1);
+         let details = getdetails(h, totalsize, fmt);
+         let opt = details.opt;
+         let size = details.size;
+@@ -827,6 +831,7 @@ const str_unpack = function(L) {
+     let n = 0;  /* number of results */
+     luaL_argcheck(L, pos <= ld && pos >= 0, 3, "initial position out of string");
+     while (fmt.off < fmt.s.length) {
++        if (L.l_G.meter) L.l_G.meter.step(1);
+         let details = getdetails(h, pos, fmt);
+         let opt = details.opt;
+         let size = details.size;
+@@ -968,6 +973,7 @@ const matchbracketclass = function(ms, c, p, ec) {
          p++;  /* skip the '^' */
      }
      while (++p < ec) {
@@ -82,7 +122,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..4567436cf8c8feea4895375e5be9765d
          if (ms.p[p] === L_ESC) {
              p++;
              if (match_class(c, ms.p[p]))
-@@ -1005,6 +1008,7 @@ const matchbalance = function(ms, s, p) {
+@@ -1005,6 +1011,7 @@ const matchbalance = function(ms, s, p) {
          let e = ms.p[p + 1];
          let cont = 1;
          while (++s < ms.src_end) {
@@ -90,7 +130,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..4567436cf8c8feea4895375e5be9765d
              if (ms.src[s] === e) {
                  if (--cont === 0) return s + 1;
              }
-@@ -1016,8 +1020,10 @@ const matchbalance = function(ms, s, p) {
+@@ -1016,8 +1023,10 @@ const matchbalance = function(ms, s, p) {
  
  const max_expand = function(ms, s, p, ep) {
      let i = 0;  /* counts maximum expand for item */
@@ -102,7 +142,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..4567436cf8c8feea4895375e5be9765d
      /* keeps trying to match with the maximum repetitions */
      while (i >= 0) {
          let res = match(ms, s + i, ep + 1);
-@@ -1081,6 +1087,7 @@ const match = function(ms, s, p) {
+@@ -1081,6 +1090,7 @@ const match = function(ms, s, p) {
          luaL_error(ms.L, to_luastring("pattern too complex"));
  
      while (gotoinit || gotodefault) {
@@ -110,7 +150,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..4567436cf8c8feea4895375e5be9765d
          gotoinit = false;
          if (p !== ms.p_end) {  /* end of pattern? */
              switch (gotodefault ? void 0 : ms.p[p]) {
-@@ -1229,17 +1236,19 @@ const reprepstate = function(ms) {
+@@ -1229,17 +1239,19 @@ const reprepstate = function(ms) {
      lualib.lua_assert(ms.matchdepth === MAXCCALLS);
  };
  
@@ -132,7 +172,7 @@ index e58b6fbb4cb967a9b1e3e990db2f5b10d18f9db9..4567436cf8c8feea4895375e5be9765d
  
      return -1;
  };
-@@ -1258,7 +1267,7 @@ const str_find_aux = function(L, find) {
+@@ -1258,7 +1270,7 @@ const str_find_aux = function(L, find) {
      /* explicit request or no special characters? */
      if (find && (lua_toboolean(L, 4) || nospecials(p, lp))) {
          /* do a plain search */
@@ -216,7 +256,7 @@ index 0a1d9510ab393ecea3033dedcf9aad493fb92932..7ad6d7e000e04d1fc83d490beaf6b5a4
          return lua_compare(L, a, b, LUA_OPLT);  /* a < b */
      else {  /* function */
 diff --git a/src/lutf8lib.js b/src/lutf8lib.js
-index d3dc3a25e62e7257c58f3744bf8be8ea0504764e..7a5025ca2f9d7522fd9d8b99aba3cd6b92870a51 100644
+index d3dc3a25e62e7257c58f3744bf8be8ea0504764e..095a7a0ff088b542ee1cd82a440f1f519aadfbc6 100644
 --- a/src/lutf8lib.js
 +++ b/src/lutf8lib.js
 @@ -87,6 +87,7 @@ const utflen = function(L) {
@@ -227,7 +267,15 @@ index d3dc3a25e62e7257c58f3744bf8be8ea0504764e..7a5025ca2f9d7522fd9d8b99aba3cd6b
  
      while (posi <= posj) {
          let dec = utf8_decode(s, posi);
-@@ -139,6 +140,7 @@ const byteoffset = function(L) {
+@@ -119,6 +120,7 @@ const utfchar = function(L) {
+     else {
+         let b = new luaL_Buffer();
+         luaL_buffinit(L, b);
++        if (L.l_G.meter) L.l_G.meter.step(n);
+         for (let i = 1; i <= n; i++) {
+             pushutfchar(L, i);
+             luaL_addvalue(b);
+@@ -139,6 +141,7 @@ const byteoffset = function(L) {
      posi = u_posrelat(luaL_optinteger(L, 3, posi), s.length);
  
      luaL_argcheck(L, 1 <= posi && --posi <= s.length, 3, "position out of range");
@@ -235,7 +283,7 @@ index d3dc3a25e62e7257c58f3744bf8be8ea0504764e..7a5025ca2f9d7522fd9d8b99aba3cd6b
  
      if (n === 0) {
          /* find beginning of current byte sequence */
-@@ -190,6 +192,7 @@ const codepoint = function(L) {
+@@ -190,6 +193,7 @@ const codepoint = function(L) {
          return luaL_error(L, "string slice too long");
      let n = (pose - posi) + 1;
      luaL_checkstack(L, n, "string slice too long");
@@ -244,10 +292,26 @@ index d3dc3a25e62e7257c58f3744bf8be8ea0504764e..7a5025ca2f9d7522fd9d8b99aba3cd6b
      for (posi -= 1; posi < pose;) {
          let dec = utf8_decode(s, posi);
 diff --git a/src/lvm.js b/src/lvm.js
-index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..27ea9d617ccdbe3a63db2437f8a9cb4d28d00fbc 100644
+index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..df5f13889f8944e7d4c9b476b3a01acbd85cf42d 100644
 --- a/src/lvm.js
 +++ b/src/lvm.js
-@@ -710,8 +710,10 @@ const donextjump = function(L, ci) {
+@@ -537,6 +537,7 @@ const luaV_execute = function(L) {
+                     let ofuncOff = oci.funcOff;
+                     let lim = nci.l_base + nfunc.value.p.numparams;
+                     if (cl.p.p.length > 0) lfunc.luaF_close(L, oci.l_base);
++                    if (L.l_G.meter) L.l_G.meter.step(L.top - nfuncOff);
+                     for (let aux = 0; nfuncOff + aux < lim; aux++)
+                         lobject.setobjs2s(L, ofuncOff + aux, nfuncOff + aux);
+                     oci.l_base = ofuncOff + (nci.l_base - nfuncOff);
+@@ -682,6 +683,7 @@ const luaV_execute = function(L) {
+                     ldo.adjust_top(L, ra + n);
+                 }
+ 
++                if (L.l_G.meter) L.l_G.meter.step(Math.max(b, n));
+                 for (j = 0; j < b && j < n; j++)
+                     lobject.setobjs2s(L, ra + j, base - n + j);
+ 
+@@ -710,8 +712,10 @@ const donextjump = function(L, ci) {
  const luaV_lessthan = function(L, l, r) {
      if (l.ttisnumber() && r.ttisnumber())
          return LTnum(l, r) ? 1 : 0;
@@ -259,7 +323,7 @@ index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..27ea9d617ccdbe3a63db2437f8a9cb4d
      else {
          let res = ltm.luaT_callorderTM(L, l, r, ltm.TMS.TM_LT);
          if (res === null)
-@@ -725,8 +727,10 @@ const luaV_lessequal = function(L, l, r) {
+@@ -725,8 +729,10 @@ const luaV_lessequal = function(L, l, r) {
  
      if (l.ttisnumber() && r.ttisnumber())
          return LEnum(l, r) ? 1 : 0;
@@ -271,7 +335,7 @@ index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..27ea9d617ccdbe3a63db2437f8a9cb4d
      else {
          res = ltm.luaT_callorderTM(L, l, r, ltm.TMS.TM_LE);
          if (res !== null)
-@@ -766,6 +770,7 @@ const luaV_equalobj = function(L, t1, t2) {
+@@ -766,6 +772,7 @@ const luaV_equalobj = function(L, t1, t2) {
              return t1.value === t2.value ? 1 : 0;
          case LUA_TSHRSTR:
          case LUA_TLNGSTR: {
@@ -279,7 +343,7 @@ index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..27ea9d617ccdbe3a63db2437f8a9cb4d
              return luaS_eqlngstr(t1.tsvalue(), t2.tsvalue()) ? 1 : 0;
          }
          case LUA_TUSERDATA:
-@@ -1061,6 +1066,7 @@ const luaV_concat = function(L, total) {
+@@ -1061,6 +1068,7 @@ const luaV_concat = function(L, total) {
                  let l = L.stack[top - n - 1].vslen();
                  tl += l;
              }
@@ -287,7 +351,7 @@ index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..27ea9d617ccdbe3a63db2437f8a9cb4d
              let buff = new Uint8Array(tl);
              copy2buff(L, top, n, buff);
              let ts = luaS_bless(L, buff);
-@@ -1077,6 +1083,7 @@ const MAXTAGLOOP = 2000;
+@@ -1077,6 +1085,7 @@ const MAXTAGLOOP = 2000;
  
  const luaV_gettable = function(L, t, key, ra) {
      for (let loop = 0; loop < MAXTAGLOOP; loop++) {
@@ -295,7 +359,7 @@ index 423d2a73b1ad2c7f1a0eb594cef7e7763a94b382..27ea9d617ccdbe3a63db2437f8a9cb4d
          let tm;
  
          if (!t.ttistable()) {
-@@ -1110,6 +1117,7 @@ const luaV_gettable = function(L, t, key, ra) {
+@@ -1110,6 +1119,7 @@ const luaV_gettable = function(L, t, key, ra) {
  
  const settable = function(L, t, key, val) {
      for (let loop = 0; loop < MAXTAGLOOP; loop++) {

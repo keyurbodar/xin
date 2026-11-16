@@ -39,6 +39,9 @@ const CLOSURE_CHAIN =
   UPVALUES.join(" + ") +
   " end end"
 
+const spread = (body: string): string =>
+  `local a = {} for i = 1, 5000 do a[i] = 65 end local function run(...) for i = 1, 1e5 do ${body} end end run(table.unpack(a))`
+
 describe("visual runtime", () => {
   it("renders a view, and handlers change its state", () => {
     const visual = Visual.load(
@@ -101,7 +104,7 @@ describe("visual runtime", () => {
   it("bounds memory: string doubling, text churn and table fills stop with a reason", () => {
     expect(failure(`local s = "x" while true do s = s .. s end`)).toContain("over 1 MB")
     expect(failure(`local t = {} for i = 1, 1e7 do t[i] = i end`)).toContain("too many entries")
-    expect(failure(`local t = {} for i = 1, 1e7 do t["k" .. i] = true end`)).toContain("too many entries")
+    expect(failure(`local t = {} for i = 1, 1e7 do t["k" .. i] = true end`)).toContain("too much text")
     expect(failure(`local t = {} local s = string.rep("x", 1 << 19) for i = 1, 1e4 do t[i] = s .. i end`)).toContain(
       "table.concat",
     )
@@ -110,14 +113,26 @@ describe("visual runtime", () => {
       failure(`local big = string.rep("x", 1 << 20) local t = {} for i = 1, 3000 do t[i] = big:sub(2) end`),
     ).toContain("too much text")
     expect(failure(`local s = string.rep("x", 1100) local r = s:gsub("x", s)`)).toContain("over 1 MB")
-    expect(failure(`for i = 1, 1e7 do _G["k" .. i] = true end`)).toContain("too many entries")
+    expect(failure(`for i = 1, 1e7 do _G["k" .. i] = true end`)).toContain("too much text")
     expect(failure("local t = {} while true do t = setmetatable({}, t) end")).toContain("too many tables")
+    expect(failure("local t = {} for i = 1, 1e7 do t[i] = tostring(i) end")).toContain("too much text")
+    expect(failure('local t = {} for i = 1, 1e7 do t[i] = "k" .. i end')).toContain("too much text")
     expect(failure(CLOSURE_CHAIN)).toContain("too many tables or functions")
     expect(failure(`local function f(n) return f(n + 1) + 1 end f(1)`)).toContain("too deeply")
     expect(failure(`local t = table.unpack({}, 1, 5e5)`)).toContain("too deeply")
   }, 30_000)
 
   it("counts native loops against the time budget, which the instruction hook cannot see", () => {
+    expect(failure(spread('local _ = select("#", ...)'))).toContain("time budget")
+    expect(failure(`local function f(...) return ... end ${spread("local _ = f(...)")}`)).toContain("time budget")
+    expect(failure(spread("local _ = utf8.char(...)"))).toMatch(/time budget|too much text/)
+    expect(failure(`local f = string.rep("b", 2e4) for i = 1, 1e4 do string.packsize(f) end`)).toContain("time budget")
+    expect(
+      failure(`local f, s = string.rep("x", 2e4), string.rep("a", 2e4) for i = 1, 1e4 do string.unpack(f, s) end`),
+    ).toContain("time budget")
+    expect(
+      failure(`local t = {} for i = 1, 5e4 do t[i] = (i * 7919) % 50000 end for i = 1, 1e3 do table.sort(t) end`),
+    ).toContain("time budget")
     expect(failure(`for i = 1, 3 do string.rep("", 1e9) end`)).toContain("time budget")
     expect(failure(`string.find(string.rep("a", 3000), ".-.-.-b")`)).toContain("time budget")
     expect(failure(`string.find(string.rep("a", 1 << 19), "[" .. string.rep("b", 9000) .. "a]c")`)).toContain(
@@ -133,6 +148,14 @@ describe("visual runtime", () => {
     ).toContain("time budget")
     expect(failure(`local s = string.rep("a", 1 << 19) for i = 1, 1e6 do utf8.len(s) end`)).toContain("time budget")
     expect(failure(`table.move({}, 1, 1e9, 2)`)).toContain("time budget")
+    expect(
+      textOf(
+        Visual.load(
+          `return ui.text { tostring(tonumber(string.rep("1", 300))) .. tostring(tonumber("12")) }`,
+          1,
+        ).render(),
+      ),
+    ).toBe("nil12")
     expect(
       failure(
         `local t = {} for i = 1, 1999 do t = setmetatable({}, { __index = t }) end for i = 1, 1e6 do local _ = t.x end`,
@@ -281,6 +304,13 @@ describe("shader loop guard", () => {
     expect(shader("for (int i = 0; i < 9) {}")).toContain("(init; condition; step)")
     expect(shader("for (\n#if 0\n;;)\n#else\nint i = 0; i < 9; i++)\n#endif\n{}")).toContain("preprocessor directives")
     expect(shader("while (\n#ifdef X\nfalse\n#else\ntrue\n#endif\n) {}")).toContain("preprocessor directives")
+    for (const lineBreak of ["\r", "\v", "\f", "\r\n"])
+      expect(
+        shader(
+          `for (${lineBreak}#if 0${lineBreak};;)${lineBreak}#else${lineBreak}int i = 0; i < 9; i++)${lineBreak}#endif${lineBreak}{}`,
+        ),
+      ).toContain("preprocessor directives")
+    expect(guardLoops(stripComments("// hidden\rwhile (true) {}"))).toContain("ingle_step()")
     expect(
       check(
         `return ui.shader { height = 200, code = [[#if 1
