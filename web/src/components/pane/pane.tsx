@@ -1,7 +1,7 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
-import { Dynamic, Portal } from "solid-js/web"
-import { Popover } from "@ark-ui/solid/popover"
-import { Listbox, createListCollection } from "@ark-ui/solid/listbox"
+import { createEffect, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
+import "@ui-sdk/web/command"
+import "@ui-sdk/web/popover"
+import { Dynamic } from "solid-js/web"
 import { Check, ChevronRight, Maximize2, Minimize2, PanelRight, Plus, X } from "lucide-solid"
 import { keyStarted } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
@@ -9,20 +9,12 @@ import type { CaptainProfile } from "../../lib/captains.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { closePaneView, OVERVIEW, projectTabs, setPaneOpen, showPaneView } from "../../state/tabs.ts"
 import { Signal } from "../ui/signal.tsx"
-import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL, MENU_SEPARATOR } from "../shell/menu.ts"
+import { ICON_BUTTON } from "../shell/menu.ts"
+import { createOverlayMount } from "../shell/presence.ts"
+import { POPUP, POPUP_ITEM, POPUP_LABEL, POPUP_SEPARATOR } from "../ui/surface.ts"
 import { paneEntry, paneView, paneViews, type PaneContext, type PaneEntry } from "./views.tsx"
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
-
-type ViewChoice = { readonly kind: "view"; readonly value: string; readonly label: string; readonly view: PaneEntry }
-type ThreadChoice = {
-  readonly kind: "thread"
-  readonly value: string
-  readonly label: string
-  readonly threadId: number
-  readonly status: string
-}
-type Choice = ViewChoice | ThreadChoice
 
 export function ProjectPane(props: {
   project: ProjectSummary
@@ -141,129 +133,103 @@ export function ProjectPane(props: {
   )
 }
 
-function ViewMenu(props: {
+export function ViewMenu(props: {
   views: readonly PaneEntry[]
   project: ProjectSummary
   current: string
   onOpenThread: (id: number) => void
 }): JSX.Element {
   const [open, setOpen] = createSignal(false)
-  const [query, setQuery] = createSignal("")
+  const { mounted, settle } = createOverlayMount(open)
   const threads = () => projectThreads(props.project)
-  const choices = createMemo<readonly Choice[]>(() => {
-    const text = query().trim().toLowerCase()
-    const all: Choice[] = [
-      ...props.views.map((entry): Choice => ({ kind: "view", value: `view:${entry.id}`, label: entry.label, view: entry })),
-      ...threads().map(
-        (thread): Choice => ({ kind: "thread", value: `thread:${thread.id}`, label: thread.title, threadId: thread.id, status: thread.status }),
-      ),
-    ]
-    return all.filter((choice) => text === "" || choice.label.toLowerCase().includes(text))
-  })
-  const collection = createMemo(() =>
-    createListCollection<Choice>({ items: [...choices()], itemToValue: (item) => item.value, itemToString: (item) => item.label }),
-  )
-  const views = () => choices().filter((choice): choice is ViewChoice => choice.kind === "view" && choice.view.id !== "threads")
-  const crew = () => choices().filter((choice): choice is ThreadChoice => choice.kind === "thread")
-  const all = () => choices().filter((choice): choice is ViewChoice => choice.kind === "view" && choice.view.id === "threads")
+  const views = () => props.views.filter((entry) => entry.id !== "threads")
+  const all = () => props.views.filter((entry) => entry.id === "threads")
 
   const pick = (value: string): void => {
-    const choice = choices().find((entry) => entry.value === value)
-    if (choice === undefined) return
-    switch (choice.kind) {
-      case "view":
-        showPaneView(props.project.id, choice.view.id)
-        break
-      case "thread":
-        props.onOpenThread(choice.threadId)
-        break
-      default: {
-        const _exhaustive: never = choice
-        return _exhaustive
-      }
-    }
     setOpen(false)
+    if (value.startsWith("thread:")) {
+      props.onOpenThread(Number(value.slice("thread:".length)))
+      return
+    }
+    showPaneView(props.project.id, value.slice("view:".length))
   }
 
   return (
-    <Popover.Root
-      open={open()}
-      onOpenChange={(details) => {
-        setOpen(details.open)
-        if (!details.open) setQuery("")
+    <ui-popover
+      prop:open={open()}
+      on:openchange={(event) => {
+        event.preventDefault()
+        const next = event.detail.value
+        queueMicrotask(() => setOpen(next))
       }}
-      lazyMount
-      unmountOnExit
-      positioning={{ placement: "bottom-start", gutter: 6 }}
+      on:openchangecomplete={settle}
     >
-      <Popover.Trigger class={ICON_BUTTON} aria-label="Open a view">
-        <Plus {...ICON} />
-      </Popover.Trigger>
-      <Portal>
-        <Popover.Positioner>
-          <Popover.Content class={`${MENU_CONTENT} w-[320px] p-0`}>
-            <Listbox.Root collection={collection()} onSelect={(details) => pick(details.value)} class="flex flex-col">
-              <div class="border-b border-line-1 px-3 pb-2 pt-2.5">
-                <span class="text-xs text-ink-3">{props.project.name}</span>
-                <Listbox.Input
-                  autoHighlight
+      <ui-popover-trigger>
+        <button type="button" class={ICON_BUTTON} aria-label="Open a view">
+          <Plus {...ICON} />
+        </button>
+      </ui-popover-trigger>
+      <ui-popover-content side="bottom" align="start" side-offset="6" class={`${POPUP} w-[320px] p-0`}>
+        <Show when={mounted()}>
+          <ui-command filter="contains" auto-highlight on:action={(event) => pick(event.detail.value)} class="flex flex-col">
+            <div class="border-b border-line-1 px-3 pb-2 pt-2.5">
+              <span class="text-mini text-ink-3">{props.project.name}</span>
+              <ui-command-input>
+                <input
                   autofocus
-                  value={query()}
-                  onInput={(event) => setQuery(event.currentTarget.value)}
+                  aria-label={`Search ${props.project.name}`}
                   placeholder="Search"
-                  class="mt-1 h-6 w-full bg-transparent text-sm text-ink outline-none placeholder:text-placeholder"
+                  class="mt-1 h-6 w-full bg-transparent text-small text-ink outline-none placeholder:text-placeholder"
                 />
-              </div>
-              <Listbox.Content class="flex max-h-[420px] flex-col overflow-y-auto p-1 outline-none">
-                <For each={views()}>
-                  {(choice) => (
-                    <Listbox.Item item={choice} class={MENU_ITEM}>
-                      <span class="text-ink-3">
-                        <Dynamic component={choice.view.icon} {...ICON} />
-                      </span>
-                      <Listbox.ItemText class="flex-1 truncate">{choice.label}</Listbox.ItemText>
-                      <Show when={choice.view.id === props.current}>
-                        <Check {...ICON} class="text-ink-2" />
-                      </Show>
-                    </Listbox.Item>
-                  )}
-                </For>
-                <Show when={crew().length + all().length > 0}>
-                  <Show when={views().length > 0}>
-                    <div class={MENU_SEPARATOR} />
-                  </Show>
-                  <Listbox.ItemGroup>
-                    <Listbox.ItemGroupLabel class={MENU_LABEL}>Crew</Listbox.ItemGroupLabel>
-                    <For each={crew()}>
-                      {(choice) => (
-                        <Listbox.Item item={choice} class={MENU_ITEM}>
-                          <Signal state={visualState(choice.status)} size={14} class="shrink-0" />
-                          <Listbox.ItemText class="flex-1 truncate">{choice.label}</Listbox.ItemText>
-                          <ChevronRight size={14} stroke-width={1.5} class="text-icon" />
-                        </Listbox.Item>
-                      )}
-                    </For>
-                    <For each={all()}>
-                      {(choice) => (
-                        <Listbox.Item item={choice} class={MENU_ITEM}>
-                          <span class="text-ink-3">
-                            <Dynamic component={choice.view.icon} {...ICON} />
-                          </span>
-                          <Listbox.ItemText class="flex-1">{choice.label}</Listbox.ItemText>
-                          <span class="font-mono text-xs text-ink-3">{threads().length}</span>
-                        </Listbox.Item>
-                      )}
-                    </For>
-                  </Listbox.ItemGroup>
+              </ui-command-input>
+            </div>
+            <ui-command-empty class="hidden px-3 py-2 text-small text-ink-3 data-[empty]:block">No match</ui-command-empty>
+            <ui-command-list class="flex max-h-[420px] flex-col overflow-y-auto p-1">
+              <For each={views()}>
+                {(entry) => (
+                  <ui-command-item value={`view:${entry.id}`} label={entry.label} class={POPUP_ITEM}>
+                    <span class="text-ink-3">
+                      <Dynamic component={entry.icon} {...ICON} />
+                    </span>
+                    <span class="flex-1 truncate">{entry.label}</span>
+                    <Show when={entry.id === props.current}>
+                      <Check {...ICON} class="text-ink-2" />
+                    </Show>
+                  </ui-command-item>
+                )}
+              </For>
+              <Show when={threads().length + all().length > 0}>
+                <Show when={views().length > 0}>
+                  <ui-command-separator class={POPUP_SEPARATOR} />
                 </Show>
-                <Show when={choices().length === 0}>
-                  <span class="px-2 py-1.5 text-sm text-ink-3">No match</span>
-                </Show>
-              </Listbox.Content>
-            </Listbox.Root>
-          </Popover.Content>
-        </Popover.Positioner>
-      </Portal>
-    </Popover.Root>
+                <ui-command-group>
+                  <ui-command-group-label class={POPUP_LABEL}>Crew</ui-command-group-label>
+                  <For each={threads()}>
+                    {(thread) => (
+                      <ui-command-item value={`thread:${thread.id}`} label={thread.title} class={POPUP_ITEM}>
+                        <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
+                        <span class="flex-1 truncate">{thread.title}</span>
+                        <ChevronRight size={14} stroke-width={1.5} class="text-icon" />
+                      </ui-command-item>
+                    )}
+                  </For>
+                  <For each={all()}>
+                    {(entry) => (
+                      <ui-command-item value={`view:${entry.id}`} label={entry.label} class={POPUP_ITEM}>
+                        <span class="text-ink-3">
+                          <Dynamic component={entry.icon} {...ICON} />
+                        </span>
+                        <span class="flex-1">{entry.label}</span>
+                        <span class="font-mono text-mini text-ink-3">{threads().length}</span>
+                      </ui-command-item>
+                    )}
+                  </For>
+                </ui-command-group>
+              </Show>
+            </ui-command-list>
+          </ui-command>
+        </Show>
+      </ui-popover-content>
+    </ui-popover>
   )
 }

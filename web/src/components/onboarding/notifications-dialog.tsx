@@ -1,9 +1,10 @@
-import { createEffect, For, on, onCleanup, onMount, Show, type JSX } from "solid-js"
+import "@ui-sdk/web/dialog"
+import { createEffect, For, on, Show, type JSX } from "solid-js"
 import { CircleAlert, CircleCheck, MessageSquare } from "lucide-solid"
 import { Spinner } from "../ui/loaders.tsx"
+import { DIALOG_BACKDROP, DIALOG_CONTENT } from "../ui/dialog.tsx"
 import { StatusLine } from "./controls.tsx"
-import { createPresence } from "../shell/presence.ts"
-import { trapTab } from "../../lib/focus.ts"
+import { createOverlayMount } from "../shell/presence.ts"
 import { enablePush, notificationsOpen, onboardingPush, openNotifications } from "../../state/onboarding.ts"
 
 const KINDS = [
@@ -13,15 +14,30 @@ const KINDS = [
 ] as const
 
 export function NotificationsDialog(): JSX.Element {
-  const { mounted, leaving } = createPresence(notificationsOpen, 140)
+  const { mounted, settle } = createOverlayMount(notificationsOpen)
+  const busy = (): boolean => onboardingPush().kind === "working"
   return (
     <Show when={mounted()}>
-      <Panel closing={leaving()} />
+      <ui-dialog
+        prop:open={notificationsOpen()}
+        dismissible={busy() ? "false" : undefined}
+        on:openchange={(event) => {
+          if (event.detail.value) return
+          event.preventDefault()
+          queueMicrotask(() => openNotifications(false))
+        }}
+        on:openchangecomplete={settle}
+      >
+        <ui-dialog-backdrop class={DIALOG_BACKDROP} />
+        <ui-dialog-content initial-focus="[data-primary]" class={`${DIALOG_CONTENT} w-[var(--w-dialog-sm)] px-6 pb-5 pt-5`}>
+          <Panel />
+        </ui-dialog-content>
+      </ui-dialog>
     </Show>
   )
 }
 
-function Panel(props: { closing: boolean }): JSX.Element {
+function Panel(): JSX.Element {
   const push = onboardingPush
   const busy = (): boolean => push().kind === "working"
   const pushOn = (): boolean => push().kind === "on"
@@ -29,30 +45,12 @@ function Panel(props: { closing: boolean }): JSX.Element {
     if (!busy()) openNotifications(false)
   }
 
-  let panel!: HTMLElement
   let primary!: HTMLButtonElement
-  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
-
-  const onKey = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") {
-      close()
-      return
-    }
-    trapTab(panel, event)
-  }
-  onMount(() => {
-    primary.focus()
-    document.addEventListener("keydown", onKey)
-  })
   createEffect(
     on(pushOn, (isOn) => {
       if (isOn) primary.focus()
     }, { defer: true }),
   )
-  onCleanup(() => {
-    document.removeEventListener("keydown", onKey)
-    opener?.focus()
-  })
 
   const status = (): { tone: "error" | "ok" | "muted"; text: string | undefined } => {
     const outcome = push()
@@ -69,25 +67,9 @@ function Panel(props: { closing: boolean }): JSX.Element {
   }
 
   return (
-    <div class="fixed inset-0 z-50 grid place-items-center p-4">
-      <div
-        class="im-scrim absolute inset-0 bg-scrim"
-        data-state={props.closing ? "closed" : "open"}
-        onMouseDown={close}
-        aria-hidden="true"
-      />
-      <section
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="notify-title"
-        data-state={props.closing ? "closed" : "open"}
-        class="im-dialog relative w-full max-w-[440px] rounded-lg border border-line-2 bg-popover px-6 pb-5 pt-5 shadow-[var(--shadow-overlay)]"
-      >
+    <>
         <p class="text-sm text-ink-3">Step 5 · optional</p>
-        <h2 id="notify-title" class="mt-1 text-lg font-medium tracking-[-0.01em]">
-          Get a nudge when a thread needs you
-        </h2>
+        <ui-dialog-title class="mt-1 block text-title-sm font-title">Get a nudge when a thread needs you</ui-dialog-title>
         <p class="mt-1.5 text-base text-ink-2">
           Threads keep working after you close the tab. Turn on push and Ingle only tells you about these three things.
         </p>
@@ -119,6 +101,7 @@ function Panel(props: { closing: boolean }): JSX.Element {
             fallback={
               <button
                 ref={primary}
+                data-primary
                 type="button"
                 onClick={close}
                 class="im-press h-8 rounded-md bg-accent px-3 text-base font-medium text-on-accent"
@@ -137,6 +120,7 @@ function Panel(props: { closing: boolean }): JSX.Element {
             </button>
             <button
               ref={primary}
+              data-primary
               type="button"
               disabled={busy()}
               aria-busy={busy()}
@@ -150,7 +134,6 @@ function Panel(props: { closing: boolean }): JSX.Element {
             </button>
           </Show>
         </div>
-      </section>
-    </div>
+    </>
   )
 }
