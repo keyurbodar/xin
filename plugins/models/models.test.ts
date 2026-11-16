@@ -501,7 +501,7 @@ describe("models", () => {
     const outcome = await runInDurableObject(stub, (home: Home) =>
       home.loader.ctx.threads.delegate(
         { conversationId: project.coordinatorId as ConversationId, taskId: "off-task" },
-        { task: "say hi", title: "hi", model: narrow, mode: "async", clientRequestId: "off-delegate" },
+        { task: "say hi", title: "hi", choice: { model: narrow }, mode: "async", clientRequestId: "off-delegate" },
         context,
       ),
     )

@@ -48,7 +48,9 @@ import {
   ThinkingSchema,
   type ModelDefaults,
   type ModelMatch,
+  type ModelPick,
   type ModelsService,
+  type PickInput,
   type Role,
 } from "../../src/contracts/models.ts"
 import type { Notification } from "../../src/contracts/push.ts"
@@ -860,6 +862,87 @@ export function create(deps: ModelsPort): ModelsParts {
   let disabledRefs: readonly ModelRef[] = []
   /** The owner's disabled models, read once at start and updated by `models.enable`, so a check reads no row. */
   const isOff = (ref: ModelRef): boolean => disabledRefs.some((entry) => same(entry, ref))
+  const isKeyed = async (ref: ModelRef): Promise<boolean> => {
+    if (registry.custom.has(ref.provider)) await registry.models.refresh({ providers: [ref.provider] })
+    return (await registry.models.getAvailable(ref.provider)).some((model) => model.id === ref.modelId)
+  }
+  const usableModels = async (): Promise<readonly Model<Api>[]> =>
+    (await available(registry)).filter((model) => !isOff(refOf(model)))
+  const unusable = async (ref: ModelRef): Promise<string | undefined> => {
+    const name = `${ref.provider}/${ref.modelId}`
+    const problem =
+      registry.models.getModel(ref.provider, ref.modelId) === undefined
+        ? `no model ${name}`
+        : isOff(ref)
+          ? `model ${name} is disabled`
+          : (await isKeyed(ref))
+            ? undefined
+            : `model ${name} has no key; add a ${ref.provider} key in Settings → Models`
+    if (problem === undefined) return undefined
+    const usable = (await usableModels()).slice(0, 3)
+    return usable.length === 0
+      ? `${problem}. No model is usable yet.`
+      : `${problem}. Usable: ${usable.map((model) => `${model.provider}/${model.id}`).join(", ")}.`
+  }
+  const byName = async (query: string): Promise<ModelRef | string> => {
+    const matches = search(await usableModels(), query)
+    const top = matches[0]
+    if (top === undefined) return `No usable model matches "${query}".`
+    if ((matches[1]?.score ?? 0) === top.score)
+      return `Several models match "${query}": ${matches
+        .slice(0, 4)
+        .map((hit) => `${hit.model.provider}/${hit.model.id}`)
+        .join(", ")}. Name one by provider and id.`
+    return refOf(top.model)
+  }
+  const pick = async ({ creator, role, project, choice }: PickInput): Promise<ModelPick> => {
+    const parent = creator === undefined ? undefined : await harness.conversation(creator, BACKGROUND_CONTEXT)
+    const inherited = parent === undefined ? undefined : await parent.agent(BACKGROUND_CONTEXT)
+    const explicit = choice?.query !== undefined ? await byName(choice.query) : choice?.model
+    if (typeof explicit === "string") return { kind: "refused", reason: explicit }
+    let chosen: { readonly model: ModelRef; readonly source: Extract<ModelPick, { kind: "model" }>["source"] }
+    if (explicit !== undefined) {
+      const why = await unusable(explicit)
+      if (why !== undefined) return { kind: "refused", reason: why }
+      chosen = { model: explicit, source: "explicit" }
+    } else {
+      const owner = (await ownerDefaults(db))[role]
+      const candidates = [
+        { model: inherited?.model, source: "creator" as const },
+        { model: project?.[role], source: "project" as const },
+        { model: owner, source: "owner" as const },
+      ]
+      const first = await (async () => {
+        for (const candidate of candidates)
+          if (candidate.model !== undefined && (await unusable(candidate.model)) === undefined)
+            return { model: candidate.model, source: candidate.source }
+        return undefined
+      })()
+      if (first === undefined) {
+        const why = inherited?.model === undefined ? undefined : await unusable(inherited.model)
+        return {
+          kind: "refused",
+          reason: `No usable model for this conversation${why === undefined ? "" : ` (${why})`}. Name a model, or set a ${role} default in Settings → Models.`,
+        }
+      }
+      chosen = first
+    }
+    const found = registry.models.getModel(chosen.model.provider, chosen.model.modelId)
+    const levels = found?.reasoning === true ? getSupportedThinkingLevels(found) : []
+    if (choice?.thinking !== undefined && levels.length > 0 && !levels.includes(choice.thinking))
+      return {
+        kind: "refused",
+        reason: `${chosen.model.provider}/${chosen.model.modelId} does not support thinking ${choice.thinking}; it supports ${levels.join(", ")}`,
+      }
+    const wanted = choice?.thinking ?? inherited?.thinkingLevel
+    const thinking = wanted !== undefined && levels.includes(wanted) ? wanted : undefined
+    return {
+      kind: "model",
+      model: chosen.model,
+      source: chosen.source,
+      ...(thinking === undefined ? {} : { thinking }),
+    }
+  }
   let percent: number | undefined
   let overrides: { readonly models: readonly Model<Api>[]; readonly settings: CompactionSettings } | undefined
   /**
@@ -961,8 +1044,8 @@ export function create(deps: ModelsPort): ModelsParts {
       const change: { model?: ModelRef | null; thinkingLevel?: ModelThinkingLevel | null } = {}
       if (args.model !== undefined) {
         const found = registry.models.getModel(args.model.provider, args.model.modelId)
-        if (found === undefined)
-          throw new OpRejected("bad_args", `unknown model ${args.model.provider}/${args.model.modelId}`)
+        const why = await unusable(args.model)
+        if (found === undefined || why !== undefined) throw new OpRejected("bad_args", why ?? "unknown model")
         change.model = { provider: args.model.provider, modelId: args.model.modelId }
         if (!found.reasoning) change.thinkingLevel = null
       }
@@ -1431,6 +1514,8 @@ export function create(deps: ModelsPort): ModelsParts {
   })
 
   const service: ModelsService = {
+    pick,
+    unusable,
     ownerDefaults: () => ownerDefaults(db),
     vision: async (ref) => {
       const found = registry.models.getModel(ref.provider, ref.modelId)

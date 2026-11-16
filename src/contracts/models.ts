@@ -1,7 +1,7 @@
 import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai"
 import { type ConversationId, defineDoc, type ModelRef } from "@earendil-works/pi-durable"
 import { MODEL_THINKING_LEVELS } from "@earendil-works/pi-ai/providers/model-schema"
-import { obj, oneOf, str } from "@earendil-works/pi-schema"
+import { obj, oneOf, opt, str } from "@earendil-works/pi-schema"
 import type { Outcome } from "../ops.ts"
 
 export type Role = "chat" | "thread" | "utility"
@@ -81,7 +81,47 @@ export type ModelSwitch = {
   readonly callId: string
 }
 
+/** An override a creator passes for a new conversation: an exact model or a name to search for, and a thinking level. */
+export type ModelChoice = {
+  readonly model?: ModelRef
+  readonly query?: string
+  readonly thinking?: ModelThinkingLevel
+}
+
+export const ModelChoiceSchema = obj({
+  model: opt(ModelRefSchema),
+  query: opt(str({ minLength: 1, maxLength: 200 })),
+  thinking: opt(ThinkingSchema),
+})
+
+export type ModelPick =
+  | {
+      readonly kind: "model"
+      readonly model: ModelRef
+      /** Unset: the model's default level. */
+      readonly thinking?: ModelThinkingLevel
+      readonly source: "explicit" | "creator" | "project" | "owner"
+    }
+  | { readonly kind: "refused"; readonly reason: string }
+
+export type PickInput = {
+  /** The conversation starting the new one; its model and thinking level are the default. */
+  readonly creator?: ConversationId
+  readonly role: Role
+  /** The project's role defaults, a fallback when the creator has no usable model. */
+  readonly project?: ModelDefaults
+  readonly choice?: ModelChoice
+}
+
 export interface ModelsService {
+  /**
+   * The model and thinking level a conversation `creator` starts runs on: the explicit choice, else the creator's own,
+   * else the project's and then the owner's default for `role`. A model that is unknown, disabled or has no key is
+   * refused with the reason and the models that would work.
+   */
+  pick(input: PickInput): Promise<ModelPick>
+  /** Why `ref` cannot run (unknown, disabled, no key), naming up to three usable models; undefined when it can. */
+  unusable(ref: ModelRef): Promise<string | undefined>
   ownerDefaults(): Promise<ModelDefaults>
   vision(ref: ModelRef): Promise<boolean>
   credentialSecrets(): Promise<readonly string[]>

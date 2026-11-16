@@ -32,6 +32,7 @@ export function apply(ctx: Context): void {
     models: ctx.models,
     currentModels: () => ctx.pi.currentModels(),
     disabled: (ref) => ctx.models.disabled(ref),
+    pick: (input) => ctx.models.pick(input),
     admit: (feature) => ctx.models.admit(feature),
     admitConversation: (conversation) => ctx.models.admitConversation(conversation),
     toolsNamed: (names) => ctx.pi.toolsNamed(names),

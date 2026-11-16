@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import type { Models } from "@earendil-works/pi-ai"
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai"
 import {
   configure,
   defineDoc,
@@ -12,8 +12,14 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable"
 import { bool, compile, int, map, obj, opt, str, type Static } from "@earendil-works/pi-schema"
-import { ModelRefSchema } from "../../src/contracts/models.ts"
-import { ThreadDoc, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
+import {
+  ModelRefSchema,
+  ThinkingSchema,
+  type ModelDefaults,
+  type ModelPick,
+  type PickInput,
+} from "../../src/contracts/models.ts"
+import { defaultSpaceOf, ThreadDoc, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
 import type { WatchdogService } from "../../src/contracts/watchdog.ts"
 import { SLUG, WorkspaceDoc, type SpaceState, type WorkspaceState } from "../../src/contracts/workspace.ts"
 import type { CommandId } from "../../src/ids.ts"
@@ -71,8 +77,7 @@ export type CaptainDeps = {
   readonly harness: Harness
   readonly toolsNamed: (names: readonly string[]) => readonly ToolRegistration[]
   readonly watchdog: WatchdogService
-  currentModels(): Models
-  disabled(ref: ModelRef): Promise<boolean>
+  pick(input: PickInput): Promise<ModelPick>
   publishHome(): Promise<void>
 }
 
@@ -84,6 +89,8 @@ export type CrewMember = {
   readonly idleMs: number
   readonly statusLine?: string
   readonly report?: string
+  /** `provider/modelId`, with ` · <thinking>` when the model reasons. */
+  readonly model?: string
 }
 
 type Found = { readonly id: string; readonly captain: CaptainState }
@@ -156,6 +163,12 @@ async function crewView(harness: Harness, captain: CaptainState, now: number): P
   for (const threadId of crewOf(workspace, captain)) {
     const doc = await harness.snapshot(ThreadDoc, threadId as ConversationId, context)
     if (doc === undefined || doc.archived === true) continue
+    const conversation = await harness.conversation(threadId as ConversationId, context)
+    const agent = conversation === undefined ? undefined : await conversation.agent(context)
+    const model =
+      agent?.model === undefined
+        ? undefined
+        : `${agent.model.provider}/${agent.model.modelId}${agent.thinkingLevel === "off" ? "" : ` · ${agent.thinkingLevel}`}`
     members.push({
       threadId,
       title: doc.title,
@@ -164,6 +177,7 @@ async function crewView(harness: Harness, captain: CaptainState, now: number): P
       idleMs: Math.max(0, now - (doc.beatAt ?? now)),
       ...(doc.statusLine === undefined ? {} : { statusLine: doc.statusLine }),
       ...(doc.result === undefined ? {} : { report: doc.result.slice(0, REPORT_CHARS) }),
+      ...(model === undefined ? {} : { model }),
     })
   }
   return members.toSorted((left, right) => left.idleMs - right.idleMs)
@@ -264,11 +278,26 @@ async function moveThread(tx: Tx, workspace: WorkspaceState, threadId: number, t
   thread.parentId = target.coordinatorId
 }
 
-async function checkModel(deps: CaptainDeps, model: ModelRef): Promise<void> {
-  if (deps.currentModels().getModel(model.provider, model.modelId) === undefined)
-    throw new OpRejected("bad_args", `unknown model ${model.provider}/${model.modelId}`)
-  if (await deps.disabled(model))
-    throw new OpRejected("bad_args", `model ${model.provider}/${model.modelId} is disabled`)
+/**
+ * The model and thinking level a Captain's conversation is configured with. A named model or level must be usable;
+ * with neither, it inherits from `creator` (the project's coordinator on create), and stays unset when nothing is usable.
+ */
+async function captainModel(
+  deps: CaptainDeps,
+  args: { readonly model?: ModelRef; readonly thinking?: ModelThinkingLevel },
+  creator: ConversationId | undefined,
+  project: ModelDefaults | undefined,
+): Promise<Extract<ModelPick, { kind: "model" }> | undefined> {
+  const named = args.model !== undefined || args.thinking !== undefined
+  const picked = await deps.pick({
+    ...(creator === undefined ? {} : { creator }),
+    role: "chat",
+    ...(project === undefined ? {} : { project }),
+    ...(named ? { choice: { ...args } } : {}),
+  })
+  if (picked.kind === "model") return picked
+  if (named) throw new OpRejected("bad_args", picked.reason)
+  return undefined
 }
 
 const ProfileFields = {
@@ -277,6 +306,7 @@ const ProfileFields = {
   avatarSeed: opt(str({ minLength: 1, maxLength: 120 })),
   description: opt(str({ maxLength: 200 })),
   model: opt(ModelRefSchema),
+  thinking: opt(ThinkingSchema),
   notes: opt(FileText),
   rules: opt(FileText),
   crewRules: opt(FileText),
@@ -322,10 +352,11 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
       const captain = doc?.captains[args.id]
       if (captain === undefined) throw new OpRejected("bad_args", `no captain ${args.id}`)
       const conversation = await harness.conversation(captain.coordinatorId as ConversationId, context)
-      const model = conversation === undefined ? undefined : (await conversation.agent(context)).model
+      const agent = conversation === undefined ? undefined : await conversation.agent(context)
       return {
         ...profileOf(args.id, captain, workspace),
-        model: model ?? null,
+        model: agent?.model ?? null,
+        thinking: agent?.model === undefined ? null : agent.thinkingLevel,
         notes: captain.notes,
         rules: captain.rules,
         crewRules: captain.crewRules,
@@ -339,7 +370,15 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
     args: obj({ projectId: str({ minLength: 1 }), ...ProfileFields, name: str({ minLength: 1, maxLength: 80 }) }),
     actors: ["owner"],
     run: async (api, args) => {
-      if (args.model !== undefined) await checkModel(deps, args.model)
+      const before = await harness.snapshot(WorkspaceDoc, context)
+      const home = before === undefined ? undefined : defaultSpaceOf(before, args.projectId)
+      const coordinator = home === undefined ? undefined : before?.spaces[home]?.coordinatorId
+      const picked = await captainModel(
+        deps,
+        args,
+        coordinator as ConversationId | undefined,
+        before?.projects[args.projectId]?.settings.models,
+      )
       const id = captainIdOf(api.commandId)
       const created = await harness.commit(async (tx) => {
         const doc = await tx.doc(CaptainsDoc)
@@ -353,7 +392,8 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
         if (liveAliasTaken(doc, alias, undefined)) throw new OpRejected("bad_args", `alias @${alias} is taken`)
         const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } })
         await configure(tx, conversation.id, {
-          ...(args.model === undefined ? {} : { model: args.model }),
+          ...(picked === undefined ? {} : { model: picked.model }),
+          ...(picked?.thinking === undefined ? {} : { thinkingLevel: picked.thinking }),
           modelTools: { add: notesTool() },
         })
         const spaceId = `spc_${id}`
@@ -389,7 +429,23 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
     args: obj({ id: str({ minLength: 1 }), ...ProfileFields }),
     actors: ["owner"],
     run: async (_api, args) => {
-      if (args.model !== undefined) await checkModel(deps, args.model)
+      const found = (await harness.snapshot(CaptainsDoc, context))?.captains[args.id]
+      const current =
+        found === undefined ? undefined : await harness.conversation(found.coordinatorId as ConversationId, context)
+      const currentModel = current === undefined ? undefined : (await current.agent(context)).model
+      const model = args.model ?? currentModel
+      const picked =
+        args.model === undefined && args.thinking === undefined
+          ? undefined
+          : await captainModel(
+              deps,
+              {
+                ...(model === undefined ? {} : { model }),
+                ...(args.thinking === undefined ? {} : { thinking: args.thinking }),
+              },
+              found?.coordinatorId as ConversationId | undefined,
+              undefined,
+            )
       const updated = await harness.commit(async (tx) => {
         const doc = await tx.doc(CaptainsDoc)
         const captain = mustFind(doc, args.id)
@@ -407,8 +463,11 @@ export function captainOps(deps: CaptainDeps): readonly Op[] {
         if (args.notes !== undefined) captain.notes = args.notes
         if (args.rules !== undefined) captain.rules = args.rules
         if (args.crewRules !== undefined) captain.crewRules = args.crewRules
-        if (args.model !== undefined)
-          await configure(tx, captain.coordinatorId as ConversationId, { model: args.model })
+        if (picked !== undefined)
+          await configure(tx, captain.coordinatorId as ConversationId, {
+            model: picked.model,
+            thinkingLevel: picked.thinking ?? null,
+          })
         return profileOf(args.id, captain, workspace)
       }, context)
       return published(updated)

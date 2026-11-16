@@ -1,3 +1,4 @@
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Context, Draft } from "@earendil-works/chord"
 import {
@@ -16,7 +17,14 @@ import {
 } from "@earendil-works/pi-durable"
 import { bool, int, obj, opt, str } from "@earendil-works/pi-schema"
 import type { IntakeService } from "../../src/contracts/intake.ts"
-import { capReason, type Admission, type Feature } from "../../src/contracts/models.ts"
+import {
+  capReason,
+  ModelChoiceSchema,
+  type Admission,
+  type Feature,
+  type ModelPick,
+  type PickInput,
+} from "../../src/contracts/models.ts"
 import {
   SendModeSchema,
   type ReporterInput,
@@ -63,6 +71,8 @@ export type CreateThreadArgs = {
   readonly role: ThreadRole
   readonly task: string
   readonly model: ModelRef
+  /** Unset: the model's default level, or for a side thread the level it forks with. */
+  readonly thinking?: ModelThinkingLevel
   readonly clientRequestId: string
   readonly requestId: string
   readonly removeTools: readonly ToolRegistration[]
@@ -123,6 +133,7 @@ export type ThreadDeps = {
   threadRemovals(parent: ConversationId): readonly Extension[]
   settled(event: ThreadSettled): void
   disabled(ref: ModelRef): Promise<boolean>
+  pick(input: PickInput): Promise<ModelPick>
   admit(feature: Feature): Promise<Admission>
   admitConversation(conversation: ConversationId): Promise<Admission>
 }
@@ -559,6 +570,7 @@ export function lifecycle(deps: ThreadDeps): Threads {
         : await tx.forkConversation(args.forkFrom, forkAt, { ownership })
     await configure(tx, child.id, {
       model: args.model,
+      ...(args.thinking === undefined ? {} : { thinkingLevel: args.thinking }),
       tools: { remove: [...args.removeTools] },
       extensions: { remove: [...deps.threadRemovals(args.parentId)] },
       instructions:
@@ -615,6 +627,7 @@ export function lifecycle(deps: ThreadDeps): Threads {
       role: opt(RoleSchema),
       project: opt(str({ minLength: 1 })),
       spaceId: opt(str({ minLength: 1 })),
+      target: opt(ModelChoiceSchema),
     }),
     actors: ["owner", "agent"],
     run: async (api, args) => {
@@ -639,10 +652,13 @@ export function lifecycle(deps: ThreadDeps): Threads {
         throw new OpRejected("bad_args", `no live project ${space.projectId}`)
       const parentId =
         scope?.kind === "puck" && callerId !== undefined ? callerId : (space.coordinatorId as ConversationId)
-      const parent = await api.harness.conversation(parentId, context)
-      const model = parent === undefined ? undefined : (await parent.agent(context)).model
-      if (model === undefined || (await deps.disabled(model)))
-        throw new OpRejected("bad_args", "the target space has no usable model; pick one first")
+      const picked = await deps.pick({
+        creator: parentId,
+        role: args.role ?? "thread",
+        ...(project.settings.models === undefined ? {} : { project: project.settings.models }),
+        ...(args.target === undefined ? {} : { choice: args.target }),
+      })
+      if (picked.kind === "refused") throw new OpRejected("bad_args", picked.reason)
       const admission = await deps.admit("thread")
       if (admission.kind === "capped") throw new OpRejected("forbidden", capReason(admission))
       const requestId = `thread-create:${api.commandId}`
@@ -655,7 +671,8 @@ export function lifecycle(deps: ThreadDeps): Threads {
             title: args.title,
             role: args.role ?? "thread",
             task: args.task,
-            model,
+            model: picked.model,
+            ...(picked.thinking === undefined ? {} : { thinking: picked.thinking }),
             clientRequestId: requestId,
             requestId,
             removeTools: childTools(deps.toolsNamed),
@@ -686,6 +703,7 @@ export function lifecycle(deps: ThreadDeps): Threads {
       conv: int({ minimum: 0 }),
       title: str({ minLength: 1, maxLength: 200 }),
       task: str({ minLength: 1 }),
+      target: opt(ModelChoiceSchema),
     }),
     actors: ["owner"],
     run: async (api, args) => {
@@ -694,10 +712,13 @@ export function lifecycle(deps: ThreadDeps): Threads {
       if (scope?.kind !== "space")
         throw new OpRejected("bad_args", `conversation ${args.conv} is not a space coordinator or Captain`)
       if (scope.space.archived) throw new OpRejected("bad_args", `space ${scope.spaceId} is archived`)
-      const parent = await api.harness.conversation(parentId, context)
-      const model = parent === undefined ? undefined : (await parent.agent(context)).model
-      if (model === undefined || (await deps.disabled(model)))
-        throw new OpRejected("bad_args", "the conversation has no usable model; pick one first")
+      const picked = await deps.pick({
+        creator: parentId,
+        role: "thread",
+        ...(scope.project?.settings.models === undefined ? {} : { project: scope.project.settings.models }),
+        ...(args.target === undefined ? {} : { choice: args.target }),
+      })
+      if (picked.kind === "refused") throw new OpRejected("bad_args", picked.reason)
       const admission = await deps.admit("thread")
       if (admission.kind === "capped") throw new OpRejected("forbidden", capReason(admission))
       const requestId = `thread-side:${api.commandId}`
@@ -710,7 +731,8 @@ export function lifecycle(deps: ThreadDeps): Threads {
             title: args.title,
             role: "thread",
             task: args.task,
-            model,
+            model: picked.model,
+            ...(picked.thinking === undefined ? {} : { thinking: picked.thinking }),
             clientRequestId: requestId,
             requestId,
             removeTools: childTools(deps.toolsNamed),
