@@ -18,7 +18,7 @@ export function Breadcrumb(props: { crumbs: readonly Crumb[] }): JSX.Element {
               <a
                 href={crumb.href}
                 aria-current={index() === props.crumbs.length - 1 ? "page" : undefined}
-                class="truncate rounded-xs outline-none transition-colors duration-100 hover:text-ink focus-visible:shadow-[0_0_0_2px_var(--color-primary-soft)] aria-[current=page]:text-ink-2"
+                class="truncate rounded-xs transition-colors duration-100 hover:text-ink aria-[current=page]:text-ink-2"
               >
                 {crumb.label}
               </a>

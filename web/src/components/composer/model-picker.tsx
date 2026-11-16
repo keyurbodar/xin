@@ -154,7 +154,7 @@ export function ModelPicker(props: {
                   event.preventDefault()
                   toggleFavorite(target.model)
                 }}
-                class="h-full w-full bg-transparent text-small text-ink outline-none placeholder:text-placeholder"
+                class="h-full w-full bg-transparent text-small text-ink placeholder:text-placeholder"
               />
             </ui-combobox-input>
           </div>

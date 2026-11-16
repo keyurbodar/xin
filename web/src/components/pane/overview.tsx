@@ -27,7 +27,7 @@ export function Section(props: { label: string; count: number; action?: JSX.Elem
             setInstant(keyStarted())
             setOpen((value) => !value)
           }}
-          class="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left text-sm text-ink outline-none"
+          class="focus-inset flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 text-left text-sm text-ink"
         >
           {props.label}
           <span class="text-sm text-ink-3">{props.count}</span>

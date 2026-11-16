@@ -131,4 +131,4 @@ export function Field(props: {
 }
 
 export const FIELD_INPUT =
-  "w-full rounded-sm border border-line-2 bg-panel px-2.5 text-base text-ink outline-none placeholder:text-icon focus:border-primary/40 focus:ring-[3px] focus:ring-primary-soft disabled:opacity-50"
+  "w-full rounded-sm border border-line-2 bg-panel px-2.5 text-base text-ink placeholder:text-icon focus:border-primary/40 disabled:opacity-50"

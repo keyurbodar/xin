@@ -206,7 +206,7 @@ export function AutomationDialog(props: {
                 <ui-segmented-control-item
                   value={target}
                   title={TARGET_WORD[target]}
-                  class="im-press grid cursor-default place-items-center truncate rounded-xs px-1.5 text-xs text-ink-3 outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-primary-soft data-[checked]:bg-card data-[checked]:text-ink data-[checked]:shadow-ring data-[disabled]:opacity-50"
+                  class="im-press grid cursor-default place-items-center truncate rounded-xs px-1.5 text-xs text-ink-3 hover:text-ink data-[checked]:bg-card data-[checked]:text-ink data-[checked]:shadow-ring data-[disabled]:opacity-50"
                 >
                   {TARGET_SHORT[target]}
                 </ui-segmented-control-item>

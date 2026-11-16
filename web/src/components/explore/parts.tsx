@@ -22,7 +22,7 @@ export function Breadcrumb(props: { crumbs: readonly Crumb[] }): JSX.Element {
             >
               <a
                 href={`#${crumb.to ?? ""}`}
-                class="shrink-0 rounded-xs text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary"
+                class="shrink-0 rounded-xs text-ink-2 hover:text-ink"
               >
                 {crumb.label}
               </a>
@@ -91,7 +91,7 @@ export function SearchBox(props: { value: string; placeholder: string; onInput: 
     onCleanup(() => window.removeEventListener("keydown", onKey))
   })
   return (
-    <label class="flex h-8 w-full items-center gap-2 rounded-sm bg-bg px-2.5 shadow-ring focus-within:shadow-[0_0_0_1px_var(--color-primary)] sm:w-[220px]">
+    <label data-focus-group class="flex h-8 w-full items-center gap-2 rounded-sm bg-bg px-2.5 shadow-ring sm:w-[220px]">
       <Glyph name="search" size={14} class="shrink-0 text-ink-3" />
       <input
         ref={input}
@@ -107,7 +107,7 @@ export function SearchBox(props: { value: string; placeholder: string; onInput: 
         placeholder={props.placeholder}
         aria-label={props.placeholder}
         spellcheck={false}
-        class="h-full min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-placeholder focus:outline-none"
+        class="h-full min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-placeholder"
       />
       <span class="kbd hidden sm:inline-flex" aria-hidden="true">
         /
@@ -130,7 +130,7 @@ export function ViewAll(props: { onClick: () => void; label?: string | undefined
     <button
       type="button"
       onClick={() => props.onClick()}
-      class="ex-color flex items-center gap-1 rounded-xs text-sm text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary"
+      class="ex-color flex items-center gap-1 rounded-xs text-sm text-ink-2 hover:text-ink"
     >
       {props.label ?? "View all"}
       <Glyph name="arrow-right" size={12} />
@@ -150,7 +150,7 @@ export function CompactRow(props: {
   return (
     <a
       href={`#${props.to}`}
-      class="ex-color flex min-w-0 items-center gap-3 rounded-md px-2 py-2 hover:bg-hover focus-visible:outline-2 focus-visible:outline-primary"
+      class="ex-color flex min-w-0 items-center gap-3 rounded-md px-2 py-2 hover:bg-hover"
     >
       {props.logo}
       <span class="min-w-0 flex-1">
@@ -222,7 +222,7 @@ export function LoadFailed(props: { what: string; message: string; onRetry: () =
 /** The page frame: a centred 640px column with the breadcrumb on top. */
 export function Page(props: { crumbs: readonly Crumb[]; wide?: boolean | undefined; children: JSX.Element }): JSX.Element {
   return (
-    <div class="min-h-0 flex-1 overflow-y-auto">
+    <div class="min-h-0 flex-1 scroll-py-[calc(var(--focus-ring-width)+var(--focus-ring-offset))] overflow-y-auto">
       <div
         class="mx-auto flex w-full flex-col gap-6 px-4 pb-16 pt-5 sm:px-8"
         classList={{ "max-w-[688px]": props.wide !== true, "max-w-[976px]": props.wide === true }}

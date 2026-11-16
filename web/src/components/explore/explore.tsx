@@ -120,7 +120,7 @@ function ExploreList(props: { tab: ExploreTab }): JSX.Element {
                   <ui-tabs-tab value={tab}>
                     <button
                       type="button"
-                      class="ex-color h-7 rounded-[5px] px-3 text-sm font-medium text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary data-[selected]:bg-card data-[selected]:text-ink data-[selected]:shadow-ring"
+                      class="ex-color h-7 rounded-[5px] px-3 text-sm font-medium text-ink-2 hover:text-ink data-[selected]:bg-card data-[selected]:text-ink data-[selected]:shadow-ring"
                     >
                       {TAB_LABEL[tab]}
                     </button>
@@ -442,7 +442,7 @@ function FeaturedTheme(props: { theme: ExploreTheme }): JSX.Element {
 function ThemeCard(props: { theme: ExploreTheme }): JSX.Element {
   const added = (): boolean => isCatalogThemeAdded(themeSource(props.theme.id))
   return (
-    <a href={`#${themePath(props.theme.id)}`} class="group flex flex-col gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-primary">
+    <a href={`#${themePath(props.theme.id)}`} class="group flex flex-col gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-focus">
       <span class="ex-color block overflow-hidden rounded-md shadow-ring group-hover:shadow-[0_0_0_1px_var(--color-line-3)]">
         <ThemePreview
           palette={themePalette(props.theme)}

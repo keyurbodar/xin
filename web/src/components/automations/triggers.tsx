@@ -114,7 +114,7 @@ function ScheduleFields(props: { trigger: Extract<TriggerDraft, { kind: "schedul
             {(preset) => (
               <ui-radio
                 value={preset.cron}
-                class="im-press im-hover flex h-6 cursor-default items-center rounded-sm border border-line-2 px-2 text-xs text-ink-2 outline-none focus-visible:ring-2 focus-visible:ring-primary-soft data-[checked]:border-line-3 data-[checked]:bg-secondary data-[checked]:text-ink data-[disabled]:opacity-50"
+                class="im-press im-hover flex h-6 cursor-default items-center rounded-sm border border-line-2 px-2 text-xs text-ink-2 data-[checked]:border-line-3 data-[checked]:bg-secondary data-[checked]:text-ink data-[disabled]:opacity-50"
               >
                 {preset.label}
               </ui-radio>

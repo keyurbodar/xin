@@ -173,7 +173,7 @@ function entryOf(part: string | undefined): Entry {
 const pluginHref = (item: SlotItem<"settings.page">): string => `#/settings/plugin/${item.plugin}/${item.id}`
 
 const NAV_ITEM =
-  "im-press im-hover flex h-[var(--h-row)] shrink-0 items-center gap-2 rounded-sm px-2 text-small whitespace-nowrap outline-none focus-visible:shadow-[0_0_0_2px_var(--color-primary-soft)] aria-[current=page]:bg-secondary aria-[current=page]:text-ink max-sm:aria-[current=page]:bg-transparent"
+  "im-press im-hover flex h-[var(--h-row)] shrink-0 items-center gap-2 rounded-sm px-2 text-small whitespace-nowrap aria-[current=page]:bg-secondary aria-[current=page]:text-ink max-sm:aria-[current=page]:bg-transparent"
 
 const NAV_GROUP = "flex flex-col gap-1"
 
@@ -220,7 +220,7 @@ export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"sett
         classList={{ "max-sm:hidden": chosen() }}
       >
         <h1 class="px-1 text-title-lg font-title text-ink sm:hidden">Settings</h1>
-        <ui-input-group class="flex h-[var(--h-control)] items-center gap-2 rounded-sm bg-bg px-2 shadow-ring focus-within:shadow-[0_0_0_1px_var(--color-primary),0_0_0_3px_var(--color-primary-soft)] max-sm:rounded-full max-sm:px-3">
+        <ui-input-group class="flex h-[var(--h-control)] items-center gap-2 rounded-sm bg-bg px-2 shadow-ring max-sm:rounded-full max-sm:px-3">
           <Search size={14} stroke-width={1.5} class="shrink-0 text-ink-3" aria-hidden="true" />
           <ui-input class="flex min-w-0 flex-1">
             <input
@@ -231,7 +231,7 @@ export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"sett
               aria-label="Search settings"
               spellcheck={false}
               autocomplete="off"
-              class="min-w-0 flex-1 bg-transparent text-small text-ink outline-none placeholder:text-placeholder [&::-webkit-search-cancel-button]:hidden"
+              class="min-w-0 flex-1 bg-transparent text-small text-ink placeholder:text-placeholder [&::-webkit-search-cancel-button]:hidden"
             />
           </ui-input>
           <ui-input-clear>

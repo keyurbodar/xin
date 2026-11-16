@@ -126,7 +126,7 @@ export function CardBlock(props: { children: JSX.Element; class?: string | undef
 }
 
 export const FIELD =
-  "h-[var(--h-control)] w-full min-w-0 rounded-sm bg-bg px-2 text-body text-ink shadow-ring outline-none placeholder:text-placeholder focus-visible:shadow-[0_0_0_1px_var(--color-primary),0_0_0_3px_var(--color-primary-soft)] disabled:opacity-40"
+  "h-[var(--h-control)] w-full min-w-0 rounded-sm bg-bg px-2 text-body text-ink shadow-ring placeholder:text-placeholder disabled:opacity-40"
 
 export const MONO_FIELD = `${FIELD} font-mono`
 
@@ -167,7 +167,7 @@ export function Switch(props: {
         event.preventDefault()
         props.onChange(event.detail.value)
       }}
-      class="settings-switch relative block h-4 w-7 shrink-0 cursor-default rounded-full bg-line-2 outline-none transition-colors duration-150 focus-visible:shadow-[0_0_0_3px_var(--color-primary-soft)] data-[checked]:bg-ink data-[disabled]:opacity-40"
+      class="settings-switch relative block h-4 w-7 shrink-0 cursor-default rounded-full bg-line-2 transition-colors duration-150 data-[checked]:bg-ink data-[disabled]:opacity-40"
     >
       <ui-switch-thumb class="absolute left-0.5 top-0.5 block h-3 w-3 rounded-full bg-ink-3 data-[checked]:translate-x-3 data-[checked]:bg-bg" />
     </ui-switch>
@@ -180,7 +180,7 @@ export function CheckboxField(props: { checked: boolean; label: string; onChange
       <ui-checkbox
         prop:checked={props.checked}
         on:checkedchange={(event: CustomEvent<{ value: boolean }>) => props.onChange(event.detail.value)}
-        class="grid h-4 w-4 shrink-0 place-items-center rounded-xs bg-bg text-on-primary shadow-ring outline-none focus-visible:shadow-[0_0_0_3px_var(--color-primary-soft)] data-[checked]:bg-primary"
+        class="grid h-4 w-4 shrink-0 place-items-center rounded-xs bg-bg text-on-primary shadow-ring data-[checked]:bg-primary"
       >
         <ui-checkbox-indicator class="grid place-items-center">
           <Check size={12} stroke-width={2} aria-hidden="true" />

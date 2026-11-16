@@ -47,7 +47,7 @@ function KindMenu(props: { kind: TokenKind; rows: readonly Suggestion[]; onPick:
                 ref={(element) => (search = element)}
                 aria-label={`Search ${label().toLowerCase()}`}
                 placeholder={`Search ${label().toLowerCase()}`}
-                class="h-full w-full bg-transparent text-small text-ink outline-none placeholder:text-placeholder"
+                class="h-full w-full bg-transparent text-small text-ink placeholder:text-placeholder"
               />
             </ui-command-input>
           </div>
