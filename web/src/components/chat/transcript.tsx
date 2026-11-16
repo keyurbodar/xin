@@ -183,7 +183,7 @@ export function Transcript(props: {
               >
                 <div class="flex min-w-0 flex-1 items-start gap-1">
                   <div class="min-w-0 flex-1">
-                    <Markdown text={live().partial} />
+                    <Markdown streaming text={live().partial} />
                   </div>
                   <span class="im-caret mt-1.5 shrink-0" />
                 </div>

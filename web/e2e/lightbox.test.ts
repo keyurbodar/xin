@@ -248,6 +248,27 @@ test("the blocked-clipboard status clears on its timer, on the next image and on
   await page.close()
 })
 
+for (const outcome of ["refused", "successful"] as const) {
+  test(`a ${outcome} copy that settles after the image changes shows nothing on the next image`, async () => {
+    const page = await openAt(0)
+    await page.evaluate((refuse) => {
+      const settle = () =>
+        new Promise<void>((resolve, reject) =>
+          setTimeout(() => (refuse ? reject(new DOMException("denied", "NotAllowedError")) : resolve()), 600),
+        )
+      Object.defineProperty(navigator, "clipboard", { value: { write: settle, writeText: settle } })
+    }, outcome === "refused")
+    await page.getByRole("button", { name: "Copy image" }).click()
+    await page.waitForTimeout(100)
+    await page.getByRole("button", { name: "Next image" }).click()
+    await page.waitForTimeout(1300)
+    expect(await counter(page)).toBe("2 / 3")
+    expect(await page.getByText("The browser blocked the clipboard.").count()).toBe(0)
+    expect(await page.getByRole("button", { name: "Copied" }).count()).toBe(0)
+    await page.close()
+  })
+}
+
 test("a cross-origin image downloads as a file without navigating the app", async () => {
   const page = await gallery({ origin: "https://images.example" })
   const before = page.url()
