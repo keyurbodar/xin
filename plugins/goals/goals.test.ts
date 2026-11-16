@@ -229,6 +229,28 @@ describe("lifecycle", () => {
     expect(created).toMatchObject({ kind: "ok", goal: { maxRounds: 4 } })
   })
 
+  it("reads each conversation's goal from kv at most once, so a turn's round check costs no row", async () => {
+    const stub = fresh()
+    const gets = await runInDurableObject(stub, async (_home: Home, state: DurableObjectState) => {
+      let count = 0
+      const kv = new Proxy(state.storage.kv, {
+        get(target, property) {
+          if (property === "get") count++
+          const value: unknown = Reflect.get(target, property)
+          return typeof value === "function" ? value.bind(target) : value
+        },
+      })
+      const goals = createGoals({ kv, defaultMaxRounds: 4 })
+      await goals.set({ conversation: 1 as ConversationId, action: "create", objective: "ship the release" })
+      for (let turn = 0; turn < 3; turn++) {
+        await goals.reserve(1 as ConversationId)
+        await goals.reserve(2 as ConversationId)
+      }
+      return count
+    })
+    expect(gets).toBeLessThanOrEqual(1)
+  })
+
   it("answers no goal before a create", async () => {
     const { stub, root } = await setup()
     expect(record((await get(stub, root)).result).goal).toBeNull()
