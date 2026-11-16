@@ -1206,20 +1206,19 @@ export function create(deps: ModelsPort): ModelsParts {
     actors: ["owner"],
     credentials: ["key", "custom"],
     run: async (_api, args) => {
-      let entry: StoredEntry
       if (args.custom !== undefined) {
         if (API_STREAMS[args.custom.api] === undefined)
           throw new OpRejected("bad_args", `unsupported api ${args.custom.api}`)
-        entry = {
+        await store.set(args.provider, {
           credential: { type: "api_key", key: args.custom.key },
           endpoint: { baseUrl: args.custom.baseUrl, api: args.custom.api },
-        }
+        })
       } else if (args.key !== undefined) {
-        entry = { credential: { type: "api_key", key: args.key } }
+        const key = args.key
+        await store.modify(args.provider, async () => ({ type: "api_key", key }))
       } else {
         throw new OpRejected("bad_args", "give either a key or a custom endpoint")
       }
-      await store.set(args.provider, entry)
       registry.restore(args.provider)
       return { provider: args.provider, type: "api_key", custom: args.custom !== undefined }
     },
