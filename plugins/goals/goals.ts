@@ -44,15 +44,25 @@ type Arm = GoalActivation | "keep"
 export function createGoals(port: GoalsPort): GoalsService {
   const armed = new Set<number>()
 
+  /** Each conversation's goal as last read or written, so a turn's round check reads no kv row after the first. */
+  const cached = new Map<ConversationId, Goal | null>()
+
   const read = (conversation: ConversationId): Goal | undefined => {
+    const known = cached.get(conversation)
+    if (known !== undefined) return known ?? undefined
     const stored: unknown = port.kv.get(keyOf(conversation))
-    if (stored === undefined) return undefined
+    if (stored === undefined) {
+      cached.set(conversation, null)
+      return undefined
+    }
     if (!PLAN.check(stored)) throw new Error(`goal.${conversation} is not a valid goal`)
+    cached.set(conversation, stored)
     return stored
   }
 
   const write = (conversation: ConversationId, goal: Goal): void => {
     port.kv.put(keyOf(conversation), goal)
+    cached.set(conversation, goal)
   }
 
   const setActivation = (conversation: ConversationId, arm: Arm): void => {
@@ -215,6 +225,7 @@ export function createGoals(port: GoalsPort): GoalsService {
     const found = expected(conversation, request.id, request.revision)
     if (found === undefined) return stale(conversation)
     port.kv.delete(keyOf(conversation))
+    cached.set(conversation, null)
     setActivation(conversation, "disarmed")
     return { kind: "ok", goal: null }
   }
@@ -249,8 +260,9 @@ export function createGoals(port: GoalsPort): GoalsService {
     },
 
     reserve: async (conversation): Promise<GoalReservation | null> => {
+      if (!armed.has(conversation)) return null
       const goal = read(conversation)
-      if (goal === undefined || goal.phase !== "active" || !armed.has(conversation)) return null
+      if (goal === undefined || goal.phase !== "active") return null
       if (goal.rounds >= goal.maxRounds) {
         blockAtCap(conversation, goal)
         return null
