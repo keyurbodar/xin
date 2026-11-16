@@ -167,3 +167,90 @@ test("the crew menu adds the chosen thread", async () => {
   expect(await sent(page, "captain.crew.add")).toEqual(['captain.crew.add:{"id":"c1","threadId":31}'])
   await page.close()
 })
+
+const centre = async (page: Page, name: string) => {
+  const box = await page.getByRole("button", { name }).boundingBox()
+  return { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+}
+
+test("the list view loads no popup elements until New issue or the closed toggle is used, and a bare click still opens", async () => {
+  const page = await open("list")
+  expect(await page.evaluate(() => ["ui-popover", "ui-select", "ui-radio-group", "ui-toggle", "ui-menu"].map((tag) => customElements.get(tag) !== undefined))).toEqual([
+    false,
+    false,
+    false,
+    false,
+    false,
+  ])
+  await page.evaluate(() => document.querySelector<HTMLButtonElement>("[aria-label='New issue']")!.click())
+  await page.getByRole("dialog").waitFor()
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.evaluate(() => document.querySelector<HTMLButtonElement>("[aria-label='Closed issues']")!.click())
+  await page.locator("[data-issue='5']").waitFor()
+  expect(await page.getByRole("button", { name: "Closed issues" }).getAttribute("aria-pressed")).toBe("true")
+  await page.close()
+})
+
+test("Space on the chosen priority clears it, as a second press does", async () => {
+  const page = await open("list")
+  await page.getByRole("button", { name: "New issue" }).click()
+  await page.getByRole("dialog").waitFor()
+  await settled(page)
+  const high = page.getByRole("radio", { name: "High" })
+  await high.focus()
+  await page.keyboard.press("Space")
+  expect(await high.getAttribute("aria-checked")).toBe("true")
+  await page.keyboard.press("Space")
+  expect(await high.getAttribute("aria-checked")).toBe("false")
+  await page.close()
+})
+
+test("while a picked state saves, pressing either picker opens nothing and only one update goes out", async () => {
+  const page = await open("issue", "&slow=1500")
+  const state = await centre(page, "State: In progress")
+  const priority = await centre(page, "Priority: High")
+  await page.mouse.click(state.x, state.y)
+  await page.getByRole("menuitemradio", { name: "Done" }).click()
+  await page.getByRole("button", { name: "State: In progress", disabled: true }).waitFor()
+  for (const at of [state, priority]) {
+    await page.mouse.click(at.x, at.y)
+    await page.waitForTimeout(150)
+    expect(await page.getByRole("menu").count()).toBe(0)
+  }
+  await page.getByRole("button", { name: "State: Done" }).waitFor()
+  expect(await sent(page, "issue.update")).toEqual(['issue.update:{"id":1,"state":"done"}'])
+  await page.close()
+})
+
+test("while an assignee saves, Add an assignee opens nothing and only one update goes out", async () => {
+  const page = await open("issue", "&slow=1500")
+  await page.getByRole("button", { name: "Add an assignee" }).click()
+  await page.getByRole("dialog", { name: "Add an assignee" }).waitFor()
+  await settled(page)
+  await page.keyboard.type("review")
+  await settled(page)
+  await page.keyboard.press("Enter")
+  await page.getByRole("button", { name: "Add an assignee", disabled: true }).waitFor()
+  const add = await centre(page, "Add an assignee")
+  await page.mouse.click(add.x, add.y)
+  await page.waitForTimeout(150)
+  expect(await page.getByRole("dialog", { name: "Add an assignee" }).count()).toBe(0)
+  await page.waitForTimeout(1800)
+  expect(await sent(page, "issue.update")).toHaveLength(1)
+  await page.close()
+})
+
+test("while a crew add saves, the add menu opens nothing and only one add goes out", async () => {
+  const page = await open("crew", "&slow=1500")
+  const add = await centre(page, "Add a thread to the crew")
+  await page.mouse.click(add.x, add.y)
+  await page.getByRole("menuitem", { name: "Draft the launch post" }).click()
+  await page.getByRole("button", { name: "Add a thread to the crew", disabled: true }).waitFor()
+  await page.mouse.click(add.x, add.y)
+  await page.waitForTimeout(150)
+  expect(await page.getByRole("menu").count()).toBe(0)
+  await page.waitForTimeout(1800)
+  expect(await sent(page, "captain.crew.add")).toEqual(['captain.crew.add:{"id":"c1","threadId":31}'])
+  await page.close()
+})

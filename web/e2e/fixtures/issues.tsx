@@ -1,8 +1,7 @@
 import "../../src/styles/app.css"
-import { Show } from "solid-js"
+import { lazy, Show } from "solid-js"
 import { render } from "solid-js/web"
 import { CrewView } from "../../src/components/pane/crew.tsx"
-import { IssueView } from "../../src/components/pane/issue.tsx"
 import { IssuesSection } from "../../src/components/pane/issues.tsx"
 import type { Streams } from "../../src/lib/api.ts"
 import type { CaptainProfile } from "../../src/lib/captains.ts"
@@ -162,7 +161,8 @@ const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<
       return { t: "ack", id: frame.id, ok: false, error: { code: "bad_args", message: problem instanceof Error ? problem.message : String(problem) } }
     }
   })
-  await new Promise((resolve) => setTimeout(resolve, Number(params.get("delay") ?? 20)))
+  const writes = frames.some((frame) => !["issue.states", "issue.list", "issue.get"].includes(frame.op))
+  await new Promise((resolve) => setTimeout(resolve, writes ? Number(params.get("slow") ?? 20) : 20))
   return new Response(JSON.stringify(Array.isArray(body) ? acks : acks[0]), { headers: { "content-type": "application/json" } })
 }
 
@@ -188,6 +188,7 @@ Object.assign(window, {
 trackMotion()
 subscribeHome(streams as unknown as Streams)
 
+const IssueView = lazy(() => import("../../src/components/pane/issue.tsx").then((module) => ({ default: module.IssueView })))
 const opened: number[] = []
 Object.assign(window, { opened })
 

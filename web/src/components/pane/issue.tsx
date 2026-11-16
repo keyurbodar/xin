@@ -145,7 +145,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
                       label={stateName(issue().state)}
                       mark={<StateMark tone={stateTone(stateOf(issue().state))} />}
                       value={issue().state}
-                      busy={action.busy() === "state"}
+                      busy={action.busy() !== undefined}
                       options={loaded().states.map((state) => ({
                         value: state.id,
                         label: state.name,
@@ -164,7 +164,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
                       label={PRIORITY_LABEL[issue().priority]}
                       mark={<PriorityMark priority={issue().priority} decorative />}
                       value={issue().priority}
-                      busy={action.busy() === "priority"}
+                      busy={action.busy() !== undefined}
                       options={PRIORITIES.map((level: Priority) => ({
                         value: level,
                         label: PRIORITY_LABEL[level],
@@ -207,7 +207,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
                       assignees={issue().assignees}
                       name={(assignee) => assigneeName(assignee, names())}
                       candidates={candidates()}
-                      busy={action.busy() === "assignees"}
+                      busy={action.busy() !== undefined}
                       onAdd={(add) => edit("assignees", assigneesEdit(issue().assignees, { add }))}
                       onRemove={(remove) => edit("assignees", assigneesEdit(issue().assignees, { remove }))}
                     />
@@ -244,7 +244,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
                   ["blocked_by", detail().links.blockedBy],
                   ["related", detail().links.related],
                 ]}
-                busy={action.busy() === "links"}
+                busy={action.busy() !== undefined}
                 stateOf={stateOf}
                 onOpen={open}
                 onRemove={(kind, other) => void link(kind, other, false)}
@@ -252,7 +252,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
               <AddLink
                 project={issueScope(props.project, props.captain)}
                 detail={detail()}
-                busy={action.busy() === "links"}
+                busy={action.busy() !== undefined}
                 error={action.error("links")}
                 onLink={(kind, other) => link(kind, other, true)}
               />
