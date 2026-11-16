@@ -1,0 +1,1 @@
+2026-11-16T16:00:00Z	plugins	Drive reads and shares blobs through new files service methods (textOf, share, unshare) and drops host and runtime	XIN-23 defect 5: Drive held runtime only for env.FILES; the files row already holds the bucket	drive.test passes with Drive declaring conversations, files and storage	fixed in #19

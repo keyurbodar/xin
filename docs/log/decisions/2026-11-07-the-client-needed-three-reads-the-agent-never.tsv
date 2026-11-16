@@ -1,0 +1,1 @@
+2026-11-07T17:20	P14	The client needed three reads the agent never asks for: request.list, usage.summary, history.page	Inbox needs question text and options, Settings needs spend, and the bounded socket snapshot cannot page older entries	plugins/questions/questions.ts, plugins/models/models.ts, plugins/intake/history.ts; each owner-only and over existing state	added, gate green

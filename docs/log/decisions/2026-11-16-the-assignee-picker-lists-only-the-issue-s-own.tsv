@@ -1,0 +1,1 @@
+2026-11-16T22:00:00Z	web-issues	The assignee picker lists only the issue's own project: its threads, its live Captains, and its lead unless a Captain shares that coordinator	XIN-23 on #44: it offered every Captain and every project's lead. XIN-14 adds the server-side refusal	web/src/lib/issues.ts assignableCandidates	adopted

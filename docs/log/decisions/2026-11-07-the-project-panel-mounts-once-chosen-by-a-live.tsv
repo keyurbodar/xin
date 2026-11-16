@@ -1,0 +1,1 @@
+2026-11-07T18:23	P14	The project panel mounts once, chosen by a live 1280px media query, instead of an inline copy plus a sheet copy	both copies created their own conversation view and subscribed to the same thread; below 1280px the hidden copy still parsed every delta	web/src/lib/media.ts; web/src/screens/project.tsx	accepted

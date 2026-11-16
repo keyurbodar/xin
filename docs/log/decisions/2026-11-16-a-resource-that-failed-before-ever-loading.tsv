@@ -1,0 +1,1 @@
+2026-11-16T22:00:00Z	XIN-21	A resource that failed before ever loading throws when read (Solid's latest), so automation views read a settled() value that is undefined on error	The not-found route crashed into the error boundary ('This screen stopped') on automation.get not_found	Chromium: #/automations/missing-id shows Automation not found with the error and Retry	adopted

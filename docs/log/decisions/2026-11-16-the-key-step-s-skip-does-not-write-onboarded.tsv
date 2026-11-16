@@ -1,0 +1,1 @@
+2026-11-16T07:00:00Z	onboarding v5	the key step's Skip does not write onboarded; only a Skip that leaves for the shell does	the key step's Skip moves to the next step inside setup, so setup is not finished	web/src/state/onboarding.ts skipStep	adopted

@@ -1,0 +1,1 @@
+2026-11-16T22:00:00Z	XIN-21	web/vite.config.ts proxies /hooks to the Worker in dev	The UI shows location.origin + trigger.path, which under Vite is the dev origin; without the proxy the shown URL 404s in dev	Chromium: POST to the Vite-origin URL returned 202 started; after Rotate the old URL returned 404	adopted

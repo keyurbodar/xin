@@ -1,0 +1,1 @@
+2026-11-16T23:00:00Z	drive-ui	Owner Drive ops are not checked against the conversation's scopes: the owner may read and write any scope	XIN-23 review (low), accepted by Bosun as owner trust: the owner owns every scope, and the agent's file tools are already limited to the scopes attached to its conversation	plugins/drive/drive.ts ops are owner and plugin only	accepted

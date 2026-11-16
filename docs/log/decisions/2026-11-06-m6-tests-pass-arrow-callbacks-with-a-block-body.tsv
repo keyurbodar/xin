@@ -1,0 +1,1 @@
+2026-11-06T15:26:00Z	M6	M6 tests pass arrow callbacks with a block body where the body is a binary or member expression, not a wrapped expression body	fmt:check rejected the hugged form at under 120 columns while identical call-expression bodies passed	gate fmt job 6c1a66ca pass after the rewrite; test job 3611953e 14/14	adopted

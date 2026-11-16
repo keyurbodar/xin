@@ -1,0 +1,1 @@
+2026-11-07T23:30	P14	By-project usage lists every project that ran, with its tokens, not only projects that cost money	a free or local model produces tokens and no spend, so the old spend>0 filter showed "No project has spend yet" over real work	web/src/components/settings/usage.tsx tokens table; filter spend>0 || tokens>0	P14-live-usage.png shows Q1 800 and Q3 640 tokens

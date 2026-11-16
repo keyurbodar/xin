@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	onboarding v5	progress from the instance: #/welcome reads models.list, captain.list and captain.get on each visit and opens the first open step; module signals only cache it	XIN-23 on #29: a reload lost the key and the Captain and re-creating hit alias taken; three /v1/cmd reads per visit, no new rows	web/src/lib/onboarding.test.ts	adopted

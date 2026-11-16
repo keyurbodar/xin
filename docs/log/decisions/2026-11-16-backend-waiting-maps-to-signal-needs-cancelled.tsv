@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	client	Backend waiting maps to Signal needs, cancelled and a paused schedule map to idle (word "Stopped"); paused and cancelled states are removed from the client	Signal has no paused or cancelled shape (design system §0.8 still-open list); idle is the still centre dot, the closest settled meaning	web/src/lib/status.ts	adopted
