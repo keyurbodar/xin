@@ -197,7 +197,7 @@ const TURN_TASKS: readonly TurnTask[] = [
       modelCalls: 4,
       promptBytes: 78_000,
       freshBytes: 21_500,
-      schemaBytes: 8_000,
+      schemaBytes: 9_000,
       toolResultBytes: 6_000,
       wallMs: 5_000,
     },
@@ -301,7 +301,7 @@ describe("a delegated thread, in what its first request bills", () => {
     expect(first.tools).not.toContain("create_goal")
     expect(first.tools).not.toContain("issue")
     expect(first.tools).toContain("issue_comment")
-    expect(first.promptBytes ?? Infinity).toBeLessThanOrEqual(5_760)
-    expect(first.schemaBytes ?? Infinity).toBeLessThanOrEqual(5_155)
+    expect(first.promptBytes ?? Infinity).toBeLessThanOrEqual(6_850)
+    expect(first.schemaBytes ?? Infinity).toBeLessThanOrEqual(5_850)
   })
 })

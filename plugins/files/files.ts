@@ -105,19 +105,25 @@ const projectScoped =
 const agentActor = (conversationId: ConversationId): Actor => ({ kind: "agent", conversationId })
 
 /** The path pi resolves for a tool argument: unicode spaces become plain ones and one leading `@` is dropped. */
+/** Tools whose `path` the project scope checks; the listing tools start at the working directory without one. */
+const LISTING_TOOLS = new Set(["ls", "find", "grep"])
+const SCOPED_TOOLS = new Set(["read", "write", "edit", ...LISTING_TOOLS])
+
 function toolPath(path: string): string {
   return path.replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ").replace(/^@/, "")
 }
 
 function scoped(scope: FileScope): Extension {
   const beforeTool: ToolHooks["beforeTool"] = async (call, api, toolContext) => {
-    if (call.name !== "read" && call.name !== "write" && call.name !== "edit") return undefined
-    const path = call.arguments.path
+    if (!SCOPED_TOOLS.has(call.name)) return undefined
+    const given = call.arguments.path
+    const path = given === undefined && LISTING_TOOLS.has(call.name) ? "." : given
     if (typeof path !== "string") return undefined
     const cwd = (await api.snapshot(AgentDoc, api.conversationId, toolContext))?.cwd ?? "/"
     const absolute = resolvePath(cwd, toolPath(path))
     if (absolute === undefined) return { block: "path escapes the files root" }
-    const blocked = await scope({ actor: agentActor(api.conversationId), path: absolute, read: api })
+    const checked = LISTING_TOOLS.has(call.name) ? `${absolute.replace(/\/$/, "")}/` : absolute
+    const blocked = await scope({ actor: agentActor(api.conversationId), path: checked, read: api })
     return blocked === undefined ? undefined : { block: blocked }
   }
   return defineExtension({
