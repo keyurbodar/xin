@@ -1,4 +1,10 @@
-import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxToolCall, type Message } from "@earendil-works/pi-ai"
+import {
+  type FauxResponseStep,
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+  type Message,
+} from "@earendil-works/pi-ai"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { defineDoc, defineExtension, defineTool, type ModelRef } from "@earendil-works/pi-durable"
 import type { Provider } from "../src/module.ts"

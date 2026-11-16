@@ -108,7 +108,9 @@ describe("attachments end to end", () => {
     expect(images[0]).toMatchObject({ mimeType: "image/png" })
     expect(Buffer.from(images[0]?.data ?? "", "base64")).toEqual(Buffer.from(PNG))
     const text = textOf(parts)
-    expect(text).toContain("- diagram.png (image/png, 12 bytes) at /projects/attach/attachments/diagram.png: shown below")
+    expect(text).toContain(
+      "- diagram.png (image/png, 12 bytes) at /projects/attach/attachments/diagram.png: shown below",
+    )
     expect(text).toContain('<file path="/projects/attach/attachments/brief.md">\n# brief\nship it\n</file>')
 
     const batch = await runInDurableObject(stub, async (home: Home) => {
@@ -117,7 +119,9 @@ describe("attachments end to end", () => {
     })
     expect(JSON.stringify(batch)).toContain(digest)
 
-    const blob = await exports.default.fetch(new Request(`https://ingle.test/blobs/${digest}`, { headers: OWNER_HEADERS }))
+    const blob = await exports.default.fetch(
+      new Request(`https://ingle.test/blobs/${digest}`, { headers: OWNER_HEADERS }),
+    )
     expect(blob.status).toBe(200)
     expect(new Uint8Array(await blob.arrayBuffer())).toEqual(PNG)
     const refused = await exports.default.fetch(
