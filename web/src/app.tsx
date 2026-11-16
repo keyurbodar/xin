@@ -1,4 +1,4 @@
-import { createSignal, lazy, Match, onMount, Show, Suspense, Switch, type JSX } from "solid-js"
+import { createSignal, Match, onMount, Show, Switch, type JSX } from "solid-js"
 import { probe, setToken, token } from "./lib/auth.ts"
 import { connect, connectionState, reauthorize } from "./state/connection.ts"
 import { subscribeHome } from "./state/home.ts"
@@ -6,12 +6,18 @@ import { subscribeCaptains } from "./state/captains.ts"
 import { navigate, route } from "./lib/router.ts"
 import { Shell } from "./components/shell/shell.tsx"
 import { BootLoader } from "./components/ui/loaders.tsx"
+import { lazyView } from "./components/ui/lazy-view.tsx"
 import { SignIn } from "./screens/signin.tsx"
 import { needsOnboarding } from "./lib/onboarding.ts"
 import { cutOff, OfflineScreen } from "./screens/offline.tsx"
 
-const WelcomeScreen = lazy(() => import("./screens/welcome.tsx").then((module) => ({ default: module.WelcomeScreen })))
-const BootFailedScreen = lazy(() => import("./screens/boot-failed.tsx").then((module) => ({ default: module.BootFailedScreen })))
+const bootLoader = (): JSX.Element => (
+  <div class="grid h-full place-items-center">
+    <BootLoader label="Starting Ingle" />
+  </div>
+)
+const WelcomeScreen = lazyView(() => import("./screens/welcome.tsx").then((module) => module.WelcomeScreen), bootLoader)
+const BootFailedScreen = lazyView(() => import("./screens/boot-failed.tsx").then((module) => module.BootFailedScreen), bootLoader)
 
 type Gate =
   | { readonly kind: "checking" }
@@ -81,18 +87,12 @@ export function App(): JSX.Element {
         />
       </Match>
       <Match when={bootFailure()}>
-        {(failure) => (
-          <Suspense fallback={<div class="grid h-full place-items-center"><BootLoader label="Starting Ingle" /></div>}>
-            <BootFailedScreen failure={failure()} onRecovered={() => void start()} onSignedOut={signOut} />
-          </Suspense>
-        )}
+        {(failure) => <BootFailedScreen failure={failure()} onRecovered={() => void start()} onSignedOut={signOut} />}
       </Match>
       <Match when={gate().kind === "ready"}>
         <div class="contents" inert={offline()}>
           <Show when={route().parts[0] === "welcome"} fallback={<Shell />}>
-            <Suspense fallback={<div class="grid h-full place-items-center"><BootLoader label="Starting Ingle" /></div>}>
-              <WelcomeScreen />
-            </Suspense>
+            <WelcomeScreen />
           </Show>
         </div>
         <Show when={offline()}>

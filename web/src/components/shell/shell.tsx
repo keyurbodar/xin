@@ -1,4 +1,4 @@
-import { createEffect, createSignal, ErrorBoundary, lazy, Match, onCleanup, onMount, Show, Suspense, Switch, type JSX } from "solid-js"
+import { createEffect, createSignal, ErrorBoundary, Match, onCleanup, onMount, Show, Switch, type JSX } from "solid-js"
 import { Menu as MenuIcon } from "lucide-solid"
 import { navigate, route } from "../../lib/router.ts"
 import { owner } from "../../state/settings.ts"
@@ -15,10 +15,12 @@ import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
 import { Toasts } from "../ui/toast.tsx"
 import { RowSkeleton } from "../ui/skeleton.tsx"
+import { lazyView } from "../ui/lazy-view.tsx"
 
-const ExtensionsScreen = lazy(() => import("../../screens/extensions.tsx").then((module) => ({ default: module.ExtensionsScreen })))
-const SettingsScreen = lazy(() => import("../../screens/settings.tsx").then((module) => ({ default: module.SettingsScreen })))
-const AutomationsScreen = lazy(() => import("../../screens/automations.tsx").then((module) => ({ default: module.AutomationsScreen })))
+const screenSkeleton = (): JSX.Element => <RowSkeleton rows={8} />
+export const ExtensionsScreen = lazyView(() => import("../../screens/extensions.tsx").then((module) => module.ExtensionsScreen), screenSkeleton)
+const SettingsScreen = lazyView(() => import("../../screens/settings.tsx").then((module) => module.SettingsScreen), screenSkeleton)
+const AutomationsScreen = lazyView(() => import("../../screens/automations.tsx").then((module) => module.AutomationsScreen), screenSkeleton)
 
 /**
  * The lazy screens by the label of the sidebar row that opens each one. sidebar.tsx gives its rows no route of their
@@ -123,7 +125,6 @@ export function Shell(): JSX.Element {
                       </button>
                     </div>
                   </Show>
-                  <Suspense fallback={<RowSkeleton rows={8} />}>
                   <Switch>
                     <Match when={first() === "extensions"}>
                       <ExtensionsScreen />
@@ -135,7 +136,6 @@ export function Shell(): JSX.Element {
                       <AutomationsScreen />
                     </Match>
                   </Switch>
-                  </Suspense>
                 </section>
               }
             >
