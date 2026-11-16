@@ -1,5 +1,6 @@
 import { runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
+import "@earendil-works/pi-ai/api/openai-completions"
 import { describe, expect, it } from "vitest"
 import { cmd as call, fresh } from "../../test/support.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
@@ -90,7 +91,7 @@ describe("credential checks", () => {
     expect(JSON.stringify(rejected)).toContain("the key was not saved")
     const providers = (await call(stub, "set-tested-read", "models.catalog", {})).result as { providers: ProviderRow[] }
     expect(providers.providers.some((row) => row.id === "gate")).toBe(false)
-  }, 15_000)
+  })
 
   it("saves a key whose test passes and records the provider healthy", async () => {
     const stub = fresh()
