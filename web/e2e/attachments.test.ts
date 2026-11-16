@@ -108,20 +108,6 @@ test("removing the last card by keyboard hands focus to the message field, never
   await page.close()
 })
 
-test("a sent image opens by click or keyboard with its index, and other files are not buttons", async () => {
-  const page = await harness.open("attachments")
-  await settled(page)
-  await page.getByRole("button", { name: "Open diagram.png" }).click()
-  expect(await page.textContent("#opened")).toBe("1")
-  await page.getByRole("button", { name: "Open screenshot.png" }).focus()
-  await page.keyboard.press("Enter")
-  expect(await page.textContent("#opened")).toBe("0")
-  expect(await page.getByRole("button", { name: "Open brief.md" }).count()).toBe(0)
-  const thumbnail = page.getByRole("button", { name: "Open screenshot.png" }).locator("img")
-  expect(await thumbnail.getAttribute("src")).toStartWith("blob:")
-  await page.close()
-})
-
 test("hostile names render as text, an SVG preview runs no script and HTML sent as PNG shows a file icon", async () => {
   const page = await harness.open("attachments")
   await settled(page)

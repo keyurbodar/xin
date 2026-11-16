@@ -71,8 +71,6 @@ export class Visual {
   private viewRef = -1
   private handlers: LuaFunction[] = []
   private refs: number[] = []
-  private ticks = 0
-  private limit = 0
   private values = 0
   readonly logs: string[] = []
 
@@ -90,7 +88,7 @@ export class Visual {
     const L = lauxlib.luaL_newstate()
     L.l_G.meter = meter
     const visual = new Visual(L, seed, meter)
-    meter.reset()
+    meter.reset(CALL_BUDGET)
     visual.install()
     const status = lauxlib.luaL_loadbuffer(L, s(source), null, s("=visual"))
     if (status !== lua.LUA_OK) throw new VisualError(message(L))
@@ -201,12 +199,8 @@ export class Visual {
     lua.lua_sethook(
       L,
       (state) => {
-        this.ticks += HOOK_EVERY
-        if (this.ticks > this.limit)
-          this.meter.fail(
-            "the script ran past its time budget (an endless loop, or too much work per render; precompute data at the top level)",
-          )
-        if (this.meter.failure !== undefined) lauxlib.luaL_error(state, s(this.meter.failure))
+        const failure = this.meter.tick(HOOK_EVERY)
+        if (failure !== undefined) lauxlib.luaL_error(state, s(failure))
       },
       lua.LUA_MASKCOUNT,
       HOOK_EVERY,
@@ -252,9 +246,7 @@ export class Visual {
   }
 
   private budget(instructions: number): void {
-    this.meter.reset()
-    this.ticks = 0
-    this.limit = instructions
+    this.meter.reset(instructions)
     lua.lua_getglobal(this.L, s("math"))
     lua.lua_getfield(this.L, -1, s("randomseed"))
     lua.lua_pushinteger(this.L, this.seed)

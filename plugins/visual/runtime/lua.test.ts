@@ -101,6 +101,33 @@ describe("visual runtime", () => {
     ).toContain("too much text")
     expect(failure(`local s = string.rep("x", 1100) local r = s:gsub("x", s)`)).toContain("over 1 MB")
     expect(failure(`for i = 1, 1e7 do _G["k" .. i] = true end`)).toContain("too many entries")
+    expect(failure(`local t = {} while true do t = setmetatable({}, { __index = t }) end`)).toContain(
+      "too many entries",
+    )
+    expect(failure(`local f while true do local g = f f = function() return g end end`)).toContain("too many entries")
+    expect(failure(`local function f(n) return f(n + 1) + 1 end f(1)`)).toContain("too deeply")
+    expect(failure(`local t = table.unpack({}, 1, 5e5)`)).toContain("too deeply")
+  }, 30_000)
+
+  it("counts native loops against the time budget, which the instruction hook cannot see", () => {
+    expect(failure(`for i = 1, 3 do string.rep("", 1e9) end`)).toContain("time budget")
+    expect(failure(`string.find(string.rep("a", 3000), ".-.-.-b")`)).toContain("time budget")
+    expect(failure(`string.find(string.rep("a", 1 << 19), "[" .. string.rep("b", 9000) .. "a]c")`)).toContain(
+      "time budget",
+    )
+    expect(failure(`local s = string.rep("a", 1 << 19) for i = 1, 1e6 do s:find("b", 1, true) end`)).toContain(
+      "time budget",
+    )
+    expect(
+      failure(
+        `local a, b = string.rep("a", 1 << 19), string.rep("a", 1 << 19) for i = 1, 1e6 do local _ = a == b or a < b end`,
+      ),
+    ).toContain("time budget")
+    expect(failure(`local s = string.rep("a", 1 << 19) for i = 1, 1e6 do utf8.len(s) end`)).toContain("time budget")
+    expect(failure(`table.move({}, 1, 1e9, 2)`)).toContain("time budget")
+    expect(
+      failure(`local t = {} for i = 1, 5e4 do t[i] = i end for i = 1, 1e4 do table.insert(t, 1, i) end`),
+    ).toContain("time budget")
   }, 30_000)
 
   it("counts memory across the whole check, since every call shares one state", () => {
@@ -223,6 +250,12 @@ describe("shader loop guard", () => {
     expect(shader("#define F(x) for(x)\nF(int i = 0; i < 9; i++) {}")).toContain("#define cannot contain a loop")
     expect(shader("#define W wh ## ile\n")).toContain("token pasting")
     expect(shader("#define L \\\nfor\n")).toContain("line continuations")
+    expect(shader("#define ID(x) x\nID(for) (int i = 0; i < 9; i++) {}")).toContain("function-like macros")
+    expect(shader("#define OPEN (\nfor OPEN int i = 0; i < 9; i++) {}")).toContain("balanced parentheses")
+    expect(shader("#define C 1 > 0) || (true\nwhile (C) {}")).toContain("balanced parentheses")
+    expect(shader("#define S ;\nfor (int i = 0 S i < 9 S i++) {}")).toContain("balanced parentheses")
+    expect(shader("#define A B\n#define B 1\nint i = 0; while A {}")).toContain("parenthesized header")
+    expect(shader("for (int i = 0; i < 9) {}")).toContain("(init; condition; step)")
     expect(guardLoops(stripComments("for/**/(int i = 0; i < 9; i++) {}"))).toContain("ingle_step()")
   })
 

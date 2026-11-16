@@ -120,3 +120,7 @@
   pointer-events: none;
   transition-duration: var(--dur-toast-exit);
 }
+
+.im-pill[data-instant] {
+  transition: none;
+}
