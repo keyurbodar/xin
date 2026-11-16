@@ -1,5 +1,6 @@
 /** Pinned sha256 of every catalogue entry's content; `explore.test.ts` fails when an entry changes without its pin. */
 export const SHA256: Readonly<Record<string, string>> = {
+  "skill:connect-your-browser": "e58e26a5a1a08e945f0d7898aa368cf6255fdb58e828b0988924385a5fc24ee3",
   "skill:review-a-diff": "1e08bf6def6e6e1d3b15631862f72f035b901fd8ee38d4de343a27feb6f7fe2f",
   "skill:pr-description": "e12ef4dfd975b5025b413fe809ca29bbc5c15fca92471fba31c567a7ef01fdb4",
   "skill:issue-triage": "609e9fad639c6e474bb4be039bf169447832d14fe54cb34bd81c0c6cb7da95ab",

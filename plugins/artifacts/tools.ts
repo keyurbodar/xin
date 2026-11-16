@@ -38,6 +38,7 @@ export function apply(ctx: Context): void {
 export function artifactTool(port: ArtifactToolPort): ToolRegistration {
   return defineTool({
     name: "artifact",
+    deferred: true,
     description:
       "Read and write documents attached to a thread. A thread writes its own; a Space or Puck passes threadId. Every save bumps the revision; pass expectedRevision to avoid overwriting a newer save.",
     parameters: obj({
