@@ -19,7 +19,10 @@ describe("explore", () => {
     expect(THEMES.length).toBeGreaterThanOrEqual(8)
     for (const theme of THEMES)
       for (const palette of [theme.dark, theme.light])
-        expect(Object.values(palette).every((colour) => HEX.test(colour)), theme.id).toBe(true)
+        expect(
+          Object.values(palette).every((colour) => HEX.test(colour)),
+          theme.id,
+        ).toBe(true)
     const stub = fresh()
     const skill = SKILLS[0]
     if (skill === undefined) throw new Error("no skills bundled")
@@ -33,7 +36,10 @@ describe("explore", () => {
   it("searches by kind, query and category, without bodies in skill results", async () => {
     const stub = fresh()
     const skills = (await cmd(stub, "explore-s1", "explore.search", { kind: "skill" })).result
-    expect(skills).toMatchObject({ kind: "skill", entries: SKILLS.map(({ name }) => expect.objectContaining({ name })) })
+    expect(skills).toMatchObject({
+      kind: "skill",
+      entries: SKILLS.map(({ name }) => expect.objectContaining({ name })),
+    })
     expect(JSON.stringify(skills)).not.toContain("---\nname:")
 
     const warm = (await cmd(stub, "explore-s2", "explore.search", { kind: "theme", category: "Warm" })).result

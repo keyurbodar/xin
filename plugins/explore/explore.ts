@@ -71,7 +71,8 @@ export function exploreOps(): readonly Op[] {
     args: obj({ kind: oneOf(KINDS), name: str({ maxLength: 80 }) }),
     actors: ["owner"],
     run: async (_api, { kind, name }) => {
-      const found = kind === "skill" ? SKILLS.find((skill) => skill.name === name) : THEMES.find((theme) => theme.id === name)
+      const found =
+        kind === "skill" ? SKILLS.find((skill) => skill.name === name) : THEMES.find((theme) => theme.id === name)
       const pinned = SHA256[keyOf(kind, name)]
       if (found === undefined || pinned === undefined) throw new OpRejected("bad_args", `no ${kind} ${name} in Explore`)
       return { kind, entry: found, sha256: pinned }
