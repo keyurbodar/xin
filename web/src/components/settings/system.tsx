@@ -10,9 +10,9 @@ import {
   type SystemMetrics,
   type SystemVersion,
 } from "../../state/settings.ts"
-import { Button, Chip, Failure, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
+import { Button, Chip, Failure, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
-import { Group, Row } from "./parts.tsx"
+import { Card, CardBlock, Group, Row } from "./parts.tsx"
 
 /** Elapsed time since the home woke: minutes and seconds under an hour, hours above it. */
 function uptime(ms: number): string {
@@ -139,14 +139,14 @@ export function System(): JSX.Element {
   }
 
   return (
-    <div class="flex max-w-[820px] flex-col gap-6">
+    <>
       <Show when={error()}>
         {(message) => <Failure message={message()} />}
       </Show>
       <Show when={note()}>
         {(message) => (
-          <div class="flex items-center gap-2 rounded-md border border-line-2 bg-panel px-3.5 py-2.5 text-sm text-ink-2">
-            <Glyph name="info" size={13} class="text-ink-3" />
+          <div class="flex items-center gap-2 rounded-md px-4 py-2.5 text-small text-ink-2 shadow-ring">
+            <Glyph name="info" size={14} class="text-ink-3" />
             {message()}
           </div>
         )}
@@ -163,11 +163,11 @@ export function System(): JSX.Element {
         {(version) => (
           <>
             <Show when={version().degraded}>
-              <div class="flex items-start gap-2.5 rounded-md border border-working/30 bg-working-soft px-3 py-2.5">
+              <div class="flex items-start gap-2.5 rounded-md bg-working-soft px-3 py-2.5">
                 <Glyph name="warning" size={14} class="mt-0.5 shrink-0 text-working" />
                 <div>
-                  <span class="block text-sm text-working">Degraded</span>
-                  <p class="mt-0.5 text-xs text-ink-2">
+                  <span class="block text-small font-title text-working">Degraded</span>
+                  <p class="mt-0.5 text-mini text-ink-2">
                     {counts().failed.length + counts().missing.length} plugin rows are not running. Threads that need them will
                     say so; nothing is lost.
                   </p>
@@ -176,20 +176,17 @@ export function System(): JSX.Element {
             </Show>
 
             <Group title="Update">
-              <div class="rounded-md border border-line-2 bg-secondary p-3">
-                <div class="flex items-center gap-2">
-                  <span class="text-base font-medium text-ink">Build packages</span>
-                  <span class="font-mono text-sm text-ink-3">{version().build}</span>
-                  <span class="ml-auto" />
+              <Card>
+                <Row
+                  title="Build packages"
+                  detail={`${version().build} · Hands the pending packages to the deployer. Threads keep running; a restart takes about 20 s.`}
+                >
                   <Button size="sm" onClick={() => void update()}>
                     <Glyph name="refresh" size={14} />
                     {busy() ? "Working" : "Update now"}
                   </Button>
-                </div>
-                <p class="mt-2 text-xs leading-relaxed text-ink-3">
-                  Hands the pending packages to the deployer. Threads keep running; a restart takes about 20 s.
-                </p>
-              </div>
+                </Row>
+              </Card>
             </Group>
 
             <Group title="Services" detail="Read from this home">
@@ -199,12 +196,12 @@ export function System(): JSX.Element {
               <Show when={failureOf(systemMetrics.state())}>
                 {(message) => <Failure message={message()} onRetry={() => void systemMetrics.reload()} />}
               </Show>
-              <Panel>
+              <Card>
                 <For each={figures()}>
                   {(service) => (
-                    <div class="flex items-center gap-2.5 border-b border-line-1 px-3.5 py-2 text-sm last:border-0">
+                    <CardBlock class="flex items-center gap-2.5 px-4 py-2 text-small">
                       <span
-                        class="h-1.5 w-1.5 rounded-2xs"
+                        class="h-1.5 w-1.5 rounded-full"
                         classList={{
                           "bg-done": service.tone === "ok",
                           "bg-working": service.tone === "warn",
@@ -212,18 +209,18 @@ export function System(): JSX.Element {
                         }}
                       />
                       <span class="min-w-0 flex-1 text-ink">{service.label}</span>
-                      <span class="font-mono text-xs text-ink-3">{service.figure}</span>
-                    </div>
+                      <span class="font-mono text-mini text-ink-3">{service.figure}</span>
+                    </CardBlock>
                   )}
                 </For>
-              </Panel>
+              </Card>
               <Show when={counts().failed.length + counts().missing.length > 0}>
                 <div class="flex flex-col gap-1 pt-1">
                   <For each={[...counts().failed, ...counts().missing]}>
                     {(id) => (
                       <div class="flex items-center gap-2">
                         <Chip tone="bad">Not running</Chip>
-                        <span class="font-mono text-xs text-ink-2">{id}</span>
+                        <span class="font-mono text-mini text-ink-2">{id}</span>
                       </div>
                     )}
                   </For>
@@ -238,21 +235,20 @@ export function System(): JSX.Element {
             </Group>
 
             <Group title="Version">
-              <Panel>
-                <div class="flex items-center gap-2 border-b border-line-1 px-3.5 py-2 text-sm last:border-0">
-                  <span class="text-ink-3">Running</span>
-                  <span class="ml-auto font-mono text-xs text-ink-2">{version().build}</span>
-                </div>
-                <div class="flex items-center gap-2 px-3.5 py-2 text-sm">
-                  <span class="text-ink-3">Bundles</span>
-                  <span class="ml-auto min-w-0 truncate font-mono text-xs text-ink-2">
+              <Card>
+                <Row title="Running">
+                  <span class="font-mono text-mini text-ink-2">{version().build}</span>
+                </Row>
+                <Row title="Bundles">
+                  <span class="min-w-0 truncate font-mono text-mini text-ink-2">
                     {version().bundles.length === 0 ? "none" : version().bundles.join(", ")}
                   </span>
-                </div>
-              </Panel>
+                </Row>
+              </Card>
             </Group>
 
             <Group title="Restart">
+              <Card>
               <Row title="Restart now" detail="Threads keep running while the client reconnects">
                 <div class="flex flex-wrap items-center gap-2">
                   <Show
@@ -264,7 +260,7 @@ export function System(): JSX.Element {
                       </Button>
                     }
                   >
-                    <span class="text-sm text-ink-2">Restart takes about 20 s. Running threads resume from their last step.</span>
+                    <span class="text-small text-ink-2">Restart takes about 20 s. Running threads resume from their last step.</span>
                     <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
                     <Button
                       size="sm"
@@ -277,20 +273,16 @@ export function System(): JSX.Element {
                   </Show>
                 </div>
               </Row>
-              <div class="pt-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void downloadLogs()}>
-                    <Glyph name="download" size={14} />
-                    {busy() ? "Reading logs" : "Download logs"}
-                  </Button>
-                  <span class="text-xs text-ink-3">
-                    Every warning and error this home logged since it woke, newest last.
-                  </span>
-                  <Show when={note()}>
-                    {(message) => <span class="text-xs text-ink-3">{message()}</span>}
-                  </Show>
-                </div>
-              </div>
+              <Row title="Download logs" detail="Every warning and error this home logged since it woke, newest last.">
+                <Show when={note()}>
+                  {(message) => <span class="mr-2 text-mini text-ink-3">{message()}</span>}
+                </Show>
+                <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void downloadLogs()}>
+                  <Glyph name="download" size={14} />
+                  {busy() ? "Reading logs" : "Download logs"}
+                </Button>
+              </Row>
+              </Card>
             </Group>
 
             <Note>
@@ -300,6 +292,6 @@ export function System(): JSX.Element {
           </>
         )}
       </Show>
-    </div>
+    </>
   )
 }

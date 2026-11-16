@@ -5,6 +5,8 @@ export type OpenOptions = {
   readonly search?: string
   readonly width?: number
   readonly before?: (page: Page) => Promise<unknown>
+  /** Console errors the test expects while the page loads, such as a chunk it serves as a 404. */
+  readonly expected?: RegExp
 }
 
 export type Harness = {
@@ -35,16 +37,24 @@ export async function startHarness(): Promise<Harness> {
       const errors: string[] = []
       page.on("pageerror", (error) => errors.push(String(error)))
       page.on("console", (message) => {
-        if (message.type() === "error") errors.push(message.text())
+        if (message.type() === "error" && options.expected?.test(message.text()) !== true) errors.push(message.text())
       })
-      await page.goto(`http://127.0.0.1:${address.port}/e2e/fixtures/${fixture}.html${options.search ?? ""}`)
-      await page.waitForFunction(() => document.body.dataset.ready === "1", undefined, { timeout: 60_000 })
-      if (errors.length > 0) throw new Error(errors.join("\n"))
+      try {
+        await page.goto(`http://127.0.0.1:${address.port}/e2e/fixtures/${fixture}.html${options.search ?? ""}`)
+        await page.waitForFunction(() => document.body.dataset.ready === "1", undefined, { timeout: 60_000 })
+        if (errors.length > 0) throw new Error(errors.join("\n"))
+      } catch (problem) {
+        await page.close()
+        throw problem
+      }
       return page
     },
     close: async () => {
-      await browser.close()
-      await server.close()
+      try {
+        await browser.close()
+      } finally {
+        await server.close()
+      }
     },
   }
 }
