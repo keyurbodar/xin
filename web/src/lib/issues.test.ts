@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test"
 import { OpError } from "./api.ts"
 import {
+  activeIssues,
+  linkedPulls,
+  pullLabel,
+  threadPulls,
   actorName,
   assigneeCandidates,
   assigneesEdit,
@@ -377,4 +381,30 @@ test("a delayed ack never replaces a newer rename the rev already showed", () =>
   expect(latestIssue(renamed, ack)).toBe(renamed)
   expect(latestIssue({ ...base, updatedAt: 90 }, ack)).toBe(ack)
   expect(latestIssue(ack, { ...ack })).toEqual(ack)
+})
+
+test("active issues are the open ones in a working state, most urgent first", () => {
+  const issues = [issue(1, "todo", "urgent"), issue(2, "in-progress", "low"), issue(3, "needs-you", "high"), issue(4, "done"), issue(5, "unknown")]
+  expect(activeIssues(STATES, issues).map((entry) => entry.id)).toEqual([3, 2])
+})
+
+test("linked pull requests appear once each with every issue that links them, newest issue first", () => {
+  const older = { ...issue(1, "in-progress"), prs: ["https://github.com/o/r/pull/9", "https://github.com/o/r/pull/9"], updatedAt: 1 }
+  const newer = { ...issue(2, "todo"), prs: ["https://github.com/o/r/pull/9", "https://github.com/o/r/pull/10"], updatedAt: 2 }
+  expect(linkedPulls([older, newer]).map((pull) => [pull.url, pull.issues.map((entry) => entry.id)])).toEqual([
+    ["https://github.com/o/r/pull/9", [2, 1]],
+    ["https://github.com/o/r/pull/10", [2]],
+  ])
+})
+
+test("a thread counts each distinct pull request its issues link", () => {
+  const first = { ...issue(1, "todo"), threads: [7, 8], prs: ["a", "b"] }
+  const second = { ...issue(2, "todo"), threads: [7], prs: ["b", "c"] }
+  expect(Object.fromEntries(threadPulls([first, second]))).toEqual({ 7: 3, 8: 2 })
+})
+
+test("pull request labels name the repository and number, and keep anything else as its address", () => {
+  expect(pullLabel("https://github.com/keyurbodar/xin/pull/9")).toBe("keyurbodar/xin #9")
+  expect(pullLabel("https://gitlab.example/team/app/pulls/4")).toBe("team/app #4")
+  expect(pullLabel("https://example.com/review/12")).toBe("example.com/review/12")
 })

@@ -5,13 +5,16 @@ import { Pictogram, type PictogramName } from "./pictogram.tsx"
 
 export function EmptyState(props: {
   pictogram: PictogramName
+  art?: JSX.Element | undefined
   title: string
   detail?: string | undefined
   action?: JSX.Element | undefined
 }): JSX.Element {
   return (
     <div class="flex flex-col items-center justify-center px-6 py-10 text-center">
-      <Pictogram name={props.pictogram} size={88} />
+      <Show when={props.art} fallback={<Pictogram name={props.pictogram} size={88} />}>
+        {props.art}
+      </Show>
       <span class="mt-5 text-base font-medium text-ink-2">{props.title}</span>
       <Show when={props.detail}>
         <span class="mt-1.5 max-w-[270px] text-sm leading-[1.5] text-ink-3">{props.detail}</span>
