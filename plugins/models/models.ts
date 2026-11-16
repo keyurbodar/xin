@@ -492,7 +492,7 @@ type Registry = {
   /** Re-register after a credential change; pi-ai caches a provider's auth state until it is set again. */
   restore(provider: string): void
   /** What `entry` would unlock for `provider`, from a throwaway registry that stores nothing. */
-  candidate(provider: string, entry: StoredEntry): Promise<ProbeTarget>
+  candidate(provider: string, entry: StoredEntry, signal: AbortSignal): Promise<ProbeTarget>
 }
 
 type ProbeTarget = { readonly models: Models; readonly keyed: readonly Model<Api>[] }
@@ -566,14 +566,14 @@ function createRegistry(port: Pick<ModelsPort, "db" | "kek" | "providers">): Reg
     if (endpoints.size > 0) await models.refresh({ providers: [...endpoints.keys()] })
   }
 
-  async function candidate(id: string, entry: StoredEntry): Promise<ProbeTarget> {
+  async function candidate(id: string, entry: StoredEntry, signal: AbortSignal): Promise<ProbeTarget> {
     const credentials = new InMemoryCredentialStore()
     await credentials.modify(id, async () => entry.credential)
     const scratch = createModels({ credentials })
     const provider =
       entry.endpoint === undefined ? (builtins.get(id) ?? extra.get(id)) : endpointProvider(id, entry.endpoint)
     if (provider !== undefined) scratch.setProvider(provider)
-    if (entry.endpoint !== undefined) await scratch.refresh({ providers: [id] })
+    if (entry.endpoint !== undefined) await scratch.refresh({ providers: [id], signal })
     return { models: scratch, keyed: (await scratch.getAvailable()).filter((model) => model.provider === id) }
   }
 
@@ -917,6 +917,7 @@ export function create(deps: ModelsPort): ModelsParts {
     target: ProbeTarget,
     modelId?: string,
     secret?: string,
+    deadline: AbortSignal = AbortSignal.timeout(PROBE_TIMEOUT_MS),
   ): Promise<JsonObject> => {
     const keyed = target.keyed
     const settings = await readSettings(db)
@@ -946,7 +947,7 @@ export function create(deps: ModelsPort): ModelsParts {
           cacheRetention: "none",
           sessionId: crypto.randomUUID(),
           timeoutMs: PROBE_TIMEOUT_MS,
-          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+          signal: deadline,
         },
       )
       if (reply.stopReason === "error" || reply.stopReason === "aborted") error = reply.errorMessage ?? "provider error"
@@ -1323,6 +1324,7 @@ export function create(deps: ModelsPort): ModelsParts {
       }
       let test: JsonObject | undefined
       if (args.test === true) {
+        const deadline = AbortSignal.timeout(PROBE_TIMEOUT_MS)
         const secret = args.custom?.key ?? args.key ?? ""
         const endpoint =
           args.custom === undefined
@@ -1334,12 +1336,12 @@ export function create(deps: ModelsPort): ModelsParts {
         }
         let target: ProbeTarget
         try {
-          target = await registry.candidate(args.provider, entry)
+          target = await registry.candidate(args.provider, entry, deadline)
         } catch (thrown) {
           const text = thrown instanceof Error ? thrown.message : String(thrown)
           throw new OpRejected("bad_args", `the key was not saved: ${scrub(text, [secret])}`)
         }
-        test = await probe(args.provider, target, undefined, secret)
+        test = await probe(args.provider, target, undefined, secret, deadline)
         if (test["ok"] !== true) throw new OpRejected("bad_args", `the key was not saved: ${String(test["error"])}`)
       }
       if (args.custom !== undefined) {

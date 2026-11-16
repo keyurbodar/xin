@@ -18,15 +18,37 @@ const MAX_ERROR = 300
 const KEY_SHAPED =
   /(?<![A-Za-z0-9_-])(?:(?:sk|pk|rk|xai|gsk|ghp|hf)[-_]|AIza)[A-Za-z0-9_-]{12,}(?![A-Za-z0-9_-])|(?<![A-Za-z0-9_-])[A-Za-z0-9]{32,}(?![A-Za-z0-9_-])/g
 
+const base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes))
+const MIDDLE_START = [0, 2, 3] as const
+
 /**
- * `text` with each of `secrets` (also base64-encoded, as a Basic header carries it) and every whole word shaped like an
- * API key replaced, so a provider that echoes a key leaks nothing while model and request ids stay readable.
+ * The base64 runs that spell `secret` wherever it sits in a longer encoding, as in a Basic header's `user:key`: its UTF-8
+ * bytes at each of the three byte alignments, minus the characters that depend on neighbouring bytes.
+ */
+function encodings(secret: string): readonly string[] {
+  const bytes = new TextEncoder().encode(secret)
+  const whole = base64(bytes)
+  const forms = [whole, whole.replace(/=+$/, "")]
+  for (const [shift, start] of MIDDLE_START.entries()) {
+    const shifted = new Uint8Array(shift + bytes.length)
+    shifted.set(bytes, shift)
+    const text = base64(shifted).replace(/=+$/, "")
+    const middle = text.slice(start, text.length - 3)
+    if (middle.length >= 8) forms.push(middle)
+  }
+  return forms
+}
+
+/**
+ * `text` with each of `secrets`, in plain text and in every base64 alignment, and every whole word shaped like an API
+ * key replaced, so a provider that echoes a key or its auth header leaks nothing while model and request ids stay
+ * readable.
  */
 export function scrub(text: string, secrets: readonly string[]): string {
   let clean = text
   for (const secret of secrets) {
     if (secret.length < 4) continue
-    for (const form of [secret, btoa(secret)]) clean = clean.split(form).join("[redacted]")
+    for (const form of [secret, ...encodings(secret)]) clean = clean.split(form).join("[redacted]")
   }
   return clean.replace(KEY_SHAPED, "[redacted]")
 }

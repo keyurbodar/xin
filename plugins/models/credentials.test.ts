@@ -1,8 +1,9 @@
-import { runInDurableObject } from "cloudflare:test"
+import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import "@earendil-works/pi-ai/api/openai-completions"
 import { describe, expect, it } from "vitest"
 import { cmd as call, fresh } from "../../test/support.ts"
+import { WIDE_MODEL } from "../../test/plugins/m3.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 import { scrub } from "./health.ts"
 
@@ -14,11 +15,14 @@ async function healthOf(stub: Stub, id: string, provider: string): Promise<Provi
   return (catalog.result as { providers: ProviderRow[] }).providers.find((row) => row.id === provider)?.health
 }
 
-async function withFetch<T>(reply: (url: string, auth: string) => Response, run: () => Promise<T>): Promise<T> {
+async function withFetch<T>(
+  reply: (url: string, auth: string, request: Request) => Response | Promise<Response>,
+  run: () => Promise<T>,
+): Promise<T> {
   const original = globalThis.fetch
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init)
-    return reply(request.url, request.headers.get("authorization") ?? "")
+    return reply(request.url, request.headers.get("authorization") ?? "", request)
   }
   try {
     return await run()
@@ -26,6 +30,11 @@ async function withFetch<T>(reply: (url: string, auth: string) => Response, run:
     globalThis.fetch = original
   }
 }
+
+const hang = (request: Request): Promise<Response> =>
+  new Promise((_resolve, reject) => {
+    request.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true })
+  })
 
 const listing = () =>
   new Response(JSON.stringify({ object: "list", data: [{ id: "gate-1", object: "model" }] }), {
@@ -146,6 +155,88 @@ describe("credential checks", () => {
       state: "failing",
       error: "401 token [redacted] is not valid",
     })
+    const turn = async (id: string): Promise<void> => {
+      await runInDurableObject(stub, async (home: Home) => {
+        home.script(["error:401 token local-dev-tok is not valid"])
+        await home.submit("again", id)
+        await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+      })
+    }
+    await evictDurableObject(stub)
+    await turn("short-key-evicted")
+    expect((await healthOf(stub, "short-key-evicted-health", FAUX_MODEL.provider))?.error).toBe(
+      "401 token [redacted] is not valid",
+    )
+    expect((await call(stub, "short-key-delete", "credential.delete", { provider: FAUX_MODEL.provider })).ok).toBe(true)
+    await turn("short-key-deleted")
+    expect((await healthOf(stub, "short-key-deleted-health", FAUX_MODEL.provider))?.error).toBe(
+      "401 token local-dev-tok is not valid",
+    )
+  })
+
+  it("gives the whole test one deadline, the endpoint's model listing included", async () => {
+    const stub = fresh()
+    const endpoint = { api: "openai-completions" }
+    await withFetch(listing, () =>
+      call(stub, "deadline-stored", "credential.set", {
+        provider: "slow",
+        custom: { ...endpoint, baseUrl: "https://slow.test/v1", key: "slow-key" },
+      }),
+    )
+    const started = Date.now()
+    const [listed, chatted] = await withFetch(
+      (url, _auth, request) =>
+        url.startsWith("https://hang.test") ? hang(request) : url.endsWith("/models") ? listing() : hang(request),
+      () =>
+        Promise.all([
+          call(stub, "deadline-set", "credential.set", {
+            provider: "hang",
+            custom: { ...endpoint, baseUrl: "https://hang.test/v1", key: "hang-key" },
+            test: true,
+          }),
+          call(stub, "deadline-test", "credential.test", { provider: "slow" }),
+        ]),
+    )
+    expect(Date.now() - started).toBeLessThan(25_000)
+    expect(listed).toMatchObject({ ok: false, error: { code: "bad_args" } })
+    expect(chatted).toMatchObject({ ok: true, result: { ok: false } })
+  }, 40_000)
+
+  it("sends a session id with every probe, as OpenCode requires", async () => {
+    const stub = fresh()
+    expect((await call(stub, "session-key", "credential.set", { provider: "opencode", key: "oc-key" })).ok).toBe(true)
+    const sessions: (string | null)[] = []
+    await withFetch(
+      (url, _auth, request) => {
+        if (!url.endsWith("/models")) sessions.push(request.headers.get("x-opencode-session"))
+        return new Response("{}", { status: 401 })
+      },
+      () => call(stub, "session-test", "credential.test", { provider: "opencode" }),
+    )
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it("probes the owner's default before a favourite, whatever the catalog order", async () => {
+    const stub = fresh()
+    const narrow = { provider: WIDE_MODEL.provider, modelId: "alt-narrow" }
+    for (const [index, [chosen, favourite]] of [
+      [narrow, WIDE_MODEL],
+      [WIDE_MODEL, narrow],
+    ].entries()) {
+      expect((await call(stub, `pref-default-${index}`, "owner.defaults", { role: "chat", model: chosen })).ok).toBe(
+        true,
+      )
+      expect((await call(stub, `pref-fav-${index}`, "models.favorite", { model: favourite, favorite: true })).ok).toBe(
+        true,
+      )
+      expect(
+        await call(stub, `pref-test-${index}`, "credential.test", { provider: WIDE_MODEL.provider }),
+      ).toMatchObject({ ok: true, result: { model: chosen } })
+      expect(
+        (await call(stub, `pref-unfav-${index}`, "models.favorite", { model: favourite, favorite: false })).ok,
+      ).toBe(true)
+    }
   })
 
   it("redacts whole key-shaped words but leaves model and request ids readable", () => {
@@ -164,6 +255,13 @@ describe("credential checks", () => {
       "bad key [redacted] and [redacted]",
     )
     expect(scrub(`Basic ${btoa("tok-1234")}`, ["tok-1234"])).toBe("Basic [redacted]")
+    const key = "faux-tok-1"
+    for (const form of [btoa(key).replace(/=+$/, ""), btoa(`u:${key}`), btoa(`${key}:`), btoa(`ab:${key}:x`)]) {
+      const clean = scrub(`401 Basic ${form} bad`, [key])
+      expect(clean, form).toContain("[redacted]")
+      expect(clean, form).not.toContain(form.slice(3, -3))
+    }
+    expect(scrub("401 tok\u2011abc123 refused", ["tok\u2011abc123"])).toBe("401 [redacted] refused")
   })
 
   it("refuses endpoints a Worker cannot reach", async () => {
