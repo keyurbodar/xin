@@ -728,3 +728,16 @@
 :root[data-motion="reduce"] .block-expand[data-animate] {
   transition: none;
 }
+
+/* Unlayered so it beats a popup's own display utility: a popup part paints nothing until its element registers. */
+:where(
+    ui-combobox-content,
+    ui-menu-content,
+    ui-menu-sub-content,
+    ui-trigger-menu-content,
+    ui-popover-content,
+    ui-select-content,
+    ui-hover-card-content
+  ):not(:defined) {
+  display: none;
+}

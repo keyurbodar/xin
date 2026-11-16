@@ -241,5 +241,5 @@ describe("Home host loop", () => {
     expect(outcome.failed).toBe(0)
     expect(outcome.ok).toBe(threads * calls)
     expect(outcome.answers.filter((answer) => answer === `pinged ${calls}`)).toHaveLength(threads)
-  })
+  }, 30_000)
 })

@@ -6,6 +6,7 @@ import {
   owner,
   providers,
   roles,
+  ROLE_DETAIL,
   ROLE_LABEL,
   setDefault,
   setOwner,
@@ -165,13 +166,7 @@ export function General(): JSX.Element {
               {(role) => (
                 <Row
                   title={ROLE_LABEL[role]}
-                  detail={
-                    role === "chat"
-                      ? "Runs the project coordinator."
-                      : role === "thread"
-                        ? "Runs delegated threads."
-                        : "Names threads and writes summaries."
-                  }
+                  detail={ROLE_DETAIL[role]}
                 >
                   <Saved show={savedRole() === role} />
                   <SelectField

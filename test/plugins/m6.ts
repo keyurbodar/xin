@@ -9,6 +9,9 @@ import { lastOwnerIndex, lastOwnerText } from "../support.ts"
 
 export const M6_MODEL = { provider: "m6", modelId: "m6-faux" } as const
 
+/** The jobs wait the test profile configures, so job tests detach in a second instead of the product's eight. */
+export const TEST_JOB_WAIT_MS = 1_000
+
 const faux = fauxProvider({ provider: "m6", models: [{ id: "m6-faux", name: "M6 Faux" }] })
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -20,6 +23,21 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
     }
     if (signal.aborted) abort()
     else signal.addEventListener("abort", abort, { once: true })
+  })
+}
+
+/** Releases `slow_tool`, which holds until the test calls this so it always outlasts the jobs wait. */
+export const releaseSlowTool = Promise.withResolvers<void>()
+
+function held(release: Promise<void>, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new DOMException("interrupted", "AbortError"))
+    if (signal.aborted) abort()
+    else signal.addEventListener("abort", abort, { once: true })
+    void release.then(() => {
+      signal.removeEventListener("abort", abort)
+      resolve()
+    })
   })
 }
 
@@ -37,25 +55,25 @@ function sectionsText(messages: readonly { readonly role: string }[]): string {
 type JobSpec = { readonly tool: JobTool; readonly work: JobWork }
 
 const quick: JobSpec = {
-  tool: { name: "quick_tool", description: "Finish after one second.", parameters: obj({}) },
+  tool: { name: "quick_tool", description: "Finish after ten milliseconds.", parameters: obj({}) },
   work: async (_args, run) => {
-    await sleep(1_000, run.signal)
+    await sleep(10, run.signal)
     return { output: [{ type: "text", text: "quick done" }] }
   },
 }
 
 const slow: JobSpec = {
-  tool: { name: "slow_tool", description: "Finish after twenty seconds.", parameters: obj({}) },
+  tool: { name: "slow_tool", description: "Finish when the test releases it.", parameters: obj({}) },
   work: async (_args, run) => {
-    await sleep(20_000, run.signal)
+    await held(releaseSlowTool.promise, run.signal)
     return { output: [{ type: "text", text: "slow done" }] }
   },
 }
 
 const threadSlow: JobSpec = {
-  tool: { name: "thread_slow_tool", description: "Finish after nine seconds.", parameters: obj({}) },
+  tool: { name: "thread_slow_tool", description: "Finish after one and a half seconds.", parameters: obj({}) },
   work: async (_args, run) => {
-    await sleep(9_000, run.signal)
+    await sleep(TEST_JOB_WAIT_MS + 500, run.signal)
     return { output: [{ type: "text", text: "thread slow done" }] }
   },
 }

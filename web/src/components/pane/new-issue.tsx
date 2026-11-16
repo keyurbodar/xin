@@ -11,7 +11,7 @@ import { ICON_BUTTON } from "../shell/menu.ts"
 import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM } from "../ui/surface.ts"
 import { PriorityMark, StateMark } from "./issue-marks.tsx"
-import { mintCommandId, type NewIssueProps } from "./issues.tsx"
+import { mintCommandId, provideNewIssuePopover, type NewIssueProps } from "./issues.tsx"
 
 const SEGMENT =
   "im-press im-hover flex h-7 cursor-default items-center gap-1.5 rounded-sm border border-line-1 px-2 text-xs text-ink-2 outline-none focus-visible:ring-2 focus-visible:ring-primary-soft data-[checked]:border-line-3 data-[checked]:bg-hover data-[checked]:text-ink"
@@ -183,3 +183,4 @@ export function NewIssuePopover(props: NewIssueProps & { id: string }): JSX.Elem
   )
 }
 
+provideNewIssuePopover(NewIssuePopover)
