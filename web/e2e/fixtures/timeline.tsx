@@ -1,46 +1,33 @@
 import "../../src/styles/app.css"
-import { createMemo, createSignal } from "solid-js"
+import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import { trackMotion } from "../../src/lib/motion.ts"
-import type { Snapshot } from "../../src/state/conversation.ts"
-import { ReportCard, SystemNotice } from "../../src/components/chat/cards.tsx"
-import { hasBlock, registerBlock } from "../../src/components/chat/timeline/blocks-port.ts"
-import {
-  buildTimeline,
-  liveTimelineOf,
-  waitTarget,
-  type TimedMessage,
-  type TimelineEntry,
-  type TimelineLink,
-} from "../../src/components/chat/timeline/model.ts"
-import { Timeline } from "../../src/components/chat/timeline/timeline.tsx"
+import type { ChatMessage, EntryView, Snapshot } from "../../src/state/conversation.ts"
+import type { ProjectSummary, ThreadSummary } from "../../src/state/home.ts"
+import { registerBlock } from "../../src/components/chat/blocks.tsx"
+import { Transcript, type PendingMessage } from "../../src/components/chat/transcript.tsx"
 
 type Part = Readonly<Record<string, unknown>>
 type Slot = { readonly callId: string; readonly name: string; readonly status: string; readonly output?: string }
 type Live = { readonly busy: boolean; readonly content: readonly Part[]; readonly tools: readonly Slot[] }
 
-const NOW = new Date(2026, 10, 16, 9, 30).getTime()
+const NOW = new Date().setHours(9, 30, 0, 0)
 const YESTERDAY = NOW - 24 * 3600_000
-const TITLES = new Map([
-  [19, "Docs pass"],
-  [23, "Regression tests"],
-  [31, "Release notes"],
-])
 
 let nextId = 1
 const text = (value: string): Part => ({ type: "text", text: value })
 const call = (id: string, name: string, args: Part): Part => ({ type: "toolCall", id, name, arguments: args })
-const entry = (kind: string, model: readonly TimedMessage[], data?: unknown): TimelineEntry => ({ id: nextId++, kind, model, data })
-const user = (at: number, value: string): TimelineEntry =>
+const entry = (kind: string, model: readonly ChatMessage[], data?: unknown): EntryView => ({ id: nextId++, kind, model, data })
+const user = (at: number, value: string): EntryView =>
   entry("xin.batch", [], [{ id: nextId, body: { kind: "user", text: value }, clientTs: at }])
-const assistant = (at: number, content: readonly Part[]): TimelineEntry => entry("pi.assistant", [{ role: "assistant", content, timestamp: at }])
-const result = (at: number, toolCallId: string, output: string, extra: Partial<TimedMessage> = {}): TimelineEntry =>
+const assistant = (at: number, content: readonly Part[]): EntryView => entry("pi.assistant", [{ role: "assistant", content, timestamp: at }])
+const result = (at: number, toolCallId: string, output: string, extra: Partial<ChatMessage> = {}): EntryView =>
   entry("pi.tool-result", [{ role: "toolResult", toolCallId, content: [text(output)], timestamp: at, ...extra }])
 
 const LONG =
   "The refresh path reads the stored token, checks its expiry and, when it is close, asks the provider for a new one. Two tabs could both see an expiring token and both refresh; the provider rotates on each refresh, so the slower tab saved a token that was already revoked."
 
-const history: TimelineEntry[] = [
+const history: EntryView[] = [
   user(YESTERDAY, "Audit the auth flow and fix the token refresh bug people hit after lunch."),
   assistant(YESTERDAY + 4_000, [
     text("I'll read the auth module and the session store first."),
@@ -79,16 +66,35 @@ const history: TimelineEntry[] = [
   assistant(NOW - 548_000, [text("I asked Release notes to draft the changelog entry.")]),
 ]
 
-const [entries, setEntries] = createSignal<readonly TimelineEntry[]>(history)
+const thread = (id: number, title: string, status: string): ThreadSummary => ({ id, title, status, run: 1 })
+const projectWith = (releaseStatus: string): ProjectSummary => ({
+  id: "p1",
+  slug: "auth",
+  name: "Auth",
+  archived: false,
+  coordinatorId: 1,
+  threads: {
+    working: releaseStatus === "working" ? [thread(31, "Release notes", "working")] : [],
+    waiting: [],
+    completed: [thread(19, "Docs pass", "completed"), thread(23, "Regression tests", "completed"), ...(releaseStatus === "working" ? [] : [thread(31, "Release notes", "completed")])],
+    failed: [],
+    cancelled: [],
+  },
+  openRequests: 0,
+  requestsRev: 0,
+  spaces: [],
+})
+
+const [entries, setEntries] = createSignal<readonly EntryView[]>(history)
 const [live, setLive] = createSignal<Live>({ busy: false, content: [], tools: [] })
-const [working, setWorking] = createSignal<readonly TimelineLink[]>([{ threadId: 31, label: "Release notes" }])
-const [pending, setPending] = createSignal<readonly { readonly key: string; readonly text: string }[]>([])
+const [project, setProject] = createSignal(projectWith("working"))
+const [pending, setPending] = createSignal<readonly PendingMessage[]>([])
 
 const snapshot = (): Snapshot => {
   const now = live()
   return {
     id: 1,
-    entries: [],
+    entries: entries(),
     before: undefined,
     docs: {
       "pi.live": now.busy
@@ -98,7 +104,7 @@ const snapshot = (): Snapshot => {
   }
 }
 
-const commit = (...added: TimelineEntry[]): void => {
+const commit = (...added: EntryView[]): void => {
   setEntries((current) => [...current, ...added])
 }
 
@@ -163,7 +169,6 @@ Object.assign(window, {
         if (!next()) clearInterval(timer)
       }, ms)
     },
-    send: (value: string) => setPending((current) => [...current, { key: `p${current.length}`, text: value }]),
     blockVisuals: () =>
       registerBlock("tool:visualize", (payload) => (
         <div data-test-block={payload.callId} class="rounded-md bg-secondary px-3 py-2 text-small text-ink-2">
@@ -171,32 +176,29 @@ Object.assign(window, {
         </div>
       )),
     longer: () => commit(assistant(NOW + 90_000, [text(LONG)])),
-    stopWaiting: () => setWorking([]),
+    stopWaiting: () => setProject(projectWith("completed")),
+    reconnect: () => setEntries((current) => current.map((item) => ({ ...item, model: item.model.map((message) => ({ ...message })) }))),
   },
 })
 
 function App() {
-  const items = createMemo(() => [
-    ...buildTimeline(entries(), liveTimelineOf(snapshot()), {
-      hasBlock: (name) => hasBlock(`tool:${name}`),
-      titles: TITLES,
-      now: NOW,
-    }),
-    ...pending().map((message) => ({ kind: "owner" as const, key: message.key, text: message.text, attachments: [] })),
-  ])
-  const waiting = () => waitTarget({ live: liveTimelineOf(snapshot()), asking: false, threads: working() })
+  const send = (text: string): void => {
+    setPending((current) => [...current, { key: `p${current.length}`, text, at: NOW, attachments: [] }])
+  }
   return (
     <main class="flex h-screen flex-col bg-bg">
-      <Timeline
-        items={items()}
-        waiting={waiting()}
-        renderPass={(item) =>
-          item.kind === "report" ? (
-            <ReportCard row={item.row} onOpenThread={() => undefined} />
-          ) : (
-            <SystemNotice text={item.kind === "notice" ? item.text : item.kind} />
-          )
-        }
+      <Transcript
+        snapshot={snapshot()}
+        project={project()}
+        optimistic={pending()}
+        older={[]}
+        hasOlder={false}
+        requests={[]}
+        answered={[]}
+        onOpenThread={() => undefined}
+        onAnswer={async () => undefined}
+        onRetry={async () => undefined}
+        onLoadOlder={async () => undefined}
       />
       <form
         class="mx-auto mb-4 flex w-full max-w-[var(--w-column)] px-6"
@@ -204,7 +206,7 @@ function App() {
           event.preventDefault()
           const field = event.currentTarget.elements.namedItem("message")
           if (!(field instanceof HTMLTextAreaElement) || field.value.trim() === "") return
-          setPending((current) => [...current, { key: `p${current.length}`, text: field.value }])
+          send(field.value)
           field.value = ""
         }}
       >

@@ -21,6 +21,7 @@ type Fixture = {
     readonly blockVisuals: () => void
     readonly longer: () => void
     readonly stopWaiting: () => void
+    readonly reconnect: () => void
   }
 }
 
@@ -57,7 +58,7 @@ test("a group opens and closes from the keyboard, and so does each step", async 
 test("the summary counts each kind and marks a failed step", async () => {
   const page = await harness.open("timeline")
   const labels = await groupButtons(page).allInnerTexts()
-  expect(labels.slice(0, 3)).toEqual(["Searched 1 time, read 2 files, ran 1 command, 1 failed", "Made 1 edit, started 1 thread", "Sent 1 message"])
+  expect(labels.slice(0, 3)).toEqual(["Searched 1 time, read 2 files, ran 1 command, 1 failed", "Made 1 edit", "Sent 1 message"])
   expect(await page.locator("[data-tool-group][data-status=error]").count()).toBe(1)
   await page.close()
 })
@@ -179,11 +180,11 @@ test("pinned to the end, streaming follows the newest line", async () => {
 test("the waiting line names what the agent waits on", async () => {
   const page = await harness.open("timeline")
   const waiting = page.locator("[data-waiting]")
-  expect(await waiting.innerText()).toBe("Waiting on Release notes")
+  expect(await waiting.textContent()).toBe("Waiting on Release notes")
   expect(await waiting.getAttribute("role")).toBe("status")
   await tl(page, (fixture) => fixture.run(5))
   await settled(page)
-  expect(await waiting.innerText()).toBe("Waiting on bash")
+  expect(await waiting.textContent()).toBe("Waiting on bash")
   await tl(page, (fixture) => fixture.run(1))
   await tl(page, (fixture) => fixture.finish())
   await tl(page, (fixture) => fixture.stopWaiting())
@@ -196,5 +197,37 @@ test("dates divide the turns as separators", async () => {
   const page = await harness.open("timeline")
   const dividers = page.getByRole("separator")
   expect(await dividers.evaluateAll((items) => items.map((item) => item.getAttribute("aria-label")))).toEqual(["Yesterday", "Today"])
+  await page.close()
+})
+
+test("delegate_task renders as the thread fan in its place, and thread names are link chips", async () => {
+  const page = await harness.open("timeline")
+  expect(await page.locator("[data-block=c6]").innerText()).toContain("Regression tests")
+  expect(await page.locator("[data-step=c6]").count()).toBe(0)
+  const chip = page.locator("[data-turn-summary] a[data-kind=thread]").first()
+  expect(await chip.innerText()).toBe("Regression tests")
+  expect(await chip.getAttribute("href")).toBe("#/p/auth/t/23")
+  expect(await page.locator("[data-waiting] a[data-kind=thread]").innerText()).toBe("Release notes")
+  await page.close()
+})
+
+test("a reconnect that resends the same entries leaves the DOM and the scroll alone", async () => {
+  const page = await harness.open("timeline")
+  await tl(page, (fixture) => fixture.run(6))
+  await page.evaluate(() => {
+    document.querySelector<HTMLElement>("[data-timeline]")!.scrollTop = 300
+  })
+  await settled(page)
+  await page.evaluate(() => {
+    const counts = { mutations: 0 }
+    new MutationObserver((records) => {
+      counts.mutations += records.filter((record) => record.target instanceof Element && record.target.closest("[data-item]") !== null).length
+    }).observe(document.querySelector("[data-timeline]")!, { subtree: true, childList: true, characterData: true, attributes: true })
+    Object.assign(window, { counts })
+  })
+  await tl(page, (fixture) => fixture.reconnect())
+  await settled(page)
+  expect(await page.evaluate(() => (window as unknown as { counts: { mutations: number } }).counts.mutations)).toBe(0)
+  expect(await scrollTop(page)).toBe(300)
   await page.close()
 })

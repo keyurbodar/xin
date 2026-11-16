@@ -21,6 +21,7 @@ export type ChatMessage = {
   readonly threadId?: number
   readonly details?: unknown
   readonly isError?: boolean
+  readonly timestamp?: number
 }
 
 export type ToolCallView = {
@@ -117,12 +118,14 @@ function parseMessage(value: unknown): ChatMessage | undefined {
   const toolCallId = role === "toolResult" ? strOf(record.toolCallId) : undefined
   const details = recordOf(record.details)
   const threadId = details === undefined ? undefined : numOf(details.threadId)
+  const timestamp = numOf(record.timestamp)
   return {
     role,
     content: record.content,
     ...(model === undefined ? {} : { model }),
     ...(toolCallId === undefined ? {} : { toolCallId, details: record.details, isError: record.isError === true }),
     ...(threadId === undefined ? {} : { threadId }),
+    ...(timestamp === undefined ? {} : { timestamp }),
   }
 }
 
