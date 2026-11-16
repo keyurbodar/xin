@@ -46,7 +46,7 @@ import { navigate, param } from "../lib/router.ts"
 import { Loading, ThreadSkeleton } from "../components/ui/skeleton.tsx"
 import { Transcript, type PendingMessage } from "../components/chat/transcript.tsx"
 import { Composer, type SendKey } from "../components/chat/composer.tsx"
-import { CaptainWelcome } from "../components/captain/welcome.tsx"
+import { lazyView } from "../components/ui/lazy-view.tsx"
 import type { CaptainProfile } from "../lib/captains.ts"
 import { ThreadConversation } from "../components/chat/panel.tsx"
 import { ConversationTabs, type ConversationAction } from "../components/shell/conversation-tabs.tsx"
@@ -61,6 +61,8 @@ import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 import { Backdrop } from "../appearance/backdrop.tsx"
+
+const CaptainWelcome = lazyView(() => import("../components/captain/welcome.tsx").then((module) => module.CaptainWelcome), () => <></>)
 
 export function ProjectChat(props: {
   project: ProjectSummary
@@ -192,8 +194,9 @@ export function ProjectChat(props: {
     }
   }
 
+  let root: HTMLDivElement | undefined
   return (
-    <div class="relative isolate flex min-h-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
+    <div ref={root} class="relative isolate flex min-h-0 flex-1 flex-col [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-1 [&>div:first-child]:flex-col">
       <Loading when={snapshot() === undefined} skeleton={<ThreadSkeleton />} label="Loading conversation">
         <Show when={snapshot()}>
           {(value) => (
@@ -213,7 +216,13 @@ export function ProjectChat(props: {
               onLoadOlder={loadOlder}
               welcome={
                 props.captain === undefined ? undefined : (
-                  <CaptainWelcome captain={props.captain} onStart={(text) => send(text, { id: crypto.randomUUID(), at: Date.now() }, [])} />
+                  <CaptainWelcome
+                    captain={props.captain}
+                    onStart={async (text: string) => {
+                      await send(text, { id: crypto.randomUUID(), at: Date.now() }, [])
+                      root?.querySelector<HTMLElement>("ui-token-input-editor")?.focus()
+                    }}
+                  />
                 )
               }
             />

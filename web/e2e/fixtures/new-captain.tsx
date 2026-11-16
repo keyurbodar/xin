@@ -37,6 +37,7 @@ const answer = (op: string, args: Record<string, unknown>): unknown => {
         ...(args.conv === 1 ? { model: { provider: "anthropic", modelId: "fixture-large" } } : {}),
       }
     case "captain.create":
+      if (args.name === "Taken") throw new Error("alias @taken is taken by another live Captain, so pick another name or set an alias under Alias and rules")
       return { id: "cap-1", name: args.name, alias: args.alias ?? "harbour", projectId: args.projectId, spaceId: "s1", coordinatorId: 9 }
     case "message.send":
       return { accepted: true }
@@ -50,9 +51,14 @@ const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<
   if (!url.endsWith("/v1/cmd")) throw new Error(`fixture fetch ${url}`)
   const body: unknown = JSON.parse(String(init?.body))
   const frames = (Array.isArray(body) ? body : [body]) as { id: string; op: string; args: Record<string, unknown> }[]
+  if (frames.some((frame) => frame.args.name === "Offline")) throw new TypeError("Failed to fetch")
   const acks = frames.map((frame) => {
     calls.push({ op: frame.op, args: frame.args })
-    return { t: "ack", id: frame.id, ok: true, result: answer(frame.op, frame.args) }
+    try {
+      return { t: "ack", id: frame.id, ok: true, result: answer(frame.op, frame.args) }
+    } catch (problem) {
+      return { t: "ack", id: frame.id, ok: false, error: { code: "bad_args", message: problem instanceof Error ? problem.message : String(problem) } }
+    }
   })
   await new Promise((resolve) => setTimeout(resolve, 20))
   return new Response(JSON.stringify(Array.isArray(body) ? acks : acks[0]), { headers: { "content-type": "application/json" } })

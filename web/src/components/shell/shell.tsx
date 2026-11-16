@@ -10,7 +10,8 @@ import { NewThreadDialog } from "./new-thread.tsx"
 import { ICON_BUTTON } from "./menu.ts"
 import { ProjectScreen } from "../../screens/project.tsx"
 import { CaptainScreen } from "../../screens/captain.tsx"
-import { newCaptainOpen } from "../captain/captain-dialog.tsx"
+import { closeNewCaptain, newCaptainOpen } from "../captain/captain-dialog.tsx"
+import { Dialog } from "../ui/dialog.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
 import { Toasts } from "../ui/toast.tsx"
@@ -140,9 +141,20 @@ export function Shell(): JSX.Element {
       </main>
       <NewProjectDialog open={first() === "new"} onClose={() => navigate("/")} />
       <NewThreadDialog />
-      <Show when={captainRequested()}>
-        <NewCaptainDialog />
-      </Show>
+      <ErrorBoundary
+        fallback={(error: unknown, reset) => {
+          createEffect(on(newCaptainOpen, (open) => open && reset(), { defer: true }))
+          return (
+            <Dialog open={newCaptainOpen()} onClose={closeNewCaptain} title="New Captain">
+              <Stopped title="New Captain didn't load" error={error} onRetry={reset} class="py-6" />
+            </Dialog>
+          )
+        }}
+      >
+        <Show when={captainRequested()}>
+          <NewCaptainDialog />
+        </Show>
+      </ErrorBoundary>
       <CommandPalette open={palette()} onClose={() => setPalette(false)} />
       <Toasts />
     </div>

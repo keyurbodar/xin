@@ -103,6 +103,7 @@ test("a new Captain's empty chat shows who it is and sends a starter through mes
   expect(sent[0]?.args).toMatchObject({ conv: 9, text: "Plan the first week" })
   expect(typeof sent[0]?.args.clientTs).toBe("number")
   await page.getByText("Plan the first week").waitFor()
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName)).toMatch(/^Message/u)
   await page.close()
 })
 
@@ -120,3 +121,30 @@ test("the dialog and the empty chat fit a phone without sideways scroll", async 
   expect(await chat.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0)
   await chat.close()
 })
+
+test("Cancel closes the dialog without creating anything", async () => {
+  const page = await openDialog()
+  await page.getByLabel("Name").fill("Harbour")
+  await page.getByRole("button", { name: "Cancel" }).click()
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await created(page)).toBeUndefined()
+  await page.close()
+})
+
+for (const [name, expected] of [
+  ["Taken", /is taken by another live Captain/u],
+  ["Offline", /./u],
+] as const) {
+  test(`a create that fails (${name}) keeps focus on the name and announces the whole error`, async () => {
+    const page = await openDialog()
+    await page.getByLabel("Name").fill(name)
+    await createButton(page).click()
+    const alert = page.getByRole("dialog").getByRole("alert")
+    await alert.waitFor()
+    expect(await alert.innerText()).toMatch(expected)
+    expect(await alert.evaluate((element) => element.scrollWidth <= element.clientWidth && getComputedStyle(element).textOverflow !== "ellipsis")).toBe(true)
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Name")
+    expect(await page.getByRole("dialog").count()).toBe(1)
+    await page.close()
+  })
+}

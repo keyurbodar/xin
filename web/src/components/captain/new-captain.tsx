@@ -135,6 +135,7 @@ export function NewCaptainDialog(): JSX.Element {
   const [busy, setBusy] = createSignal(false)
   const [more, setMore] = createSignal(false)
   const [failure, setFailure] = createSignal<string>()
+  let nameInput: HTMLInputElement | undefined
   const set = (patch: Partial<Draft>): void => {
     setDraft({ ...draft(), ...patch })
   }
@@ -180,6 +181,7 @@ export function NewCaptainDialog(): JSX.Element {
       setFailure(problem instanceof Error ? problem.message : "That did not go through")
     } finally {
       setBusy(false)
+      if (failure() !== undefined) nameInput?.focus()
     }
   }
 
@@ -193,8 +195,15 @@ export function NewCaptainDialog(): JSX.Element {
       onSubmit={() => void create()}
       footer={
         <>
-          <Show when={failure()}>{(text) => <span class="min-w-0 truncate text-sm text-failed">{text()}</span>}</Show>
           <span class="mr-auto" />
+          <button
+            type="button"
+            disabled={busy()}
+            onClick={closeNewCaptain}
+            class="im-press h-8 rounded-sm px-3 text-sm text-ink-2 hover:text-ink disabled:opacity-50"
+          >
+            Cancel
+          </button>
           <button
             type="submit"
             disabled={!ready()}
@@ -209,6 +218,7 @@ export function NewCaptainDialog(): JSX.Element {
       <div class="flex flex-col items-center gap-2 pb-2 pt-1">
         <CaptainAvatar name={draft().name.trim() === "" ? "Captain" : draft().name} size={72} />
         <input
+          ref={nameInput}
           autofocus
           aria-label="Name"
           value={draft().name}
@@ -282,6 +292,13 @@ export function NewCaptainDialog(): JSX.Element {
           </ui-collapsible-panel>
         </ui-collapsible>
       </div>
+      <Show when={failure()}>
+        {(text) => (
+          <p role="alert" class="break-words text-sm text-failed">
+            {text()}
+          </p>
+        )}
+      </Show>
     </Dialog>
   )
 }
