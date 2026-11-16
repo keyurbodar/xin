@@ -10,7 +10,7 @@ import { ago } from "../../lib/format.ts"
 import { stagger } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { theme } from "../../lib/theme.ts"
-import { loadOnIntent, warmUiSdk } from "../../lib/ui-sdk-lazy.ts"
+import { loadOnIntent, replayWhenReady, warmUiSdk } from "../../lib/ui-sdk-lazy.ts"
 import { applyTheme, SlotList, themes } from "../../plugins/slots.tsx"
 import { openThreadTab, paneOpen, projectTabs, setSidebarDrawer, showPaneView } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
@@ -233,6 +233,7 @@ function LowerSection(): JSX.Element {
         <ui-segmented-control
           aria-label="Sidebar list"
           default-value={initial}
+          onClick={(event) => replayWhenReady(["segmented-control"], event)}
           on:valuechange={(event) => pick(event.detail.value)}
           class="relative isolate flex h-[var(--h-control-sm)] flex-1 items-center rounded-sm bg-secondary p-0.5"
         >
