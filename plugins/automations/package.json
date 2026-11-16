@@ -12,6 +12,7 @@
         "description": "Stored prompts that start an agent run when a cron schedule, a one-time trigger or a webhook fires, with webhook coalescing and run history.",
         "permissions": [
           "conversations",
+          "files",
           "models",
           "owner",
           "routes",
@@ -27,7 +28,10 @@
             "automation.trigger",
             "automation.update"
           ]
-        }
+        },
+        "requires": [
+          "push"
+        ]
       },
       "tool-automations": {
         "module": "./tools.ts",

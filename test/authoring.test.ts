@@ -41,7 +41,7 @@ describe("plugin authoring", () => {
         },
         "ingle-plugin-greeting: ingle.plugins.greeting",
       ),
-    ).toEqual({ api: 1, requires: [], permissions: [], contributes: { tools: ["greeting"], ops: [] } })
+    ).toEqual({ api: 1, requires: ["presets"], permissions: [], contributes: { tools: ["greeting"], ops: [] } })
     expect(field(ingle, "bundle")).toEqual([{ id: "greeting", plugin: "greeting" }])
 
     expect(fileOf("greeting", "index.ts")).toContain('export const name = "greeting"')

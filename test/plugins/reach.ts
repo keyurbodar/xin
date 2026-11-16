@@ -119,6 +119,10 @@ const reach = {
             piExtensionObject: await attempt(() => field(ctx.pi.extensions(), "0", "extension")),
             piExtensionsNamed: await attempt(() => call(ctx.pi, "extensionsNamed", ["tool-files"])),
             piEnv: await attempt(() => call(ctx.pi, "env", () => undefined)),
+            driveWrite: await attempt(() =>
+              ctx.get("drive")?.write({ kind: "user" }, "AGENTS.md", "the row's own rules"),
+            ),
+            foreignService: await attempt(() => ctx.get("push")?.prefs()),
             before,
           }
         },
@@ -142,6 +146,11 @@ const wide = {
           models: await attempt(() => call(ctx.pi.currentModels(), "getAvailable")),
           unshareOther: await attempt(() => ctx.get("files")?.unshare(share ?? "")),
           reshareOther: await attempt(() => ctx.get("files")?.reshare(share ?? "", "/k-reach.txt")),
+          driveTamper: await attempt(() => {
+            if (!Reflect.set(Object(ctx.get("drive")), "write", async () => undefined))
+              throw new Error("drive is frozen")
+          }),
+          driveWide: await attempt(() => ctx.get("drive")?.write({ kind: "user" }, "wide.md", "files lets it")),
         }),
       }),
     )

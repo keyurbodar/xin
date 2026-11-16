@@ -126,6 +126,8 @@ describe("plugin doctor", () => {
       piExtensionObject: "no extension",
       piExtensionsNamed: expect.stringContaining("uses extensionsNamed without declaring the plugins permission"),
       piEnv: expect.stringContaining("uses env without declaring the runtime permission"),
+      driveWrite: expect.stringContaining("without declaring the files permission"),
+      foreignService: expect.stringContaining("uses the push service from push without requiring it"),
       before: {
         "secret.set": JSON.stringify({ ref: "k-reach-probe", value: "[redacted]" }),
         "bundle.put": JSON.stringify({
@@ -150,6 +152,8 @@ describe("plugin doctor", () => {
       models: "reached",
       unshareOther: expect.stringContaining("another row owns it"),
       reshareOther: expect.stringContaining("another row owns it"),
+      driveTamper: "drive is frozen",
+      driveWide: "reached",
     })
     expect(field((await cmd(stub, "k-reach-wide-l", "drive.list", { scope: user })).result, "shares")).toEqual({
       "shared.md": share,
