@@ -1,5 +1,6 @@
-import { createSignal } from "solid-js"
+import { createResource, createSignal } from "solid-js"
 import { cmd } from "../lib/api.ts"
+import { settled } from "../lib/loading.ts"
 import { createRevCache, createStatesCache, createTrailing } from "../lib/issue-cache.ts"
 import {
   parseIssue,
@@ -56,6 +57,15 @@ export async function projectIssueList(
     parseIssuePage(await cmd<unknown>("issue.list", { project, closed, limit: 200 })),
   )
   return { states: await statesFor(states, issues.then((list) => list.map((issue) => issue.state))), issues: await issues }
+}
+
+/** A pane's open issues through the shared per-revision cache, so the Overview's sections and the + menu cost one issue.list. */
+export function createOpenIssues(scope: () => string): () => IssueList | undefined {
+  const [list] = createResource(
+    () => [scope(), issuesRev(), statesRev()] as const,
+    ([project, rev, states]) => projectIssueList(project, false, rev, states),
+  )
+  return () => settled(list)
 }
 
 /** Prefix search over titles and descriptions, for the link picker. */

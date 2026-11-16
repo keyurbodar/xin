@@ -1,24 +1,30 @@
-import { For, Show, type JSX } from "solid-js"
+import { ErrorBoundary, For, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import { Brain, CalendarClock, CircleDot, HardDrive, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
+import { Brain, CalendarClock, CircleDashed, CircleDot, File, GitPullRequest, HardDrive, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
 import { activeConversation, host, PluginBoundary, slotItems } from "../../plugins/slots.tsx"
 import { Icon, isIconName } from "../ui/icon.tsx"
 import { JobsView, ThreadsView } from "./bodies.tsx"
 import { CrewSection, CrewView } from "./crew.tsx"
-import { IssuesSection } from "./issues.tsx"
-import { DriveSection, InProgressSection, NeedsYouSection, ThreadsSection, type PaneContext } from "./overview.tsx"
+import { DriveSection, NeedsYouSection, Overview, ThreadsSection, type PaneContext } from "./overview.tsx"
+import { fileName } from "./bodies.tsx"
+import { closePaneView } from "../../state/tabs.ts"
 import { PaneSkeleton } from "../ui/skeleton.tsx"
 import { lazyView } from "../ui/lazy-view.tsx"
+import { Stopped } from "../ui/stopped.tsx"
 
 const paneSkeleton = (): JSX.Element => <PaneSkeleton rows={6} />
 const MemoryTab = lazyView(() => import("../chat/memory.tsx").then((module) => module.MemoryTab), paneSkeleton)
 const AutomationsTab = lazyView(() => import("../chat/automations.tsx").then((module) => module.AutomationsTab), paneSkeleton)
 const DriveView = lazyView(() => import("./drive.tsx").then((module) => module.DriveView), paneSkeleton)
 const IssueView = lazyView(() => import("./issue.tsx").then((module) => module.IssueView), paneSkeleton)
+const IssuesSection = lazyView(() => import("./issues.tsx").then((module) => module.IssuesSection), paneSkeleton)
+const PullsView = lazyView(() => import("./issues.tsx").then((module) => module.PullsSection), paneSkeleton)
+const InProgressSection = lazyView(() => import("./issues.tsx").then((module) => module.InProgressSection), () => null)
+const PullsSection = lazyView(() => import("./issues.tsx").then((module) => module.PullsSection), () => null)
 
 /** Starts every lazy pane view's chunk, for the moment the pane's tabs or its + menu are about to be used. */
 export function preloadPaneViews(): void {
-  for (const view of [MemoryTab, AutomationsTab, DriveView, IssueView]) void view.preload()
+  for (const view of [MemoryTab, AutomationsTab, DriveView, IssueView, IssuesSection]) void view.preload()
 }
 
 export type { PaneContext }
@@ -34,7 +40,7 @@ export type PaneEntry = {
   readonly render: (context: PaneContext) => JSX.Element
 }
 
-/** Overview's sections, top to bottom. Each renders its own collapsible header and count. */
+/** Overview's sections, top to bottom. Each renders its own collapsible header and count, and a failure, such as a lazy chunk that will not load, stops only that section. */
 type OverviewSection = Omit<PaneEntry, "icon">
 
 function section(
@@ -43,7 +49,22 @@ function section(
   Body: (props: PaneContext & { label: string }) => JSX.Element,
   scope?: PaneScope,
 ): OverviewSection {
-  return { id, label, render: (context) => <Body {...context} label={label} />, ...(scope === undefined ? {} : { scope }) }
+  return {
+    id,
+    label,
+    render: (context) => (
+      <ErrorBoundary
+        fallback={(error: unknown, reset) => (
+          <section aria-label={label}>
+            <Stopped title={`${label} stopped`} error={error} onRetry={reset} class="py-4" />
+          </section>
+        )}
+      >
+        <Body {...context} label={label} />
+      </ErrorBoundary>
+    ),
+    ...(scope === undefined ? {} : { scope }),
+  }
 }
 
 function fits(entry: { readonly scope?: PaneScope }, context: PaneContext): boolean {
@@ -61,9 +82,9 @@ function CrewOverview(props: PaneContext & { label: string }): JSX.Element {
 export const OVERVIEW_SECTIONS: readonly OverviewSection[] = [
   section("needs", "Needs you", NeedsYouSection),
   section("crew", "Crew", CrewOverview, "captain"),
-  section("progress", "In progress", InProgressSection, "project"),
-  section("issues", "Issues", IssuesSection),
+  section("progress", "In progress", InProgressSection),
   section("threads", "Threads", ThreadsSection, "project"),
+  section("pulls", "Pull requests", PullsSection),
   section("drive", "Drive", DriveSection, "project"),
 ]
 
@@ -72,9 +93,11 @@ const OVERVIEW_VIEW: PaneEntry = {
   label: "Overview",
   icon: LayoutList,
   render: (context) => (
-    <div class="flex flex-col gap-1">
-      <For each={OVERVIEW_SECTIONS.filter((entry) => fits(entry, context))}>{(entry) => entry.render(context)}</For>
-    </div>
+    <Overview {...context}>
+      <div class="flex flex-col gap-1">
+        <For each={OVERVIEW_SECTIONS.filter((entry) => fits(entry, context))}>{(entry) => entry.render(context)}</For>
+      </div>
+    </Overview>
   ),
 }
 
@@ -104,6 +127,7 @@ export const PANE_VIEWS: readonly PaneEntry[] = [
       />
     ),
   },
+  { id: "issues", label: "Issues", icon: CircleDashed, render: (context) => <IssuesSection {...context} label="Issues" /> },
   {
     id: "memory",
     label: "Memory",
@@ -122,6 +146,7 @@ export const PANE_VIEWS: readonly PaneEntry[] = [
   },
   { id: "jobs", label: "Jobs", icon: Timer, render: () => <JobsView /> },
   { id: "threads", label: "All threads", icon: ListTree, render: (context) => <ThreadsView {...context} /> },
+  { id: "pulls", label: "Pull requests", icon: GitPullRequest, render: (context) => <PullsView {...context} label="Pull requests" /> },
 ]
 
 function pluginIcon(name: string | undefined): PaneEntry["icon"] {
@@ -165,8 +190,33 @@ function issueEntry(id: string): PaneEntry | undefined {
   return entry
 }
 
+const fileEntries = new Map<string, PaneEntry>()
+
+/** A Drive file opens as its own pane view, `file:<path>` in the project's drive; closing the file closes the tab. */
+function fileEntry(id: string): PaneEntry | undefined {
+  if (!id.startsWith("file:")) return undefined
+  const path = id.slice("file:".length)
+  const entry = fileEntries.get(id) ?? {
+    id,
+    label: fileName(path),
+    icon: File,
+    scope: "project",
+    render: (context: PaneContext) => (
+      <DriveView
+        conversationId={context.conversationId}
+        prefer={{ kind: "project", id: context.project.id }}
+        projectSlug={context.project.slug}
+        file={path}
+        onClose={() => closePaneView(context.project.id, id)}
+      />
+    ),
+  }
+  fileEntries.set(id, entry)
+  return entry
+}
+
 export function paneEntry(id: string, context: PaneContext): PaneEntry | undefined {
-  return paneViews(context).find((entry) => entry.id === id) ?? issueEntry(id)
+  return paneViews(context).find((entry) => entry.id === id) ?? issueEntry(id) ?? fileEntry(id)
 }
 
 export function paneView(id: string, context: PaneContext): PaneEntry {

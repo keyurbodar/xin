@@ -65,6 +65,7 @@ import { fileName as baseName, forgetProjectFiles, PANE_ROW } from "./bodies.tsx
 import { DriveTree, FileIcon } from "./drive-tree.tsx"
 import { createBlobCache, type BlobCache } from "../../lib/blob-cache.ts"
 import { Tile } from "../ui/tile.tsx"
+import { Kiko } from "../ui/kiko.tsx"
 
 const CENTER_ROW = PANE_ROW.replace("items-start", "items-center")
 
@@ -98,10 +99,16 @@ function dropFolder(target: EventTarget | null | undefined): string {
 }
 
 /** The right pane's Drive: the conversation's scopes as a file tree, and the open file. One drive.list for the scope, which lists every folder, and one more after each change. */
-export function DriveView(props: { conversationId: number; prefer: DriveScope; projectSlug: string }): JSX.Element {
+export function DriveView(props: {
+  conversationId: number
+  prefer: DriveScope
+  projectSlug: string
+  file?: string
+  onClose?: () => void
+}): JSX.Element {
   const [scopes, { refetch: refetchScopes }] = createResource(() => props.conversationId, drive.scopes)
   const [picked, setPicked] = createSignal<string | undefined>()
-  const [open, setOpen] = createSignal<string | undefined>()
+  const [open, setOpen] = createSignal<string | undefined>(props.file)
   const [moving, setMoving] = createSignal<string | undefined>()
   const [deleting, setDeleting] = createSignal<string | undefined>()
   const [landing, setLanding] = createSignal<string | undefined>()
@@ -136,6 +143,7 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
       setOpen(undefined)
     })
   const back = (): void => {
+    if (props.onClose !== undefined) return props.onClose()
     setLanding(open())
     setOpen(undefined)
   }
@@ -218,6 +226,7 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
                   <Show when={settled(listing) !== undefined && rows().length === 0}>
                     <EmptyState
                       pictogram="folder"
+                      art={<Kiko scene="folder" />}
                       title="Nothing in this drive yet"
                       detail={`Drop files here or upload them. ${INSTRUCTIONS_FILE} at the root becomes instructions, and ${SKILLS_FOLDER}/<name>/SKILL.md installs a skill.`}
                     />
