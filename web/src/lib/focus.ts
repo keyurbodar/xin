@@ -17,6 +17,23 @@ export function trapTab(container: HTMLElement, event: KeyboardEvent): void {
   if (next !== undefined) stops[next]?.focus()
 }
 
+/** The row that takes focus when `removed` leaves the list: the one after it, else the one before, else none. */
+export function neighbourAfter(ids: readonly string[], removed: string): string | undefined {
+  const at = ids.indexOf(removed)
+  if (at < 0) return undefined
+  return ids[at + 1] ?? ids[at - 1]
+}
+
+/** The first control inside `container` that Tab would reach. */
+export function firstFocusable(container: ParentNode | null | undefined): HTMLElement | undefined {
+  return container?.querySelector<HTMLElement>(FOCUSABLE) ?? undefined
+}
+
+/** Where focus goes back when a dialog closes: the first candidate still in the document, latest first. */
+export function returnTarget<T extends { readonly isConnected: boolean }>(candidates: readonly (T | null | undefined)[]): T | undefined {
+  return candidates.find((candidate): candidate is T => candidate !== null && candidate !== undefined && candidate.isConnected)
+}
+
 export type EditorExit = "key" | "button" | "blur"
 
 export type FocusReturn = {

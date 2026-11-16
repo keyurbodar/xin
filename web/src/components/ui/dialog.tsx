@@ -1,4 +1,5 @@
 import { Show, createEffect, onCleanup, onMount, type Accessor, type JSX } from "solid-js"
+import { returnTarget } from "../../lib/focus.ts"
 import { createPresence } from "../shell/presence.ts"
 import { Icon } from "./icon.tsx"
 
@@ -21,6 +22,7 @@ export function Dialog(props: {
   width?: string
   footer?: JSX.Element
   onSubmit?: (() => void) | undefined
+  returnFocus?: HTMLElement | undefined
   children: JSX.Element
 }): JSX.Element {
   const { mounted, leaving } = createPresence(() => props.open, 140)
@@ -34,6 +36,7 @@ export function Dialog(props: {
         footer={props.footer}
         onSubmit={props.onSubmit}
         onClose={props.onClose}
+        returnFocus={() => props.returnFocus}
       >
         {props.children}
       </Frame>
@@ -49,6 +52,7 @@ function Frame(props: {
   footer: JSX.Element | undefined
   onSubmit: (() => void) | undefined
   onClose: () => void
+  returnFocus: () => HTMLElement | undefined
   children: JSX.Element
 }): JSX.Element {
   let panel!: HTMLFormElement
@@ -89,12 +93,29 @@ function Frame(props: {
     }
   }
 
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+  let escaped: HTMLElement | undefined
+  const focusInitial = (): void => {
+    panel.querySelector<HTMLElement>("[autofocus], input, textarea")?.focus()
+  }
+  /** A menu that opened this dialog restores focus to its trigger after the dialog mounts; pull it back in and remember the trigger. */
+  const onFocusIn = (event: FocusEvent): void => {
+    const target = event.target
+    if (!(target instanceof HTMLElement) || panel.contains(target) || target.closest('[data-part="positioner"]') !== null) return
+    escaped = target
+    focusInitial()
+  }
+
   onMount(() => {
-    const first = panel.querySelector<HTMLElement>("[autofocus], input, textarea")
-    first?.focus()
+    focusInitial()
     document.addEventListener("keydown", onKey)
+    document.addEventListener("focusin", onFocusIn)
   })
-  onCleanup(() => document.removeEventListener("keydown", onKey))
+  onCleanup(() => {
+    document.removeEventListener("keydown", onKey)
+    document.removeEventListener("focusin", onFocusIn)
+    returnTarget([props.returnFocus(), escaped, opener])?.focus()
+  })
 
   return (
     <div
