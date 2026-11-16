@@ -3,6 +3,7 @@ import { cmd } from "../lib/api.ts"
 import {
   ensureCaptain,
   firstOpenStep,
+  markOnboarded,
   readProgress,
   skipTarget,
   type CaptainInput,
@@ -79,7 +80,7 @@ export function canSkip(step: 1 | 2 | 3): boolean {
   return skipTarget(step, firstCaptain() !== undefined) !== undefined
 }
 
-export function skipStep(step: 1 | 2 | 3): void {
+export async function skipStep(step: 1 | 2 | 3): Promise<void> {
   const target = skipTarget(step, firstCaptain() !== undefined)
   if (target === undefined) return
   switch (target.kind) {
@@ -87,7 +88,11 @@ export function skipStep(step: 1 | 2 | 3): void {
       nextStep()
       return
     case "shell":
-      navigate("/")
+      try {
+        await markOnboarded()
+      } finally {
+        navigate("/")
+      }
       return
   }
 }
@@ -138,6 +143,7 @@ export async function loadProgress(): Promise<void> {
 
 export async function createFirstCaptain(input: CaptainInput, commandId: string): Promise<CaptainResult> {
   const result = await ensureCaptain(input, commandId)
+  await markOnboarded()
   setFirstCaptain(result)
   return result
 }

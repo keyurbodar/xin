@@ -7,7 +7,7 @@ import type {
   JsonObject,
   Tx,
 } from "@earendil-works/pi-durable"
-import { int, obj, opt, str } from "@earendil-works/pi-schema"
+import { int, lit, obj, opt, str } from "@earendil-works/pi-schema"
 import type { CommandId, ProjectId, SpaceId } from "../../src/ids.ts"
 import { defineOp, OpRejected, type Op } from "../../src/ops.ts"
 import {
@@ -93,6 +93,7 @@ export type OwnerKv = {
 export type OwnerSettings = {
   readonly name: string
   readonly instructions: string
+  readonly onboardedAt?: string
 }
 
 export type WorkspacePort = {
@@ -104,6 +105,7 @@ export type WorkspacePort = {
 
 const OWNER_NAME = "owner.name"
 const OWNER_INSTRUCTIONS = "owner.instructions"
+const OWNER_ONBOARDED = "owner.onboardedAt"
 
 export type WorkspaceFeature = {
   readonly ops: readonly Op[]
@@ -629,10 +631,14 @@ export function create(port: WorkspacePort): WorkspaceFeature {
     return instructions
   }
 
-  const owner = async (): Promise<OwnerSettings> => ({
-    name: (await port.kv.get<string>(OWNER_NAME)) ?? "",
-    instructions: await readInstructions(),
-  })
+  const owner = async (): Promise<OwnerSettings> => {
+    const onboardedAt = await port.kv.get<string>(OWNER_ONBOARDED)
+    return {
+      name: (await port.kv.get<string>(OWNER_NAME)) ?? "",
+      instructions: await readInstructions(),
+      ...(onboardedAt === undefined ? {} : { onboardedAt }),
+    }
+  }
   const readOwner = defineOp({
     name: "owner.read",
     read: true,
@@ -643,10 +649,16 @@ export function create(port: WorkspacePort): WorkspaceFeature {
 
   const setOwner = defineOp({
     name: "owner.set",
-    args: obj({ name: opt(str({ maxLength: 120 })), instructions: opt(str({ maxLength: 4_000 })) }),
+    args: obj({
+      name: opt(str({ maxLength: 120 })),
+      instructions: opt(str({ maxLength: 4_000 })),
+      onboarded: opt(lit(true)),
+    }),
     actors: ["owner"],
     run: async (_api, args) => {
       if (args.name !== undefined) await port.kv.put(OWNER_NAME, args.name.trim())
+      if (args.onboarded !== undefined && (await port.kv.get<string>(OWNER_ONBOARDED)) === undefined)
+        await port.kv.put(OWNER_ONBOARDED, new Date().toISOString())
       if (args.instructions !== undefined) {
         await port.kv.put(OWNER_INSTRUCTIONS, args.instructions.trim())
         instructions = args.instructions.trim()
