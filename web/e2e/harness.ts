@@ -40,8 +40,11 @@ export async function startHarness(): Promise<Harness> {
       return page
     },
     close: async () => {
-      await browser.close()
-      await server.close()
+      try {
+        await browser.close()
+      } finally {
+        await server.close()
+      }
     },
   }
 }
