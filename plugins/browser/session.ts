@@ -95,6 +95,16 @@ const settleFailure = (scope: Scope, start: Start): Promise<void> =>
     if (sameGeneration(doc.session, start) && doc.session.state === "starting") delete doc.session
   }, scope.context)
 
+const record = (scope: Scope, start: Start, machine: Machine, state: "starting" | "running"): Promise<boolean> =>
+  scope.docs.commit(async (tx) => {
+    const doc = await tx.doc(BrowserDoc, scope.conversationId)
+    const session = doc.session
+    if (!sameGeneration(session, start) || session.state === "closing" || session.state === "closed") return false
+    if (session.state === "running") return true
+    doc.session = { ...session, state, machine, usedAt: Date.now() }
+    return true
+  }, scope.context)
+
 export function createSessions(backend: BrowserBackend, idleMs: number): Sessions {
   const idleMinutes = Math.round(idleMs / 60_000)
   const closedText = `The browser was closed after ${idleMinutes} idle minutes. Call browser_open to start a new one.`
@@ -188,16 +198,6 @@ export function createSessions(backend: BrowserBackend, idleMs: number): Session
           return _exhaustive
         }
       }
-    }, scope.context)
-
-  const record = (scope: Scope, start: Start, machine: Machine, state: "starting" | "running"): Promise<boolean> =>
-    scope.docs.commit(async (tx) => {
-      const doc = await tx.doc(BrowserDoc, scope.conversationId)
-      const session = doc.session
-      if (!sameGeneration(session, start) || session.state === "closing" || session.state === "closed") return false
-      if (session.state === "running") return true
-      doc.session = { ...session, state, machine, usedAt: Date.now() }
-      return true
     }, scope.context)
 
   const abandon = async (scope: Scope, machine: Machine): Promise<never> => {
