@@ -1,0 +1,1 @@
+2026-11-16T07:00:00Z	web-motion	shimmer: the one remaining class="shimmer" (SteerComposer Working label) becomes im-shimmer; the other uses the brief listed were already im-shimmer on main	.shimmer has no rule since #22; .im-shimmer is in web/src/styles/ingle-motion.css (identical to the drive handoff) with reduce-motion and hidden-tab fallbacks	grep -rnw shimmer web/src	adopted

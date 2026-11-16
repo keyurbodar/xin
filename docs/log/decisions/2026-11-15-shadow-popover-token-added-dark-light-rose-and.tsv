@@ -1,0 +1,1 @@
+2026-11-15T17:20:00Z	page-15	--shadow-popover token added (dark, light, rose) and used by menus, the palette, the usage tooltip, the notification preview and toasts; dialogs keep their own	v5 §0.8: literal popover/toast shadows read heavy on light; composer.tsx menu left alone because the composer is #14's lane	web/src/styles/tokens.css	adopted

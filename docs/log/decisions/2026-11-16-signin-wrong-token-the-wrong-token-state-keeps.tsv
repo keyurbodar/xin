@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	onboarding v5	signin wrong token: The wrong-token state keeps the typed token, reddens the field and replays .im-reject on every failed attempt by clearing the error while checking	frame 18.1 dark; the shake restarts because the class leaves during the check, so no key or counter is needed	web/src/screens/signin.tsx	adopted

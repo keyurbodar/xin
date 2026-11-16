@@ -1,0 +1,1 @@
+2026-11-09T11:00:23Z	cost	Migration 12 drops inbound, so a message still in the 2 s debounce at the upgrade is lost	at personal scale, behind a laneless debounce, an upgrade mid-debounce is rare and the client can resend	src/db.ts migration 12	accepted and recorded here

@@ -1,0 +1,1 @@
+2026-11-16T12:00:00Z	page-15	Undo reopens only the tabs its close removed, at their old indexes (lib/tab-order.ts reinsert), instead of writing back a snapshot of the whole tab list	XIN-23: undoing an older toast brought back later-closed tabs and scrambled the order	src/lib/tab-order.test.ts; Chromium: close T1, close T2, undo T1 gives [T1,T3,T4]	adopted

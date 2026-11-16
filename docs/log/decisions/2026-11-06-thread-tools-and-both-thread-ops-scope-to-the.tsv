@@ -1,0 +1,1 @@
+2026-11-06T14:29:41Z	M5	Thread tools and both thread ops scope to the caller's project; children keep the section 8 subset (no delegate, cancel or send)	thread_read/task_status/thread_list could reach another project's threads by id; 06-orchestration section 9 updated	plugins/orchestrator/threads.ts threadInScope; M5 tests pass	accepted

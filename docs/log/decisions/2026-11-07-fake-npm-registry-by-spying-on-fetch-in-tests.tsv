@@ -1,0 +1,1 @@
+2026-11-07T00:00	P7	Fake npm registry by spying on fetch in tests	Same precedent as the MCP tests; the registry is an external transport like the model	plugins/mcp/mcp.test.ts	accepted

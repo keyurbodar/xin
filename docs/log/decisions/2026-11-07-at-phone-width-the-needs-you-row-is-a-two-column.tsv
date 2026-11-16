@@ -1,0 +1,1 @@
+2026-11-07T23:22	P14	At phone width the Needs You row is a two-column grid with its chips on a second line	the chips took the row and the question collapsed to a single character at 390px, which M1 does not show	web/src/screens/home.tsx grid-cols-[auto_1fr] sm:flex, chips col-span-2 sm:col-auto	P14-live-mobile-home.png at 390x844
