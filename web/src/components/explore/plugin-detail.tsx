@@ -12,23 +12,9 @@ import {
 import { Button, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { InstallSheet } from "../extensions/install-sheet.tsx"
+import { packageLines } from "../extensions/permissions.ts"
 import { Card, DetailColumns, ExternalLink, Fact, LoadFailed, LogoTile, Page, SkeletonRows } from "./parts.tsx"
 import { crumbsFor, logoOf, pluginAction, statusWord } from "./routes.ts"
-
-/** Plain-sentence permissions from what the index declares; the consent sheet asks for the exact list at install. */
-function permissionLines(detail: MarketDetail): readonly string[] {
-  const lines: string[] = []
-  if (detail.kind === "code") lines.push("Runs its own code in your Home, with your authority")
-  else lines.push("Configures plugins already in this build; adds no code")
-  lines.push(
-    detail.rows.length === 0
-      ? "Mounts no plugin rows of its own"
-      : `Mounts ${detail.rows.length} plugin ${detail.rows.length === 1 ? "row" : "rows"}, which you can switch off`,
-  )
-  if (detail.requires.length > 0) lines.push(`Also records ${detail.requires.join(", ")}`)
-  lines.push("Asks before it uses anything that needs your consent")
-  return lines
-}
 
 function reportHref(summary: MarketSummary | undefined, name: string): string {
   const repo = summary?.repository
@@ -207,7 +193,7 @@ export function PluginDetail(props: { name: string }): JSX.Element {
                 <Fact label="Kind">{entry().kind === "code" ? "Code plugin" : "Bundle"}</Fact>
                 <Fact label="Permissions">
                   <ul class="flex list-disc flex-col gap-1 pl-4 text-ink-2">
-                    <For each={permissionLines(entry())}>{(line) => <li>{line}</li>}</For>
+                    <For each={packageLines(entry())}>{(line) => <li>{line}</li>}</For>
                   </ul>
                 </Fact>
                 <div class="flex flex-col items-start gap-2 pt-1">

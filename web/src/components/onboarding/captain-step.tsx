@@ -11,6 +11,7 @@ import {
   previousStep,
   skipStep,
 } from "../../state/onboarding.ts"
+import { HALFTONE_STYLE } from "../../lib/halftone.ts"
 import { captainModel, OWN_SUGGESTIONS, TEMPLATES, type ModelRef, type Template } from "../../lib/onboarding.ts"
 import { models, type ModelInfo } from "../../state/settings.ts"
 
@@ -102,7 +103,8 @@ export function CaptainStep(): JSX.Element {
                 type="button"
                 aria-pressed={template() === item}
                 onClick={() => apply(item)}
-                class="im-press h-7 rounded-md px-2.5 text-base transition-colors duration-150"
+                class="halftone im-press h-7 rounded-md px-2.5 text-base transition-colors duration-150"
+                style={HALFTONE_STYLE}
                 classList={{
                   "bg-primary-soft text-accent-ink": template() === item,
                   "bg-secondary text-ink-2 hover:text-ink": template() !== item,
