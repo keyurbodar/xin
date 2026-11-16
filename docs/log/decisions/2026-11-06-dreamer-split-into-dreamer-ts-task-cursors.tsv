@@ -1,0 +1,1 @@
+2026-11-06T14:57:22Z	M7	dreamer split into dreamer.ts (task, cursors, transcript) plus dreamprompt.ts (contract, validation) and dreamersecrets.ts (live secret values)	dreamer.ts would pass 400 lines with the new validation and secret scan; the brief allows a split it then owns	node_modules only; no new exports from models.ts or src/kernel/secrets.ts	accepted

@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	client	The skeleton does not fade out over 140ms; content fades in over 200ms as the skeleton unmounts	a 140ms exit needs both layers mounted and stacked, which shifts layout when their heights differ; the content fade covers the swap	web/src/components/ui/skeleton.tsx Loading	deviation

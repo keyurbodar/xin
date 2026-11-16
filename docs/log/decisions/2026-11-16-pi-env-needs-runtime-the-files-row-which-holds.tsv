@@ -1,0 +1,1 @@
+2026-11-16T22:30:00Z	plugins	pi.env needs runtime; the files row, which holds runtime, now registers the file env instead of tool-files	XIN-23 #19: any row could add an execution env	k-reach piEnv is refused	fixed in #19

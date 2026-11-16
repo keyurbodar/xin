@@ -32,6 +32,12 @@ export type InstalledName = {
 }
 type EnvProvider = (target: EnvTarget) => ExecutionEnv | undefined
 
+/**
+ * Provider retries per model request: 2, 4, 8, 16, 32 and 60 s apart (pi-ai caps one wait at 60 s), so a run rides out
+ * about two minutes of rate limiting or overload before it fails. Each wait is one durable sleep commit.
+ */
+const PROVIDER_RETRIES = 6
+
 const own = hidden<Pi, Context>()
 
 const refuseHandle = async (): Promise<never> => {
@@ -66,7 +72,11 @@ export class Pi extends Service {
         registry: this.registry,
         settings: () => {
           const compaction = this.compactionSources[0]?.()
-          return { stream: { cacheRetention: "long" }, ...(compaction === undefined ? {} : { compaction }) }
+          return {
+            stream: { cacheRetention: "long" },
+            retry: { maxRetries: PROVIDER_RETRIES },
+            ...(compaction === undefined ? {} : { compaction }),
+          }
         },
         env: (target) => this.envSources.map((source) => source(target)).find((env) => env !== undefined),
         onWake: (wake) => void this.ctx.clock.arm(wake).catch(() => abort("alarm write failed")),

@@ -1,0 +1,1 @@
+2026-11-07T03:30:00Z	P5	the inject lint also covers src/kernel modules that declare inject	manager read ctx.host without injecting it and the lint skipped the kernel	scratch ctx.host read caught, reverted	pass

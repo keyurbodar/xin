@@ -1,0 +1,1 @@
+2026-11-08T00:52	P14	The gate's `types` step now typechecks the web package too	the root tsconfig never included web/, so UI edits were only proven by the dev server compiling them; the gate is the one place heavy checks may run	package.json typecheck runs tsgo -p tsconfig.json and then -p web/tsconfig.json	gate 3a540152 types pass with the web project included
