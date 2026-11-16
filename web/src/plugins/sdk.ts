@@ -128,7 +128,7 @@ export type PluginDef = {
 export type ClientEntry = {
   readonly name: string
   readonly rows: readonly string[]
-  readonly plugin: PluginDef
+  readonly load: () => Promise<{ readonly default: PluginDef }>
 }
 
 export function definePlugin<const T extends PluginDef>(def: T): T {

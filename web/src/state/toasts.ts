@@ -6,7 +6,8 @@ export type Toast = {
   readonly icon: (props: LucideProps) => JSX.Element
   readonly title: string
   readonly detail: string | undefined
-  readonly undo: () => void
+  /** Absent for a notice, which only informs and has nothing to take back. */
+  readonly undo?: () => void
   readonly expire: () => void
 }
 
@@ -26,8 +27,8 @@ export const leavingToast = (id: number): boolean => leaving().has(id)
 /** Toasts still on their way in or resting, newest first; a leaving toast is out of the stack at once. */
 export const liveToasts = (): readonly Toast[] => list().filter((toast) => !leaving().has(toast.id))
 
-/** Shows an undo toast, newest at the front; the oldest beyond the visible three expires without undo. */
-export function showUndoToast(toast: Omit<Toast, "id">): void {
+/** Shows a toast, newest at the front; the oldest beyond the visible three expires without undo. */
+export function showToast(toast: Omit<Toast, "id">): void {
   const current = list()
   setList([{ ...toast, id: nextId++ }, ...current].slice(0, TOAST_LIMIT))
   const evicted = current.slice(TOAST_LIMIT - 1)
@@ -57,5 +58,5 @@ export function dismissToast(toast: Toast): void {
 }
 
 export function undoToast(toast: Toast): void {
-  if (leave(toast)) toast.undo()
+  if (toast.undo !== undefined && leave(toast)) toast.undo()
 }
