@@ -1,4 +1,5 @@
 import { Menu } from "@ark-ui/solid/menu"
+import "@ui-sdk/web/tabs"
 import { createMemo, createSignal, For, Match, onMount, Show, Switch, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { navigate } from "../../lib/router.ts"
@@ -18,7 +19,6 @@ import {
   RowGrid,
   SearchBox,
   SectionHead,
-  Segmented,
   SkeletonRows,
   ViewAll,
   type Crumb,
@@ -28,12 +28,14 @@ import { PluginDetail } from "./plugin-detail.tsx"
 import { SkillDetail } from "./skill-detail.tsx"
 import { AddThemeButton, ThemeDetail } from "./theme-detail.tsx"
 import {
+  EXPLORE_TABS,
   logoOf,
   pluginPath,
   skillPath,
   statusWord,
   TAB_LABEL,
   TAB_PATH,
+  tabOf,
   themePalette,
   themePath,
   type ExploreTab,
@@ -85,64 +87,84 @@ function ExploreList(props: { tab: ExploreTab }): JSX.Element {
 
   return (
     <Page crumbs={crumbs()}>
-      <header class="flex flex-col gap-4">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div class="min-w-0">
-            <h1 class="text-xl font-normal text-ink">{TAB_LABEL[props.tab]}</h1>
-            <p class="mt-1 text-sm text-ink-2">{TAB_COPY[props.tab]}</p>
-          </div>
-          <SearchBox
-            value={query()}
-            placeholder={props.tab === "plugins" ? "Search plugins" : "Search Explore"}
-            onInput={(value) => {
-              setQuery(value)
-              setSection(undefined)
-            }}
-          />
-        </div>
-        <div class="flex items-center justify-between gap-3">
-          <Segmented
-            label="Explore"
-            tabs={[
-              { id: "plugins", label: "Plugins" },
-              { id: "skills", label: "Skills" },
-              { id: "themes", label: "Themes" },
-            ]}
-            active={props.tab}
-            onSelect={select}
-          />
-          <Show when={props.tab === "plugins"}>
-            <CategoryMenu
-              categories={pluginCategories(ready(market.state()))}
-              value={category()}
-              onChange={(next) => {
-                setCategory(next)
+      <ui-tabs
+        prop:value={props.tab}
+        on:valuechange={(event) => {
+          const tab = tabOf(event.detail.value)
+          if (tab !== undefined && tab !== props.tab) select(tab)
+        }}
+        class="flex flex-col gap-6"
+      >
+        <header class="flex flex-col gap-4">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+              <h1 class="text-xl font-normal text-ink">{TAB_LABEL[props.tab]}</h1>
+              <p class="mt-1 text-sm text-ink-2">{TAB_COPY[props.tab]}</p>
+            </div>
+            <SearchBox
+              value={query()}
+              placeholder={props.tab === "plugins" ? "Search plugins" : "Search Explore"}
+              onInput={(value) => {
+                setQuery(value)
                 setSection(undefined)
               }}
             />
-          </Show>
-        </div>
-      </header>
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <ui-tabs-list
+              aria-label="Explore"
+              class="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-sm bg-secondary p-0.5"
+            >
+              <For each={EXPLORE_TABS}>
+                {(tab) => (
+                  <ui-tabs-tab value={tab}>
+                    <button
+                      type="button"
+                      class="ex-color h-7 rounded-[5px] px-3 text-sm font-medium text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary data-[selected]:bg-card data-[selected]:text-ink data-[selected]:shadow-ring"
+                    >
+                      {TAB_LABEL[tab]}
+                    </button>
+                  </ui-tabs-tab>
+                )}
+              </For>
+            </ui-tabs-list>
+            <Show when={props.tab === "plugins"}>
+              <CategoryMenu
+                categories={pluginCategories(ready(market.state()))}
+                value={category()}
+                onChange={(next) => {
+                  setCategory(next)
+                  setSection(undefined)
+                }}
+              />
+            </Show>
+          </div>
+        </header>
 
-      <div role="tabpanel" aria-label={TAB_LABEL[props.tab]} class="flex flex-col gap-7">
         <Switch>
           <Match when={props.tab === "plugins"}>
-            <PluginsTab
-              query={query()}
-              category={category()}
-              section={section()}
-              onSection={setSection}
-              onClear={() => setQuery("")}
-            />
+            <ui-tabs-panel value="plugins" class="flex flex-col gap-7">
+              <PluginsTab
+                query={query()}
+                category={category()}
+                section={section()}
+                onSection={setSection}
+                onClear={() => setQuery("")}
+              />
+            </ui-tabs-panel>
           </Match>
           <Match when={props.tab === "skills"}>
-            <SkillsTab query={query()} onClear={() => setQuery("")} />
+            <ui-tabs-panel value="skills" class="flex flex-col gap-7">
+              <SkillsTab query={query()} onClear={() => setQuery("")} />
+            </ui-tabs-panel>
           </Match>
           <Match when={props.tab === "themes"}>
-            <ThemesTab query={query()} onClear={() => setQuery("")} />
+            <ui-tabs-panel value="themes" class="flex flex-col gap-7">
+              <ThemesTab query={query()} onClear={() => setQuery("")} />
+            </ui-tabs-panel>
           </Match>
         </Switch>
-      </div>
+      </ui-tabs>
     </Page>
   )
 }

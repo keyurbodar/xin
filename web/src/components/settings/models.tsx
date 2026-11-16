@@ -11,6 +11,8 @@ import {
 } from "../../state/settings.ts"
 import { Button, Chip, Failure, INPUT, MONO_INPUT, Note, Panel, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
+import { IntegrationRow } from "../ui/integration-row.tsx"
+import { providerDetail, providerStatus } from "../../lib/integrations.ts"
 import { Group } from "./parts.tsx"
 
 const APIS: readonly { readonly value: string; readonly label: string }[] = [
@@ -134,23 +136,22 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
 
   return (
     <div class="border-b border-line-1 px-3.5 py-3 last:border-0">
-      <div class="flex items-center gap-3">
-        <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary font-mono text-sm uppercase text-ink-2">
-          {props.provider.id.slice(0, 1)}
-        </span>
-        <div class="min-w-0 flex-1">
-          <span class="block truncate text-sm font-medium text-ink">{props.provider.id}</span>
-          <span class="flex items-center gap-1.5 text-xs text-ink-3">
-            <span class="h-1.5 w-1.5 rounded-2xs bg-done" />
-            Connected · {props.provider.models.length} {props.provider.models.length === 1 ? "model" : "models"}
+      <IntegrationRow
+        mark={
+          <span class="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary font-mono text-sm uppercase text-ink-2">
+            {props.provider.id.slice(0, 1)}
           </span>
-        </div>
-        <span class="font-mono text-2xs text-icon">stored sealed</span>
-        <Show when={!confirming()}>
-          <Button size="sm" variant="quiet" onClick={() => setEditing((open) => !open)}>Edit</Button>
-          <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>Remove</Button>
-        </Show>
-      </div>
+        }
+        name={props.provider.id}
+        detail={providerDetail(props.provider)}
+        status={providerStatus(error())}
+        actions={
+          <Show when={!confirming()}>
+            <Button size="sm" variant="quiet" onClick={() => setEditing((open) => !open)}>Edit</Button>
+            <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>Remove</Button>
+          </Show>
+        }
+      />
 
       <Show when={error()}>
         {(message) => (
