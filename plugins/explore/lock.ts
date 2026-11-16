@@ -1,0 +1,20 @@
+/** Pinned sha256 of every catalogue entry's content; `explore.test.ts` fails when an entry changes without its pin. */
+export const SHA256: Readonly<Record<string, string>> = {
+  "skill:review-a-diff": "1e08bf6def6e6e1d3b15631862f72f035b901fd8ee38d4de343a27feb6f7fe2f",
+  "skill:pr-description": "e12ef4dfd975b5025b413fe809ca29bbc5c15fca92471fba31c567a7ef01fdb4",
+  "skill:issue-triage": "609e9fad639c6e474bb4be039bf169447832d14fe54cb34bd81c0c6cb7da95ab",
+  "skill:debug-a-failure": "129521ccb9f8e1223a8bf93deee58a8461f5c63ddff5f40091083e51a4ab6780",
+  "skill:release-notes": "008e8dbbed9b44f4c45d041988663c99b0e711d7b2279836e11e65b79fbbafc1",
+  "skill:meeting-notes": "d8d6ef989cc9993959af7fd88c8cff2cf8c52d4573f5e148ed136e9582e2d4ba",
+  "skill:research-brief": "dcb00294ecea592dae69d659d6f1e2137465a0d5a2ce3b122812516e7b4671e3",
+  "skill:weekly-review": "08232c12233e7ca20d8e9af5beabe30e150dc876553f75ae314fe6ce68439da1",
+  "theme:ember": "f5817c809f157816db194e8d1db147c7dc15df400eec4803cf9cc54c7557f5b3",
+  "theme:fjord": "59b78c0602b3c28cd23872a787f54d62a33128ae6fdc57edce5fb196dee28340",
+  "theme:lichen": "99af21c08c9754129764dd17ea2f08ca3944d6c6229afb936ed83cb724ba01c1",
+  "theme:dune": "d5c34258b0c97646cd633f1c5275d154a075dcb5d2e6db39ad8d8507b8a6b8aa",
+  "theme:quire": "57fda8f91b7691de5028bebeb7d607d597d429366fc107cfee90f8f53de390da",
+  "theme:nocturne": "55886fdff13e6aa50f4f19b53a102261be86daad79aae43768ab3ea4bf451a39",
+  "theme:saffron": "accb00e7aca864a56d6fc52b0bd7e158d94aefa5782ae546951b781124f8ab1c",
+  "theme:basalt": "0f088c94a401f70b1d9d2323f1180aa76c4facc66faf6f75b07a94e4fd8ee6cf",
+  "theme:tidepool": "11a25bb70a359cc06130abf45e7fa290052ace69850fcfa1cc8823ceb7e10a67",
+}
