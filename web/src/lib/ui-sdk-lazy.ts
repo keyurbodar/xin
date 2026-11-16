@@ -46,8 +46,8 @@ export function warmUiSdk(...names: readonly LazyElements[]): void {
 const holding = new WeakSet<EventTarget>()
 
 /**
- * Lets a press that lands before its element families have registered count once: it is held, and the same click is
- * sent again to its target on the frame after the load. Further presses on the same control while one is held are
+ * Lets a press that lands before its element families have registered count once: it is held, and a copy of it (a
+ * click or a context menu, with its position) is sent again to its target on the frame after the load. Further presses on the same control while one is held are
  * dropped, so a double press opens a menu once instead of opening and closing it, and a failed load drops the held
  * press so the next one retries the load.
  */
@@ -61,7 +61,7 @@ export function replayWhenReady(names: readonly LazyElements[], event: MouseEven
     () =>
       requestAnimationFrame(() => {
         holding.delete(currentTarget)
-        target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: event.detail }))
+        target.dispatchEvent(new MouseEvent(event.type, event))
       }),
     () => holding.delete(currentTarget),
   )
