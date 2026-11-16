@@ -954,7 +954,8 @@ export function create(deps: ModelsPort): ModelsParts {
       const fast =
         args.fast === true
           ? (target ?? null)
-          : args.fast === false || (args.model !== undefined && !fastOn(current, args.model))
+          : current?.model != null &&
+              (args.fast === false || (args.model !== undefined && !fastOn(current, args.model)))
             ? null
             : undefined
       await api.harness.commit(async (tx) => {
