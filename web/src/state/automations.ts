@@ -53,7 +53,7 @@ export function runAutomation(args: Record<string, unknown>, commandId: string):
   return cmd("automation.trigger", args, { id: commandId })
 }
 
-const PAGE = 20
+export const RUNS_PAGE = 20
 
 export type AutomationHistory = {
   readonly detail: Resource<AutomationDetail | undefined>
@@ -74,7 +74,7 @@ export type AutomationHistory = {
 export function createAutomationHistory(id: Accessor<string>): AutomationHistory {
   const [detail, { refetch }] = createResource(
     () => (homeLoaded() ? `${automationTouched(id()) ?? 0}:${id()}` : false),
-    async () => parseAutomationDetail(await cmd("automation.get", { id: id(), runs: PAGE })),
+    async () => parseAutomationDetail(await cmd("automation.get", { id: id(), runs: RUNS_PAGE })),
   )
   const [older, setOlder] = createSignal<readonly AutomationRun[]>([])
   const [olderEnded, setOlderEnded] = createSignal(false)
@@ -90,7 +90,7 @@ export function createAutomationHistory(id: Accessor<string>): AutomationHistory
 
   const value = (): AutomationDetail | undefined => settled(detail)
   const runs = createMemo(() => mergeRuns(value()?.runs ?? [], older()))
-  const hasOlder = (): boolean => (older().length === 0 ? (value()?.runs.length ?? 0) >= PAGE : !olderEnded())
+  const hasOlder = (): boolean => !olderEnded() && (older().length > 0 || (value()?.runs.length ?? 0) >= RUNS_PAGE)
 
   const loadOlder = async (): Promise<void> => {
     const last = runs()[runs().length - 1]
@@ -99,10 +99,10 @@ export function createAutomationHistory(id: Accessor<string>): AutomationHistory
     setLoadingOlder(true)
     setOlderFailed(undefined)
     try {
-      const page = parseRuns(await cmd("automation.runs", { id: current, limit: PAGE, before: last.createdAt }))
+      const page = parseRuns(await cmd("automation.runs", { id: current, limit: RUNS_PAGE, before: last.createdAt }))
       if (current !== id()) return
       setOlder((loaded) => mergeRuns(loaded, page))
-      setOlderEnded(page.length < PAGE)
+      setOlderEnded(page.length < RUNS_PAGE)
     } catch (problem) {
       setOlderFailed(problem instanceof Error ? problem.message : "Could not load older runs")
     } finally {

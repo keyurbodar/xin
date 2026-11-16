@@ -1,18 +1,40 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js"
-import { highlight } from "sugar-high"
-import { lang } from "sugar-high/lang"
 import { MorphIcon } from "../ui/morph-icon.tsx"
 import { Morph } from "../ui/morph.tsx"
 import { CODE_LIMIT, Expandable, Fullscreen, FullscreenButton } from "./expandable.tsx"
 
-function fenceLabel(fence: string): string {
-  return lang(fence) ?? (fence === "" ? "code" : fence)
+type Highlighter = { highlight: typeof import("sugar-high").highlight; lang: typeof import("sugar-high/lang").lang }
+
+const [highlighter, setHighlighter] = createSignal<Highlighter>()
+let loading: Promise<void> | undefined
+
+/** Sugar High loads on the first code block instead of at startup; until it lands, blocks show their source unhighlighted. A failed load is retried by the next block. */
+function loadHighlighter(): void {
+  loading ??= Promise.all([import("sugar-high"), import("sugar-high/lang")]).then(
+    ([core, langs]) => {
+      setHighlighter({ highlight: core.highlight, lang: langs.lang })
+    },
+    () => {
+      loading = undefined
+    },
+  )
 }
 
-/** Sugar High escapes the code it marks up. The newline between line spans is dropped so the gutter stacks. */
-function markedUp(code: string, fence: string): string {
-  const canonical = lang(fence)
-  const html = highlight(code, canonical === undefined ? { lang: "plaintext" } : { lang: canonical })
+function fenceLabel(fence: string): string {
+  return highlighter()?.lang(fence) ?? (fence === "" ? "code" : fence)
+}
+
+const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;" }
+
+/** Sugar High escapes the code it marks up. The newline between line spans is dropped so the gutter stacks; the plain form keeps the same line spans. */
+function markedUp(code: string, fence: string, sugar: Highlighter | undefined): string {
+  if (sugar === undefined)
+    return code
+      .split("\n")
+      .map((line) => `<span class="sh__line">${line.replace(/[&<>]/g, (char) => ESCAPES[char] ?? char)}</span>`)
+      .join("")
+  const canonical = sugar.lang(fence)
+  const html = sugar.highlight(code, canonical === undefined ? { lang: "plaintext" } : { lang: canonical })
   return html.replaceAll('\n<span class="sh__line', '<span class="sh__line')
 }
 
@@ -51,25 +73,26 @@ function createHighlight(read: () => string, label: () => string, live: () => bo
   const source = createMemo(read)
   const fence = createMemo(label)
   const streaming = createMemo(live)
-  const [html, setHtml] = createSignal(markedUp(source(), fence()))
+  loadHighlighter()
+  const [html, setHtml] = createSignal(markedUp(source(), fence(), highlighter()))
   let frame: number | undefined
   onCleanup(() => {
     if (frame !== undefined) cancelAnimationFrame(frame)
   })
   createEffect(
     on(
-      [source, fence, streaming],
-      ([code, label, live]) => {
+      [source, fence, streaming, highlighter],
+      ([code, label, live, sugar]) => {
         if (!live) {
           if (frame !== undefined) cancelAnimationFrame(frame)
           frame = undefined
-          setHtml(markedUp(code, label))
+          setHtml(markedUp(code, label, sugar))
           return
         }
         if (frame !== undefined) return
         frame = requestAnimationFrame(() => {
           frame = undefined
-          setHtml(markedUp(source(), fence()))
+          setHtml(markedUp(source(), fence(), highlighter()))
         })
       },
       { defer: true },
