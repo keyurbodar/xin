@@ -18,6 +18,16 @@ const MIXED = "@lahn/ingle-mixed"
 const FLAKY = "@lahn/ingle-flaky"
 const PROVIDED = "ingle-plugin-time"
 const PATCHY = "@lahn/ingle-patchy"
+const SECRETIVE = "@lahn/ingle-secretive"
+const GUARDED = "@lahn/ingle-guarded"
+const PATCHER = "@lahn/ingle-patcher"
+const KERNEL_PATCHER = "@lahn/ingle-kernel-patcher"
+const REQUIRER = "@lahn/ingle-requirer"
+const LIAR = "@lahn/ingle-liar"
+const IMPERSONATOR = "@lahn/ingle-impersonator"
+const SHA256 = "@lahn/ingle-sha256"
+const WEB = "ingle-plugin-web"
+const FIRST_PARTY = "ingle-plugin-git"
 const COMMIT = "a".repeat(40)
 const GIT_PATH = "packages/tools"
 const GIT_SPEC = `git+https://github.com/lahn/ingle-tools.git#${COMMIT}&path:/${GIT_PATH}`
@@ -78,6 +88,22 @@ const NOTES_1_1 = notes("Asia/Tokyo", [{ id: "market-clock", timezone: "Europe/B
 const FLAKY_1_0 = { bundle: [{ id: "flaky-time", plugin: "time", config: { timezone: "Asia/Tokyo" } }] }
 const FLAKY_1_1 = { bundle: [{ id: "flaky-bad", plugin: "time", config: { timezone: "Not/AZone" } }] }
 const CODE_INGLE = { plugins: { tools: { module: "./index.ts" } } }
+const GUARDED_INGLE = { plugins: { tools: { module: "./index.ts", permissions: ["network", "secrets"] } } }
+const SECRETIVE_1 = { bundle: [{ id: "secretive-reader", plugin: "k-secret-mount" }] }
+const PATCHER_1 = {
+  bundle: [{ id: "patcher-time", plugin: "time", config: { timezone: "Asia/Tokyo" } }],
+  patch: [{ id: "tool-web", disabled: false }],
+}
+const KERNEL_PATCHER_1 = {
+  bundle: [{ id: "kpatch-time", plugin: "time", config: { timezone: "Asia/Tokyo" } }],
+  patch: [{ id: "tool-plugins", disabled: false }],
+}
+const REQUIRER_1 = {
+  bundle: [{ id: "requirer-time", plugin: "time", config: { timezone: "Asia/Tokyo" } }],
+  requires: ["@lahn/ingle-elsewhere@1.0.0"],
+}
+const OWNER_INGLE = { plugins: { act: { module: "./index.ts", permissions: ["owner"] } } }
+const WEB_INGLE = { plugins: { "tool-web": { module: "./index.ts", permissions: ["network"] } } }
 
 const SEEDS: readonly Seed[] = [
   {
@@ -132,6 +158,34 @@ const SEEDS: readonly Seed[] = [
         ingle: NOTES_1_0,
         integrity: "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
       },
+    ],
+  },
+  {
+    name: SECRETIVE,
+    versions: [
+      { version: "1.0.0", ingle: SECRETIVE_1 },
+      { version: "1.1.0", ingle: SECRETIVE_1 },
+    ],
+  },
+  {
+    name: GUARDED,
+    versions: [
+      { version: "1.0.0", ingle: CODE_INGLE },
+      { version: "1.1.0", ingle: GUARDED_INGLE },
+    ],
+  },
+  { name: PATCHER, versions: [{ version: "1.0.0", ingle: PATCHER_1 }] },
+  { name: KERNEL_PATCHER, versions: [{ version: "1.0.0", ingle: KERNEL_PATCHER_1 }] },
+  { name: REQUIRER, versions: [{ version: "1.0.0", ingle: REQUIRER_1 }] },
+  { name: LIAR, versions: [{ version: "1.0.0", ingle: CODE_INGLE, tarballIngle: GUARDED_INGLE }] },
+  { name: IMPERSONATOR, versions: [{ version: "1.0.0", ingle: CODE_INGLE, tarballIngle: OWNER_INGLE }] },
+  { name: FIRST_PARTY, versions: [{ version: "9.9.9", ingle: GUARDED_INGLE }] },
+  { name: SHA256, versions: [{ version: "1.0.0", ingle: NOTES_1_0, integrity: `sha256-${"A".repeat(43)}=` }] },
+  {
+    name: WEB,
+    versions: [
+      { version: "0.1.0", ingle: WEB_INGLE },
+      { version: "0.1.1", ingle: WEB_INGLE },
     ],
   },
   {
@@ -448,6 +502,11 @@ describe("market", () => {
     expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
 
     expect(await op(stub, "market.install", { name: TOOLS })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { permissions: [{ id: "runtime" }] } },
+    })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
+    expect(await op(stub, "market.install", { name: TOOLS, grant: ["runtime"] })).toMatchObject({
       ok: true,
       result: { application: "pending", package: TOOLS, version: "1.0.0", kind: "code" },
     })
@@ -462,13 +521,216 @@ describe("market", () => {
       ok: true,
       result: { application: "pending", package: CODE, version: "1.0.0", kind: "code" },
     })
-    expect(await pending(stub)).toEqual({ add: [GIT_SPEC, `${CODE}@1.0.0`], remove: [] })
+    expect(await pending(stub)).toMatchObject({
+      add: [GIT_SPEC, `${CODE}@1.0.0`],
+      pins: {
+        [`${CODE}@1.0.0`]: {
+          integrity: expect.stringMatching(/^sha512-/),
+          tarball: `${REGISTRY}/${CODE}/-/1.0.0.tgz`,
+          permissions: [],
+        },
+      },
+    })
 
     expect(await op(stub, "market.update", { name: CODE, version: "1.1.0" })).toMatchObject({
       ok: true,
       result: { application: "pending", version: "1.1.0" },
     })
-    expect(await pending(stub)).toEqual({ add: [GIT_SPEC, `${CODE}@1.1.0`], remove: [] })
+    expect(await pending(stub)).toMatchObject({ add: [GIT_SPEC, `${CODE}@1.1.0`], remove: [] })
+  })
+
+  it("asks consent for the permissions a bundle's rows mount, stores nothing until granted, and an update holds them", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+
+    const id = `market-consent-${crypto.randomUUID()}`
+    const asked = await cmd(stub, id, "market.install", { name: SECRETIVE, version: "1.0.0" })
+    expect(asked).toMatchObject({
+      ok: false,
+      error: {
+        code: "consent_required",
+        details: {
+          permissions: [
+            { id: "secrets", title: "Read your stored credentials", why: "row secretive-reader mounts k-secret-mount" },
+          ],
+        },
+      },
+    })
+    expect((await op(stub, "bundle.list")).result).not.toContainEqual(expect.objectContaining({ package: SECRETIVE }))
+    expect(await cmd(stub, id, "market.install", { name: SECRETIVE, version: "1.0.0" })).toMatchObject({
+      error: { code: "consent_required" },
+    })
+
+    expect(await op(stub, "market.install", { name: SECRETIVE, version: "1.0.0", grant: ["secrets"] })).toMatchObject({
+      ok: true,
+      result: { application: "applied", package: SECRETIVE, version: "1.0.0" },
+    })
+    expect(await op(stub, "market.update", { name: SECRETIVE, version: "1.1.0" })).toMatchObject({
+      ok: true,
+      result: { application: "applied", version: "1.1.0" },
+    })
+  })
+
+  it("asks again when an update declares permissions the installed version did not", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    expect(await op(stub, "market.install", { name: GUARDED, version: "1.0.0" })).toMatchObject({ ok: true })
+
+    expect(await op(stub, "market.update", { name: GUARDED, version: "1.1.0" })).toMatchObject({
+      ok: false,
+      error: {
+        code: "consent_required",
+        details: {
+          permissions: [
+            { id: "network", why: "tools declares it" },
+            { id: "secrets", why: "tools declares it" },
+          ],
+        },
+      },
+    })
+    expect(await op(stub, "market.update", { name: GUARDED, version: "1.1.0", grant: ["network"] })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { permissions: [{ id: "secrets" }] } },
+    })
+    expect(
+      await op(stub, "market.update", { name: GUARDED, version: "1.1.0", grant: ["network", "secrets"] }),
+    ).toMatchObject({ ok: true, result: { application: "pending", version: "1.1.0" } })
+  })
+
+  it("asks consent for the rows a bundle's patch enables, and refuses a patch on a kernel row or a missing requirement", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+
+    expect(await op(stub, "market.install", { name: PATCHER })).toMatchObject({
+      ok: false,
+      error: {
+        code: "consent_required",
+        details: { permissions: [{ id: "network", why: "its patch enables tool-web" }] },
+      },
+    })
+    expect((await op(stub, "bundle.list")).result).not.toContainEqual(expect.objectContaining({ package: PATCHER }))
+    expect(await op(stub, "market.install", { name: KERNEL_PATCHER })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args", message: expect.stringContaining("kernel row tool-plugins") },
+    })
+    expect(await op(stub, "market.install", { name: REQUIRER })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args", message: expect.stringContaining("install it from the market first") },
+    })
+    expect(await op(stub, "market.install", { name: PATCHER, grant: ["network"] })).toMatchObject({
+      ok: true,
+      result: { application: "applied" },
+    })
+  })
+
+  it("reads a code package's permissions from its verified tarball, not the registry's metadata", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+
+    expect(await op(stub, "market.install", { name: LIAR })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { permissions: [{ id: "network" }, { id: "secrets" }] } },
+    })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
+    expect(await op(stub, "market.install", { name: LIAR, grant: ["network", "secrets"] })).toMatchObject({ ok: true })
+    expect(await pending(stub)).toMatchObject({
+      pins: { [`${LIAR}@1.0.0`]: { permissions: ["network", "secrets"] } },
+    })
+  })
+
+  it("refuses a code package that declares owner, even with consent", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+
+    for (const grant of [[], ["owner", "runtime"]])
+      expect(await op(stub, "market.install", { name: IMPERSONATOR, grant })).toMatchObject({
+        ok: false,
+        error: { code: "bad_args", message: expect.stringContaining("only first-party Automations") },
+      })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
+  })
+
+  it("adds from a typed spec with the same consent and pin, and only for an exact version", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+
+    expect(await op(stub, "market.add", { spec: `${GUARDED}@1.1.0` })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { permissions: [{ id: "network" }, { id: "secrets" }] } },
+    })
+    expect(await op(stub, "market.add", { spec: `${GUARDED}@^1` })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args", message: expect.stringContaining("exact version") },
+    })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
+    expect(await op(stub, "market.add", { spec: `${GUARDED}@1.1.0`, grant: ["network", "secrets"] })).toMatchObject({
+      ok: true,
+      result: { application: "pending" },
+    })
+    expect(await pending(stub)).toMatchObject({
+      add: [`${GUARDED}@1.1.0`],
+      pins: {
+        [`${GUARDED}@1.1.0`]: { integrity: expect.stringMatching(/^sha512-/), permissions: ["network", "secrets"] },
+      },
+    })
+  })
+
+  it("adds a git spec only at a 40-hex commit", async () => {
+    const stub = fresh()
+    for (const spec of ["github:lahn/ingle-tools", "github:lahn/ingle-tools#main"])
+      expect(await op(stub, "market.add", { spec })).toMatchObject({
+        ok: false,
+        error: { code: "bad_args", message: expect.stringContaining("name a commit") },
+      })
+    expect(await op(stub, "market.add", { spec: `github:lahn/ingle-tools#${COMMIT}` })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { permissions: [{ id: "runtime" }] } },
+    })
+    expect(
+      await op(stub, "market.add", { spec: `github:lahn/ingle-tools#${COMMIT}`, grant: ["runtime"] }),
+    ).toMatchObject({ ok: true, result: { application: "pending" } })
+    expect(await pending(stub)).toMatchObject({ add: [`github:lahn/ingle-tools#${COMMIT}`] })
+  })
+
+  it("refuses a typed spec that would replace a package this build ships, whatever it asks for", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    for (const grant of [[], ["network", "secrets"]])
+      expect(await op(stub, "market.add", { spec: `${FIRST_PARTY}@9.9.9`, grant })).toMatchObject({
+        ok: false,
+        error: { code: "bad_args", message: expect.stringContaining("provided by this build") },
+      })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
+  })
+
+  it("holds a built package's permissions, so a same-permission update and auto-update ask nothing", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    expect((await op(stub, "market.entry", { name: WEB })).result).toMatchObject({ status: "provided" })
+    await runInDurableObject(stub, (_home: Home, state: DurableObjectState) => {
+      state.storage.sql.exec("INSERT INTO market_history (package, version, at) VALUES (?, ?, ?)", WEB, "0.1.0", 1)
+    })
+
+    expect((await op(stub, "market.entry", { name: WEB })).result).toMatchObject({ status: "update-available" })
+    expect(await op(stub, "market.policy.set", { autoUpdate: true })).toMatchObject({ ok: true })
+    expect((await op(stub, "market.refresh")).result).toMatchObject({
+      applied: [{ application: "pending", package: WEB, version: "0.1.1" }],
+    })
+    expect(await pending(stub)).toMatchObject({ pins: { [`${WEB}@0.1.1`]: { permissions: ["network"] } } })
   })
 
   it("refuses provided, already installed and incompatible packages and a wrong integrity", async () => {
@@ -492,6 +754,10 @@ describe("market", () => {
     expect(await op(stub, "market.install", { name: BROKEN })).toMatchObject({
       ok: false,
       error: { code: "failed", message: expect.stringContaining("integrity") },
+    })
+    expect(await op(stub, "market.install", { name: SHA256 })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args", message: expect.stringContaining("sha512") },
     })
     expect((await op(stub, "bundle.list")).result).toEqual([])
 
