@@ -14,11 +14,12 @@ export function installGlobal(name: string, value: unknown): void {
   Object.defineProperty(globalThis, name, { value, configurable: true, writable: true })
 }
 
+const restores: Array<() => void> = []
+
 export function stubGlobals(values: Readonly<Record<string, unknown>>): void {
-  let restore = (): void => undefined
   beforeAll(() => {
-    restore = snapshotGlobals(Object.keys(values))
+    restores.push(snapshotGlobals(Object.keys(values)))
     for (const [name, value] of Object.entries(values)) installGlobal(name, value)
   })
-  afterAll(() => restore())
+  afterAll(() => restores.pop()?.())
 }
