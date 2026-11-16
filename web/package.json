@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",
-    "test": "bun test --conditions=browser --tsconfig-override=tsconfig.bun.json",
+    "test": "bun test --conditions=browser --tsconfig-override=tsconfig.bun.json --preload ./test/solid-jsx.ts",
     "prebuild": "bun run test src",
     "build": "vite build",
     "preview": "vite preview",

@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "types": ["bun"] },
-  "include": ["src/**/*.test.ts", "e2e"],
+  "include": ["src/**/*.test.ts", "e2e", "test"],
   "exclude": []
 }
