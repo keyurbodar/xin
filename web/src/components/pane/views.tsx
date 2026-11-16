@@ -1,4 +1,4 @@
-import { For, Show, type JSX } from "solid-js"
+import { ErrorBoundary, For, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { Brain, CalendarClock, CircleDashed, CircleDot, File, GitPullRequest, HardDrive, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
 import { activeConversation, host, PluginBoundary, slotItems } from "../../plugins/slots.tsx"
@@ -10,6 +10,7 @@ import { fileName } from "./bodies.tsx"
 import { closePaneView } from "../../state/tabs.ts"
 import { PaneSkeleton } from "../ui/skeleton.tsx"
 import { lazyView } from "../ui/lazy-view.tsx"
+import { Stopped } from "../ui/stopped.tsx"
 
 const paneSkeleton = (): JSX.Element => <PaneSkeleton rows={6} />
 const MemoryTab = lazyView(() => import("../chat/memory.tsx").then((module) => module.MemoryTab), paneSkeleton)
@@ -39,7 +40,7 @@ export type PaneEntry = {
   readonly render: (context: PaneContext) => JSX.Element
 }
 
-/** Overview's sections, top to bottom. Each renders its own collapsible header and count. */
+/** Overview's sections, top to bottom. Each renders its own collapsible header and count, and a failure, such as a lazy chunk that will not load, stops only that section. */
 type OverviewSection = Omit<PaneEntry, "icon">
 
 function section(
@@ -48,7 +49,22 @@ function section(
   Body: (props: PaneContext & { label: string }) => JSX.Element,
   scope?: PaneScope,
 ): OverviewSection {
-  return { id, label, render: (context) => <Body {...context} label={label} />, ...(scope === undefined ? {} : { scope }) }
+  return {
+    id,
+    label,
+    render: (context) => (
+      <ErrorBoundary
+        fallback={(error: unknown, reset) => (
+          <section aria-label={label}>
+            <Stopped title={`${label} stopped`} error={error} onRetry={reset} class="py-4" />
+          </section>
+        )}
+      >
+        <Body {...context} label={label} />
+      </ErrorBoundary>
+    ),
+    ...(scope === undefined ? {} : { scope }),
+  }
 }
 
 function fits(entry: { readonly scope?: PaneScope }, context: PaneContext): boolean {

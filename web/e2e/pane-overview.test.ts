@@ -103,3 +103,22 @@ test("pressing the + menu before the issues chunk lands shows a skeleton, then t
   expect(await page.locator("aside .im-skeleton").count()).toBe(0)
   await page.close()
 })
+
+test("when the issues chunk fails, only In progress and Pull requests stop, and Try again brings back just In progress", async () => {
+  const chunk = /\/components\/pane\/issues\.tsx/u
+  const page = await harness.open("pane-overview", {
+    expected: /issues\.tsx|Failed to fetch dynamically imported module|404/u,
+    before: (page) => page.route(chunk, (route) => route.fulfill({ status: 404, body: "gone" })),
+  })
+  await section(page, "In progress").getByRole("alert").waitFor()
+  await section(page, "Pull requests").getByRole("alert").waitFor()
+  expect(await section(page, "Threads").getByText("Web UI on the new primitives").count()).toBe(1)
+  await page.getByRole("list", { name: "Newest files" }).waitFor()
+  expect(await page.locator("aside [role=alert]").count()).toBe(2)
+  await page.unroute(chunk)
+  await section(page, "In progress").getByRole("button", { name: "Try again" }).click()
+  await section(page, "In progress").getByText("Port the dialog shell").waitFor()
+  expect(await section(page, "Pull requests").getByRole("alert").count()).toBe(1)
+  expect(await section(page, "Threads").getByText("Web UI on the new primitives").count()).toBe(1)
+  await page.close()
+})
