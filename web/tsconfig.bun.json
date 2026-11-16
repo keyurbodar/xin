@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": { "@ingle/sdk": ["./src/plugins/sdk.ts"] }
+  }
+}
