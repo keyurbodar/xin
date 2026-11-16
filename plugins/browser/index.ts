@@ -9,10 +9,10 @@ export const inject = ["pi", "jobs", "harness", "host"]
 
 export const Config = Schema.object({
   idleMinutes: Schema.natural()
-    .min(1)
+    .min(3)
     .max(1_440)
     .default(10)
-    .description("Minutes without a browser call before the conversation's browser machine is stopped."),
+    .description("Minutes without a browser call before the conversation's browser machine is deleted."),
   vcpus: Schema.natural()
     .min(1)
     .default(2)

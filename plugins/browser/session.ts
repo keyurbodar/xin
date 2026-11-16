@@ -12,14 +12,16 @@ import { int, lit, num, obj, opt, str, type Static, union } from "@earendil-work
 import { type BrowserBackend, type Machine, StartFailed } from "./backend.ts"
 
 const TOUCH_MS = 60_000
+const CALL_MARGIN_MS = 3 * 60_000
 const CLOSE_RETRY_MS = 5 * 60_000
+const CLOSE_ATTEMPTS = 12
 
 const MachineSchema = obj({ id: str(), key: str() })
 const Base = { generation: int({ minimum: 1 }), key: str(), usedAt: num() }
 const SessionSchema = union([
-  obj({ ...Base, state: lit("starting") }),
+  obj({ ...Base, state: lit("starting"), machine: opt(MachineSchema) }),
   obj({ ...Base, state: lit("running"), machine: MachineSchema }),
-  obj({ ...Base, state: lit("closing"), machine: MachineSchema }),
+  obj({ ...Base, state: lit("closing"), machine: opt(MachineSchema) }),
   obj({ ...Base, state: lit("closed") }),
 ])
 const BrowserSchema = obj({
@@ -54,10 +56,12 @@ export type Scope = {
 }
 
 type IdleInput = { readonly generation: number }
-type IdleState = { readonly phase: "watch" } | { readonly phase: "close"; readonly machine: Machine }
+type IdleState =
+  | { readonly phase: "watch" }
+  | { readonly phase: "close"; readonly key: string; readonly machine?: Machine; readonly attempt: number }
 export type IdleTask = Task<IdleInput, IdleState, null, object>
 
-type Start = { readonly generation: number; readonly key: string }
+type Start = { readonly generation: number; readonly key: string; readonly machine: Machine | undefined }
 type Plan = { readonly kind: "ready"; readonly machine: Machine } | { readonly kind: "start"; readonly start: Start }
 
 export type Acting = { readonly machine: Machine; readonly replayed: boolean }
@@ -80,37 +84,10 @@ const DONE = { status: "terminal", outcome: { status: "completed", result: null 
 const read = async (scope: Scope): Promise<Session | undefined> =>
   (await scope.docs.snapshot(BrowserDoc, scope.conversationId, scope.context))?.session
 
-const fresh = (session: Session, now: number): boolean => now - session.usedAt < TOUCH_MS
-
 const copy = (machine: Machine): Machine => ({ id: machine.id, key: machine.key })
 
-const plan = (scope: Scope): Promise<Plan> =>
-  scope.docs.commit(async (tx) => {
-    const identity = (await tx.doc(ProviderDoc, scope.conversationId)).sessionId
-    const doc = await tx.doc(BrowserDoc, scope.conversationId)
-    const session = doc.session
-    const now = Date.now()
-    switch (session?.state) {
-      case "running":
-        doc.session = { ...session, usedAt: now }
-        return { kind: "ready", machine: copy(session.machine) }
-      case "starting":
-        return { kind: "start", start: { generation: session.generation, key: session.key } }
-      case undefined:
-      case "closing":
-      case "closed": {
-        const generation = doc.generation + 1
-        const key = keyOf(identity, generation)
-        doc.generation = generation
-        doc.session = { generation, key, usedAt: now, state: "starting" }
-        return { kind: "start", start: { generation, key } }
-      }
-      default: {
-        const _exhaustive: never = session
-        return _exhaustive
-      }
-    }
-  }, scope.context)
+const copyOf = (machine: Machine | undefined): Machine | undefined =>
+  machine === undefined ? undefined : copy(machine)
 
 const settleFailure = (scope: Scope, start: Start): Promise<void> =>
   scope.docs.commit(async (tx) => {
@@ -121,6 +98,11 @@ const settleFailure = (scope: Scope, start: Start): Promise<void> =>
 export function createSessions(backend: BrowserBackend, idleMs: number): Sessions {
   const idleMinutes = Math.round(idleMs / 60_000)
   const closedText = `The browser was closed after ${idleMinutes} idle minutes. Call browser_open to start a new one.`
+  const freshMs = Math.min(TOUCH_MS, idleMs - CALL_MARGIN_MS)
+  const fresh = (session: Session, now: number): boolean => now - session.usedAt < freshMs
+
+  const machineOf = async (key: string, machine: Machine | undefined, signal: AbortSignal): Promise<Machine> =>
+    machine ?? backend.start({ key }, signal)
 
   const idle: IdleTask = defineTask<IdleInput, IdleState, null, object>({
     name: "xin.browser.idle",
@@ -131,20 +113,32 @@ export function createSessions(backend: BrowserBackend, idleMs: number): Session
         runtime.commit(async (tx) => {
           const doc = await tx.doc(BrowserDoc, runtime.conversationId)
           const session = doc.session
-          if (!sameGeneration(session, task.input) || session.state !== "running") return DONE
+          if (!sameGeneration(session, task.input)) return DONE
+          if (session.state !== "running" && session.state !== "starting") return DONE
           const due = session.usedAt + idleMs
           if (runtime.now() < due) return { status: "sleeping", until: due, checkpoint: { phase: "watch" } }
-          doc.session = { ...session, state: "closing" }
-          return { status: "running", checkpoint: { phase: "close", machine: copy(session.machine) } }
+          const machine = copyOf(session.machine)
+          doc.session = { ...session, state: "closing", ...(machine === undefined ? {} : { machine }) }
+          return {
+            status: "running",
+            checkpoint: { phase: "close", key: session.key, attempt: 1, ...(machine === undefined ? {} : { machine }) },
+          }
         }, context),
       close: async (task, runtime, context) => {
+        const checkpoint = task.state.checkpoint
         try {
-          await backend.close(task.state.checkpoint.machine, runtime.signal)
+          await backend.close(await machineOf(checkpoint.key, checkpoint.machine, runtime.signal), runtime.signal)
         } catch (error) {
           if (runtime.signal.aborted) throw error
           runtime.report(error)
-          await runtime.sleepUntil(runtime.now() + CLOSE_RETRY_MS, task.state.checkpoint, context)
-          return
+          if (checkpoint.attempt < CLOSE_ATTEMPTS) {
+            await runtime.sleepUntil(
+              runtime.now() + CLOSE_RETRY_MS,
+              { ...checkpoint, attempt: checkpoint.attempt + 1 },
+              context,
+            )
+            return
+          }
         }
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(BrowserDoc, runtime.conversationId)
@@ -159,30 +153,71 @@ export function createSessions(backend: BrowserBackend, idleMs: number): Session
       runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
   })
 
-  const launch = async (scope: Scope, start: Start): Promise<Machine> => {
-    let machine: Machine
-    try {
-      machine = await backend.start({ key: start.key }, scope.signal)
-    } catch (error) {
-      if (error instanceof StartFailed) await settleFailure(scope, start)
-      throw error
-    }
-    const kept = await scope.docs.commit(async (tx) => {
+  const plan = (scope: Scope): Promise<Plan> =>
+    scope.docs.commit(async (tx) => {
+      const identity = (await tx.doc(ProviderDoc, scope.conversationId)).sessionId
+      const doc = await tx.doc(BrowserDoc, scope.conversationId)
+      const session = doc.session
+      const now = Date.now()
+      switch (session?.state) {
+        case "running":
+          doc.session = { ...session, usedAt: now }
+          return { kind: "ready", machine: copy(session.machine) }
+        case "starting":
+          doc.session = { ...session, usedAt: now }
+          return {
+            kind: "start",
+            start: { generation: session.generation, key: session.key, machine: copyOf(session.machine) },
+          }
+        case undefined:
+        case "closing":
+        case "closed": {
+          const generation = doc.generation + 1
+          const key = keyOf(identity, generation)
+          doc.generation = generation
+          doc.session = { generation, key, usedAt: now, state: "starting" }
+          await tx.createTask(
+            idle,
+            { generation },
+            { ownership: { kind: "conversation" }, conversationId: scope.conversationId, background: true },
+          )
+          return { kind: "start", start: { generation, key, machine: undefined } }
+        }
+        default: {
+          const _exhaustive: never = session
+          return _exhaustive
+        }
+      }
+    }, scope.context)
+
+  const record = (scope: Scope, start: Start, machine: Machine, state: "starting" | "running"): Promise<boolean> =>
+    scope.docs.commit(async (tx) => {
       const doc = await tx.doc(BrowserDoc, scope.conversationId)
       const session = doc.session
       if (!sameGeneration(session, start) || session.state === "closing" || session.state === "closed") return false
       if (session.state === "running") return true
-      doc.session = { ...session, state: "running", machine, usedAt: Date.now() }
-      await tx.createTask(
-        idle,
-        { generation: start.generation },
-        { ownership: { kind: "conversation" }, conversationId: scope.conversationId, background: true },
-      )
+      doc.session = { ...session, state, machine, usedAt: Date.now() }
       return true
     }, scope.context)
-    if (kept) return machine
+
+  const abandon = async (scope: Scope, machine: Machine): Promise<never> => {
     await backend.close(machine, scope.signal)
     throw new Error("the browser was closed while it was starting")
+  }
+
+  const launch = async (scope: Scope, start: Start): Promise<Machine> => {
+    let machine: Machine
+    try {
+      machine = await machineOf(start.key, start.machine, scope.signal)
+    } catch (error) {
+      if (error instanceof StartFailed) await settleFailure(scope, start)
+      throw error
+    }
+    if (start.machine === undefined && !(await record(scope, start, machine, "starting")))
+      return abandon(scope, machine)
+    await backend.prepare(machine, scope.signal)
+    if (!(await record(scope, start, machine, "running"))) return abandon(scope, machine)
+    return machine
   }
 
   const ready = async (scope: Scope, act: number | undefined): Promise<Acting> => {
@@ -243,7 +278,7 @@ export function createSessions(backend: BrowserBackend, idleMs: number): Session
     async close(scope) {
       const seen = await read(scope)
       if (seen === undefined || seen.state === "closed") return false
-      if (seen.state !== "starting") await backend.close(seen.machine, scope.signal)
+      await backend.close(await machineOf(seen.key, seen.machine, scope.signal), scope.signal)
       await scope.docs.commit(async (tx) => {
         const doc = await tx.doc(BrowserDoc, scope.conversationId)
         if (doc.session?.generation === seen.generation) delete doc.session

@@ -12,6 +12,7 @@ describe.skipIf(!live)("browser on a live Instabox machine", () => {
     let machine: Machine | undefined
     try {
       machine = await backend.start({ key: `ingle-browser-live:${crypto.randomUUID()}` }, signal)
+      await backend.prepare(machine, signal)
       const opened = await backend.run(machine, ["agent-browser", "open", "https://example.com"], signal)
       expect(opened.exitCode, opened.stderr).toBe(0)
       expect(opened.stdout).toContain("Example Domain")

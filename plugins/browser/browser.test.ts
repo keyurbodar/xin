@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest"
 import { respond } from "../../test/plugins/m8.ts"
 import { cmd, eventually, fresh, rowOf, setRow, type Stub, toolTexts, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
+import { instaboxBackend } from "./instabox.ts"
 import { BrowserDoc, type BrowserState, createSessions } from "./session.ts"
 
 const TOOLS = ["browser_act", "browser_close", "browser_open", "browser_screenshot", "browser_snapshot"]
@@ -237,7 +238,7 @@ describe("browser tools", () => {
     })
   }, 30_000)
 
-  it("reuses the same create key after a start that failed part way", async () => {
+  it("retries only the install on the machine it already created", async () => {
     const fake = fakeInstabox({ failInstalls: 1 })
     await withFake(fake, async () => {
       const { stub, root } = await browserHome()
@@ -250,9 +251,58 @@ describe("browser tools", () => {
       const texts = await toolTexts(stub)
       expect(texts[0]).toContain("browser_open failed: Instabox answered 503 host_unavailable")
       expect(texts[1]).toContain("✓ Example Domain")
-      expect(lifecycle(fake)).toEqual(["create 1", "create 1"])
+      expect(lifecycle(fake)).toEqual(["create 1"])
       expect(fake.machines.size).toBe(1)
       expect((await stateOf(stub, root))?.session).toMatchObject({ state: "running", machine: { id: "m_1" } })
+    })
+  }, 30_000)
+
+  it("deletes a machine whose install failed once when the model never retries", async () => {
+    const fake = fakeInstabox({ failInstalls: 1 })
+    vi.useFakeTimers({ toFake: ["Date"] })
+    await withFake(fake, async () => {
+      try {
+        const { stub, root } = await browserHome()
+        respond([call("browser_open", { url: "https://example.com" }), done])
+        await turn(stub, "browser-install-fails", { text: "browse" })
+        expect((await toolTexts(stub))[0]).toContain("browser_open failed: Instabox answered 503 host_unavailable")
+        expect((await stateOf(stub, root))?.session).toMatchObject({ state: "starting", machine: { id: "m_1" } })
+        vi.setSystemTime(Date.now() + 11 * 60_000)
+        await runDurableObjectAlarm(stub)
+        await eventually(stub, async (home) => {
+          const state = await home.harness.snapshot(BrowserDoc, root, BACKGROUND_CONTEXT)
+          return state?.session?.state === "closed"
+        })
+        expect(lifecycle(fake)).toEqual(["create 1", "delete 1"])
+        expect(fake.machines.size).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  }, 30_000)
+
+  it("replays the create key to delete a machine whose id was never committed", async () => {
+    const fake = fakeInstabox()
+    await withFake(fake, async () => {
+      const { stub, root } = await browserHome()
+      const key = `ingle-browser:${crypto.randomUUID()}:1`
+      await instaboxBackend({ apiKey: env.INSTABOX_API_KEY, vcpus: 2, memMiB: 4_096 }).start(
+        { key },
+        AbortSignal.timeout(10_000),
+      )
+      await runInDurableObject(stub, (home: Home) =>
+        home.harness.commit(async (tx) => {
+          const doc = await tx.doc(BrowserDoc, root)
+          doc.generation = 1
+          doc.session = { generation: 1, key, usedAt: Date.now(), state: "starting" }
+        }, BACKGROUND_CONTEXT),
+      )
+      respond([call("browser_close"), done])
+      await turn(stub, "browser-lost-id", { text: "close it" })
+      expect((await toolTexts(stub)).at(-1)).toBe("Closed the browser.")
+      expect(lifecycle(fake)).toEqual(["create 1", "create 1", "delete 1"])
+      expect(fake.machines.size).toBe(0)
+      expect((await stateOf(stub, root))?.session).toBeUndefined()
     })
   }, 30_000)
 
@@ -342,7 +392,7 @@ describe("browser tools", () => {
         const key = "ingle-browser:test:1"
         doc.session = { generation: 1, key, usedAt: Date.now(), state: "running", machine: { id: "m_1", key } }
       }, BACKGROUND_CONTEXT)
-      const sessions = createSessions({ start: unused, run: unused, close: unused }, 600_000)
+      const sessions = createSessions({ start: unused, prepare: unused, run: unused, close: unused }, 600_000)
       const scope = {
         docs: home.harness,
         conversationId: root,

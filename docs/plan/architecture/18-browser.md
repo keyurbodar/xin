@@ -1,6 +1,6 @@
 # 18 · Browser: a headless browser per conversation
 
-This section decides that an agent can drive a real headless Chromium, one per conversation, through [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) (Apache-2.0) running on an [Instabox](https://instabox.sh) machine. It is an optional plugin row that ships disabled, as the scope rule requires for browsers.
+This section decides that an agent can drive a real headless Chromium, one per conversation, through [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) (Apache-2.0) running on an [Instabox](https://instabox.sh) machine. It is an optional plugin row that ships disabled, as the scope rule requires for browsers. dsh ships no browser package, so there is none to mirror: the owner asked for this plugin (Keyur, 2026-11-16), and it is built only from pieces dsh has, a disabled loader row, deferred tools and the jobs wrapper.
 
 Read with: [02 State](./02-state.md) for the document and the idempotency keys, [06 Orchestration](./06-orchestration.md) for the job wrapper, [09 Plugins](./09-plugins.md) for rows, [15 Web](./15-web.md) for the plain fetch that needs no browser.
 
@@ -33,15 +33,16 @@ The four job tools go through `jobs.tool`, so a first `browser_open` (create, in
 
 ```ts
 interface BrowserBackend {
-  start(session: { key }, signal): Promise<Machine>             // create; returns it ready
+  start(session: { key }, signal): Promise<Machine>             // create; the same key returns the same machine
+  prepare(machine, signal): Promise<void>                       // install what run needs; safe to repeat
   run(machine, argv, signal): Promise<{ stdout, stderr, exitCode }>
   close(machine, signal): Promise<void>                         // delete: the idle close and browser_close
 }
 ```
 
-`Machine` is `{ id, key }`: the backend's handle and the idempotency key of the session that created it. `StartFailed` marks a create the provider refused for good, so the session drops that key. A Cloudflare Browser Rendering backend implements the same three calls (`start` opens a session, `run` drives it, `close` ends it) without a change to the tools. The owner named `start`, `run` and `stop`; since an idle machine is deleted rather than stopped (Bosun, #124), the one way down is `close`, and a stopped machine is never restarted.
+`Machine` is `{ id, key }`: the backend's handle and the idempotency key of the session that created it. `StartFailed` marks a create the provider refused for good, so the session drops that key. A Cloudflare Browser Rendering backend implements the same four calls (`start` opens a session, `prepare` does nothing, `run` drives it, `close` ends it) without a change to the tools. The owner named `start`, `run` and `stop`; since an idle machine is deleted rather than stopped (Bosun, #124), the one way down is `close`, and a stopped machine is never restarted.
 
-**Instabox** (`plugins/browser/instabox.ts`). Base `https://api.instabox.sh`, header `X-API-Key` from the Worker secret `INSTABOX_API_KEY` (`ctx.host.env`, so the row declares `runtime`; the key is never logged or returned). Template `agent-browser` (Chromium at `/usr/bin/chromium`); size from config, 2 vCPU and 4 GiB by default. agent-browser is not preinstalled, so every `start` runs `command -v agent-browser || npm install -g agent-browser@0.43.0`: about 3 s, once per machine. Lifecycle calls send `Idempotency-Key`, wait on `GET /v1/operations/{id}?wait=25s`, and a delete sends `X-Confirm-Delete: <id>`. A `409 operation_conflict` waits for the named operation and retries once with `<key>:<operationId>`. A delete answered `404` counts as done. Commands run with `POST /v1/machines/{id}/exec { argv, timeoutSeconds }`, 60 s each.
+**Instabox** (`plugins/browser/instabox.ts`). Base `https://api.instabox.sh`, header `X-API-Key` from the Worker secret `INSTABOX_API_KEY` (`ctx.host.env`, so the row declares `runtime`; the key is never logged or returned). Template `agent-browser` (Chromium at `/usr/bin/chromium`); size from config, 2 vCPU and 4 GiB by default. agent-browser is not preinstalled, so `prepare` runs `command -v agent-browser || npm install -g agent-browser@0.43.0`: about 3 s, once per machine. Lifecycle calls send `Idempotency-Key`, wait on `GET /v1/operations/{id}?wait=25s`, and a delete sends `X-Confirm-Delete: <id>`. A `409 operation_conflict` waits for the named operation and retries once with `<key>:<operationId>`. A delete answered `404` counts as done. Commands run with `POST /v1/machines/{id}/exec { argv, timeoutSeconds }`, 60 s each.
 
 ## Session state
 
@@ -54,16 +55,16 @@ state: starting | running (machine) | closing (machine) | closed
 
 The idempotency key of a session is `ingle-browser:<pi.provider sessionId>:<generation>`, with `:create` or `:delete` appended. The provider session id is the conversation's persisted UUIDv7, so the key is derived from the conversation, unique across Homes that share one Instabox key, and fresh after a fork. `generation` counts sessions: every machine is created once and deleted once, and a reopen after a close (idle or explicit) is a new generation, so Instabox never replays an old create (it keeps keys 7 days).
 
-- `browser_open` commits `starting` with the next key before it calls Instabox. A crash, an eviction or a transient error leaves `starting`, and the next call sends the same key, so Instabox answers with the machine it already made. Only `StartFailed` (a failed operation, which Instabox replays for the same key) drops the key: the session is removed and the next open takes a new generation.
-- A successful start commits `running` with the machine and, in the same commit, creates the idle task. If the session was closed meanwhile, the open deletes the machine it just made.
-- The other tools read the document without a commit, and commit `usedAt` only when it is a minute old, so idle time is exact to a minute and a burst of calls costs no extra rows.
+- `browser_open` commits `starting` with the next key and, in the same commit, creates the generation's idle task, before it calls Instabox. Once the create answers, it commits the machine id, still `starting`, and only then runs `prepare`. A crash, an eviction or a failed install leaves `starting`: with an id, the next open runs only `prepare` on that machine; without one, it sends the same create key, so Instabox answers with the machine it already made. Only `StartFailed` (a failed operation, which Instabox replays for the same key) drops the key: the session is removed and the next open takes a new generation.
+- A finished install commits `running`. If the session was closed meanwhile, the open deletes the machine it just made.
+- The other tools read the document without a commit, and commit `usedAt` only when it is older than one minute or than `idleMinutes` less 3 minutes, whichever is shorter, so idle time is exact to a minute, a skipped touch always leaves at least 3 minutes for the call, and a burst of calls costs no extra rows.
 - `browser_act` is the one call that is not safe to repeat (a click can submit a form twice), so it commits its job id as `act`, with `usedAt`, before it acts. A job that reruns after a crash finds its own id there, does not act again, and returns the page with a note that the action may already have happened. That costs one row per action.
-- `browser_close` deletes the machine, then removes the session (the generation stays).
+- `browser_close` deletes the machine, then removes the session (the generation stays). A `starting` session with no id replays the create key first to learn which machine to delete.
 - A session found `closing` or `closed` reads as no machine: `browser_open` starts the next generation at once, while an idle delete may still be finishing for the old one.
 
 ## Idle close
 
-`xin.browser.idle` is a background pi task owned by the conversation, one per generation. It sleeps until `usedAt + idleMinutes` (config, default 10, 1 to 1,440). On wake it rereads the document: a newer `usedAt` sleeps again, a session that moved on ends the task, and an idle one flips to `closing` in the same commit that checkpoints the `close` phase. `close` deletes the machine with the generation's delete key, so a rerun after a crash sends the same request and Instabox answers it once (a `404` counts as done); then it commits `closed`, keeping `generation`, `key` and `usedAt`. A failed delete is reported and retried in 5 minutes. A tool that finds `closing` or `closed` tells the model the browser was closed after the idle time and to call `browser_open`, which creates a new machine (about 5 s with the agent-browser install); the page has to be opened again.
+`xin.browser.idle` is a background pi task owned by the conversation, one per generation. It sleeps until `usedAt + idleMinutes` (config, default 10, 3 to 1,440). On wake it rereads the document: a newer `usedAt` sleeps again, a session that moved on ends the task, and an idle one, `running` or still `starting` (an install that failed and was never retried), flips to `closing` in the same commit that checkpoints the `close` phase. `close` deletes the machine with the generation's delete key (replaying the create key first when no id was committed), so a rerun after a crash sends the same request and Instabox answers it once (a `404` counts as done); then it commits `closed`, keeping `generation`, `key` and `usedAt`. A failed delete is reported and retried every 5 minutes, at most 12 times; after the twelfth the session is marked `closed` and the reports name the machine for the owner. A tool that finds `closing` or `closed` tells the model the browser was closed after the idle time and to call `browser_open`, which creates a new machine (about 5 s with the agent-browser install); the page has to be opened again.
 
 ## Cost
 

@@ -169,12 +169,12 @@ export function instaboxBackend(options: InstaboxOptions): BrowserBackend {
   }
 
   return {
-    async start(session, signal) {
-      const machine = await boot(session, signal)
+    start: boot,
+
+    async prepare(machine, signal) {
       const installed = await exec(machine, { cmd: INSTALL }, INSTALL_SECONDS, signal)
       if (installed.exitCode !== 0)
         throw new Error(`installing agent-browser failed: ${(installed.stderr || installed.stdout).trim().slice(-500)}`)
-      return machine
     },
 
     run: (machine, argv, signal) => exec(machine, { argv }, EXEC_SECONDS, signal),
