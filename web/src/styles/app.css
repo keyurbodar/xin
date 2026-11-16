@@ -59,6 +59,19 @@
     outline-offset: calc(var(--focus-ring-width) * -1);
   }
 
+  ui-input-group:has(:focus-visible) {
+    outline: var(--focus-ring-width) solid var(--color-focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  ui-input-group :focus-visible {
+    outline: none;
+  }
+
+  :is(textarea, ui-token-input-editor, ui-combobox-input input, ui-command-input input):focus-visible {
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--color-line-2) transparent;

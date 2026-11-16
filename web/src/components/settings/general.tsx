@@ -1,3 +1,4 @@
+import "@ui-sdk/web/textarea"
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
 import {
   errorMessage,
@@ -13,10 +14,9 @@ import {
   type ModelsList,
   type OwnerSettings,
 } from "../../state/settings.ts"
-import { Failure, INPUT, Note, Pending, failureOf } from "../extensions/chrome.tsx"
-import { Group, Row, Saved, SelectField, type Choice } from "./parts.tsx"
-import { motionChoice, motionOf, setMotionChoice, theme } from "../../lib/theme.ts"
-import { applyTheme, themes } from "../../plugins/slots.tsx"
+import { Failure, Note, Pending, failureOf } from "../extensions/chrome.tsx"
+import { Card, CardBlock, Group, Row, Saved, SelectField, TextField, type Choice } from "./parts.tsx"
+import { motionChoice, motionOf, setMotionChoice } from "../../lib/theme.ts"
 
 const BLANK: OwnerSettings = { name: "", instructions: "" }
 
@@ -142,7 +142,7 @@ export function General(): JSX.Element {
   }
 
   return (
-    <div class="flex max-w-[820px] flex-col gap-6">
+    <>
       <Show when={error()}>{(message) => <Failure message={message()} />}</Show>
       <Show when={saveError()}>{(message) => <Failure message={message()} onRetry={() => void flush()} />}</Show>
       <Show when={owner.state().kind === "loading"}>
@@ -160,19 +160,20 @@ export function General(): JSX.Element {
           {(message) => <Failure message={message()} onRetry={() => void models.reload()} />}
         </Show>
         <Show when={models.state().kind === "ready"}>
-          <For each={roles}>
-            {(role) => (
-              <Row
-                title={ROLE_LABEL[role]}
-                detail={
-                  role === "chat"
-                    ? "Runs the project coordinator."
-                    : role === "thread"
-                      ? "Runs delegated threads."
-                      : "Names threads and writes summaries."
-                }
-              >
-                <div class="flex items-center gap-2">
+          <Card>
+            <For each={roles}>
+              {(role) => (
+                <Row
+                  title={ROLE_LABEL[role]}
+                  detail={
+                    role === "chat"
+                      ? "Runs the project coordinator."
+                      : role === "thread"
+                        ? "Runs delegated threads."
+                        : "Names threads and writes summaries."
+                  }
+                >
+                  <Saved show={savedRole() === role} />
                   <SelectField
                     ariaLabel={ROLE_LABEL[role]}
                     value={chosen()[role] ?? ""}
@@ -180,102 +181,91 @@ export function General(): JSX.Element {
                     choices={choicesOf(list())}
                     onChange={(value) => void choose(role, value)}
                   />
-                  <Saved show={savedRole() === role} />
-                </div>
-              </Row>
-            )}
-          </For>
-          <div class="flex flex-col gap-3 pt-2">
-            <div class="flex flex-wrap gap-1.5">
+                </Row>
+              )}
+            </For>
+            <CardBlock class="flex flex-wrap gap-1.5 px-4 py-3">
               <For each={providers(catalog())}>
                 {(provider) => (
-                  <span class="rounded-sm border border-line-2 px-1.5 py-0.5 font-mono text-2xs text-ink-3">
+                  <span class="rounded-xs px-1.5 py-0.5 font-mono text-micro text-ink-3 shadow-ring">
                     {provider.id} · {provider.models.length}
                   </span>
                 )}
               </For>
-            </div>
-            <Note>
-              A model that is not in the catalog cannot be set. The picker lists what your providers answered with;
-              nothing here is hard-coded. Setting a default writes it straight away, and the picker opens on Catalog
-              default because no op reads the current defaults back.
-            </Note>
-          </div>
+            </CardBlock>
+          </Card>
+          <Note>
+            A model that is not in the catalog cannot be set. The picker lists what your providers answered with; nothing
+            here is hard-coded. Setting a default writes it straight away, and the picker opens on Catalog default because
+            no op reads the current defaults back.
+          </Note>
         </Show>
       </Group>
 
       <Group title="Workspace">
-        <Row title="Your name" detail="How the coordinator greets you">
-          <div class="flex items-center gap-2">
-            <input
+        <Card>
+          <Row title="Your name" detail="How the coordinator greets you">
+            <Saved show={savedField() === "name"} />
+            <TextField
               type="text"
               aria-label="Your name"
-              class={`${INPUT} max-w-[320px]`}
+              class="w-[240px] max-w-full"
               value={valueOf("name")}
               maxLength={LIMIT.name}
               disabled={!readable()}
               onInput={(event) => edit("name", event.currentTarget.value)}
               onBlur={() => void flush()}
             />
-            <Saved show={savedField() === "name"} />
-          </div>
-        </Row>
-        <Row title="Time zone" detail="Used by schedules and timestamps">
-          <span class="font-mono text-sm text-ink-2">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
-        </Row>
-        <Row title="Theme" detail="Built-in and plugin themes, on this device">
-          <SelectField
-            ariaLabel="Theme"
-            value={theme()}
-            onChange={applyTheme}
-            choices={themes().map((theme) => ({ value: theme.id, label: theme.label }))}
-          />
-        </Row>
-        <Row title="Reduce motion" detail="On this device. System follows the operating system’s setting">
-          <SelectField
-            ariaLabel="Reduce motion"
-            value={motionChoice() === "system" ? "" : motionChoice()}
-            placeholder="System"
-            onChange={(next) => setMotionChoice(motionOf(next))}
-            choices={[{ value: "reduce", label: "On" }]}
-          />
-        </Row>
+          </Row>
+          <Row title="Time zone" detail="Used by schedules and timestamps">
+            <span class="font-mono text-small text-ink-2">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+          </Row>
+          <Row title="Reduce motion" detail="On this device. System follows the operating system’s setting">
+            <SelectField
+              ariaLabel="Reduce motion"
+              value={motionChoice() === "system" ? "" : motionChoice()}
+              placeholder="System"
+              onChange={(next) => setMotionChoice(motionOf(next))}
+              choices={[{ value: "reduce", label: "On" }]}
+            />
+          </Row>
+        </Card>
       </Group>
 
       <Group
         title="Instructions for every project"
         detail="Read by the coordinator and every thread, before project instructions"
       >
-        <div class="flex flex-col gap-2 pt-1">
-          <div class="overflow-hidden rounded-md border border-line-2 focus-within:border-primary/40">
-            <textarea
-              rows={7}
-              aria-label="Instructions for every project"
-              class="w-full resize-y bg-bg px-3 py-2.5 text-base leading-relaxed text-ink focus:bg-panel focus:outline-none disabled:opacity-40"
-              value={valueOf("instructions")}
-              maxLength={LIMIT.instructions}
-              disabled={!readable()}
-              onInput={(event) => edit("instructions", event.currentTarget.value)}
-              onBlur={() => void flush()}
-            />
-            <div class="flex items-baseline gap-2 border-t border-line-1 px-3 py-1.5">
-              <Show when={owner.state().kind !== "loading" && valueOf("instructions").trim() === ""}>
-                <span class="text-xs text-ink-3">No workspace instructions are stored.</span>
-              </Show>
-              <Saved show={savedField() === "instructions"} />
-              <span class="ml-auto font-mono text-2xs text-icon">
-                {valueOf("instructions").length.toLocaleString("en-US")} / 4,000 · Markdown works
-              </span>
-            </div>
-          </div>
-          <Note>
-            Every conversation's system prompt carries this block first, before the instructions of the project it
-            belongs to.
-          </Note>
-        </div>
+        <Card>
+          <CardBlock class="flex flex-col">
+            <ui-textarea class="flex">
+              <textarea
+                rows={7}
+                aria-label="Instructions for every project"
+                class="w-full resize-y bg-transparent px-4 py-3 text-body text-ink disabled:opacity-40"
+                value={valueOf("instructions")}
+                maxLength={LIMIT.instructions}
+                disabled={!readable()}
+                onInput={(event) => edit("instructions", event.currentTarget.value)}
+                onBlur={() => void flush()}
+              />
+            </ui-textarea>
+          </CardBlock>
+          <CardBlock class="flex items-baseline gap-2 px-4 py-2">
+            <Show when={owner.state().kind !== "loading" && valueOf("instructions").trim() === ""}>
+              <span class="text-mini text-ink-3">No workspace instructions are stored.</span>
+            </Show>
+            <Saved show={savedField() === "instructions"} />
+            <span class="ml-auto font-mono text-micro text-icon">
+              {valueOf("instructions").length.toLocaleString("en-US")} / 4,000 · Markdown works
+            </span>
+          </CardBlock>
+        </Card>
+        <Note>
+          Every conversation's system prompt carries this block first, before the instructions of the project it belongs
+          to. Changes save as you type.
+        </Note>
       </Group>
-
-      <Note>Changes save as you type.</Note>
-    </div>
+    </>
   )
 }

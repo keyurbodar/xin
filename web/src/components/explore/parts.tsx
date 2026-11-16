@@ -22,7 +22,7 @@ export function Breadcrumb(props: { crumbs: readonly Crumb[] }): JSX.Element {
             >
               <a
                 href={`#${crumb.to ?? ""}`}
-                class="shrink-0 rounded-xs text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
+                class="shrink-0 rounded-xs text-ink-2 hover:text-ink"
               >
                 {crumb.label}
               </a>
@@ -73,70 +73,6 @@ export function LogoTile(props: {
         </span>
       </Show>
     </span>
-  )
-}
-
-export type TabSpec<T extends string> = { readonly id: T; readonly label: string }
-
-/** A segmented tablist: arrow keys move between tabs, Home and End jump, and only the active tab is in the tab order. */
-export function Segmented<T extends string>(props: {
-  label: string
-  tabs: readonly TabSpec<T>[]
-  active: T
-  onSelect: (id: T) => void
-}): JSX.Element {
-  let list: HTMLDivElement | undefined
-  const move = (event: KeyboardEvent): void => {
-    const index = props.tabs.findIndex((tab) => tab.id === props.active)
-    const last = props.tabs.length - 1
-    const next =
-      event.key === "ArrowRight"
-        ? index === last
-          ? 0
-          : index + 1
-        : event.key === "ArrowLeft"
-          ? index === 0
-            ? last
-            : index - 1
-          : event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? last
-              : undefined
-    const target = next === undefined ? undefined : props.tabs[next]
-    if (target === undefined) return
-    event.preventDefault()
-    props.onSelect(target.id)
-    queueMicrotask(() => list?.querySelector<HTMLButtonElement>(`[data-tab="${target.id}"]`)?.focus())
-  }
-  return (
-    <div
-      ref={list}
-      role="tablist"
-      aria-label={props.label}
-      onKeyDown={move}
-      class="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-sm bg-secondary p-0.5"
-    >
-      <For each={props.tabs}>
-        {(tab) => (
-          <button
-            type="button"
-            role="tab"
-            data-tab={tab.id}
-            aria-selected={props.active === tab.id}
-            tabIndex={props.active === tab.id ? 0 : -1}
-            onClick={() => props.onSelect(tab.id)}
-            class="ex-color h-7 rounded-[5px] px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-focus"
-            classList={{
-              "bg-card text-ink shadow-ring": props.active === tab.id,
-              "text-ink-2 hover:text-ink": props.active !== tab.id,
-            }}
-          >
-            {tab.label}
-          </button>
-        )}
-      </For>
-    </div>
   )
 }
 
@@ -194,7 +130,7 @@ export function ViewAll(props: { onClick: () => void; label?: string | undefined
     <button
       type="button"
       onClick={() => props.onClick()}
-      class="ex-color flex items-center gap-1 rounded-xs text-sm text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
+      class="ex-color flex items-center gap-1 rounded-xs text-sm text-ink-2 hover:text-ink"
     >
       {props.label ?? "View all"}
       <Glyph name="arrow-right" size={12} />
@@ -214,7 +150,7 @@ export function CompactRow(props: {
   return (
     <a
       href={`#${props.to}`}
-      class="ex-color flex min-w-0 items-center gap-3 rounded-md px-2 py-2 hover:bg-hover focus-visible:outline-2 focus-visible:outline-focus"
+      class="ex-color flex min-w-0 items-center gap-3 rounded-md px-2 py-2 hover:bg-hover"
     >
       {props.logo}
       <span class="min-w-0 flex-1">

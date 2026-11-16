@@ -46,6 +46,7 @@ export function createAutomationActions(list: Accessor<readonly Automation[] | u
   })
 
   const run = async (id: string, work: () => Promise<void>): Promise<boolean> => {
+    if (busy() !== undefined) return false
     setBusy(id)
     setFailed(undefined)
     try {
@@ -88,7 +89,8 @@ const isSwitch = (node: HTMLElement): node is SwitchElement => "api" in node
 
 /**
  * A ui-sdk Switch saved on toggle: a press is refused and handed to the toggle action, and the action's answer
- * moves `on`, which reaches the switch through `api.setChecked` once it is enabled again: a disabled switch ignores it.
+ * moves `on`, which reaches the switch through `api.setChecked` once the save ends. While it runs the switch is read-only, not
+ * disabled, so it keeps focus.
  */
 export function EnabledToggle(props: { automation: Automation; on: boolean; busy: boolean; onToggle: () => void }): JSX.Element {
   let element: SwitchElement | undefined
@@ -102,14 +104,14 @@ export function EnabledToggle(props: { automation: Automation; on: boolean; busy
         if (isSwitch(node)) element = node
       }}
       default-checked={props.on ? "" : undefined}
-      disabled={props.busy ? "" : undefined}
+      read-only={props.busy ? "" : undefined}
       aria-label={props.on ? `Pause ${props.automation.title}` : `Resume ${props.automation.title}`}
       on:checkedchange={(event) => {
         if (event.detail.reason === "imperative") return
         event.preventDefault()
         queueMicrotask(props.onToggle)
       }}
-      class="im-switch relative block h-4 w-7 shrink-0 cursor-default rounded-sm bg-line-2 data-[checked]:bg-ink data-[disabled]:opacity-40"
+      class="im-switch relative block h-4 w-7 shrink-0 cursor-default rounded-sm bg-line-2 data-[checked]:bg-ink data-[readonly]:opacity-40"
     >
       <ui-switch-thumb class="absolute left-0.5 top-0.5 block h-3 w-3 rounded-2xs bg-ink-3 data-[checked]:bg-bg" />
     </ui-switch>
@@ -168,7 +170,13 @@ export function RowMenu(props: {
   const content = createOverlayMount(open)
   return (
     <ui-menu
-      on:openchange={(event) => setOpen(event.detail.value)}
+      on:openchange={(event) => {
+        if (event.detail.value && props.busy) {
+          event.preventDefault()
+          return
+        }
+        setOpen(event.detail.value)
+      }}
       on:openchangecomplete={content.settle}
       on:action={(event) => {
         const value = event.detail.value
@@ -178,9 +186,9 @@ export function RowMenu(props: {
       <ui-menu-trigger>
         <button
           type="button"
-          class={`${ICON_BUTTON} aria-expanded:bg-hover aria-expanded:text-ink`}
+          class={`${ICON_BUTTON} aria-expanded:bg-hover aria-expanded:text-ink aria-disabled:opacity-40`}
           aria-label={`${props.automation.title} actions`}
-          disabled={props.busy}
+          aria-disabled={props.busy ? "true" : undefined}
         >
           <Ellipsis {...ICON} />
         </button>
@@ -377,7 +385,7 @@ export function DeleteAutomationDialog(props: {
 
 /** The dialogs a list of rows opens: new, edit, run now and delete, plus where each row action goes. */
 export function createRowDialogs(
-  actions: Pick<ReturnType<typeof createAutomationActions>, "toggle" | "remove">,
+  actions: Pick<ReturnType<typeof createAutomationActions>, "busy" | "toggle" | "remove">,
   options: {
     project?: string | undefined
     onDeleted?: (() => void) | undefined
@@ -393,6 +401,7 @@ export function createRowDialogs(
   const [running, setRunning] = createSignal<Automation>()
   const [deleting, setDeleting] = createSignal<Automation>()
   const handle = (automation: Automation, action: RowAction): void => {
+    if (action !== "open" && actions.busy() !== undefined) return
     switch (action) {
       case "open":
         navigate(`/automations/${encodeURIComponent(automation.id)}`)
