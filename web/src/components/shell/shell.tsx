@@ -9,14 +9,33 @@ import { CommandPalette } from "./palette.tsx"
 import { NewThreadDialog } from "./new-thread.tsx"
 import { ICON_BUTTON } from "./menu.ts"
 import { ProjectScreen } from "../../screens/project.tsx"
-import { ExtensionsScreen } from "../../screens/extensions.tsx"
-import { SettingsScreen } from "../../screens/settings.tsx"
-import { AutomationsScreen } from "../../screens/automations.tsx"
 import { CaptainScreen } from "../../screens/captain.tsx"
 import { NewCaptainDialog } from "../captain/captain-dialog.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
 import { Toasts } from "../ui/toast.tsx"
+import { RowSkeleton } from "../ui/skeleton.tsx"
+import { lazyView } from "../ui/lazy-view.tsx"
+
+const screenSkeleton = (): JSX.Element => <RowSkeleton rows={8} />
+export const ExtensionsScreen = lazyView(() => import("../../screens/extensions.tsx").then((module) => module.ExtensionsScreen), screenSkeleton)
+const SettingsScreen = lazyView(() => import("../../screens/settings.tsx").then((module) => module.SettingsScreen), screenSkeleton)
+const AutomationsScreen = lazyView(() => import("../../screens/automations.tsx").then((module) => module.AutomationsScreen), screenSkeleton)
+
+/**
+ * The lazy screens by the label of the sidebar row that opens each one. sidebar.tsx gives its rows no route of their
+ * own (another lane owns it), so the shell matches a hovered or focused row by its text to start the chunk early.
+ */
+const PREFETCH: Readonly<Record<string, () => void>> = {
+  Automations: () => void AutomationsScreen.preload(),
+  Extensions: () => void ExtensionsScreen.preload(),
+  Settings: () => void SettingsScreen.preload(),
+}
+
+function prefetch(event: Event): void {
+  const row = event.target instanceof Element ? event.target.closest("button, [role=menuitem]") : null
+  PREFETCH[row?.textContent?.trim() ?? ""]?.()
+}
 
 export function Shell(): JSX.Element {
   const first = () => route().parts[0]
@@ -53,7 +72,7 @@ export function Shell(): JSX.Element {
   }
 
   return (
-    <div class="flex h-full overflow-hidden bg-bg text-ink">
+    <div class="flex h-full overflow-hidden bg-bg text-ink" onPointerOver={prefetch} onFocusIn={prefetch}>
       <Show when={wide() && !sidebarHidden()}>
         <Sidebar drawer={false} onSearch={search} onCollapse={toggleSidebar} />
       </Show>
