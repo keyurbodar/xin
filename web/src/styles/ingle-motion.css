@@ -42,6 +42,7 @@
   --dur-grow: 200ms;
   --dur-grow-exit: 140ms;
   --dur-swap: 200ms;
+  --dur-crossfade: 150ms;
   --dur-morph: 160ms;
   --dur-arrive: 200ms;
   --dur-roll: 200ms;
@@ -126,7 +127,8 @@
   animation: im-pop-out var(--dur-tooltip-exit) var(--ease-out) forwards;
 }
 .im-tip[data-instant],
-.im-pop[data-instant] {
+.im-pop[data-instant],
+.im-pop[data-warm] {
   animation-duration: 0ms;
 }
 @keyframes im-pop-in {
@@ -316,6 +318,11 @@
 .im-swap-icon > * { transition-duration: var(--dur-morph); }
 .im-swap-icon > :not([data-active]) { transform: scale(.6); }
 
+/* Lightbox image switch: a plain opacity crossfade, so reduced motion keeps it as is. */
+.im-crossfade > * { transition: opacity var(--dur-crossfade) var(--ease-out); }
+.im-crossfade > :not([data-active]) { opacity: 0; pointer-events: none; }
+.im-crossfade[data-instant] > * { transition: none; }
+
 /* ---------- 10. Signal (3×3 D-Grid) with dot-level state morph ---------- */
 
 .sig {
@@ -493,6 +500,7 @@
   .im-pop:is([data-state="closed"], [data-ending-style]), .im-tip:is([data-state="closed"], [data-ending-style]), .im-dialog:is([data-state="closed"], [data-ending-style]), .im-sheet:is([data-state="closed"], [data-ending-style]), .im-drawer:is([data-state="closed"], [data-ending-style]), .im-scrim:is([data-state="closed"], [data-ending-style]) {
     animation-name: im-fade-out;
   }
+  .im-pop[data-warm] { animation-duration: 0ms; }
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { transform: none; transition-property: opacity; transition-duration: var(--dur-reduce); }
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { @starting-style { transform: none; opacity: 0; } }
   .im-toast[data-removed] { transform: none; }
@@ -520,6 +528,7 @@
   .im-pop:is([data-state="closed"], [data-ending-style]), .im-tip:is([data-state="closed"], [data-ending-style]), .im-dialog:is([data-state="closed"], [data-ending-style]), .im-sheet:is([data-state="closed"], [data-ending-style]), .im-drawer:is([data-state="closed"], [data-ending-style]), .im-scrim:is([data-state="closed"], [data-ending-style]) {
     animation-name: im-fade-out;
   }
+  .im-pop[data-warm] { animation-duration: 0ms; }
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { transform: none; transition-property: opacity; transition-duration: var(--dur-reduce); }
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { @starting-style { transform: none; opacity: 0; } }
   .im-toast[data-removed] { transform: none; }

@@ -62,11 +62,6 @@ export function rowsOf(files: readonly DriveEntry[], folder: string): readonly D
   return [...dirs.toSorted((a, b) => a.name.localeCompare(b.name)), ...leaves.toSorted((a, b) => a.name.localeCompare(b.name))]
 }
 
-export function crumbsOf(folder: string): readonly { readonly name: string; readonly path: string }[] {
-  const parts = folder.split("/").filter((part) => part !== "")
-  return parts.map((name, index) => ({ name, path: `${parts.slice(0, index + 1).join("/")}/` }))
-}
-
 export function folderOf(path: string): string {
   const cut = path.lastIndexOf("/")
   return cut === -1 ? "" : path.slice(0, cut + 1)
@@ -105,6 +100,17 @@ export function pickScope(
     scopes.find((mounted) => mounted.scope.kind === "project") ??
     scopes[0]
   )
+}
+
+/** Why a file can't take this name in its folder, or undefined when it can. Its own name is fine and renames nothing. */
+export function renameProblem(name: string, current: string, siblings: readonly string[]): string | undefined {
+  const trimmed = name.trim()
+  if (trimmed === "") return "Give it a name."
+  if (trimmed.includes("/") || trimmed.includes("\\")) return "A name can't hold a slash."
+  if (trimmed === "." || trimmed === "..") return `${trimmed} is reserved.`
+  const lower = trimmed.toLowerCase()
+  const taken = siblings.find((sibling) => sibling !== current && sibling.toLowerCase() === lower)
+  return taken === undefined ? undefined : `${taken} is already in this folder.`
 }
 
 /** A move destination as typed: trimmed, relative to the scope's root, and undefined when it names nothing or the file itself. */

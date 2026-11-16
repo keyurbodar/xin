@@ -1,6 +1,15 @@
 import { expect, test } from "bun:test"
 import { contrast, parseColor } from "./color.ts"
-import { DEFAULT_APPEARANCE, INGLE_DARK, INGLE_LIGHT, parseAppearance, tokensOf, type Palette } from "./model.ts"
+import {
+  DEFAULT_APPEARANCE,
+  fromLegacyTheme,
+  INGLE_DARK,
+  INGLE_LIGHT,
+  parseAppearance,
+  pickedInMenu,
+  tokensOf,
+  type Palette,
+} from "./model.ts"
 
 const rgb = (value: string | undefined) => {
   const parsed = parseColor(value ?? "")
@@ -68,4 +77,18 @@ test("a wallpaper loads only from this home's share links or an inline image, ne
   expect(image("https://tracker.example/pixel.png")).toBeUndefined()
   expect(image("//tracker.example/pixel.png")).toBeUndefined()
   expect(image("/v1/ops")).toBeUndefined()
+})
+
+test("the first load after upgrading keeps the theme the old picker stored", () => {
+  expect(fromLegacyTheme(null)).toEqual(DEFAULT_APPEARANCE)
+  expect(fromLegacyTheme("dark")).toEqual(DEFAULT_APPEARANCE)
+  expect(fromLegacyTheme("light")).toMatchObject({ mode: "light", theme: "ingle" })
+  expect(fromLegacyTheme("rose")).toMatchObject({ mode: "dark", theme: "rose" })
+})
+
+test("Light or Dark from the owner menu sets the mode, and any other theme sets the theme", () => {
+  const custom = { ...DEFAULT_APPEARANCE, theme: "custom:mine" }
+  expect(pickedInMenu(custom, "light")).toMatchObject({ mode: "light", theme: "ingle" })
+  expect(pickedInMenu({ ...DEFAULT_APPEARANCE, mode: "light" }, "dark")).toMatchObject({ mode: "dark", theme: "ingle" })
+  expect(pickedInMenu(DEFAULT_APPEARANCE, "rose")).toMatchObject({ mode: "dark", theme: "rose" })
 })

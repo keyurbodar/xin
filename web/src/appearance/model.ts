@@ -271,3 +271,24 @@ export const CUSTOM_PREFIX = "custom:"
 export function customId(theme: string): string | undefined {
   return theme.startsWith(CUSTOM_PREFIX) ? theme.slice(CUSTOM_PREFIX.length) : undefined
 }
+
+/** The first document on a device that only has the old picker's theme id. */
+export function fromLegacyTheme(id: string | null): Appearance {
+  if (id === null || id === "dark") return DEFAULT_APPEARANCE
+  return parseAppearance(id === "light" ? { ...DEFAULT_APPEARANCE, mode: "light" } : { ...DEFAULT_APPEARANCE, theme: id })
+}
+
+/** A theme picked outside Appearance, from the owner menu: Light and Dark are modes of Ingle's own theme. */
+export function pickedInMenu(current: Appearance, picked: string): Appearance {
+  return picked === "dark" || picked === "light" ? { ...current, mode: picked, theme: "ingle" } : { ...current, theme: picked }
+}
+
+/** Drops a wallpaper from the library, and from the background when it is the one in use. */
+export function withoutWallpaper(current: Appearance, url: string): Appearance {
+  const { image, ...rest } = current.background
+  return {
+    ...current,
+    background: image?.url === url ? rest : current.background,
+    wallpapers: current.wallpapers.filter((entry) => entry.url !== url),
+  }
+}
