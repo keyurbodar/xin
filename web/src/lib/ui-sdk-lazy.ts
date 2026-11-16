@@ -1,5 +1,6 @@
 const LOADERS = {
   menu: () => import("@ui-sdk/web/menu"),
+  toggle: () => import("@ui-sdk/web/toggle"),
 } as const
 
 export type LazyElements = keyof typeof LOADERS
@@ -30,4 +31,19 @@ export function loadUiSdk(name: LazyElements): Promise<void> {
     )
   pending.set(name, running)
   return running
+}
+
+/** Trigger handlers that register an element family on first hover, focus or press, and replay a click that came before it. */
+export function loadOnIntent(name: LazyElements) {
+  const warm = (): void => void loadUiSdk(name)
+  return {
+    onPointerEnter: warm,
+    onPointerDown: warm,
+    onFocus: warm,
+    onClick: (event: MouseEvent & { currentTarget: HTMLButtonElement }): void => {
+      if (uiSdkReady(name)) return
+      const button = event.currentTarget
+      void loadUiSdk(name).then(() => requestAnimationFrame(() => button.click()))
+    },
+  }
 }

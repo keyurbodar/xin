@@ -19,8 +19,7 @@ import { issuesRev, projectIssueList, statesRev } from "../../state/issues.ts"
 import { homeCaptains } from "../../state/captains.ts"
 import { showPaneView } from "../../state/tabs.ts"
 import { ICON_BUTTON } from "../shell/menu.ts"
-import { loadOnIntent, once } from "../../lib/lazy-elements.ts"
-import { loadIssueElements } from "./lazy-issue-elements.ts"
+import { loadOnIntent } from "../../lib/ui-sdk-lazy.ts"
 import { AssigneeChip, PriorityMark, StateMark } from "./issue-marks.tsx"
 import { Section, type PaneContext } from "./overview.tsx"
 
@@ -81,7 +80,7 @@ export function IssuesSection(props: PaneContext & { label: string }): JSX.Eleme
               aria-label="Closed issues"
               aria-pressed="false"
               title={showClosed() ? "Hide closed issues" : "Show closed issues"}
-              {...loadOnIntent(loadIssueElements, "ui-toggle")}
+              {...loadOnIntent("toggle")}
             >
               <ui-toggle-icon class="contents">
                 <Archive size={14} stroke-width={1.5} />
@@ -181,10 +180,18 @@ export type NewIssueProps = { readonly project: ProjectSummary; readonly project
 function NewIssue(props: NewIssueProps): JSX.Element {
   const id = `new-issue-${createUniqueId()}`
   const [popover, setPopover] = createSignal<Component<NewIssueProps & { id: string }>>()
-  const load = once(() => import("./new-issue.tsx").then((module) => setPopover(() => module.NewIssuePopover)))
+  let loading: Promise<void> | undefined
+  const load = (): Promise<void> =>
+    (loading ??= import("./new-issue.tsx").then(
+      (module) => void setPopover(() => module.NewIssuePopover),
+      (error: unknown) => {
+        loading = undefined
+        throw error
+      },
+    ))
   return (
     <>
-      <ui-popover-trigger for={id}>
+      <ui-popover-trigger attr:for={id}>
         <button
           type="button"
           class={`${ICON_BUTTON} aria-expanded:bg-hover aria-expanded:text-ink`}
@@ -196,7 +203,7 @@ function NewIssue(props: NewIssueProps): JSX.Element {
           onClick={(event) => {
             if (popover() !== undefined) return
             const button = event.currentTarget
-            void load().then(() => queueMicrotask(() => button.click()))
+            void load().then(() => requestAnimationFrame(() => button.click()))
           }}
         >
           <Plus size={14} stroke-width={1.5} />

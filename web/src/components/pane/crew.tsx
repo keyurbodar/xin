@@ -11,8 +11,7 @@ import { Signal } from "../ui/signal.tsx"
 import { createPaneAction, EmptyState } from "../chat/ui.tsx"
 import { ICON_BUTTON } from "../shell/menu.ts"
 import { createOverlayMount } from "../shell/presence.ts"
-import { loadOnIntent } from "../../lib/lazy-elements.ts"
-import { loadIssueElements } from "./lazy-issue-elements.ts"
+import { loadOnIntent } from "../../lib/ui-sdk-lazy.ts"
 import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
 import { PANE_ROW } from "./bodies.tsx"
 import { Section } from "./overview.tsx"
@@ -165,7 +164,7 @@ function AddToCrew(props: { candidates: readonly ThreadSummary[]; busy: boolean;
           aria-label="Add a thread to the crew"
           title="Add a thread to the crew"
           aria-disabled={props.busy ? "true" : undefined}
-          {...loadOnIntent(loadIssueElements, "ui-menu")}
+          {...loadOnIntent("menu")}
         >
           <UserPlus size={14} stroke-width={1.5} />
         </button>
