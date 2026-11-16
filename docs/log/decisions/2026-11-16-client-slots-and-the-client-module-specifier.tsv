@@ -1,0 +1,1 @@
+2026-11-16T03:30:00Z	plugins	client, slots and the client module specifier leave the manifest until the PR that adds the web slot loader	nothing in xin#19 read them (CREW rule: no speculative code)	review of xin#19 (XIN-23, low)	moved to the client-slots PR

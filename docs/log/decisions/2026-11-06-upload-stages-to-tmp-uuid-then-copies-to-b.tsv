@@ -1,0 +1,1 @@
+2026-11-06T13:54:16Z	M4	Upload stages to tmp/<uuid> then copies to b/<sha256>	workerd rejects R2 puts from length-unknown streams and the address is known only after the last byte	src/upload.ts; gate cde67a63; plugins/files/files.test.ts (staging and sweep cases); the .verify scratch artifact is gone	accepted

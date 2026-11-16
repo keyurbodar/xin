@@ -1,0 +1,1 @@
+2026-11-06T13:49:01Z	M5	M5b started on M5a + M2 enqueue + M3 resolveModel; owns the xin.error entry for no-model and provider failures	closes the silent-batch gap seen under wrangler dev	lane spawned	open; superseded 2026-11-10: closed with row 17; the xin.error entry for no_model and provider failures lives in plugins/failures/failures.ts

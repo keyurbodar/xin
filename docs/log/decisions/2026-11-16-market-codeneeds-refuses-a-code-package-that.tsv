@@ -1,0 +1,1 @@
+2026-11-16T17:10:00Z	plugins	market codeNeeds refuses a code package that declares owner, before consent	Bosun on XIN-23 #19 defect 3: owner is only for first-party Automations, so a market package asking for it is refused rather than offered for consent	market.test refuses @lahn/ingle-impersonator with and without an owner grant	fixed in #35

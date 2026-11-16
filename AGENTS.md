@@ -24,7 +24,7 @@ Use these pstack skills. They are part of the workflow, not optional extras.
 | End of every later milestone: keep that skill and its feature map honest | `/pstack:maintain-verification-skill` |
 | Before a milestone counts as done: strict maintainability review of its diff | `/pstack:thermo-nuclear-code-quality-review` |
 | Before a milestone counts as done: remove comment noise | `/pstack:no-comments` |
-| Long or unattended runs: one TSV row per decision in `docs/log/decisions.tsv` | `/pstack:show-me-your-work` |
+| Long or unattended runs: one TSV row per decision, each in its own file under `docs/log/decisions/` | `/pstack:show-me-your-work` |
 
 ## The gate: the only way to build, lint and test
 
@@ -84,9 +84,9 @@ The full system is in `docs/process/orchestration.md`, and briefs use `docs/proc
 1. The proof test(s) pass via `bun scripts/gate.ts` (all steps green).
 2. `/pstack:thermo-nuclear-code-quality-review` and `/pstack:no-comments` have run on the milestone diff, and accepted findings are fixed.
 3. The verification skill is updated (`/pstack:maintain-verification-skill`) and drives the new behaviour once against the real Worker.
-4. The spec matches the code, and deviations are logged in `docs/log/decisions.tsv`.
+4. The spec matches the code, and deviations are logged in `docs/log/decisions/`.
 5. One commit per milestone on the working branch, message `M<n>: <what>`.
 
 ## Decision log
 
-`docs/log/decisions.tsv`, columns: `time  milestone  decision  why  evidence  result`. Add a row for every spec deviation, library surprise, or choice between two designs. This is how the owner audits unattended work.
+One file per decision: `docs/log/decisions/<yyyy-mm-dd>-<slug>.tsv`, holding exactly one tab-separated row (no header) with the columns `time  milestone  decision  why  evidence  result`, and the date in the name matching `time`. Never append to a shared file: one file per row means two PRs never conflict over the log. `bun scripts/decisions.ts` prints the combined table sorted by time, and `lint` runs `bun scripts/decisions.ts --check`, which rejects a bad name, a second line, or a wrong field count. Add a row for every spec deviation, library surprise, or choice between two designs. This is how the owner audits unattended work.

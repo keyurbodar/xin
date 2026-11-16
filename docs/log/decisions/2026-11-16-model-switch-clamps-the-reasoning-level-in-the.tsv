@@ -1,0 +1,1 @@
+2026-11-16T20:00:00Z	composer reasoning	model switch clamps the reasoning level in the same conv.configure { model, thinking } instead of a second configure	one op per pick and no window where the conversation holds a level its model does not list; nearest lower listed level, else the model's first, in lib/thinking.ts	web/src/lib/thinking.test.ts	adopted

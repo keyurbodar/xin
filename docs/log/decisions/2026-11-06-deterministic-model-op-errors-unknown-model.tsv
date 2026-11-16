@@ -1,0 +1,1 @@
+2026-11-06T13:50:42Z	M3	deterministic model op errors (unknown model, nothing to configure, bad custom api) are OpRejected bad_args	they were failed, which stores no receipt and reruns on retry	wrangler dev: unknown model ack; models proof passes after the change	fixed by lead in review

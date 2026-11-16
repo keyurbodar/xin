@@ -1,0 +1,1 @@
+2026-11-07T11:00	P9	Drop the prompt and skill contribution rows and preset prompt selection	dsh has no inline prompt or skill rows; skills come from provider rows, prompt text from persona (not ported: no need yet)	packages/preset/persona, packages/skill/skill READMEs	accepted

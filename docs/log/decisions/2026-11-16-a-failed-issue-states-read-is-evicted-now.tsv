@@ -1,0 +1,1 @@
+2026-11-16T18:30:00Z	web-issues	A failed issue.states read is evicted, now covered by a test	XIN-23: the eviction was untested; one dropped read would otherwise fail every later list and issue until reload	web/src/lib/issue-cache.test.ts	adopted

@@ -1,0 +1,1 @@
+2026-11-16T12:00:00Z	page-15	Closing the tab menu focuses its tab on the next frame, falling back to the active tab or the project tab; closing a focused tab focuses the nearest kept tab	XIN-23: useMenu has no trigger, so zag dropped focus to body	Chromium: activeElement is the tab after right-click+Esc and Shift+F10+Esc	adopted

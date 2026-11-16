@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	onboarding v5	provider Saved badge: The key field shows Saved rather than the frame's Valid	credential.set stores the key without calling the provider, so Valid would claim a check that never ran	plugins/models/models.ts credential.set	adopted

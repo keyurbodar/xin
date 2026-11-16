@@ -1,0 +1,1 @@
+2026-11-07T20:52	P14	The System uptime starts at apply(), not at module load	a Worker module's top level runs inside the startup snapshot, where Date.now() is 0, so uptime read 498,356h; the screenshot pass caught it	src/kernel/system.ts startedAt set in apply; system.test.ts asserts uptimeMs < 60s; live figure now 49ms	gate green; live
