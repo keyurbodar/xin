@@ -46,7 +46,7 @@ import { navigate, param } from "../lib/router.ts"
 import { Loading, ThreadSkeleton } from "../components/ui/skeleton.tsx"
 import { Transcript, type PendingMessage } from "../components/chat/transcript.tsx"
 import { Composer, type SendKey } from "../components/chat/composer.tsx"
-import { lazyView } from "../components/ui/lazy-view.tsx"
+import { CaptainWelcome } from "../components/captain/welcome.tsx"
 import type { CaptainProfile } from "../lib/captains.ts"
 import { ThreadConversation } from "../components/chat/panel.tsx"
 import { ConversationTabs, type ConversationAction } from "../components/shell/conversation-tabs.tsx"
@@ -61,8 +61,6 @@ import { FileScreen } from "./file.tsx"
 import { RunScreen } from "./run.tsx"
 import { Button, EmptyState } from "../components/chat/ui.tsx"
 import { Backdrop } from "../appearance/backdrop.tsx"
-
-const CaptainWelcome = lazyView(() => import("../components/captain/welcome.tsx").then((module) => module.CaptainWelcome), () => <></>)
 
 export function ProjectChat(props: {
   project: ProjectSummary

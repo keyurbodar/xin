@@ -13,7 +13,12 @@ const [creating, setCreating] = createSignal(false)
 
 export const newCaptainOpen = creating
 
+let newCaptainOpener: HTMLElement | undefined
+
+export const newCaptainReturn = (): HTMLElement | undefined => newCaptainOpener
+
 export function openNewCaptain(): void {
+  newCaptainOpener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
   setSidebarDrawer(false)
   setCreating(true)
 }

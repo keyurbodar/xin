@@ -14,7 +14,7 @@ import { modelName, searchModels, type ModelInfo, type ModelRef } from "../../st
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
 import { POPUP, POPUP_ITEM } from "../ui/surface.ts"
 import { CaptainAvatar } from "./avatar.tsx"
-import { closeNewCaptain, newCaptainOpen } from "./captain-dialog.tsx"
+import { closeNewCaptain, newCaptainOpen, newCaptainReturn } from "./captain-dialog.tsx"
 
 const STANDING_LIMIT = 16_000
 
@@ -189,6 +189,7 @@ export function NewCaptainDialog(): JSX.Element {
     <Dialog
       open={newCaptainOpen()}
       onClose={closeNewCaptain}
+      returnFocus={newCaptainReturn()}
       title="New Captain"
       busy={busy()}
       width="w-[var(--w-dialog)]"

@@ -10,7 +10,7 @@ import { NewThreadDialog } from "./new-thread.tsx"
 import { ICON_BUTTON } from "./menu.ts"
 import { ProjectScreen } from "../../screens/project.tsx"
 import { CaptainScreen } from "../../screens/captain.tsx"
-import { closeNewCaptain, newCaptainOpen } from "../captain/captain-dialog.tsx"
+import { closeNewCaptain, newCaptainOpen, newCaptainReturn } from "../captain/captain-dialog.tsx"
 import { Dialog } from "../ui/dialog.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
@@ -145,7 +145,7 @@ export function Shell(): JSX.Element {
         fallback={(error: unknown, reset) => {
           createEffect(on(newCaptainOpen, (open) => open && reset(), { defer: true }))
           return (
-            <Dialog open={newCaptainOpen()} onClose={closeNewCaptain} title="New Captain">
+            <Dialog open={newCaptainOpen()} onClose={closeNewCaptain} returnFocus={newCaptainReturn()} title="New Captain">
               <Stopped title="New Captain didn't load" error={error} onRetry={reset} class="py-6" />
             </Dialog>
           )
