@@ -40,12 +40,15 @@ export type SettleOutcome =
   | { readonly kind: "answered"; readonly run: number }
   | { readonly kind: "already_answered"; readonly answer: string }
 
+/** Runs inside the answer's commit once every check has passed, before the request closes; throwing aborts the answer. */
+export type Admitted = (open: OpenRequest) => Promise<void>
+
 export interface QuestionsService {
   ask(input: AskInput, context: ChordContext): Promise<AskOutcome>
   open(conversationId: ConversationId): Promise<OpenOutcome>
   respond(api: ToolExecutionApi, threadId: number, requestId: string, answer: string): Promise<RespondOutcome>
   /** Answers a card for the owner with any text, past its options: the plugin that owns the card decides the answer. */
-  settle(threadId: ConversationId, requestId: string, answer: string): Promise<SettleOutcome>
+  settle(threadId: ConversationId, requestId: string, answer: string, admitted?: Admitted): Promise<SettleOutcome>
 }
 
 const RequestSchema = obj({

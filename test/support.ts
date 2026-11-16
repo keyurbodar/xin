@@ -215,6 +215,8 @@ export const api = (path: string, init?: RequestInit) =>
 export type Socket = {
   send(frame: unknown): void
   next(match: (frame: Frame) => boolean): Promise<Frame>
+  /** Every frame this socket received, as the text it arrived as. */
+  received(): readonly string[]
   close(): void
 }
 export type Frame = { readonly t?: string; readonly [key: string]: unknown }
@@ -229,8 +231,10 @@ export async function connect(): Promise<Socket> {
   if (ws === null) throw new Error(`no socket: ${reply.status}`)
   ws.accept()
   const frames: Frame[] = []
+  const raw: string[] = []
   const waiters: { match: (frame: Frame) => boolean; resolve: (frame: Frame) => void }[] = []
   ws.addEventListener("message", (event) => {
+    raw.push(String(event.data))
     const frame: Frame = JSON.parse(String(event.data))
     const waiter = waiters.find((w) => w.match(frame))
     if (waiter === undefined) frames.push(frame)
@@ -249,6 +253,7 @@ export async function connect(): Promise<Socket> {
         setTimeout(() => reject(new Error("no matching frame within 5s")), 5000)
       })
     },
+    received: () => [...raw],
     close: () => ws.close(),
   }
 }

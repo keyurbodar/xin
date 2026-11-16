@@ -13,6 +13,7 @@ import {
   type OpenRequest,
   type QuestionsService,
   RequestsDoc,
+  type Admitted,
   type RespondOutcome,
   type SettleOutcome,
 } from "../../src/contracts/questions.ts"
@@ -116,7 +117,8 @@ export function createQuestions(port: QuestionsPort): QuestionsService {
       return answerOutcome(outcome.result) ?? { kind: "refused", message: "The answer had no recognizable outcome." }
     },
 
-    settle: (threadId, requestId, reply) => settle(port, threadId, requestId, reply, () => undefined),
+    settle: (threadId, requestId, reply, admitted) =>
+      settle(port, threadId, requestId, reply, () => undefined, admitted),
   }
 }
 
@@ -136,12 +138,13 @@ async function settle(
   requestId: string,
   reply: string,
   admit: Admit,
+  admitted?: Admitted,
 ): Promise<SettleOutcome> {
   const stored = await port.harness.snapshot(ThreadDoc, threadId, context)
   if (stored === undefined) throw new OpRejected("bad_args", `no thread ${threadId}`)
   const now = Date.now()
   const outcome = await port.harness.commit(
-    (tx) => answer(port, tx, threadId, stored.title, requestId, reply, now, admit),
+    (tx) => answer(port, tx, threadId, stored.title, requestId, reply, now, admit, admitted),
     context,
   )
   if (outcome.kind === "answered") await port.intake.withdraw(`question:${requestId}`)
@@ -270,6 +273,7 @@ async function answer(
   reply: string,
   now: number,
   admit: Admit,
+  admitted: Admitted | undefined,
 ): Promise<SettleOutcome> {
   const requests = await tx.doc(RequestsDoc, threadId)
   const answered = requests.answered[requestId]
@@ -282,6 +286,7 @@ async function answer(
   if (next.kind !== "ok") throw new OpRejected("bad_args", next.reason)
   if (thread.parentId === undefined) throw new OpRejected("bad_args", `thread ${threadId} has no parent`)
   const parentId = thread.parentId as ConversationId
+  await admitted?.(open)
   const workspace = await tx.doc(WorkspaceDoc)
   const project = workspace.projects[thread.projectId]
   const run = (thread.run ?? 1) + 1

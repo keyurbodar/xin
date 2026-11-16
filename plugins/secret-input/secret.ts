@@ -15,9 +15,12 @@ export type SecretPort = {
 /**
  * The one path a secret card's value takes: into the secret store, never into the request, the answer or the run it
  * starts. The model's next run reads only "stored as <name>" or "declined"; `credentials` keeps `value` from
- * `ops/before` listeners.
+ * `ops/before` listeners. The value is written inside the answer's commit, after every check the answer passes, so a
+ * refused answer stores nothing; a request is claimed before the first await, so of two concurrent provides one runs
+ * and the other is refused as busy.
  */
 export function provideOp(port: SecretPort): Op {
+  const claimed = new Set<string>()
   return defineOp({
     name: "secret.provide",
     args: obj({
@@ -28,18 +31,39 @@ export function provideOp(port: SecretPort): Op {
     actors: ["owner"],
     credentials: ["value"],
     run: async (api, args) => {
-      const threadId = args.threadId as ConversationId
-      const requests = await api.harness.snapshot(RequestsDoc, threadId, BACKGROUND_CONTEXT)
-      const settled = requests?.answered[args.requestId]
-      if (settled !== undefined)
-        return { threadId: args.threadId, requestId: args.requestId, kind: "already_answered", answer: settled.answer }
-      const open = requests?.open[args.requestId]
-      if (open?.kind !== SECRET_KIND || open.subject === undefined)
-        throw new OpRejected("bad_args", `no open secret request ${args.requestId}`)
-      if (args.value !== undefined) await port.set(open.subject, args.value)
-      const answer = args.value === undefined ? DECLINED : `stored as ${open.subject}`
-      const outcome = await port.questions.settle(threadId, args.requestId, answer)
-      return { threadId: args.threadId, requestId: args.requestId, ...outcome }
+      const claim = `${args.threadId}:${args.requestId}`
+      if (claimed.has(claim)) throw new OpRejected("busy", `secret request ${args.requestId} is being answered`)
+      claimed.add(claim)
+      try {
+        const threadId = args.threadId as ConversationId
+        const requests = await api.harness.snapshot(RequestsDoc, threadId, BACKGROUND_CONTEXT)
+        const settled = requests?.answered[args.requestId]
+        if (settled !== undefined)
+          return {
+            threadId: args.threadId,
+            requestId: args.requestId,
+            kind: "already_answered",
+            answer: settled.answer,
+          }
+        const open = requests?.open[args.requestId]
+        const subject = open?.subject
+        if (open?.kind !== SECRET_KIND || subject === undefined)
+          throw new OpRejected("bad_args", `no open secret request ${args.requestId}`)
+        const { value } = args
+        const outcome = await port.questions.settle(
+          threadId,
+          args.requestId,
+          value === undefined ? DECLINED : `stored as ${subject}`,
+          async (admitted) => {
+            if (admitted.kind !== SECRET_KIND || admitted.subject !== subject)
+              throw new OpRejected("bad_args", `no open secret request ${args.requestId}`)
+            if (value !== undefined) await port.set(subject, value)
+          },
+        )
+        return { threadId: args.threadId, requestId: args.requestId, ...outcome }
+      } finally {
+        claimed.delete(claim)
+      }
     },
   })
 }
