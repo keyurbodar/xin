@@ -28,14 +28,15 @@ export const SKILLS: readonly CatalogSkill[] = [
 Use this when the owner wants you to work in their real browser: their tabs, logins and extensions. It uses [browse](https://github.com/anomalyco/browse) (MIT), an MCP server plus a Chromium extension that runs on the owner's computer. browse speaks MCP over stdio only, and Ingle reaches MCP servers over HTTPS, so the owner runs a small bridge and a tunnel next to it. Give the owner these steps one at a time and wait for each to finish.
 
 1. Install browse and pair the extension: \`curl -fsSL https://opencode.ai/browse/install | bash\`, then \`browse install --agent none\`. It opens the Chrome Web Store for the extension and pairs it once it is added.
-2. Bridge it to Streamable HTTP with [supergateway](https://github.com/supercorp-ai/supergateway) (MIT), protected by a key the owner makes up: \`npx -y supergateway --stdio "browse mcp" --outputTransport streamableHttp --port 8931 --apiKey <a long random key>\`.
+2. Bridge it to Streamable HTTP with [supergateway](https://github.com/supercorp-ai/supergateway) (MIT), protected by a key the owner makes up and passes in the environment, so it stays out of shell history and the process list: \`read -rs SUPERGATEWAY_API_KEY && export SUPERGATEWAY_API_KEY\` (type the key, then Enter), then \`npx -y supergateway --stdio "browse mcp" --outputTransport streamableHttp --port 8931\`.
 3. Give it a public HTTPS address, for example a Cloudflare quick tunnel: \`cloudflared tunnel --url http://localhost:8931\`. It prints an https://…trycloudflare.com address.
-4. In Ingle, add the MCP server named \`browse\` with the address followed by \`/mcp\` and the header \`Authorization: Bearer <the key>\` (Settings → Integrations, or the \`mcp.add\` op). The key is stored sealed and never shown again.
+4. In Ingle, add the MCP server named \`browse\` with the address followed by \`/mcp\` and the header \`Authorization: Bearer <the key>\` (Extensions › Customize › Connectors → Add MCP server, or the \`mcp.add\` op). The key is stored sealed and never shown again.
 
 Once it is connected, find its tools with tool_search (for example "browse snapshot"). They cost nothing in a request until they are loaded.
 
 Rules while using it:
 - You act with the owner's logins. Ask before anything that sends, buys, deletes, posts or changes settings.
+- Never type a password, a 2FA code or payment details yourself: hand the tab back to the owner with browse's hand-back (Continue) and wait for them.
 - Work in background tabs browse opens; do not close or navigate tabs the owner already had open.
 - Read pages with snapshots rather than screenshots: they are text and cost far fewer tokens.
 - When the task is done, tell the owner they can stop the tunnel and the bridge (Ctrl-C in both terminals); the server then shows as failing until they start them again.
