@@ -1,4 +1,4 @@
-import { createSignal, Match, onMount, Show, Switch, type JSX } from "solid-js"
+import { createSignal, ErrorBoundary, Match, onMount, Show, Switch, type JSX } from "solid-js"
 import { probe, setToken, token } from "./lib/auth.ts"
 import { connect, connectionState, reauthorize } from "./state/connection.ts"
 import { subscribeHome } from "./state/home.ts"
@@ -7,6 +7,8 @@ import { navigate, route } from "./lib/router.ts"
 import { Shell } from "./components/shell/shell.tsx"
 import { BootLoader } from "./components/ui/loaders.tsx"
 import { lazyView } from "./components/ui/lazy-view.tsx"
+import { Stopped } from "./components/ui/stopped.tsx"
+import { BootFailedScreen } from "./screens/boot-failed.tsx"
 import { SignIn } from "./screens/signin.tsx"
 import { needsOnboarding } from "./lib/onboarding.ts"
 import { cutOff, OfflineScreen } from "./screens/offline.tsx"
@@ -18,7 +20,15 @@ const bootLoader = (): JSX.Element => (
   </div>
 )
 const WelcomeScreen = lazyView(() => import("./screens/welcome.tsx").then((module) => module.WelcomeScreen), bootLoader)
-const BootFailedScreen = lazyView(() => import("./screens/boot-failed.tsx").then((module) => module.BootFailedScreen), bootLoader)
+
+/** Onboarding behind its own boundary, so a chunk that fails to load offers Try again instead of the boot loader forever. */
+export function WelcomeRoute(): JSX.Element {
+  return (
+    <ErrorBoundary fallback={(error: unknown, reset) => <Stopped title="Setup didn't load" error={error} onRetry={reset} class="h-full" />}>
+      <WelcomeScreen />
+    </ErrorBoundary>
+  )
+}
 
 type Gate =
   | { readonly kind: "checking" }
@@ -94,7 +104,7 @@ export function App(): JSX.Element {
       <Match when={gate().kind === "ready"}>
         <div class="contents" inert={offline()}>
           <Show when={route().parts[0] === "welcome"} fallback={<Shell />}>
-            <WelcomeScreen />
+            <WelcomeRoute />
           </Show>
         </div>
         <Show when={offline()}>
