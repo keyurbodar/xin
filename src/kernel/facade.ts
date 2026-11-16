@@ -34,8 +34,50 @@ const frozenCopy = (value: unknown): unknown => {
   return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, frozenCopy(inner)])))
 }
 
+const isObject = (value: unknown): value is object => typeof value === "object" && value !== null
+
+/**
+ * One registry snapshot as a plugin row sees it: fresh frozen copies of the snapshot, its lists, and each extension,
+ * tool, section and task in them, made per call. A row that changes what it reads changes nothing the next caller or
+ * the harness sees, and cannot replace a tool's `execute`.
+ */
+const snapshotView = (snapshot: unknown): unknown => {
+  const copies = new WeakMap<object, object>()
+  const copy = (value: unknown): unknown => {
+    if (!isObject(value)) return value
+    const known = copies.get(value)
+    if (known !== undefined) return known
+    const made: Record<string, unknown> = { ...value }
+    copies.set(value, made)
+    for (const key of ["tools", "sections"])
+      if (Array.isArray(made[key])) made[key] = Object.freeze(made[key].map(copy))
+    return Object.freeze(made)
+  }
+  const entry = (value: unknown): unknown =>
+    isObject(value)
+      ? Object.freeze(Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, copy(inner)])))
+      : value
+  const list = (name: string, each: (value: unknown) => unknown) => (): unknown => {
+    const values: unknown = method(snapshot, name)()
+    return Object.freeze(Array.isArray(values) ? values.map(each) : [])
+  }
+  const one =
+    (name: string) =>
+    (key: unknown): unknown =>
+      copy(method(snapshot, name)(key))
+  return Object.freeze({
+    installed: list("installed", copy),
+    extension: one("extension"),
+    tools: list("tools", entry),
+    sections: list("sections", entry),
+    tasks: list("tasks", copy),
+    task: one("task"),
+  })
+}
+
 /** The pi registry for reading what is registered, never for registering. */
-const registryView = (registry: unknown): unknown => Object.freeze({ snapshot: method(registry, "snapshot") })
+const registryView = (registry: unknown): unknown =>
+  Object.freeze({ snapshot: (): unknown => snapshotView(method(registry, "snapshot")()) })
 
 /**
  * What a plugin row may touch on each kernel service, by the service's name. Anything not listed is absent from the
@@ -62,7 +104,7 @@ const ALLOWED: Readonly<Record<string, Readonly<Record<string, Member>>>> = {
     conversations: { needs: "conversations" },
     models: { needs: "models" },
     currentModels: { needs: "models", view: modelsView },
-    registry: { view: registryView },
+    registry: { needs: "plugins", view: registryView },
   },
   clock: { arm: {}, timer: {} },
   http: { route: {} },

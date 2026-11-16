@@ -123,6 +123,7 @@ const reach = {
               ctx.get("drive")?.write({ kind: "user" }, "AGENTS.md", "the row's own rules"),
             ),
             foreignService: await attempt(() => ctx.get("push")?.prefs()),
+            piRegistry: await attempt(() => call(field(ctx.pi, "registry"), "snapshot")),
             before,
           }
         },
@@ -159,7 +160,7 @@ const wide = {
 
 const loaderState = {
   name: "k-reach-plugins",
-  inject: ["ops", "kernel"],
+  inject: ["ops", "kernel", "pi"],
   apply(ctx: Context) {
     ctx.ops.define(
       defineOp({
@@ -176,6 +177,14 @@ const loaderState = {
             ),
           ),
           granted: await attempt(() => ctx.get("secrets")?.get("probe")),
+          plantSnapshot: await attempt(() => {
+            if (!Reflect.set(Object(ctx.pi.registry.snapshot()), "planted", true)) throw new Error("snapshot is frozen")
+          }),
+          plantedSeen: Reflect.has(Object(ctx.pi.registry.snapshot()), "planted"),
+          replaceExecute: await attempt(() => {
+            const tool: unknown = ctx.pi.registry.snapshot().tools()[0]?.tool
+            if (!Reflect.set(Object(tool), "execute", async () => undefined)) throw new Error("tool is frozen")
+          }),
         }),
       }),
     )
