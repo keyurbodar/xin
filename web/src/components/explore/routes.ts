@@ -35,6 +35,10 @@ export const TAB_PATH: Readonly<Record<ExploreTab, string>> = {
   themes: "/explore/themes",
 }
 
+export const EXPLORE_TABS: readonly ExploreTab[] = ["plugins", "skills", "themes"]
+
+export const tabOf = (value: unknown): ExploreTab | undefined => EXPLORE_TABS.find((tab) => tab === value)
+
 export const TAB_LABEL: Readonly<Record<ExploreTab, string>> = { plugins: "Plugins", skills: "Skills", themes: "Themes" }
 
 export const pluginPath = (name: string): string => `/explore/plugins/${encodeURIComponent(name)}`
