@@ -2,6 +2,7 @@
 import type { ClientEntry } from "./plugins/sdk.ts"
 
 export const CLIENT_PLUGINS: readonly ClientEntry[] = [
+  { name: "hello", rows: ["hello"], load: () => import("../../plugins/hello/client.tsx") },
   { name: "outline", rows: ["outline"], load: () => import("../../plugins/outline/client.tsx") },
   { name: "standup", rows: ["standup"], load: () => import("../../plugins/standup/client.tsx") },
   { name: "theme-pack", rows: ["theme-pack"], load: () => import("../../plugins/theme-pack/client.tsx") },

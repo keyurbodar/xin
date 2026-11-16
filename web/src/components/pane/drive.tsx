@@ -3,7 +3,7 @@ import "@ui-sdk/web/listbox"
 import "@ui-sdk/web/menu"
 import "@ui-sdk/web/select"
 import "@ui-sdk/web/toggle"
-import { batch, createMemo, createResource, createSignal, For, Show, untrack, type JSX } from "solid-js"
+import { batch, createMemo, createResource, createSignal, For, onCleanup, Show, untrack, type JSX } from "solid-js"
 import {
   ArrowLeft,
   BookText,
@@ -23,6 +23,7 @@ import {
   copyLink,
   drive,
   folderOf,
+  hasThumbnail,
   INSTRUCTIONS_CAP,
   INSTRUCTIONS_FILE,
   isStale,
@@ -61,7 +62,9 @@ import { createOverlayMount } from "../shell/presence.ts"
 import { Markdown } from "../chat/markdown.tsx"
 import { createPaneAction, EmptyState, ResourceError } from "../chat/ui.tsx"
 import { fileName as baseName, forgetProjectFiles, PANE_ROW } from "./bodies.tsx"
-import { DriveTree } from "./drive-tree.tsx"
+import { DriveTree, FileIcon } from "./drive-tree.tsx"
+import { createBlobCache, type BlobCache } from "../../lib/blob-cache.ts"
+import { Tile } from "../ui/tile.tsx"
 
 const CENTER_ROW = PANE_ROW.replace("items-start", "items-center")
 
@@ -105,6 +108,8 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
   const [returnTo, setReturnTo] = createSignal<string | undefined>()
   const [version, setVersion] = createSignal(0)
   const action = createPaneAction()
+  const blobs = createBlobCache()
+  onCleanup(blobs.clear)
   let treeHost: HTMLDivElement | undefined
 
   const current = createMemo(() => pickScope(settled(scopes) ?? [], picked(), props.prefer))
@@ -223,6 +228,7 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
                       rows={rows()}
                       childrenOf={(folder) => rowsOf(settled(listing)?.files ?? [], folder)}
                       shares={shares()}
+                      blobs={blobs}
                       onOpen={setOpen}
                       onRename={async (from, to) => {
                         await drive.move(mounted().scope, from, to, mounted().scope)
@@ -245,6 +251,7 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
                   path={path}
                   entry={openEntry()}
                   shareId={shares()[path]}
+                  blobs={blobs}
                   onBack={back}
                   onChanged={reload}
                   onMove={() => startMove(path)}
@@ -354,6 +361,7 @@ function FilePanel(props: {
   path: string
   entry: DriveEntry | undefined
   shareId: string | undefined
+  blobs: BlobCache
   onBack: () => void
   onChanged: () => void
   onMove: () => void
@@ -548,6 +556,7 @@ function FilePanel(props: {
         <HistoryPanel
           scope={scope()}
           path={props.path}
+          blobs={props.blobs}
           onRestored={() => {
             void refetch()
             setMode("read")
@@ -612,7 +621,7 @@ function FilePanel(props: {
       <Show when={mode() === "read"}>
         <Loading when={firstLoad(file)} skeleton={<PaneSkeleton rows={3} />} label="Opening file">
           <Show when={settled(file)}>
-            {(loaded) => <FileBody file={loaded()} />}
+            {(loaded) => <FileBody file={loaded()} blobs={props.blobs} />}
           </Show>
         </Loading>
       </Show>
@@ -621,8 +630,23 @@ function FilePanel(props: {
   )
 }
 
-function FileBody(props: { file: DriveFile }): JSX.Element {
+function FileBody(props: { file: DriveFile; blobs: BlobCache }): JSX.Element {
+  const name = (): string => baseName(props.file.path)
   return (
+    <Show
+      when={!hasThumbnail(props.file.type)}
+      fallback={
+        <div class="px-2 pb-4">
+          <Tile
+            load={() => props.blobs.url(props.file.sha256, props.file.type)}
+            alt={name()}
+            fit="contain"
+            fallback={<FileIcon name={name()} folder={false} />}
+            class="aspect-[4/3] w-full rounded-md border border-line-1 bg-secondary"
+          />
+        </div>
+      }
+    >
     <Show
       when={props.file.text}
       fallback={<EmptyState pictogram="files" title="No text preview" detail={`${props.file.type} · ${bytes(props.file.size)}`} />}
@@ -638,10 +662,11 @@ function FileBody(props: { file: DriveFile }): JSX.Element {
         </div>
       )}
     </Show>
+    </Show>
   )
 }
 
-function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () => void }): JSX.Element {
+function HistoryPanel(props: { scope: DriveScope; path: string; blobs: BlobCache; onRestored: () => void }): JSX.Element {
   const [history, { refetch }] = createResource(() => props.path, (path) => drive.history(props.scope, path))
   const [viewing, setViewing] = createSignal<string | undefined>()
   const [older] = createResource(viewing, (sha256) => drive.read(props.scope, props.path, sha256))
@@ -711,7 +736,7 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
               {(message) => <p class="font-mono text-2xs text-failed">{message()}</p>}
             </Show>
             <Loading when={firstLoad(older)} skeleton={<PaneSkeleton rows={2} />} label="Opening version">
-              <Show when={settled(older)}>{(loaded) => <FileBody file={loaded()} />}</Show>
+              <Show when={settled(older)}>{(loaded) => <FileBody file={loaded()} blobs={props.blobs} />}</Show>
             </Loading>
           </div>
         )}

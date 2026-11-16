@@ -18,13 +18,16 @@ const files = new Map<string, string>(
     "src/index.ts": "export {}",
     "src/app.tsx": "export {}",
     "src/lib/format.ts": "export {}",
+    "photos/harbour.png": "",
+    "photos/missing.jpg": "",
+    "photos/poster.png": "",
   }),
 )
 const entryOf = (path: string): DriveEntry => ({
   path,
-  size: files.get(path)?.length ?? 0,
-  type: path.endsWith(".md") ? "text/markdown" : "text/plain",
-  sha256: `${path.length.toString(16).padStart(8, "0")}cafe`,
+  size: path.endsWith("poster.png") ? 5 * 1024 * 1024 : (files.get(path)?.length ?? 0),
+  type: path.endsWith(".md") ? "text/markdown" : path.endsWith(".png") ? "image/png" : path.endsWith(".jpg") ? "image/jpeg" : "text/plain",
+  sha256: path.endsWith("missing.jpg") ? "gone" : `${path.length.toString(16).padStart(8, "0")}cafe`,
   updated_at: at,
 })
 const scopes = [
@@ -72,8 +75,40 @@ const answer = (op: string, args: Record<string, unknown>): unknown => {
   }
 }
 
+const blobs: string[] = []
+async function blob(url: string): Promise<Response> {
+  blobs.push(url.slice(url.lastIndexOf("/") + 1))
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  if (url.endsWith("/gone")) return new Response("not found", { status: 404 })
+  const canvas = new OffscreenCanvas(320, 200)
+  const paint = canvas.getContext("2d")
+  if (paint === null) throw new Error("no 2d context")
+  const sky = paint.createLinearGradient(0, 0, 0, 200)
+  sky.addColorStop(0, "#5b7a99")
+  sky.addColorStop(1, "#d9c3a5")
+  paint.fillStyle = sky
+  paint.fillRect(0, 0, 320, 200)
+  paint.fillStyle = "#2f3e4c"
+  paint.fillRect(0, 140, 320, 60)
+  return new Response(await canvas.convertToBlob({ type: "image/png" }), { headers: { "content-type": "application/octet-stream" } })
+}
+
+const urls = { created: [] as string[], revoked: [] as string[] }
+const create = URL.createObjectURL.bind(URL)
+const revoke = URL.revokeObjectURL.bind(URL)
+URL.createObjectURL = (blob: Blob | MediaSource) => {
+  const href = create(blob)
+  urls.created.push(href)
+  return href
+}
+URL.revokeObjectURL = (href: string) => {
+  urls.revoked.push(href)
+  revoke(href)
+}
+
 const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+  if (url.includes("/blobs/")) return blob(url)
   if (!url.endsWith("/v1/cmd")) throw new Error(`fixture fetch ${url}`)
   const body: unknown = JSON.parse(String(init?.body))
   const frames = (Array.isArray(body) ? body : [body]) as { id: string; op: string; args: Record<string, unknown> }[]
@@ -91,7 +126,7 @@ const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<
 
 Object.assign(window, { fetch: fakeFetch })
 trackMotion()
-render(
+const unmount = render(
   () => (
     <main class="h-screen w-full max-w-[400px] border-r border-line-1 bg-panel p-2">
       <DriveView conversationId={1} prefer={{ kind: "project", id: "p1" }} projectSlug="atlas" />
@@ -100,4 +135,4 @@ render(
   document.getElementById("app")!,
 )
 document.body.dataset.ready = "1"
-Object.assign(window, { calls, files })
+Object.assign(window, { calls, files, blobs, urls, unmount })

@@ -1,6 +1,7 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
-import { errorMessage, installSpec, packages } from "../../state/extensions.ts"
+import { addSpec, consentOf, errorMessage, packages, type ConsentPermission } from "../../state/extensions.ts"
 import { Button, Failure, MONO_INPUT, Note } from "./chrome.tsx"
+import { ConsentPrompt } from "./consent.tsx"
 import { Glyph } from "./glyph.tsx"
 import { keyStarted } from "../../lib/motion.ts"
 
@@ -11,6 +12,7 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [added, setAdded] = createSignal<string | undefined>(undefined)
+  const [consent, setConsent] = createSignal<readonly ConsentPermission[] | undefined>(undefined)
   const [closing, setClosing] = createSignal(false)
   const close = (): void => {
     if (closing()) return
@@ -29,15 +31,18 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
 
   const valid = (): boolean => SPEC.test(spec().trim())
 
-  const submit = async (): Promise<void> => {
+  const submit = async (grant: readonly string[] = []): Promise<void> => {
     if (!valid() || busy()) return
     setBusy(true)
     setError(undefined)
+    setConsent(undefined)
     try {
-      await installSpec(spec().trim())
+      await addSpec(spec().trim(), grant)
       setAdded(spec().trim())
     } catch (failure: unknown) {
-      setError(errorMessage(failure))
+      const asked = consentOf(failure)
+      if (asked === undefined) setError(errorMessage(failure))
+      else setConsent(asked)
     } finally {
       setBusy(false)
     }
@@ -74,7 +79,7 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
             <input
               value={spec()}
               onInput={(event) => setSpec(event.currentTarget.value)}
-              placeholder="github.com/owner/plugin#main or npm-name@1.2.0"
+              placeholder="github:owner/plugin#3f1b56d… (40-hex commit) or npm-name@1.2.0"
               spellcheck={false}
               aria-label="Package spec"
               class="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink placeholder:text-icon focus:outline-none"
@@ -82,7 +87,7 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
           </div>
           <Show when={spec().trim() !== "" && !valid()}>
             <span class="text-xs text-failed">
-              Use github:owner/repo, an https git URL, or a package name with an optional version.
+              Use github:owner/repo, an https git URL, or a package name with an exact version.
             </span>
           </Show>
 
@@ -91,8 +96,8 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
             <div>
               <span class="block text-sm text-working">Not from an index</span>
               <p class="mt-0.5 text-xs leading-snug text-ink-2">
-                The package is recorded as pending and builds on the next update. Its rows stay off until you enable them in
-                Installed.
+                Ingle reads the version's verified tarball and asks for what it declares. A git URL can't be read before
+                the build, so it asks for full access. The package builds on the next update.
               </p>
             </div>
           </div>
@@ -120,6 +125,19 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
                 </For>
               </div>
             </div>
+          </Show>
+
+          <Show when={consent()}>
+            {(permissions) => (
+              <ConsentPrompt
+                subject={spec().trim()}
+                permissions={permissions()}
+                action="Allow and add"
+                busy={busy()}
+                onAllow={(grant) => void submit(grant)}
+                onCancel={() => setConsent(undefined)}
+              />
+            )}
           </Show>
 
           <Show when={error()}>

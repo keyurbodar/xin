@@ -2,7 +2,9 @@ import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import {
   errorMessage,
   packages,
+  consentOf,
   rollbackPackage,
+  type ConsentPermission,
   rows,
   setRowEnabled,
   uninstallPackage,
@@ -10,6 +12,7 @@ import {
   type BundleView,
   type PluginRow,
 } from "../../state/extensions.ts"
+import { ConsentPrompt } from "./consent.tsx"
 import { Button, Chip, Empty, Failure, Note, Panel, Pending, StateChip, Toggle, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
 
@@ -188,19 +191,23 @@ function RowPanel(props: {
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [note, setNote] = createSignal<string | undefined>(undefined)
+  const [consent, setConsent] = createSignal<readonly ConsentPermission[] | undefined>(undefined)
 
-  const rollback = async (): Promise<void> => {
+  const rollback = async (grant: readonly string[] = []): Promise<void> => {
     const bundle = props.bundle
     if (bundle === undefined) return
     setBusy(true)
     setError(undefined)
     setNote(undefined)
+    setConsent(undefined)
     try {
-      const result = await rollbackPackage(bundle.package)
+      const result = await rollbackPackage(bundle.package, grant)
       if (result.application === "applied") setNote(`${bundle.package} rolled back to the version recorded before this one.`)
       else setError(result.reason ?? "The rollback did not apply.")
     } catch (failure: unknown) {
-      setError(errorMessage(failure))
+      const permissions = consentOf(failure)
+      if (permissions === undefined) setError(errorMessage(failure))
+      else setConsent(permissions)
     } finally {
       setBusy(false)
     }
@@ -305,6 +312,20 @@ function RowPanel(props: {
                 <p class="mt-1.5 text-xs leading-snug text-ink-3">
                   Every applied install is recorded, so this returns to the version that ran before the current one.
                 </p>
+                <Show when={consent()}>
+                  {(permissions) => (
+                    <div class="mt-2">
+                      <ConsentPrompt
+                        subject={bundle().package}
+                        permissions={permissions()}
+                        action="Allow and roll back"
+                        busy={busy()}
+                        onAllow={(grant) => void rollback(grant)}
+                        onCancel={() => setConsent(undefined)}
+                      />
+                    </div>
+                  )}
+                </Show>
               </section>
             )}
           </Show>
