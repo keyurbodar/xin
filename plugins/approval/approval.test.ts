@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
-import { fauxAssistantMessage, getCurrentTools } from "@earendil-works/pi-ai"
+import { fauxAssistantMessage, getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai"
 import type { ConversationId } from "@earendil-works/pi-durable"
 import { runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
@@ -12,43 +12,50 @@ import type { Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
 const CARD = {
-  row: "tool-approval",
   search: "approve action",
   tool: "request_approval",
   args: { action: "delete the staging bucket" },
 }
 
-type Declared = { readonly name: string; readonly bytes: number }
+const CARD_ROWS = ["tool-approval", "tool-connect", "tool-secret-input"] as const
+const CARD_TOOLS = ["request_approval", "request_connection", "request_secret"] as const
 
-async function declared(stub: ReturnType<typeof fresh>, requestId: string): Promise<readonly Declared[]> {
-  const found: Declared[][] = []
+type Offered = { readonly tools: readonly string[]; readonly schemaBytes: number; readonly system: string }
+
+async function offered(stub: ReturnType<typeof fresh>, requestId: string): Promise<Offered> {
+  const found: Offered[] = []
   const encoder = new TextEncoder()
   respond([
     (request) => {
-      found.push(
-        getCurrentTools(request.messages).map((tool) => ({
-          name: tool.name,
-          bytes: encoder.encode(JSON.stringify(tool)).length,
-        })),
-      )
+      const tools = getCurrentTools(request.messages)
+      found.push({
+        tools: tools.map((tool) => tool.name),
+        schemaBytes: encoder.encode(JSON.stringify(tools)).length,
+        system: getCurrentSystemPrompt(request.messages),
+      })
       return fauxAssistantMessage("noted")
     },
   ])
   await turn(stub, requestId)
-  return found[0] ?? []
+  const first = found[0]
+  if (first === undefined) throw new Error("the turn made no request")
+  return first
 }
 
-describe("a card row, in what every turn bills", () => {
-  it("adds only the shared tool_search declaration while no card is loaded", async () => {
+describe("the card rows, in what every turn bills", () => {
+  it("add one deferred-tools index line per card tool and no declaration", async () => {
     const stub = fresh()
-    const off = await declared(stub, "cost-off")
-    await setRow(stub, "tool-approval", true)
-    const on = await declared(stub, "cost-on")
+    const on = await offered(stub, "cost-on")
+    for (const row of CARD_ROWS) await setRow(stub, row, false)
+    const off = await offered(stub, "cost-off")
 
-    const added = on.filter((tool) => !off.some((before) => before.name === tool.name))
-    expect(added.map((tool) => tool.name)).toEqual(["tool_search"])
-    expect(off.filter((tool) => !on.some((after) => after.name === tool.name))).toEqual([])
-    expect(added[0]?.bytes).toBeLessThanOrEqual(640)
+    expect(on.tools).toEqual(off.tools)
+    expect(on.schemaBytes).toBe(off.schemaBytes)
+    for (const tool of CARD_TOOLS) expect(on.tools).not.toContain(tool)
+    const added = on.system.split("\n").filter((line) => !off.system.split("\n").includes(line))
+    expect(added.map((line) => /^- ([^:]+):/.exec(line)?.[1])).toEqual([...CARD_TOOLS])
+    const bytes = new TextEncoder().encode(on.system).length - new TextEncoder().encode(off.system).length
+    expect(bytes).toBeLessThanOrEqual(240)
   }, 30_000)
 })
 

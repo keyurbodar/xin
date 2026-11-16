@@ -12,7 +12,7 @@ function requestSecret(questions: QuestionsService) {
   return defineTool({
     name: SECRET_KIND,
     description:
-      'Ask the owner for a password, token or key from a masked card, and end your turn. The value goes straight to the secret store under `name`; you never see it, only "stored as <name>" or "declined" in your next run. Never ask for a secret any other way.',
+      'Ask the owner for a secret in a masked card, and end your turn. Use it for a password, token or key. The value goes straight to the secret store under `name`; you never see it, only "stored as <name>" or "declined" in your next run. Never ask for a secret any other way.',
     parameters: obj({
       name: FragmentId,
       label: str({ minLength: 1, maxLength: 200 }),
@@ -41,5 +41,4 @@ function requestSecret(questions: QuestionsService) {
 
 export function apply(ctx: Context): void {
   ctx.pi.install(defineExtension({ name, tools: [requestSecret(ctx.questions)] }))
-  ctx.pi.search()
 }

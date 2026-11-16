@@ -54,18 +54,6 @@
     {
       "id": "standup",
       "disabled": true
-    },
-    {
-      "id": "tool-approval",
-      "disabled": true
-    },
-    {
-      "id": "tool-connect",
-      "disabled": true
-    },
-    {
-      "id": "tool-secret-input",
-      "disabled": true
     }
   ]
 }

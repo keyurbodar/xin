@@ -85,7 +85,6 @@ const ALLOWED: Readonly<Record<string, Readonly<Record<string, Member>>>> = {
   wire: { home: {}, publishHome: {}, announce: {} },
   pi: {
     install: {},
-    search: {},
     env: { needs: "runtime" },
     compaction: { needs: "conversations" },
     extensions: {},

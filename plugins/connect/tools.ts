@@ -13,7 +13,7 @@ function requestConnection(questions: QuestionsService) {
   return defineTool({
     name: CONNECT_KIND,
     description:
-      "Ask the owner to connect a service (an MCP server or a provider key) from a card that opens the connectors page, and end your turn. The answer, connected or declined, starts your next run.",
+      "Ask the owner to connect a service, and end your turn. The card opens the connectors page (an MCP server or a provider key); the answer, connected or declined, starts your next run.",
     parameters: obj({
       service: str({ minLength: 1, maxLength: 100 }),
       reason: str({ minLength: 1, maxLength: 500 }),
@@ -45,5 +45,4 @@ function requestConnection(questions: QuestionsService) {
 
 export function apply(ctx: Context): void {
   ctx.pi.install(defineExtension({ name, tools: [requestConnection(ctx.questions)] }))
-  ctx.pi.search()
 }

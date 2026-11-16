@@ -13,7 +13,7 @@ function requestApproval(questions: QuestionsService) {
   return defineTool({
     name: APPROVAL_KIND,
     description:
-      "Show the owner an Approve / Decline card for one action you want to take, and end your turn. The decision, approved or declined, starts your next run. Use it before an action the owner should sign off on.",
+      "Ask the owner to approve one action, and end your turn. The card shows Approve and Decline; the decision, approved or declined, starts your next run. Use it before an action the owner should sign off on.",
     parameters: obj({
       action: str({ minLength: 1, maxLength: 300 }),
       detail: opt(str({ minLength: 1, maxLength: 2_000 })),
@@ -44,5 +44,4 @@ function requestApproval(questions: QuestionsService) {
 
 export function apply(ctx: Context): void {
   ctx.pi.install(defineExtension({ name, tools: [requestApproval(ctx.questions)] }))
-  ctx.pi.search()
 }

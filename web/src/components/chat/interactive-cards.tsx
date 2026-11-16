@@ -25,6 +25,12 @@ export const POLICY_KIND = "approval"
 const POLICY_DENY = "Deny"
 const PREVIEW_CHARS = 500
 
+/** At most PREVIEW_CHARS code points, so a cut never splits a surrogate pair, with an ellipsis when it cuts. */
+function preview(text: string): string {
+  const points = Array.from(text)
+  return points.length <= PREVIEW_CHARS ? text : `${points.slice(0, PREVIEW_CHARS - 1).join("")}…`
+}
+
 const text = (args: Record<string, unknown>, key: string): string => {
   const value = args[key]
   return typeof value === "string" ? value : ""
@@ -269,7 +275,7 @@ function Approval(props: {
           <div class="flex flex-col overflow-hidden rounded-sm border border-line-1 bg-panel" data-call={call().tool}>
             <span class="border-b border-line-1 px-2.5 py-1.5 font-mono text-sm text-ink">{call().tool}</span>
             <pre class="max-h-48 overflow-auto whitespace-pre-wrap px-2.5 py-2 font-mono text-xs leading-[1.6] text-ink-2 [overflow-wrap:anywhere]">
-              {call().arguments.slice(0, PREVIEW_CHARS)}
+              {preview(call().arguments)}
             </pre>
           </div>
         )}

@@ -16,7 +16,7 @@ const ANSWERS: Record<(typeof TOOLS)[number], string> = {
   request_secret: "stored as GITHUB_TOKEN",
 }
 const POLICY_OPTIONS = ["Approve", "Always allow", "Deny"]
-const LONG_ARGUMENTS = JSON.stringify({ url: "https://example.com/pricing", note: "x".repeat(600) })
+const LONG_ARGUMENTS = JSON.stringify({ url: "https://example.com/pricing", note: "😀".repeat(600) })
 
 let browser: Browser | undefined
 let server: ViteDevServer | undefined
@@ -242,8 +242,10 @@ for (const theme of ["dark", "light"] as const) {
       expect(await opened.getByRole("group", { name: "Decision" }).getByRole("button").allInnerTexts()).toEqual(POLICY_OPTIONS)
       const preview = opened.locator("[data-call=web_fetch] pre")
       const shown = await preview.innerText()
-      expect(shown.length).toBeLessThanOrEqual(500)
-      expect(LONG_ARGUMENTS.startsWith(shown)).toBe(true)
+      const points = Array.from(shown)
+      expect(points).toHaveLength(500)
+      expect(points.at(-1)).toBe("…")
+      expect(LONG_ARGUMENTS.startsWith(points.slice(0, -1).join(""))).toBe(true)
       const style = await preview.evaluate((node) => {
         const computed = getComputedStyle(node)
         return { font: computed.fontFamily, wrap: computed.whiteSpace }

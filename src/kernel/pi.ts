@@ -1,20 +1,27 @@
 import { type Context, Service } from "@deepseek-ai/cordis"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { createModels, type Models } from "@earendil-works/pi-ai"
+import type { Context as ChordContext } from "@earendil-works/chord"
 import {
+  AgentDoc,
   type ConversationId,
   type CompactionSettings,
   createRegistry,
   type Cursor,
+  defineExtension,
+  type DocumentReader,
   type EnvTarget,
   type Extension,
   Harness,
   type Registry,
   type Report,
+  type PromptInput,
+  section,
   type ToolRegistration,
 } from "@earendil-works/pi-durable"
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
-import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search"
+import { createToolSearchTool } from "@earendil-works/pi-durable/tool-search"
+import { num, obj, opt, str } from "@earendil-works/pi-schema"
 import { loaderRow } from "../contributions.ts"
 import { JournalStorage } from "./journal.ts"
 import { hidden } from "./hidden.ts"
@@ -40,6 +47,103 @@ const PROVIDER_RETRIES = 6
 
 const own = hidden<Pi, Context>()
 
+const TOOL_SEARCH = "tool-search"
+/** MCP tools come and go as servers connect, so listing them would rewrite the prompt; `tool_search` names them. */
+const UNLISTED = new Set([TOOL_SEARCH, "tool-mcp"])
+const SUMMARY_CHARS = 120
+
+const summary = (description: string): string => {
+  const first = description.trim().split(/\r?\n/)[0] ?? ""
+  const sentence = /^.*?[.!?](?=\s|$)/.exec(first)?.[0] ?? first
+  return sentence.length <= SUMMARY_CHARS ? sentence : `${sentence.slice(0, SUMMARY_CHARS - 1)}…`
+}
+
+/** The tools a conversation's `modelTools` removes: never listed, never loaded by search. */
+async function removedTools(
+  read: DocumentReader,
+  conversationId: ConversationId,
+  context: ChordContext,
+): Promise<ReadonlySet<string>> {
+  const modelTools = (await read.snapshot(AgentDoc, conversationId, context))?.modelTools
+  return new Set(modelTools === undefined || Array.isArray(modelTools) ? [] : (modelTools.remove ?? []))
+}
+
+/**
+ * Every deferred tool the conversation may use, loaded or not, in extension order, so the text stays the same after
+ * `tool_search` loads one and the cached prompt prefix survives.
+ */
+const deferredIndex = async (input: PromptInput, context: ChordContext): Promise<string | undefined> => {
+  const usable = new Set([...input.agent.tools, ...input.agent.deferred].map((tool) => tool.name))
+  const removed = await removedTools(input.read, input.conversationId, context)
+  const lines = input.agent.extensions
+    .filter((extension) => !UNLISTED.has(extension.name))
+    .flatMap((extension) => extension.tools ?? [])
+    .filter((tool) => tool.deferred === true && usable.has(tool.name) && !removed.has(tool.name))
+    .map((tool) => `- ${tool.name}: ${summary(tool.description)}`)
+  if (lines.length === 0) return undefined
+  return [
+    "Load any of these with tool_search (its name or what you need); it is offered from your next call.",
+    ...lines,
+  ].join("\n")
+}
+
+/** Ranked hits a query that names no tool loads, below pi's 8 so a vague query does not load a family. */
+const SEARCH_LIMIT = 3
+const rankedSearch = createToolSearchTool()
+
+type Described = { readonly name: string; readonly description: string }
+
+const loadedResult = (tools: readonly Described[]) => {
+  const loaded = tools.map((tool) => tool.name)
+  if (loaded.length === 0)
+    return { output: [{ type: "text" as const, text: "No matching tools found." }], details: { loaded } }
+  return {
+    output: [
+      {
+        type: "text" as const,
+        text: [
+          `Loaded ${loaded.length} tool${loaded.length === 1 ? "" : "s"}. They are available from your next call:`,
+          ...tools.map((tool) => `- ${tool.name}: ${summary(tool.description)}`),
+        ].join("\n"),
+      },
+    ],
+    details: { loaded },
+    control: { addTools: loaded },
+  }
+}
+
+/**
+ * pi's `tool_search`, except that a query naming deferred tools (the index's names, separated by spaces or commas)
+ * loads exactly those, a ranked search loads at most `SEARCH_LIMIT`, and a removed tool is never ranked or loaded.
+ */
+const searchTool: typeof rankedSearch = {
+  ...rankedSearch,
+  parameters: obj(
+    {
+      query: str({ description: "What you need, or the exact names of the tools to load." }),
+      limit: opt(num({ description: `Most tools to load, ${SEARCH_LIMIT} by default and at most.` })),
+    },
+    { open: true },
+  ),
+  execute: async (args, api, context) => {
+    const removed = await removedTools(api, api.conversationId, context)
+    const deferred = (await api.agent(context)).deferred.filter((tool) => !removed.has(tool.name))
+    const words = args.query.split(/[\s,]+/).filter((word) => word !== "")
+    const named = deferred.filter((tool) => words.includes(tool.name))
+    if (named.length > 0 && named.length === words.length) return loadedResult(named)
+    const limit = Math.max(1, Math.min(Math.trunc(args.limit ?? SEARCH_LIMIT), SEARCH_LIMIT))
+    const ranked = await rankedSearch.execute({ query: args.query, limit: limit + removed.size }, api, context)
+    const names = (ranked.control?.addTools ?? []).filter((name) => !removed.has(name)).slice(0, limit)
+    return loadedResult(names.flatMap((name) => deferred.filter((tool) => tool.name === name)))
+  },
+}
+
+const toolSearch = defineExtension({
+  name: TOOL_SEARCH,
+  tools: [searchTool],
+  sections: [section("deferred-tools", deferredIndex)],
+})
+
 const refuseHandle = async (): Promise<never> => {
   throw new Error("a tool handle names a tool for configure and cannot run")
 }
@@ -53,8 +157,6 @@ export class Pi extends Service {
   readonly envSources: EnvProvider[] = []
   private storage: JournalStorage | undefined
   readonly compactionSources: (() => CompactionSettings | undefined)[] = []
-  readonly searchers = new Set<symbol>()
-  readonly toolSearch: Extension = createToolSearchExtension()
 
   constructor(ctx: Context) {
     super(ctx, "pi")
@@ -120,28 +222,32 @@ export class Pi extends Service {
     return this.ctx.effect(() => {
       this.registry.install(extension)
       this.installed.set(extension.name, { extension, owner, row })
+      this.offerSearch()
       return () => {
         if (this.installed.get(extension.name)?.extension !== extension) return
         this.installed.delete(extension.name)
         this.registry.uninstall(extension)
+        this.offerSearch()
       }
     }, `pi.install(${extension.name})`)
   }
 
   /**
-   * Offers `tool_search` while at least one row holds this: a row whose deferred tools the model should find. One
-   * shared extension, so rows with deferred tools never collide on it and it leaves with the last of them.
+   * `tool_search` is offered only while some extension carries a deferred tool; with none it could only say "no match".
+   * It is listed as a kernel extension, so presets keep it and see the registry they compare against.
    */
-  search(): () => void {
-    const token = Symbol("search")
-    return this.ctx.effect(() => {
-      if (this.searchers.size === 0) this.registry.install(this.toolSearch)
-      this.searchers.add(token)
-      return () => {
-        if (!this.searchers.delete(token) || this.searchers.size > 0) return
-        this.registry.uninstall(this.toolSearch)
-      }
-    }, "pi.search")
+  private offerSearch(): void {
+    const wanted = [...this.installed.values()].some(({ extension }) =>
+      (extension.tools ?? []).some((tool) => tool.deferred === true),
+    )
+    if (wanted === this.installed.has(TOOL_SEARCH)) return
+    if (wanted) {
+      this.registry.install(toolSearch)
+      this.installed.set(TOOL_SEARCH, { extension: toolSearch, owner: null, row: undefined })
+      return
+    }
+    this.installed.delete(TOOL_SEARCH)
+    this.registry.uninstall(toolSearch)
   }
 
   models(source: () => Models): () => void {

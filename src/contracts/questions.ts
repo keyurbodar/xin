@@ -52,7 +52,7 @@ export interface QuestionsService {
 }
 
 /** What a request is about: a card's name (a secret's ref, a service), or the gated call a policy approval holds. */
-const SubjectSchema = union([str(), obj({ tool: str(), arguments: str() })])
+const SubjectSchema = union([str(), obj({ tool: str({ minLength: 1 }), arguments: str() })])
 
 const RequestSchema = obj({
   kind: str({ minLength: 1 }),

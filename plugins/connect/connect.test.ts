@@ -3,7 +3,6 @@ import { cardThread, threadReply } from "../../test/cards.ts"
 import { cmd, fresh } from "../../test/support.ts"
 
 const CARD = {
-  row: "tool-connect",
   search: "connect service",
   tool: "request_connection",
   args: { service: "Linear", reason: "to file the issue" },

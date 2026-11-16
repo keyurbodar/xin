@@ -15,7 +15,6 @@ const context = BACKGROUND_CONTEXT
 const VALUE = "hunter2-correct-horse-7f3a9c"
 const NAME = "GITHUB_TOKEN"
 const CARD = {
-  row: "tool-secret-input",
   search: "secret password token",
   tool: "request_secret",
   args: { name: NAME, label: "GitHub token", reason: "to open the pull request" },

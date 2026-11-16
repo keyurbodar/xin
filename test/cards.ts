@@ -13,7 +13,7 @@ import { RequestsDoc } from "../src/contracts/questions.ts"
 import { ThreadDoc } from "../src/contracts/threaddoc.ts"
 import { threadIdsOfProject, WorkspaceDoc } from "../src/contracts/workspace.ts"
 import { M8_MODEL, respond } from "./plugins/m8.ts"
-import { cmd, eventually, type Stub, lastOwnerIndex, lastOwnerText, setRow } from "./support.ts"
+import { cmd, eventually, type Stub, lastOwnerIndex, lastOwnerText } from "./support.ts"
 import type { Home } from "./worker.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -26,8 +26,8 @@ export type Seen = {
   readonly text: string
 }
 
-/** A card tool, the query that finds it, and its row, which ships disabled and each test turns on. */
-export type Card = { readonly row: string; readonly search: string; readonly tool: string; readonly args: JsonObject }
+/** A card tool, the query that finds it, and the arguments the thread calls it with. */
+export type Card = { readonly search: string; readonly tool: string; readonly args: JsonObject }
 
 export type CardThread = {
   readonly projectId: string
@@ -79,7 +79,6 @@ export const threadStatus = async (home: Home, threadId: number): Promise<string
 
 /** A thread that has shown `card` and waits on the owner's answer. */
 export async function cardThread(stub: Stub, slug: string, card: Card): Promise<CardThread> {
-  await setRow(stub, card.row, true)
   const seen: Seen[] = []
   respond(Array.from({ length: 40 }, () => script(card, seen)))
   const created = await cmd(stub, `create-${slug}`, "project.create", { slug, name: slug })

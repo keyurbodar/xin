@@ -97,7 +97,7 @@ function gatedCallOf(value: unknown): GatedCall | undefined {
   const subject = recordOf(value)
   const tool = strOf(subject?.tool)
   const args = strOf(subject?.arguments)
-  return tool === undefined || args === undefined ? undefined : { tool, arguments: args }
+  return tool === undefined || tool === "" || args === undefined ? undefined : { tool, arguments: args }
 }
 
 /** A request a thread keeps answered, as `request.list` returns it: what an interactive card shows once it is closed. */
