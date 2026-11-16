@@ -73,13 +73,14 @@ describe("request_approval", () => {
       home.harness.snapshot(RequestsDoc, thread.threadId as ConversationId, context),
     )
     expect(requests?.open[thread.requestId]).toMatchObject({
-      kind: "request_approval",
+      kind: "approval",
       question: "Approve: delete the staging bucket",
-      options: ["approved", "declined"],
+      options: ["Approve", "Deny"],
+      subject: { tool: "delete the staging bucket", arguments: "" },
     })
     const listed = await cmd(stub, "approve-list", "request.list")
     expect(listed.result).toMatchObject({
-      requests: [{ id: thread.requestId, kind: "request_approval", conversationId: thread.threadId }],
+      requests: [{ id: thread.requestId, kind: "approval", conversationId: thread.threadId }],
     })
   }, 30_000)
 
@@ -89,17 +90,17 @@ describe("request_approval", () => {
     const answered = await cmd(stub, "approve-answer", "request.respond", {
       threadId: thread.threadId,
       requestId: thread.requestId,
-      answer: "approved",
+      answer: "Approve",
     })
     expect(answered.result).toMatchObject({ kind: "answered", run: 2 })
-    const reply = await threadReply(stub, thread, "approved")
-    expect(reply.text).toContain("approved")
+    const reply = await threadReply(stub, thread, "Approve")
+    expect(reply.text).toContain("Approve")
     await eventually(stub, async (home: Home) => (await threadStatus(home, thread.threadId)) === "completed")
 
     const listed = await cmd(stub, "approve-listed", "request.list")
     expect(listed.result).toMatchObject({
       requests: [],
-      answered: [{ id: thread.requestId, kind: "request_approval", answer: "approved" }],
+      answered: [{ id: thread.requestId, kind: "approval", answer: "Approve" }],
     })
   }, 30_000)
 
@@ -112,13 +113,19 @@ describe("request_approval", () => {
       answer: "sure, go ahead",
     })
     expect(free).toMatchObject({ ok: false })
+    const always = await cmd(stub, "approve-always", "request.respond", {
+      threadId: thread.threadId,
+      requestId: thread.requestId,
+      answer: "Always allow",
+    })
+    expect(always, "a one-off ask has no Always allow").toMatchObject({ ok: false })
 
     const agent = await runInDurableObject(stub, (home: Home) =>
       home.loader.ctx.ops.run(
         {
           id: "approve-agent" as CommandId,
           op: "request.respond",
-          args: { threadId: thread.threadId, requestId: thread.requestId, answer: "approved" },
+          args: { threadId: thread.threadId, requestId: thread.requestId, answer: "Approve" },
         },
         { kind: "agent", conversationId: thread.coordinatorId as ConversationId },
       ),

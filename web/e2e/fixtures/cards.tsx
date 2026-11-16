@@ -22,7 +22,7 @@ for (const [tool, Card] of Object.entries(CARD_TOOLS)) registerBlock(`tool:${too
 const tools = Object.keys(CARD_TOOLS) as (keyof typeof CARD_TOOLS)[]
 
 const policyRow = (state: string): RequestRow => ({
-  id: `approval-${state}`,
+  id: `approval:${state}`,
   kind: "approval",
   conversationId: 7,
   projectId: "prj_1",

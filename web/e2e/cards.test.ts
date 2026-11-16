@@ -11,11 +11,12 @@ const SECRET = "ghp_e2e-never-shown-4c1d"
 const TOOLS = ["ask_user", "request_approval", "request_connection", "request_secret"] as const
 const ANSWERS: Record<(typeof TOOLS)[number], string> = {
   ask_user: "eu-west",
-  request_approval: "approved",
+  request_approval: "Approve",
   request_connection: "connected",
   request_secret: "stored as GITHUB_TOKEN",
 }
 const POLICY_OPTIONS = ["Approve", "Always allow", "Deny"]
+const ASKED_OPTIONS = ["Approve", "Deny"]
 const LONG_ARGUMENTS = JSON.stringify({ url: "https://example.com/pricing", note: "😀".repeat(600) })
 
 let browser: Browser | undefined
@@ -49,16 +50,23 @@ async function open(theme: "dark" | "light"): Promise<Home> {
   const page = await browser.newPage({ viewport: { width: 900, height: 2400 } })
   const sent: Frame[] = []
   const bodies: string[] = []
-  const pending = new Set([...TOOLS.map((tool) => `${tool}-open`), "approval-open"])
+  const pending = new Set([...TOOLS.map((tool) => `${tool}-open`), "approval:open"])
   const answered = new Map<string, string>([
     ...TOOLS.flatMap((tool): [string, string][] => [
       [`${tool}-answered`, ANSWERS[tool]],
-      [`${tool}-declined`, "declined"],
+      [`${tool}-declined`, tool === "request_approval" ? "Deny" : "declined"],
     ]),
-    ["approval-answered", "Always allow"],
-    ["approval-declined", "Deny"],
+    ["approval:answered", "Always allow"],
+    ["approval:declined", "Deny"],
   ])
-  const kindOf = (id: string): string => id.slice(0, id.lastIndexOf("-"))
+  const kindOf = (id: string): string =>
+    id.startsWith("approval:") || id.startsWith("request_approval-") ? "approval" : id.slice(0, id.lastIndexOf("-"))
+  const subjectOf = (id: string): Record<string, unknown> => {
+    if (id.startsWith("approval:")) return { options: POLICY_OPTIONS, subject: { tool: "web_fetch", arguments: LONG_ARGUMENTS } }
+    if (id.startsWith("request_approval-"))
+      return { options: ASKED_OPTIONS, subject: { tool: "Delete the staging bucket", arguments: "It holds 1,204 objects." } }
+    return {}
+  }
   const result = (frame: Frame): unknown => {
     switch (frame.op) {
       case "request.list":
@@ -80,10 +88,8 @@ async function open(theme: "dark" | "light"): Promise<Home> {
             projectId: "prj_1",
             projectName: "Demo",
             threadTitle: "Cards",
-            question: kindOf(id) === "approval" ? "Fetch the pricing page" : "q",
-            ...(kindOf(id) === "approval"
-              ? { options: POLICY_OPTIONS, subject: { tool: "web_fetch", arguments: LONG_ARGUMENTS } }
-              : {}),
+            question: id.startsWith("approval:") ? "Fetch the pricing page" : "q",
+            ...subjectOf(id),
             askedAt: 1,
             })),
           ],
@@ -133,7 +139,7 @@ for (const theme of ["dark", "light"] as const) {
       }
       expect(await card(page, "request_secret", "answered").innerText()).toContain("Stored as GITHUB_TOKEN")
       expect(await card(page, "ask_user", "answered").innerText()).toContain("eu-west")
-      expect(await card(page, "request_approval", "answered").innerText()).toContain("Approved")
+      expect(await card(page, "request_approval", "answered").innerText()).toContain("Approve")
       expect(await card(page, "request_connection", "answered").innerText()).toContain("Linear connected")
       expect(await card(page, "request_secret", "open").locator('input[type="password"]').count()).toBe(1)
       const background = await card(page, "request_approval", "open").evaluate((node) => getComputedStyle(node).backgroundColor)
@@ -149,6 +155,8 @@ test("approval answers from the keyboard and locks once decided", async () => {
   const { page, sent } = await open("dark")
   try {
     const approval = card(page, "request_approval", "open")
+    expect(await approval.getByRole("group", { name: "Decision" }).getByRole("button").allInnerTexts()).toEqual(ASKED_OPTIONS)
+    expect(await approval.locator("[data-call]").count(), "an agent ask shows its action as prose").toBe(0)
     await approval.getByRole("button", { name: "Approve" }).focus()
     await page.keyboard.press("Enter")
     await page.waitForFunction(
@@ -157,7 +165,7 @@ test("approval answers from the keyboard and locks once decided", async () => {
     expect(sent.find((frame) => frame.op === "request.respond")?.args).toEqual({
       threadId: 7,
       requestId: "request_approval-open",
-      answer: "approved",
+      answer: "Approve",
     })
     expect(await approval.locator("button").count()).toBe(0)
   } finally {
@@ -238,6 +246,7 @@ for (const theme of ["dark", "light"] as const) {
     const { page } = await open(theme)
     try {
       const opened = card(page, "approval", "open")
+      expect(await opened.count(), "the agent's own ask is left to its tool block").toBe(1)
       expect(await opened.getAttribute("data-card")).toBe("open")
       expect(await opened.getByRole("group", { name: "Decision" }).getByRole("button").allInnerTexts()).toEqual(POLICY_OPTIONS)
       const preview = opened.locator("[data-call=web_fetch] pre")
@@ -283,7 +292,7 @@ test("a policy approval answers Always allow from the keyboard with the option s
     )
     expect(sent.find((frame) => frame.op === "request.respond")?.args).toEqual({
       threadId: 7,
-      requestId: "approval-open",
+      requestId: "approval:open",
       answer: "Always allow",
     })
     expect(await approval.innerText()).toContain("Always allow")

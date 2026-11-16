@@ -20,9 +20,13 @@ export type CardState =
 
 const DECLINED = "declined"
 
-/** A request the tool policy opens when a call it marks "ask" is held back: answered with one of its options. */
-export const POLICY_KIND = "approval"
-const POLICY_DENY = "Deny"
+/**
+ * The one approval kind: an agent's request_approval (options Approve and Deny) and a call the tool policy holds
+ * back (Approve, Always allow and Deny, with a requestId under POLICY_PREFIX). Either is answered with an option.
+ */
+export const APPROVAL_KIND = "approval"
+const POLICY_PREFIX = "approval:"
+const DENY = "Deny"
 const PREVIEW_CHARS = 500
 
 /** At most PREVIEW_CHARS code points, so a cut never splits a surrogate pair, with an ellipsis when it cuts. */
@@ -54,13 +58,13 @@ export function cardState(call: Call): CardState {
   return id === undefined ? { kind: "closed" } : requestState(id)
 }
 
-/** Open while `request.list` lists the request, then its kept answer; a policy approval declines with Deny. */
+/** Open while `request.list` lists the request, then its kept answer; an approval declines with Deny. */
 function requestState(id: string): CardState {
   const request = openRequests().find((row) => row.id === id)
   if (request !== undefined) return { kind: "open", request }
   const settled = settledRequests().find((row) => row.id === id)
   if (settled === undefined) return { kind: "closed" }
-  const declined = settled.answer === (settled.kind === POLICY_KIND ? POLICY_DENY : DECLINED)
+  const declined = settled.answer === (settled.kind === APPROVAL_KIND ? DENY : DECLINED)
   return declined ? { kind: "declined" } : { kind: "answered", answer: settled.answer }
 }
 
@@ -252,16 +256,12 @@ export function AskCard(call: Call): JSX.Element {
   )
 }
 
-type Decision = { readonly label: string; readonly answer: string; readonly primary?: true }
-
-/** The one approval card: an action, optionally the held-back call, and the decisions the request takes. */
+/** The one approval card: an action, optionally the held-back call, and a button per option the request carries. */
 function Approval(props: {
   state: CardState
   action: string
   detail?: string | undefined
   call?: GatedCall | undefined
-  decisions: readonly Decision[]
-  answered: (answer: string) => string
 }): JSX.Element {
   const sender = createSender()
   return (
@@ -280,20 +280,20 @@ function Approval(props: {
           </div>
         )}
       </Show>
-      <Show when={openOf(props.state)} fallback={<Outcome state={props.state} answered={props.answered} />}>
+      <Show when={openOf(props.state)} fallback={<Outcome state={props.state} answered={(answer) => answer} />}>
         {(request) => (
           <>
             <div class="flex flex-wrap gap-2" role="group" aria-label="Decision">
-              <For each={props.decisions}>
-                {(decision) => (
+              <For each={request().options}>
+                {(option, index) => (
                   <Button
                     size="sm"
-                    variant={decision.primary === true ? "primary" : "ghost"}
+                    variant={index() === 0 ? "primary" : "ghost"}
                     class="im-focus im-press"
                     disabled={sender.sending()}
-                    onClick={() => void sender.send(() => respondToQuestion(request(), decision.answer))}
+                    onClick={() => void sender.send(() => respondToQuestion(request(), option))}
                   >
-                    {decision.label}
+                    {option}
                   </Button>
                 )}
               </For>
@@ -306,45 +306,32 @@ function Approval(props: {
   )
 }
 
-const ASKED_DECISIONS: readonly Decision[] = [
-  { label: "Approve", answer: "approved", primary: true },
-  { label: "Decline", answer: DECLINED },
-]
-
+/** An agent's own ask, shown as prose from its tool block's args rather than as a held-back call. */
 export function ApprovalCard(call: Call): JSX.Element {
   return (
     <Approval
       state={cardState(call)}
       action={text(call.args, "action")}
       detail={text(call.args, "detail") || undefined}
-      decisions={ASKED_DECISIONS}
-      answered={() => "Approved"}
     />
   )
 }
 
-/** A policy approval: the held-back call with its arguments, answered with the request's own option strings. */
+/** A policy approval: the held-back call with its arguments. */
 export function PolicyApprovalCard(props: { request: RequestRow }): JSX.Element {
-  const decisions = (): readonly Decision[] =>
-    props.request.options.map((option, index) => ({ label: option, answer: option, ...(index === 0 ? { primary: true as const } : {}) }))
   return (
-    <Approval
-      state={requestState(props.request.id)}
-      action={props.request.question}
-      call={props.request.call}
-      decisions={decisions()}
-      answered={(answer) => answer}
-    />
+    <Approval state={requestState(props.request.id)} action={props.request.question} call={props.request.call} />
   )
 }
 
 /**
  * The policy approvals open on one conversation, for the views that show no tool block for them: a thread, a
- * coordinator or a root chat. A card stays after it is answered, showing the answer, until the view changes.
+ * coordinator or a root chat. An agent's own ask is left to its tool block. A card stays after it is answered,
+ * showing the answer, until the view changes.
  */
 export function PolicyApprovals(props: { conversationId: number }): JSX.Element {
   const open = createMemo(() =>
-    openRequests().filter((row) => row.kind === POLICY_KIND && row.conversationId === props.conversationId),
+    openRequests().filter((row) => row.kind === APPROVAL_KIND && row.id.startsWith(POLICY_PREFIX) && row.conversationId === props.conversationId),
   )
   const [kept, setKept] = createSignal<ReadonlyMap<string, RequestRow>>(new Map())
   createEffect(() => {

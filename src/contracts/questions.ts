@@ -5,6 +5,9 @@ import { arr, compile, map, num, obj, opt, str, type Static, union } from "@eare
 /** `ask_user` is a free question. Any other kind is a card: only the owner answers it, and only with one of its options. */
 export const ASK_KIND = "ask_user"
 
+/** One approval kind for both an agent's own ask and a call the tool policy holds back; only its options differ. */
+export const APPROVAL_KIND = "approval"
+
 export type AskInput = {
   readonly kind: string
   readonly threadId: ConversationId
