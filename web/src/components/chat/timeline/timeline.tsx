@@ -147,7 +147,26 @@ export function Timeline(props: {
 
   const atEnd = (): boolean => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= PINNED_WITHIN
   let lastTop = 0
+  let anchor: { readonly element: Element; readonly offset: number } | undefined
+  const offsetOf = (element: Element): number => element.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+  const markAnchor = (): void => {
+    const top = scroller.getBoundingClientRect().top
+    const element = [...content.querySelectorAll(":scope > [data-item]")].find(
+      (candidate) => candidate.getBoundingClientRect().bottom > top,
+    )
+    anchor = element === undefined ? undefined : { element, offset: offsetOf(element) }
+  }
+  const holdAnchor = (): void => {
+    if (anchor === undefined || !anchor.element.isConnected) return markAnchor()
+    const shift = offsetOf(anchor.element) - anchor.offset
+    if (Math.abs(shift) >= 0.5) {
+      scroller.scrollTop = Math.round(scroller.scrollTop + shift)
+      lastTop = scroller.scrollTop
+    }
+    markAnchor()
+  }
   const settle = (): void => {
+    markAnchor()
     const top = scroller.scrollTop
     const now = atEnd() || (pinned() && top >= lastTop)
     lastTop = top
@@ -174,8 +193,9 @@ export function Timeline(props: {
     try {
       await load()
       requestAnimationFrame(() => {
-        scroller.scrollTop = scroller.scrollHeight - fromEnd
+        scroller.scrollTop = Math.round(scroller.scrollHeight - fromEnd)
         lastTop = scroller.scrollTop
+        markAnchor()
       })
     } finally {
       setLoadingOlder(false)
@@ -186,6 +206,7 @@ export function Timeline(props: {
     toEnd()
     const observer = new ResizeObserver(() => {
       if (pinned()) toEnd()
+      else holdAnchor()
     })
     observer.observe(content)
     onCleanup(() => observer.disconnect())
@@ -198,7 +219,7 @@ export function Timeline(props: {
         tabindex="-1"
         data-timeline=""
         onScroll={settle}
-        class="min-h-0 flex-1 overflow-y-auto outline-none [overflow-anchor:auto]"
+        class="min-h-0 flex-1 overflow-y-auto outline-none [overflow-anchor:none]"
       >
         <div ref={content} class="mx-auto flex w-full max-w-[var(--w-column)] flex-col gap-4 px-6 pb-6 pt-7 text-reading">
           <Show when={props.hasOlder === true}>
