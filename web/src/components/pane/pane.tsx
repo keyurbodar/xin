@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
+import { createEffect, createSignal, ErrorBoundary, For, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
 import "@ui-sdk/web/command"
 import "@ui-sdk/web/popover"
 import { Dynamic } from "solid-js/web"
@@ -9,6 +9,7 @@ import type { CaptainProfile } from "../../lib/captains.ts"
 import { projectThreads, type ProjectSummary } from "../../state/home.ts"
 import { closePaneView, OVERVIEW, projectTabs, setPaneOpen, showPaneView } from "../../state/tabs.ts"
 import { Signal } from "../ui/signal.tsx"
+import { Stopped } from "../ui/stopped.tsx"
 import { ICON_BUTTON } from "../shell/menu.ts"
 import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM, POPUP_LABEL, POPUP_SEPARATOR } from "../ui/surface.ts"
@@ -137,7 +138,9 @@ export function ProjectPane(props: {
       <Show when={view()} keyed>
         {(current) => (
           <div class="im-pane min-h-0 flex-1 overflow-y-auto p-2" data-instant={untrack(keyStarted) ? "" : undefined}>
-            {untrack(() => current.render(context))}
+            <ErrorBoundary fallback={(error: unknown, reset) => <Stopped title="This view stopped" error={error} onRetry={reset} class="h-full" />}>
+              {untrack(() => current.render(context))}
+            </ErrorBoundary>
           </div>
         )}
       </Show>
