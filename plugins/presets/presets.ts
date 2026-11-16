@@ -93,9 +93,9 @@ const removalsOf = (
   const allowed = preset === undefined || preset.plugins === "all" ? undefined : new Set(preset.plugins)
   return installed
     .filter(
-      ({ extension, plugin }) =>
+      ({ name, plugin }) =>
         plugin !== undefined &&
-        (omits.has(plugin) || (allowed !== undefined && extension.name.startsWith("tool-") && !allowed.has(plugin))),
+        (omits.has(plugin) || (allowed !== undefined && name.startsWith("tool-") && !allowed.has(plugin))),
     )
     .map(({ name }) => name)
 }
