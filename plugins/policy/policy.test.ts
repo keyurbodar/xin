@@ -284,6 +284,26 @@ describe("tool policy", () => {
     }
   })
 
+  it.each([
+    { name: "an object key", secret: "keyzz6666q", args: { action: "create", with: { title: "t", keyzz6666q: "v" } } },
+    { name: "a number", secret: "98765432", args: { action: "read", id: 98_765_432 } },
+  ])("redacts a stored secret used as $name out of the approval preview", async ({ secret, args }) => {
+    const stub = fresh()
+    expect(await cmd(stub, "policy-secret-shape", "secret.set", { ref: "TOKEN", value: secret })).toMatchObject({
+      ok: true,
+    })
+    await ok(stub, "tool.policy.set", { tool: "issue", mode: "ask" })
+    respond([fauxAssistantMessage([fauxToolCall("issue", args, { id: "call-shape" })], { stopReason: "toolUse" })])
+    await turn(stub, "policy-secret-shape-ask")
+    const [row] = await listed(stub)
+    expect(row?.id).toBe("approval:call-shape")
+    expect(String(field(row?.subject, "arguments"))).toContain("[redacted]")
+    const stored = await runInDurableObject(stub, async (home: Home) =>
+      JSON.stringify(await home.harness.snapshot(RequestsDoc, ROOT_CONVERSATION_ID, context)),
+    )
+    for (const seen of [JSON.stringify(row), stored]) expect(seen).not.toContain(secret)
+  })
+
   it("refuses an agent's answer to an approval and keeps the request open", async () => {
     const stub = fresh()
     await setMode(stub, "ask")
