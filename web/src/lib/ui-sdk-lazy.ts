@@ -4,6 +4,7 @@ const LOADERS = {
   command: () => import("@ui-sdk/web/command"),
   combobox: () => import("@ui-sdk/web/combobox"),
   editor: () => Promise.all([import("@ui-sdk/web/token-input"), import("@ui-sdk/web/trigger-menu")]),
+  toggle: () => import("@ui-sdk/web/toggle"),
 } as const
 
 export type LazyElements = keyof typeof LOADERS
@@ -73,11 +74,12 @@ export function replayWhenReady(names: readonly LazyElements[], event: MouseEven
   )
 }
 
-/** Trigger handlers that load element families on first hover or focus, and replay a press that came before them. */
+/** Trigger handlers that load element families on first hover, focus or press, and replay a press that came before them. */
 export function loadOnIntent(...names: readonly LazyElements[]) {
   const warm = (): void => warmUiSdk(...names)
   return {
     onPointerEnter: warm,
+    onPointerDown: warm,
     onFocus: warm,
     onClick: (event: MouseEvent): void => replayWhenReady(names, event),
   }
