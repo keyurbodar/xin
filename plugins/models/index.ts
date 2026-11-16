@@ -8,6 +8,7 @@ export async function apply(ctx: Context): Promise<void> {
   const parts = create({
     db: ctx.db,
     harness: ctx.harness,
+    conversations: () => ctx.pi.conversations(),
     kek: ctx.host.env.KEK,
     providers: ctx.host.providers,
     run: (command, actor) => ctx.ops.run(command, actor),

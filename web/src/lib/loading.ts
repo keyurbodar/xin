@@ -21,3 +21,8 @@ export function valueFor<T>(resource: KeyedResource<T>, key: string): T | undefi
   const latest = resource.latest
   return latest?.key === key ? latest.value : undefined
 }
+
+/** A resource's value, or undefined while it holds an error: reading a failed resource throws into the screen's error boundary. */
+export function settled<T>(resource: Pick<Resource<T>, "error" | "latest">): T | undefined {
+  return resource.error === undefined ? resource.latest : undefined
+}
