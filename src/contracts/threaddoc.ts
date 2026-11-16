@@ -20,6 +20,7 @@ const ThreadSchema = obj({
   spaceId: opt(str()),
   archived: opt(bool()),
   parentId: opt(int({ minimum: 0 })),
+  depth: opt(int({ minimum: 1 })),
   anchorTaskId: opt(str()),
   title: str(),
   role: oneOf(ROLES),
@@ -51,6 +52,8 @@ type ThreadFields = {
   readonly spaceId?: string
   readonly archived?: boolean
   readonly parentId?: number
+  /** 1 for a thread a coordinator started, its parent's depth + 1 for one a thread started. Absent: 1. */
+  readonly depth?: number
   readonly anchorTaskId?: string
   readonly title: string
   readonly role: ThreadRole
@@ -77,6 +80,7 @@ function threadFields(value: ThreadDocState): ThreadFields {
     title: value.title,
     role: value.role,
     ...(value.parentId === undefined ? {} : { parentId: value.parentId }),
+    ...(value.depth === undefined ? {} : { depth: value.depth }),
     ...(value.anchorTaskId === undefined ? {} : { anchorTaskId: value.anchorTaskId }),
     ...(value.run === undefined ? {} : { run: value.run }),
     ...(value.statusLine === undefined ? {} : { statusLine: value.statusLine }),
@@ -138,6 +142,7 @@ export type NewThread = {
   readonly title: string
   readonly role?: ThreadRole
   readonly parentId?: ThreadId
+  readonly depth?: number
   readonly anchorTaskId?: string
   readonly status?: ThreadStatus
   readonly run?: number

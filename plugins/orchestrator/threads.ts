@@ -48,7 +48,7 @@ import {
 } from "../../src/contracts/threaddoc.ts"
 import { canUseThread, projectByRef, scopeOf } from "../../src/contracts/scope.ts"
 import { detailOf, textOf } from "../../src/transcript.ts"
-import { WorkspaceDoc, type SpaceState } from "../../src/contracts/workspace.ts"
+import { DEFAULT_THREAD_DEPTH, WorkspaceDoc, type SpaceState } from "../../src/contracts/workspace.ts"
 
 const context = BACKGROUND_CONTEXT
 
@@ -75,7 +75,8 @@ export type CreateThreadArgs = {
   readonly thinking?: ModelThinkingLevel
   readonly clientRequestId: string
   readonly requestId: string
-  readonly removeTools: readonly ToolRegistration[]
+  /** Above 1 for a thread another thread starts; absent: 1. */
+  readonly depth?: number
   /** A side thread starts as a fork of this conversation at its newest entry instead of an empty one. */
   readonly forkFrom?: ConversationId
 }
@@ -121,8 +122,15 @@ const CHILD_TOOLS = [
   "captain_notes",
 ] as const
 
-/** The orchestration tools a delegated child must not get, as handles for `configure`. */
-export const childTools = (toolsNamed: ThreadDeps["toolsNamed"]): readonly ToolRegistration[] => toolsNamed(CHILD_TOOLS)
+/** What a thread below the project's `threadDepth` keeps, to start, steer, read and stop its own children. */
+const NESTING_TOOLS: ReadonlySet<string> = new Set(["delegate_task", "task_status", "task_cancel", "thread_send"])
+
+/**
+ * The orchestration tools a thread at `depth` must not get, as handles for `configure`. The set only grows with depth,
+ * so a child's tools stay a subset of its parent's.
+ */
+const childTools = (toolsNamed: ThreadDeps["toolsNamed"], depth: number, threadDepth: number) =>
+  toolsNamed(depth < threadDepth ? CHILD_TOOLS.filter((tool) => !NESTING_TOOLS.has(tool)) : CHILD_TOOLS)
 
 export type ThreadDeps = {
   readonly harness: Harness
@@ -150,7 +158,7 @@ const Anchor: AnchorTask = defineTask<null, { readonly phase: "done" }, null>({
     runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), taskContext),
 })
 
-function reporterTask(deps: ThreadDeps): ReporterTask {
+function reporterTask(deps: ThreadDeps, send: SendFn): ReporterTask {
   return defineTask<ReporterInput, ReporterCheckpoint, null>({
     name: REPORTER_KIND,
     version: 1,
@@ -188,8 +196,21 @@ function reporterTask(deps: ThreadDeps): ReporterTask {
         const admission = await deps.admitConversation(parentId as ConversationId)
         if (admission.kind === "capped")
           console.warn(`threads: report of ${task.input.threadId} not delivered: ${capReason(admission)}`)
+        // A parent thread that already settled is reopened, so its next answer reports upward; a stopped one is not.
+        const parent = await runtime.snapshot(ThreadDoc, parentId as ConversationId, taskContext)
+        const live = parent === undefined || parent.status === "working" || parent.status === "waiting"
+        if (admission.kind === "ok" && (parent?.status === "completed" || parent?.status === "failed")) {
+          const title = task.input.title.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
+          await send(deps.harness, {
+            threadId: parentId,
+            text: `<thread id="${task.input.threadId}" title="${title}" status="${checkpoint.status}">${checkpoint.text}</thread>`,
+            mode: "queue",
+            sendKey: `report:${task.input.threadId}:${task.input.run}`,
+          })
+        }
         const accepted =
           admission.kind === "ok" &&
+          live &&
           (await deps.intake.enqueue({
             target: parentId as ConversationId,
             commandId: `report:${task.input.threadId}:${task.input.run}`,
@@ -305,6 +326,7 @@ async function addThread(tx: Tx, thread: NewThread): Promise<ThreadState> {
     beatAt,
     deadlineAt,
     ...(thread.parentId === undefined ? {} : { parentId: thread.parentId }),
+    ...(thread.depth === undefined || thread.depth === 1 ? {} : { depth: thread.depth }),
     ...(thread.anchorTaskId === undefined ? {} : { anchorTaskId: thread.anchorTaskId }),
     ...(thread.statusLine === undefined ? {} : { statusLine: thread.statusLine }),
     ...(thread.result === undefined ? {} : { result: thread.result }),
@@ -364,7 +386,20 @@ export type Threads = {
 
 const sendKeyOf = (threadId: number, sendKey: string): string => `thread-send:${threadId}:${sendKey}`
 
-type ReportFn = (tx: Tx, input: ReporterInput) => Promise<void>
+type ReportFn = (tx: Tx, input: ReporterInput, owner?: ConversationId) => Promise<void>
+
+/**
+ * The conversation that owns a thread's Anchor, Reporter and watchdog: its parent, or for a thread another thread
+ * started, its space's coordinator, so stopping the parent thread aborts none of its children's bookkeeping.
+ */
+const ownerOf = (
+  workspace: { readonly spaces: Readonly<Record<string, SpaceState>> },
+  thread: { readonly depth?: number; readonly spaceId?: string },
+  parentId: ConversationId,
+): ConversationId => {
+  const coordinator = thread.spaceId === undefined ? undefined : workspace.spaces[thread.spaceId]?.coordinatorId
+  return (thread.depth ?? 1) > 1 && coordinator !== undefined ? (coordinator as ConversationId) : parentId
+}
 
 async function sendToThread(
   deps: ThreadDeps,
@@ -397,15 +432,20 @@ async function sendToThread(
     delete thread.archived
     thread.beatAt = now
     thread.deadlineAt = now + project.settings.deadlineMs
-    await deps.watchdog.ensure(tx, parentId)
-    await report(tx, {
-      threadId: args.threadId,
-      parentId,
-      title: thread.title,
-      run,
-      brief: args.text,
-      requestId: sendKeyOf(args.threadId, args.sendKey),
-    })
+    const owner = ownerOf(workspace, thread, parentId)
+    await deps.watchdog.ensure(tx, owner)
+    await report(
+      tx,
+      {
+        threadId: args.threadId,
+        parentId,
+        title: thread.title,
+        run,
+        brief: args.text,
+        requestId: sendKeyOf(args.threadId, args.sendKey),
+      },
+      owner,
+    )
     return { kind: "opened" as const, run }
   }, context)
   switch (opened.kind) {
@@ -520,11 +560,11 @@ async function denied(actor: Actor, harness: Harness, threadId: number): Promise
 }
 
 export function lifecycle(deps: ThreadDeps): Threads {
-  const reporter = reporterTask(deps)
-  const report: ReportFn = async (tx, input) => {
+  const reporter = reporterTask(deps, (harness, args) => send(harness, args))
+  const report: ReportFn = async (tx, input, owner) => {
     await tx.createTask(reporter, input, {
       ownership: { kind: "conversation" },
-      conversationId: input.parentId as ConversationId,
+      conversationId: owner ?? (input.parentId as ConversationId),
       background: true,
     })
   }
@@ -557,10 +597,12 @@ export function lifecycle(deps: ThreadDeps): Threads {
       }
     }
     const forkAt = args.forkFrom === undefined ? undefined : await tx.latestEntryId(args.forkFrom)
-    await deps.watchdog.ensure(tx, args.parentId)
+    const depth = args.depth ?? 1
+    const owner = ownerOf(workspace, { depth, spaceId }, args.parentId)
+    await deps.watchdog.ensure(tx, owner)
     const anchor = await tx.createTask(Anchor, null, {
       ownership: { kind: "conversation" },
-      conversationId: args.parentId,
+      conversationId: owner,
       background: true,
     })
     const ownership = { kind: "task", taskId: anchor } as const
@@ -571,11 +613,15 @@ export function lifecycle(deps: ThreadDeps): Threads {
     await configure(tx, child.id, {
       model: args.model,
       ...(args.thinking === undefined ? {} : { thinkingLevel: args.thinking }),
-      tools: { remove: [...args.removeTools] },
+      tools: {
+        remove: [...childTools(deps.toolsNamed, depth, project.settings.threadDepth ?? DEFAULT_THREAD_DEPTH)],
+      },
       extensions: { remove: [...deps.threadRemovals(args.parentId)] },
       instructions:
         args.forkFrom === undefined
-          ? `You are a thread named "${args.title}". Answer the brief; your last message is reported to the coordinator.`
+          ? depth > 1
+            ? `You are a thread named "${args.title}", started by another thread. Answer the brief; your last message is reported to that thread.`
+            : `You are a thread named "${args.title}". Answer the brief; your last message is reported to the coordinator.`
           : `You are a thread named "${args.title}", a side thread forked from the conversation above. Work on the brief that follows; your last message is reported back to that conversation.`,
     })
     await addThread(tx, {
@@ -585,19 +631,24 @@ export function lifecycle(deps: ThreadDeps): Threads {
       title: args.title,
       role: args.role,
       parentId: args.parentId,
+      depth,
       anchorTaskId: String(anchor),
       run: 1,
       clientRequestId: args.clientRequestId,
     })
     trimThreadIds(space, docs)
-    await report(tx, {
-      threadId: child.id,
-      parentId: args.parentId,
-      title: args.title,
-      run: 1,
-      brief: args.task,
-      requestId: args.requestId,
-    })
+    await report(
+      tx,
+      {
+        threadId: child.id,
+        parentId: args.parentId,
+        title: args.title,
+        run: 1,
+        brief: args.task,
+        requestId: args.requestId,
+      },
+      owner,
+    )
     return { kind: "created", threadId: child.id, title: args.title }
   }
 
@@ -675,7 +726,6 @@ export function lifecycle(deps: ThreadDeps): Threads {
             ...(picked.thinking === undefined ? {} : { thinking: picked.thinking }),
             clientRequestId: requestId,
             requestId,
-            removeTools: childTools(deps.toolsNamed),
           }),
         context,
       )
@@ -735,7 +785,6 @@ export function lifecycle(deps: ThreadDeps): Threads {
             ...(picked.thinking === undefined ? {} : { thinking: picked.thinking }),
             clientRequestId: requestId,
             requestId,
-            removeTools: childTools(deps.toolsNamed),
             forkFrom: parentId,
           }),
         context,

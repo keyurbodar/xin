@@ -1,15 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import type { Context, JsonValue } from "@earendil-works/chord"
 import type { Models } from "@earendil-works/pi-ai"
-import type {
-  ConversationId,
-  ConversationHandle,
-  EntryId,
-  Harness,
-  ToolRegistration,
-  Submission,
-  Tx,
-} from "@earendil-works/pi-durable"
+import type { ConversationId, ConversationHandle, EntryId, Harness, Submission, Tx } from "@earendil-works/pi-durable"
 import type {
   Caller,
   CapabilitiesOutcome,
@@ -37,15 +29,14 @@ import { entryText, detailOf, textOf } from "../../src/transcript.ts"
 import { capReason, type ModelsService } from "../../src/contracts/models.ts"
 import { ThreadDoc, defaultSpaceOf, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
 import { canUseThread, projectByRef, scopeOf, type Scope } from "../../src/contracts/scope.ts"
-import { WorkspaceDoc, type ProjectState } from "../../src/contracts/workspace.ts"
+import { DEFAULT_THREAD_DEPTH, WorkspaceDoc, type ProjectState } from "../../src/contracts/workspace.ts"
 import type { Actor, Command, Outcome } from "../../src/ops.ts"
-import { childTools, type Threads } from "./threads.ts"
+import type { Threads } from "./threads.ts"
 
 export type ServiceDeps = {
   readonly harness: Harness
   run(command: Command, actor: Actor): Promise<Outcome>
   currentModels(): Models
-  readonly toolsNamed: (names: readonly string[]) => readonly ToolRegistration[]
   readonly models: ModelsService
 }
 
@@ -131,12 +122,8 @@ type ProjectChoice =
   | { readonly projectId: string; readonly project: ProjectState; readonly spaceId: string }
   | { readonly kind: "rejected"; readonly reason: string }
 
-const projectFor = async (
-  harness: Harness,
-  scope: Extract<Scope, { kind: "puck" | "space" }>,
-  requested: string | undefined,
-): Promise<ProjectChoice> => {
-  if (scope.kind === "space") {
+const projectFor = async (harness: Harness, scope: Scope, requested: string | undefined): Promise<ProjectChoice> => {
+  if (scope.kind !== "puck") {
     if (scope.project === undefined)
       return { kind: "rejected", reason: `Space ${scope.spaceId} has no project to run a thread in.` }
     if (scope.space.archived) return { kind: "rejected", reason: `Space ${scope.spaceId} is archived.` }
@@ -200,7 +187,11 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
   const delegate = async (caller: Caller, request: DelegateRequest, callContext: Context): Promise<DelegateOutcome> => {
     const harness = deps.harness
     const scope = await scopeOf(harness, caller.conversationId)
-    if (scope === undefined || scope.kind === "thread") return { kind: "not_coordinator" }
+    if (scope === undefined) return { kind: "not_coordinator" }
+    const own = scope.kind === "thread" ? await harness.snapshot(ThreadDoc, caller.conversationId, context) : undefined
+    const depth = own === undefined ? 1 : (own.depth ?? 1) + 1
+    if (scope.kind === "thread" && depth > (scope.project?.settings.threadDepth ?? DEFAULT_THREAD_DEPTH))
+      return { kind: "not_coordinator" }
     const found = await projectFor(harness, scope, request.project)
     if ("kind" in found) return found
     const role: ThreadRole = request.role ?? "thread"
@@ -227,7 +218,7 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
           ...(model.thinking === undefined ? {} : { thinking: model.thinking }),
           clientRequestId: request.clientRequestId,
           requestId,
-          removeTools: childTools(deps.toolsNamed),
+          ...(depth === 1 ? {} : { depth }),
         }),
       callContext,
     )

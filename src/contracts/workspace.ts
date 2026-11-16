@@ -6,6 +6,8 @@ export const SLUG = "^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
 export const DEFAULT_DEADLINE_MS = 30 * 60_000
 export const DEFAULT_THREAD_LIMIT = 8
+/** Absent `threadDepth`: threads cannot start threads of their own. */
+export const DEFAULT_THREAD_DEPTH = 1
 
 const RoleModelsSchema = obj({
   chat: opt(ModelRefSchema),
@@ -19,12 +21,14 @@ const GitSettingsSchema = obj({
 export const SettingsSchema = obj({
   threadLimit: int({ minimum: 1 }),
   deadlineMs: int({ minimum: 1_000 }),
+  threadDepth: opt(int({ minimum: 1 })),
   models: opt(RoleModelsSchema),
   git: opt(GitSettingsSchema),
 })
 export const SettingsPatchSchema = obj({
   threadLimit: opt(int({ minimum: 1 })),
   deadlineMs: opt(int({ minimum: 1_000 })),
+  threadDepth: opt(int({ minimum: 1 })),
   models: opt(RoleModelsSchema),
   git: opt(GitSettingsSchema),
 })

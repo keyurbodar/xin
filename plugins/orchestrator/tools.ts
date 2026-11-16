@@ -40,10 +40,13 @@ const callerOf = (api: ToolExecutionApi): Caller => ({
 function delegated(outcome: DelegateOutcome): ToolExecutionResult {
   switch (outcome.kind) {
     case "not_coordinator":
-      return textResult("delegate_task is only available to a project coordinator.", {
-        details: { code: "capability_denied" },
-        isError: true,
-      })
+      return textResult(
+        "delegate_task is only available to a project coordinator, or to a thread below the project's threadDepth.",
+        {
+          details: { code: "capability_denied" },
+          isError: true,
+        },
+      )
     case "no_model":
       return textResult(outcome.reason, { details: { code: "no_model" }, isError: true })
     case "limit": {

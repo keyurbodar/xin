@@ -79,10 +79,15 @@ export async function projectByRef(harness: Harness, ref: string): Promise<Resol
   return undefined
 }
 
+/** A thread reaches itself and the threads it started; a Space its own threads; Puck every listed thread. */
 export async function canUseThread(harness: Harness, callerId: ConversationId, threadId: number): Promise<boolean> {
   const scope = await scopeOf(harness, callerId)
   if (scope === undefined) return false
-  if (scope.kind === "thread") return threadId === scope.threadId
+  if (scope.kind === "thread") {
+    if (threadId === scope.threadId) return true
+    if (!scope.space.threadIds.includes(threadId)) return false
+    return (await harness.snapshot(ThreadDoc, threadId as ConversationId, context))?.parentId === callerId
+  }
   if (scope.kind === "puck") {
     const workspace = await harness.snapshot(WorkspaceDoc, context)
     return (

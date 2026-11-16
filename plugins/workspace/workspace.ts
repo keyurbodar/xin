@@ -126,9 +126,11 @@ const defaultSettings = (): ProjectSettings => ({
 })
 
 function mergeSettings(current: ProjectSettings, patch: SettingsPatch): ProjectSettings {
+  const threadDepth = patch.threadDepth ?? current.threadDepth
   return {
     threadLimit: patch.threadLimit ?? current.threadLimit,
     deadlineMs: patch.deadlineMs ?? current.deadlineMs,
+    ...(threadDepth === undefined ? {} : { threadDepth }),
     ...(patch.models === undefined && current.models === undefined
       ? {}
       : { models: { ...current.models, ...patch.models } }),
@@ -152,6 +154,7 @@ function settingsOf(settings: ProjectSettings): JsonObject {
   return {
     threadLimit: settings.threadLimit,
     deadlineMs: settings.deadlineMs,
+    ...(settings.threadDepth === undefined ? {} : { threadDepth: settings.threadDepth }),
     ...(settings.models === undefined ? {} : { models: modelsOf(settings.models) }),
     ...(settings.git === undefined
       ? {}
