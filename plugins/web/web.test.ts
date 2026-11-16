@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest"
 import { respond } from "../../test/plugins/m8.ts"
 import { addThreads, cmd, fresh, loadDeferred, recordOffers, rowOf, type Stub, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
+import { CATALOG } from "../../src/catalog.ts"
 import { braveResults, extractHtml, publicUrl, SEARCH_KEY_REF } from "./web.ts"
 
 const BRAVE_KEY = "test-brave-key"
@@ -147,6 +148,10 @@ const offered = async (stub: Stub, requestId: string): Promise<readonly string[]
 describe("web tools", () => {
   it("ships the web row enabled", async () => {
     expect(await rowOf(fresh(), "tool-web")).toMatchObject({ disabled: false })
+  })
+
+  it("limits the web row to its own search key", () => {
+    expect(CATALOG["tool-web"]?.manifest?.credentials).toEqual([SEARCH_KEY_REF])
   })
 
   it("offers web_fetch but leaves web_search out until a search key is set", async () => {

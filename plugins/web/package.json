@@ -14,6 +14,9 @@
           "network",
           "secrets"
         ],
+        "credentials": [
+          "brave_search"
+        ],
         "contributes": {
           "tools": [
             "web_fetch",

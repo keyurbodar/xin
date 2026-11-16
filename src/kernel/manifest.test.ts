@@ -87,6 +87,13 @@ describe("plugin manifest", () => {
     })
   })
 
+  it("keeps declared credential refs and leaves them out when undeclared", () => {
+    expect(readManifest({ permissions: ["secrets"], credentials: ["brave_search"] }, "x").credentials).toEqual([
+      "brave_search",
+    ])
+    expect(readManifest({ permissions: ["secrets"] }, "x")).not.toHaveProperty("credentials")
+  })
+
   it("refuses a module that injects a guarded service without the permission", () => {
     const problem = checkManifest(DEFAULT_MANIFEST, versions({}), ["pi", "secrets"])
     expect(problem).toEqual({ kind: "permission", permission: "secrets", service: "secrets" })

@@ -856,6 +856,7 @@ export const CATALOG: Catalog = {
       permissions: ["network", "secrets"],
       contributes: { tools: ["web_fetch", "web_search"], ops: [] },
       slots: [],
+      credentials: ["brave_search"],
     },
     local: true,
     source: "ingle-plugin-web@0.1.0",

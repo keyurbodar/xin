@@ -2,6 +2,8 @@ import type { Context } from "@deepseek-ai/cordis"
 import { defineExtension, defineTool } from "@earendil-works/pi-durable"
 import { obj, str } from "@earendil-works/pi-schema"
 import type { Catalog } from "../../src/kernel/loader.ts"
+import { DEFAULT_MANIFEST } from "../../src/kernel/manifest.ts"
+import { defineOp } from "../../src/ops.ts"
 import type { Row } from "../../src/kernel/layers.ts"
 
 const echo = {
@@ -91,6 +93,33 @@ const echo = {
   },
 }
 
+const attempt = async (use: () => unknown): Promise<string> => {
+  try {
+    return String(await use())
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+}
+
+const scoped = {
+  name: "s-scoped",
+  inject: ["ops", "secrets"],
+  apply(ctx: Context) {
+    ctx.ops.define(
+      defineOp({
+        name: "s.scoped",
+        args: obj({}),
+        actors: ["owner"],
+        run: async () => ({
+          own: await attempt(() => ctx.secrets.get("SCOPED")),
+          other: await attempt(() => ctx.secrets.get("TOKEN")),
+          overwrite: await attempt(() => ctx.secrets.set("TOKEN", "overwritten")),
+        }),
+      }),
+    )
+  },
+}
+
 export const catalog: Catalog = {
   "s-echo": {
     plugin: echo,
@@ -98,6 +127,16 @@ export const catalog: Catalog = {
     description: "Reads and writes the TOKEN credential.",
     source: "test",
   },
+  "s-scoped": {
+    plugin: scoped,
+    title: "Scoped credentials",
+    description: "Declares only the SCOPED credential and tries to reach TOKEN.",
+    manifest: { ...DEFAULT_MANIFEST, permissions: ["secrets"], credentials: ["SCOPED"] },
+    source: "test",
+  },
 }
 
-export const rows: readonly Row[] = [{ id: "s-echo", name: "cordis:s-echo" }]
+export const rows: readonly Row[] = [
+  { id: "s-echo", name: "cordis:s-echo" },
+  { id: "s-scoped", name: "cordis:s-scoped" },
+]
