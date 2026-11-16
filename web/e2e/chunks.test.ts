@@ -20,7 +20,7 @@ async function open(hash: string, chunks: readonly string[]): Promise<{ page: Pa
   const errors: string[] = []
   const patterns = chunks.map((chunk) => `**/src/${chunk}*`)
   const page = await harness.open("chunks", {
-    search: hash,
+    search: `?stale=${Date.now()}${hash}`,
     expected: MISSING,
     before: async (page) => {
       page.on("pageerror", (error) => errors.push(String(error)))

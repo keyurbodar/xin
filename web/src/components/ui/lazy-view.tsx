@@ -1,5 +1,6 @@
 import { createSignal, type Component, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
+import { reloadForStaleChunk } from "../../lib/stale-chunk.ts"
 
 type Props = Record<string, unknown>
 
@@ -20,7 +21,7 @@ export function lazyView<P extends Props>(load: () => Promise<Component<P>>, fal
       (view) => setState({ kind: "loaded", view }),
       (error: unknown) => {
         loading = undefined
-        setState({ kind: "failed", error })
+        if (!reloadForStaleChunk(error)) setState({ kind: "failed", error })
       },
     )
     return loading

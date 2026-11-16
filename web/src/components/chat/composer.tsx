@@ -2,6 +2,7 @@ import { X } from "lucide-solid"
 import { For, Show, createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js"
 import { pendingDraftFor, takePendingDraft } from "../../lib/draft.ts"
 import { handleAttachShortcut } from "../../lib/attach-shortcut.ts"
+import { holdReloadWhile } from "../../lib/stale-chunk.ts"
 import type { UploadedFile } from "../../lib/api.ts"
 import type { ThinkingLevel } from "../../lib/thinking.ts"
 import type { PresetRow } from "../../state/extensions.ts"
@@ -166,6 +167,7 @@ export function Composer(props: {
   }
 
   const empty = (): boolean => draft().trim() === "" && attachments.uploaded().length === 0
+  onCleanup(holdReloadWhile(() => !empty()))
   const ready = (): boolean => !empty() && !attachments.uploading() && !sending()
   const showStop = (): boolean => props.busy && empty()
 
@@ -319,6 +321,7 @@ export function SteerComposer(props: {
   const { sending, send } = useSender(props.onSend, () => props.waiting)
   const { stopping, stop } = useStopper(props.onStop, setError)
   const grow = useGrow(180)
+  onCleanup(holdReloadWhile(() => draft().trim() !== ""))
 
   const submit = async (): Promise<void> => {
     setError(undefined)

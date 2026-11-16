@@ -1,3 +1,5 @@
+import { reloadForStaleChunk } from "./stale-chunk.ts"
+
 const LOADERS = {
   menu: () => import("@ui-sdk/web/menu"),
   "segmented-control": () => import("@ui-sdk/web/segmented-control"),
@@ -30,6 +32,7 @@ export function loadUiSdk(name: LazyElements): Promise<void> {
       },
       (error: unknown) => {
         pending.delete(name)
+        reloadForStaleChunk(error)
         throw error
       },
     )
