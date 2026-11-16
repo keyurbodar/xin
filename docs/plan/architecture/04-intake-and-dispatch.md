@@ -28,16 +28,28 @@ The queue is one session document, `xin.intake` (§02), not a host table: `enque
 <thread id="th_7" title="Book ryokan" status="completed">Booked Kinosaki, ¥38k, free cancel to 20 Nov</thread>
 ```
 
-**Attachments.** A user item may carry up to 12 files already stored through `PUT /files/<path>`. `plugins/intake/attachments.ts` stats each path, drops the ones storage does not have, and appends one block after the messages:
+**Attachments.** A user item may carry up to 12 files already stored through `PUT /files/<path>`. `message.send` stats each path once (`files.stat`, one index row per file) and refuses a file the index does not hold with `bad_args`; the item then records, per file, the client's `name` and the index's `path`, `type`, `size` and `sha256`. The client's own size and type are never trusted. That stored record is what the transcript's `xin.batch` entry and a retry carry, so rendering a turn reads no index rows: `plugins/intake/attachments.ts` reads bytes by content address (`files.readBlob`, one R2 get), which also makes a replay after a crash render the same turn even if the path was overwritten since. It appends one block after the messages:
 
 ```text
 <attachments>
-- diagram.png (image/png, 1 204 912 bytes) at /projects/launch/attachments/diagram.png
-- brief.txt (text/plain, 5 120 bytes) at /projects/launch/attachments/brief.txt
+- diagram.png (image/png, 1 204 912 bytes) at /projects/launch/attachments/diagram.png: shown below
+- photo.png (image/png, 80 112 bytes) at /projects/launch/attachments/photo.png: not shown, this model does not take images
+- brief.txt (text/plain, 5 120 bytes) at /projects/launch/attachments/brief.txt: inlined below
+- deck.pdf (application/pdf, 2 048 000 bytes) at /projects/launch/attachments/deck.pdf
 </attachments>
+<file path="/projects/launch/attachments/brief.txt">
+…
+</file>
 ```
 
-The sizes come from the file index, not from the client. A model that takes images also receives each image as an `image` part, encoded as base64, within one `INLINE_BUDGET_BYTES` (1 MiB) budget for the whole turn. The budget is spent against the size the file index reports before any bytes are read, so an image that does not fit stays listed but is never loaded: the stored entry stays far under a Durable Object row and no single message can push the transcript past it. A text-only model gets the block alone and reads the file with its own tools.
+- **Images** (PNG, JPEG, GIF, WebP) go as `image` parts, base64, only when the conversation's model lists `image` in its pi-ai catalog `input`; a text-only model gets the note instead and no bytes are read. All images share one `IMAGE_BUDGET_BYTES` (1 MiB) per turn.
+- **Text-like files** (`text/*`, JSON, XML, SVG: the `isText` types `file.read` previews) are inlined as `<file>` blocks within one `TEXT_BUDGET_BYTES` (64 KiB) per turn; a file over what is left is listed as `not inlined` and the model reads it with its own tools.
+- **Any other file** is the reference line alone.
+- A recorded blob R2 no longer holds is listed as `no longer stored`.
+- An item queued before `message.send` recorded blobs (no `sha256`) keeps its files and lists them by path alone.
+- Nothing a file brings can forge the markup: names, types and paths are escaped (`&`, `<`, `>`, control characters folded to spaces, and `"` in the path attribute), an inlined file's own `<file`, `</file`, `<attachments` and `</attachments` tags are escaped, and an image whose bytes do not start with its type's signature is listed as `not shown, its bytes are not image/png` instead of being sent.
+
+Budgets are spent against the recorded size before any bytes are read, so a file that does not fit never enters the isolate and the stored entry stays far under a Durable Object row.
 
 This is the same text whether the coordinator is idle (it starts a turn) or busy (it steers).
 

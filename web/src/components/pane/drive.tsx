@@ -1,15 +1,15 @@
+import "@ui-sdk/web/file-input"
+import "@ui-sdk/web/listbox"
+import "@ui-sdk/web/menu"
+import "@ui-sdk/web/select"
+import "@ui-sdk/web/toggle"
 import { batch, createMemo, createResource, createSignal, For, Show, untrack, type JSX } from "solid-js"
-import { Portal } from "solid-js/web"
-import { Menu } from "@ark-ui/solid/menu"
 import {
   ArrowLeft,
   BookText,
   Check,
-  ChevronRight,
   ChevronsUpDown,
   Copy,
-  File,
-  Folder,
   FolderInput,
   History,
   Link2,
@@ -21,7 +21,6 @@ import {
 import { putFile } from "../../lib/api.ts"
 import {
   copyLink,
-  crumbsOf,
   drive,
   folderOf,
   INSTRUCTIONS_CAP,
@@ -56,28 +55,24 @@ import { Button } from "../ui/button.tsx"
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
 import { Spinner } from "../ui/loaders.tsx"
 import { Loading, PaneSkeleton } from "../ui/skeleton.tsx"
-import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL } from "../shell/menu.ts"
+import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
+import { ICON_BUTTON } from "../shell/menu.ts"
+import { createOverlayMount } from "../shell/presence.ts"
 import { Markdown } from "../chat/markdown.tsx"
 import { createPaneAction, EmptyState, ResourceError } from "../chat/ui.tsx"
 import { fileName as baseName, forgetProjectFiles, PANE_ROW } from "./bodies.tsx"
+import { DriveTree } from "./drive-tree.tsx"
 
-const ICON = { size: 16, "stroke-width": 1.5 } as const
 const CENTER_ROW = PANE_ROW.replace("items-start", "items-center")
 
 const SMALL = { size: 14, "stroke-width": 1.5 } as const
 
-function ReservedIcon(props: { reserved: Reserved | undefined; class: string }): JSX.Element {
-  return (
-    <Show when={props.reserved} fallback={<File {...ICON} class={props.class} />}>
-      {(reserved) => (reserved().kind === "instructions" ? <BookText {...ICON} class={props.class} /> : <Sparkles {...ICON} class={props.class} />)}
-    </Show>
-  )
-}
-
 function ReservedNote(props: { reserved: Reserved }): JSX.Element {
   return (
     <div class="mx-2 mb-2 flex items-start gap-2 rounded-sm border border-line-2 bg-secondary px-2.5 py-2 text-xs leading-[1.5] text-ink-2">
-      <ReservedIcon reserved={props.reserved} class="mt-px shrink-0 text-ink-3" />
+      <Show when={props.reserved.kind === "instructions"} fallback={<Sparkles size={16} stroke-width={1.5} class="mt-px shrink-0 text-ink-3" />}>
+        <BookText size={16} stroke-width={1.5} class="mt-px shrink-0 text-ink-3" />
+      </Show>
       <span>
         {props.reserved.kind === "instructions"
           ? `Every conversation in this scope reads this file as instructions, up to ${INSTRUCTIONS_CAP.toLocaleString()} characters.`
@@ -90,27 +85,40 @@ function ReservedNote(props: { reserved: Reserved }): JSX.Element {
 const clipboard = (): ((text: string) => Promise<void>) | undefined =>
   navigator.clipboard === undefined ? undefined : (text) => navigator.clipboard.writeText(text)
 
-/** The right pane's Drive: the conversation's scopes, one folder at a time, and the open file. One drive.list per folder open and per op. */
+const filesOf = (value: unknown): readonly File[] => (Array.isArray(value) ? value.filter((file) => file instanceof File) : [])
+
+/** The folder a drop lands in: the folder row under it, a file row's folder, else the scope's root. */
+function dropFolder(target: EventTarget | null | undefined): string {
+  const item = target instanceof Element ? target.closest("ui-tree-item") : null
+  const value = item?.getAttribute("value") ?? ""
+  return item?.hasAttribute("data-branch") === true ? value : folderOf(value)
+}
+
+/** The right pane's Drive: the conversation's scopes as a file tree, and the open file. One drive.list for the scope, which lists every folder, and one more after each change. */
 export function DriveView(props: { conversationId: number; prefer: DriveScope; projectSlug: string }): JSX.Element {
   const [scopes, { refetch: refetchScopes }] = createResource(() => props.conversationId, drive.scopes)
   const [picked, setPicked] = createSignal<string | undefined>()
-  const [folder, setFolder] = createSignal("")
   const [open, setOpen] = createSignal<string | undefined>()
+  const [moving, setMoving] = createSignal<string | undefined>()
+  const [deleting, setDeleting] = createSignal<string | undefined>()
+  const [landing, setLanding] = createSignal<string | undefined>()
+  const [returnTo, setReturnTo] = createSignal<string | undefined>()
   const [version, setVersion] = createSignal(0)
-  const [dropping, setDropping] = createSignal(false)
   const action = createPaneAction()
+  let treeHost: HTMLDivElement | undefined
 
   const current = createMemo(() => pickScope(settled(scopes) ?? [], picked(), props.prefer))
   const listKey = createMemo(() => {
     const mounted = current()
-    return mounted === undefined ? undefined : `${mounted.root}\n${folder()}\n${version()}`
+    return mounted === undefined ? undefined : `${mounted.root}\n${version()}`
   })
   const [listing, { refetch: refetchListing }] = createResource(listKey, (): Promise<DriveListing> => {
     const mounted = untrack(current)
     if (mounted === undefined) throw new Error("no scope")
-    return drive.list(mounted.scope, untrack(folder))
+    return drive.list(mounted.scope, "")
   })
-  const rows = createMemo(() => rowsOf(settled(listing)?.files ?? [], folder()))
+  const rows = createMemo(() => rowsOf(settled(listing)?.files ?? [], ""))
+  const shares = (): Readonly<Record<string, string>> => settled(listing)?.shares ?? {}
   const openEntry = (): DriveEntry | undefined => settled(listing)?.files.find((entry) => entry.path === open())
 
   const reload = (): void => {
@@ -120,16 +128,38 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
   const choose = (root: string): void =>
     batch(() => {
       setPicked(root)
-      setFolder("")
       setOpen(undefined)
     })
+  const back = (): void => {
+    setLanding(open())
+    setOpen(undefined)
+  }
+  const rowElement = (path: string | undefined): HTMLElement | undefined =>
+    path === undefined || open() !== undefined
+      ? undefined
+      : (treeHost?.querySelector<HTMLElement>(`ui-tree-item[value="${CSS.escape(path)}"]`) ?? undefined)
+  const neighbourOf = (path: string): string | undefined => {
+    const rows = [...(treeHost?.querySelectorAll<HTMLElement>("ui-tree-item") ?? [])].filter((row) => row.checkVisibility())
+    const at = rows.findIndex((row) => row.getAttribute("value") === path)
+    return (rows[at + 1] ?? rows[at - 1])?.getAttribute("value") ?? undefined
+  }
+  const startMove = (path: string): void =>
+    batch(() => {
+      setReturnTo(path)
+      setMoving(path)
+    })
+  const startDelete = (path: string): void =>
+    batch(() => {
+      setReturnTo(path)
+      setDeleting(path)
+    })
 
-  const upload = (picked: FileList): void => {
+  const upload = (files: readonly File[], folder: string): void => {
     const mounted = current()
-    if (mounted === undefined) return
-    const { send, tooBig } = splitUploads(Array.from(picked))
+    if (mounted === undefined || files.length === 0) return
+    const { send, tooBig } = splitUploads(files)
     void action.run("upload", async () => {
-      const results = await Promise.allSettled(send.map((file) => putFile(file, uploadPath(mounted.root, folder(), file.name))))
+      const results = await Promise.allSettled(send.map((file) => putFile(file, uploadPath(mounted.root, folder, file.name))))
       if (send.length > 0) reload()
       const failed = send.filter((_, index) => results[index]?.status === "rejected").map((file) => file.name)
       const summary = uploadSummary(
@@ -141,21 +171,12 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
   }
 
   return (
-    <div
+    <ui-file-input
+      multiple
       class="flex min-h-full flex-col"
-      onDragOver={(event) => {
-        if (open() !== undefined || !event.dataTransfer?.types.includes("Files")) return
+      on:valuechange={(event) => {
         event.preventDefault()
-        setDropping(true)
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false)
-      }}
-      onDrop={(event) => {
-        event.preventDefault()
-        setDropping(false)
-        const dropped = event.dataTransfer?.files
-        if (dropped !== undefined && dropped.length > 0) upload(dropped)
+        upload(filesOf(event.detail.value), event.detail.reason === "drop" ? dropFolder(event.detail.event?.target) : "")
       }}
     >
       <Show when={scopes.error}>
@@ -164,215 +185,179 @@ export function DriveView(props: { conversationId: number; prefer: DriveScope; p
       <Show when={current()}>
         {(mounted) => (
           <>
-            <div class="flex items-center gap-1 px-1 pb-1">
-              <ScopeMenu scopes={settled(scopes) ?? []} current={mounted()} onChoose={choose} />
-              <span class="flex-1" />
-              <Show when={action.busy() === "upload"}>
-                <Spinner size={14} class="text-ink-3" />
-              </Show>
-              <label class={`${ICON_BUTTON} cursor-pointer`} aria-label="Upload files" title="Upload files">
-                <Upload {...SMALL} />
-                <input
-                  type="file"
-                  multiple
-                  class="hidden"
-                  onChange={(event) => {
-                    const files = event.currentTarget.files
-                    if (files !== null && files.length > 0) upload(files)
-                    event.currentTarget.value = ""
-                  }}
-                />
-              </label>
-            </div>
-
-            <Show when={folder() !== ""}>
-              <nav class="flex min-w-0 items-center gap-0.5 px-1 pb-1.5 text-xs text-ink-3" aria-label="Folder">
-                <button
-                  type="button"
-                  class="shrink-0 rounded-xs px-1 py-0.5 hover:bg-secondary hover:text-ink"
-                  onClick={() => {
-                    setFolder("")
-                    setOpen(undefined)
-                  }}
-                >
-                  {scopeTitle(mounted().scope)}
-                </button>
-                <For each={crumbsOf(folder())}>
-                  {(crumb) => (
-                    <>
-                      <ChevronRight size={12} stroke-width={1.5} class="shrink-0 text-icon" />
-                      <button
-                        type="button"
-                        class="min-w-0 truncate rounded-xs px-1 py-0.5 hover:bg-secondary hover:text-ink"
-                        classList={{ "text-ink": crumb.path === folder() && open() === undefined }}
-                        onClick={() => {
-                          setFolder(crumb.path)
-                          setOpen(undefined)
-                        }}
-                      >
-                        {crumb.name}
-                      </button>
-                    </>
-                  )}
-                </For>
-              </nav>
+            <Show when={open() === undefined}>
+              <div class="flex items-center gap-1 px-1 pb-1">
+                <ScopeMenu scopes={settled(scopes) ?? []} current={mounted()} onChoose={choose} />
+                <span class="flex-1" />
+                <Show when={action.busy() === "upload"}>
+                  <Spinner size={14} class="text-ink-3" />
+                </Show>
+                <ui-file-input-trigger>
+                  <button type="button" class={ICON_BUTTON} aria-label="Upload files" title="Upload files">
+                    <Upload {...SMALL} />
+                  </button>
+                </ui-file-input-trigger>
+              </div>
             </Show>
 
             <Show when={action.failed()}>
               {(message) => <p class="mx-2 mb-2 font-mono text-2xs text-failed">{message()}</p>}
             </Show>
 
-            <Show
-              when={open()}
-              keyed
-              fallback={
-                <Loading when={firstLoad(listing)} skeleton={<PaneSkeleton rows={6} />} label="Loading Drive">
-                  <Show when={listing.error}>
-                    <ResourceError what="this folder" error={listing.error} onRetry={() => void refetchListing()} />
+            <div ref={treeHost} class="flex flex-1 flex-col" hidden={open() !== undefined}>
+              <Loading when={firstLoad(listing)} skeleton={<PaneSkeleton rows={6} />} label="Loading Drive">
+                <Show when={listing.error}>
+                  <ResourceError what="this drive" error={listing.error} onRetry={() => void refetchListing()} />
+                </Show>
+                <ui-file-input-dropzone class="flex flex-1 flex-col rounded-md transition-colors duration-[var(--dur-color)] data-[dragging]:bg-primary-soft">
+                  <Show when={settled(listing) !== undefined && rows().length === 0}>
+                    <EmptyState
+                      pictogram="folder"
+                      title="Nothing in this drive yet"
+                      detail={`Drop files here or upload them. ${INSTRUCTIONS_FILE} at the root becomes instructions, and ${SKILLS_FOLDER}/<name>/SKILL.md installs a skill.`}
+                    />
                   </Show>
-                  <div
-                    class="flex flex-1 flex-col rounded-md transition-colors duration-[var(--dur-color)]"
-                    classList={{ "bg-primary-soft": dropping() }}
-                  >
-                    <Show when={settled(listing) !== undefined && rows().length === 0}>
-                      <EmptyState
-                        pictogram="folder"
-                        title={folder() === "" ? "Nothing in this drive yet" : "This folder is empty"}
-                        detail={`Drop files here or upload them. ${INSTRUCTIONS_FILE} at the root becomes instructions, and ${SKILLS_FOLDER}/<name>/SKILL.md installs a skill.`}
-                      />
-                    </Show>
-                    <For each={rows()}>
-                      {(row) =>
-                        row.kind === "folder" ? (
-                          <button type="button" class={CENTER_ROW} onClick={() => setFolder(row.path)}>
-                            <Show when={row.path === `${SKILLS_FOLDER}/`} fallback={<Folder {...ICON} class="shrink-0 text-ink-3" />}>
-                              <Sparkles {...ICON} class="shrink-0 text-ink-3" />
-                            </Show>
-                            <span class="min-w-0 flex-1 truncate text-sm text-ink">{row.name}</span>
-                            <Show when={row.path === `${SKILLS_FOLDER}/`}>
-                              <span class="shrink-0 text-xs text-ink-3">Installed skills</span>
-                            </Show>
-                            <span class="shrink-0 font-mono text-2xs text-ink-3">{row.files}</span>
-                          </button>
-                        ) : (
-                          <button type="button" class={PANE_ROW} onClick={() => setOpen(row.entry.path)}>
-                            <ReservedIcon reserved={reservedOf(row.entry.path)} class="mt-0.5 shrink-0 text-ink-3" />
-                            <span class="min-w-0 flex-1">
-                              <span class="flex items-center gap-1.5">
-                                <span class="truncate text-sm text-ink">{row.name}</span>
-                                <Show when={settled(listing)?.shares[row.entry.path] !== undefined}>
-                                  <span class="flex shrink-0 items-center gap-1 rounded-xs border border-primary/30 bg-primary-soft px-1 text-2xs text-primary-ink">
-                                    <Link2 size={10} stroke-width={1.75} />
-                                    Shared
-                                  </span>
-                                </Show>
-                              </span>
-                              <span class="block truncate text-xs text-ink-3">
-                                {reservedOf(row.entry.path)?.kind === "instructions"
-                                  ? "Instructions · "
-                                  : reservedOf(row.entry.path)?.kind === "skill"
-                                    ? "Skill · "
-                                    : ""}
-                                {ago(row.entry.updated_at)}
-                              </span>
-                            </span>
-                            <span class="shrink-0 font-mono text-2xs text-ink-3">{bytes(row.entry.size)}</span>
-                          </button>
-                        )
-                      }
-                    </For>
-                  </div>
-                </Loading>
-              }
-            >
+                  <Show when={rows().length > 0}>
+                    <DriveTree
+                      label={`${scopeTitle(mounted().scope)} files`}
+                      rows={rows()}
+                      childrenOf={(folder) => rowsOf(settled(listing)?.files ?? [], folder)}
+                      shares={shares()}
+                      onOpen={setOpen}
+                      onRename={async (from, to) => {
+                        await drive.move(mounted().scope, from, to, mounted().scope)
+                        reload()
+                      }}
+                      onMove={startMove}
+                      onDelete={startDelete}
+                      landing={landing()}
+                      onLand={setLanding}
+                    />
+                  </Show>
+                </ui-file-input-dropzone>
+              </Loading>
+            </div>
+
+            <Show when={open()} keyed>
               {(path) => (
                 <FilePanel
                   mounted={mounted()}
-                  scopes={settled(scopes) ?? []}
                   path={path}
                   entry={openEntry()}
-                  shareId={settled(listing)?.shares[path]}
-                  onBack={() => setOpen(undefined)}
+                  shareId={shares()[path]}
+                  onBack={back}
                   onChanged={reload}
-                  onMoved={(to, root) => {
-                    if (root !== mounted().root) {
-                      forgetProjectFiles(props.projectSlug)
-                      return choose(root)
-                    }
-                    batch(() => {
-                      setFolder(folderOf(to))
-                      setOpen(to)
-                      reload()
-                    })
-                  }}
-                  onDeleted={() => {
-                    setOpen(undefined)
-                    reload()
-                  }}
+                  onMove={() => startMove(path)}
+                  onDelete={() => startDelete(path)}
                 />
               )}
             </Show>
+
+            <MoveDialog
+              open={moving() !== undefined}
+              scopes={settled(scopes) ?? []}
+              mounted={mounted()}
+              path={moving() ?? ""}
+              returnFocus={rowElement(returnTo())}
+              onClose={() => setMoving(undefined)}
+              onMoved={(to, root) => {
+                const from = moving()
+                setMoving(undefined)
+                if (root !== mounted().root) {
+                  forgetProjectFiles(props.projectSlug)
+                  return choose(root)
+                }
+                batch(() => {
+                  if (open() === from) setOpen(to)
+                  setReturnTo(to)
+                  setLanding(to)
+                  reload()
+                })
+              }}
+            />
+            <DeleteDialog
+              open={deleting() !== undefined}
+              scope={mounted().scope}
+              path={deleting() ?? ""}
+              shared={shares()[deleting() ?? ""] !== undefined}
+              returnFocus={rowElement(returnTo())}
+              onClose={() => setDeleting(undefined)}
+              onDeleted={() => {
+                const next = neighbourOf(deleting() ?? "")
+                batch(() => {
+                  setReturnTo(next)
+                  setLanding(next)
+                  if (open() === deleting()) setOpen(undefined)
+                  setDeleting(undefined)
+                  reload()
+                })
+              }}
+            />
           </>
         )}
       </Show>
       <Show when={firstLoad(scopes)}>
         <PaneSkeleton rows={6} />
       </Show>
-    </div>
+    </ui-file-input>
   )
 }
 
 function ScopeMenu(props: { scopes: readonly MountedScope[]; current: MountedScope; onChoose: (root: string) => void }): JSX.Element {
+  const [open, setOpen] = createSignal(false)
+  const content = createOverlayMount(open)
   return (
-    <Menu.Root
-      lazyMount
-      unmountOnExit
-      positioning={{ placement: "bottom-start", gutter: 6 }}
-      onSelect={(details) => props.onChoose(details.value)}
+    <ui-menu
+      on:openchange={(event) => setOpen(event.detail.value)}
+      on:openchangecomplete={content.settle}
+      on:action={(event) => props.onChoose(event.detail.value)}
     >
-      <Menu.Trigger class="flex h-7 min-w-0 items-center gap-1.5 rounded-sm px-2 text-sm text-ink transition-colors duration-[var(--dur-color)] hover:bg-secondary data-[state=open]:bg-hover">
-        <span class="shrink-0">{scopeTitle(props.current.scope)}</span>
-        <span class="min-w-0 truncate text-ink-3">{props.current.root}</span>
-        <ChevronsUpDown size={12} stroke-width={1.5} class="shrink-0 text-icon" />
-      </Menu.Trigger>
-      <Portal>
-        <Menu.Positioner>
-          <Menu.Content class={`${MENU_CONTENT} w-[260px]`}>
-            <Menu.ItemGroup>
-              <Menu.ItemGroupLabel class={MENU_LABEL}>This conversation sees</Menu.ItemGroupLabel>
-              <For each={props.scopes}>
-                {(mounted) => (
-                  <Menu.Item value={mounted.root} class={MENU_ITEM}>
-                    <span class="min-w-0 flex-1 truncate">{scopeTitle(mounted.scope)}</span>
-                    <span class="truncate font-mono text-2xs text-ink-3">{mounted.root}</span>
-                    <span class="w-3.5 shrink-0 text-ink-2">
-                      <Show when={mounted.root === props.current.root}>
-                        <Check {...SMALL} />
-                      </Show>
-                    </span>
-                  </Menu.Item>
-                )}
-              </For>
-            </Menu.ItemGroup>
-          </Menu.Content>
-        </Menu.Positioner>
-      </Portal>
-    </Menu.Root>
+      <ui-menu-trigger>
+        <button
+          type="button"
+          class="flex h-7 min-w-0 items-center gap-1.5 rounded-sm px-2 text-sm text-ink transition-colors duration-[var(--dur-color)] hover:bg-secondary aria-expanded:bg-hover"
+        >
+          <span class="shrink-0">{scopeTitle(props.current.scope)}</span>
+          <span class="min-w-0 truncate text-ink-3">{props.current.root}</span>
+          <ChevronsUpDown size={12} stroke-width={1.5} class="shrink-0 text-icon" />
+        </button>
+      </ui-menu-trigger>
+      <ui-menu-content side="bottom" align="start" side-offset="6" class={`${POPUP} w-[260px]`}>
+        <Show when={content.mounted()}>
+          <ui-menu-group>
+            <ui-menu-group-label class={POPUP_LABEL}>This conversation sees</ui-menu-group-label>
+            <For each={props.scopes}>
+              {(mounted) => (
+                <ui-menu-item value={mounted.root} label={scopeTitle(mounted.scope)} class={POPUP_ITEM}>
+                  <span class="min-w-0 flex-1 truncate">{scopeTitle(mounted.scope)}</span>
+                  <span class="truncate font-mono text-2xs text-ink-3">{mounted.root}</span>
+                  <span class="w-3.5 shrink-0 text-ink-2">
+                    <Show when={mounted.root === props.current.root}>
+                      <Check {...SMALL} />
+                    </Show>
+                  </span>
+                </ui-menu-item>
+              )}
+            </For>
+          </ui-menu-group>
+        </Show>
+      </ui-menu-content>
+    </ui-menu>
   )
 }
+
 
 type Mode = "read" | "edit" | "history"
 
 function FilePanel(props: {
   mounted: MountedScope
-  scopes: readonly MountedScope[]
   path: string
   entry: DriveEntry | undefined
   shareId: string | undefined
   onBack: () => void
   onChanged: () => void
-  onMoved: (to: string, root: string) => void
-  onDeleted: () => void
+  onMove: () => void
+  onDelete: () => void
 }): JSX.Element {
   const scope = (): DriveScope => props.mounted.scope
   const reserved = (): Reserved | undefined => reservedOf(props.path)
@@ -380,8 +365,6 @@ function FilePanel(props: {
   const [file, { mutate, refetch }] = createResource(() => props.path, (path) => drive.read(scope(), path))
   const [draft, setDraft] = createSignal("")
   const [conflict, setConflict] = createSignal(false)
-  const [moving, setMoving] = createSignal(false)
-  const [deleting, setDeleting] = createSignal(false)
   const action = createPaneAction()
 
   const edit = (): void => {
@@ -460,7 +443,13 @@ function FilePanel(props: {
   return (
     <div class="flex flex-1 flex-col">
       <div class="flex items-center gap-1 px-1 pb-2">
-        <button type="button" class={ICON_BUTTON} aria-label="Back to the folder" onClick={() => props.onBack()}>
+        <button
+          type="button"
+          class={ICON_BUTTON}
+          aria-label="Back to the files"
+          ref={(element) => queueMicrotask(() => element.focus())}
+          onClick={() => props.onBack()}
+        >
           <ArrowLeft {...SMALL} />
         </button>
         <span class="min-w-0 flex-1">
@@ -478,17 +467,13 @@ function FilePanel(props: {
             <Pencil {...SMALL} />
           </button>
         </Show>
-        <button
-          type="button"
-          class={ICON_BUTTON}
-          classList={{ "bg-hover text-ink": mode() === "history" }}
-          aria-label="History"
-          title="History"
-          aria-pressed={mode() === "history"}
-          onClick={() => setMode(mode() === "history" ? "read" : "history")}
-        >
-          <History {...SMALL} />
-        </button>
+        <ui-toggle prop:pressed={mode() === "history"} on:pressedchange={(event) => setMode(event.detail.value ? "history" : "read")}>
+          <button type="button" class={`${ICON_BUTTON} aria-pressed:bg-hover aria-pressed:text-ink`} aria-label="History" title="History">
+            <ui-toggle-icon class="contents">
+              <History {...SMALL} />
+            </ui-toggle-icon>
+          </button>
+        </ui-toggle>
         <Show when={props.shareId === undefined}>
           <button
             type="button"
@@ -502,10 +487,10 @@ function FilePanel(props: {
             <Link2 {...SMALL} />
           </button>
         </Show>
-        <button type="button" class={ICON_BUTTON} aria-label="Move or rename" title="Move or rename" onClick={() => setMoving(true)}>
+        <button type="button" class={ICON_BUTTON} aria-label="Move or rename" title="Move or rename" onClick={() => props.onMove()}>
           <FolderInput {...SMALL} />
         </button>
-        <button type="button" class={`${ICON_BUTTON} hover:text-failed`} aria-label="Delete" title="Delete" onClick={() => setDeleting(true)}>
+        <button type="button" class={`${ICON_BUTTON} hover:text-failed`} aria-label="Delete" title="Delete" onClick={() => props.onDelete()}>
           <Trash2 {...SMALL} />
         </button>
       </div>
@@ -632,28 +617,6 @@ function FilePanel(props: {
         </Loading>
       </Show>
 
-      <MoveDialog
-        open={moving()}
-        scopes={props.scopes}
-        mounted={props.mounted}
-        path={props.path}
-        onClose={() => setMoving(false)}
-        onMoved={(to, root) => {
-          setMoving(false)
-          props.onMoved(to, root)
-        }}
-      />
-      <DeleteDialog
-        open={deleting()}
-        scope={scope()}
-        path={props.path}
-        shared={props.shareId !== undefined}
-        onClose={() => setDeleting(false)}
-        onDeleted={() => {
-          setDeleting(false)
-          props.onDeleted()
-        }}
-      />
     </div>
   )
 }
@@ -705,25 +668,32 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
                 <span class="font-mono text-2xs text-ink-3">{data().current.sha256.slice(0, 8)}</span>
                 <span class="w-12 text-right font-mono text-2xs text-ink-3">{ago(data().current.at)}</span>
               </div>
-              <For
-                each={data().versions}
+              <Show
+                when={data().versions.length > 0}
                 fallback={<p class="px-2 py-1.5 text-xs text-ink-3">No earlier versions. Drive keeps the last five.</p>}
               >
-                {(entry) => (
-                  <button
-                    type="button"
-                    class={CENTER_ROW}
-                    classList={{ "bg-hover": viewing() === entry.sha256 }}
-                    aria-pressed={viewing() === entry.sha256}
-                    onClick={() => setViewing(viewing() === entry.sha256 ? undefined : entry.sha256)}
-                  >
-                    <span class="h-1.5 w-1.5 shrink-0 rounded-full border border-line-3" />
-                    <span class="flex-1 text-sm text-ink-2">{bytes(entry.size)}</span>
-                    <span class="font-mono text-2xs text-ink-3">{entry.sha256.slice(0, 8)}</span>
-                    <span class="w-12 text-right font-mono text-2xs text-ink-3">{ago(entry.at)}</span>
-                  </button>
-                )}
-              </For>
+                <ui-listbox
+                  aria-label="Earlier versions"
+                  prop:value={viewing() ?? null}
+                  on:valuechange={(event) => setViewing(typeof event.detail.value === "string" ? event.detail.value : undefined)}
+                  class="flex flex-col outline-none"
+                >
+                  <For each={data().versions}>
+                    {(entry) => (
+                      <ui-listbox-item
+                        value={entry.sha256}
+                        label={bytes(entry.size)}
+                        class={`${CENTER_ROW} cursor-default outline-none data-[highlighted]:bg-hover data-[selected]:bg-secondary`}
+                      >
+                        <span class="h-1.5 w-1.5 shrink-0 rounded-full border border-line-3" />
+                        <span class="flex-1 text-sm text-ink-2">{bytes(entry.size)}</span>
+                        <span class="font-mono text-2xs text-ink-3">{entry.sha256.slice(0, 8)}</span>
+                        <span class="w-12 text-right font-mono text-2xs text-ink-3">{ago(entry.at)}</span>
+                      </ui-listbox-item>
+                    )}
+                  </For>
+                </ui-listbox>
+              </Show>
             </>
           )}
         </Show>
@@ -755,6 +725,7 @@ function MoveDialog(props: {
   scopes: readonly MountedScope[]
   mounted: MountedScope
   path: string
+  returnFocus: HTMLElement | undefined
   onClose: () => void
   onMoved: (to: string, root: string) => void
 }): JSX.Element {
@@ -784,6 +755,7 @@ function MoveDialog(props: {
       open={props.open}
       onClose={props.onClose}
       title="Move or rename"
+      returnFocus={props.returnFocus}
       width="w-[440px]"
       busy={action.busy() !== undefined}
       onSubmit={submit}
@@ -803,17 +775,35 @@ function MoveDialog(props: {
       }
     >
       <Show when={props.scopes.length > 1}>
-        <Field label="Scope">
-          <select class={`${FIELD_INPUT} h-[34px]`} value={root()} onChange={(event) => setRoot(event.currentTarget.value)}>
+        <ui-select
+          prop:value={root()}
+          on:valuechange={(event) => {
+            if (typeof event.detail.value === "string") setRoot(event.detail.value)
+          }}
+          class="flex flex-col gap-1.5"
+        >
+          <ui-select-label class="text-sm font-medium text-ink-2">Scope</ui-select-label>
+          <ui-select-trigger>
+            <button type="button" class={`${FIELD_INPUT} flex h-[34px] items-center gap-2 text-left`}>
+              <ui-select-value class="min-w-0 flex-1 truncate" />
+              <ChevronsUpDown size={12} stroke-width={1.5} class="shrink-0 text-icon" />
+            </button>
+          </ui-select-trigger>
+          <ui-select-content side-offset="4" class={`${POPUP} w-[var(--anchor-width)]`}>
             <For each={props.scopes}>
               {(mounted) => (
-                <option value={mounted.root}>
-                  {scopeTitle(mounted.scope)} · {mounted.root}
-                </option>
+                <ui-select-item value={mounted.root} label={`${scopeTitle(mounted.scope)} · ${mounted.root}`} class={POPUP_ITEM}>
+                  <span class="min-w-0 flex-1 truncate">
+                    {scopeTitle(mounted.scope)} · {mounted.root}
+                  </span>
+                  <ui-select-item-indicator class="text-ink-2">
+                    <Check {...SMALL} />
+                  </ui-select-item-indicator>
+                </ui-select-item>
               )}
             </For>
-          </select>
-        </Field>
+          </ui-select-content>
+        </ui-select>
       </Show>
       <Field label="Path" hint={`Inside ${target()?.root ?? props.mounted.root}. Earlier versions and the share link move with the file.`}>
         <input class={`${FIELD_INPUT} h-[34px] font-mono text-sm`} value={to()} onInput={(event) => setTo(event.currentTarget.value)} autofocus />
@@ -827,6 +817,7 @@ function DeleteDialog(props: {
   scope: DriveScope
   path: string
   shared: boolean
+  returnFocus: HTMLElement | undefined
   onClose: () => void
   onDeleted: () => void
 }): JSX.Element {
@@ -841,6 +832,7 @@ function DeleteDialog(props: {
       open={props.open}
       onClose={props.onClose}
       title={`Delete ${baseName(props.path)}?`}
+      returnFocus={props.returnFocus}
       width="w-[420px]"
       busy={action.busy() !== undefined}
       onSubmit={submit}

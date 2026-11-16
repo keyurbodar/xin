@@ -3,12 +3,12 @@ import { OpError } from "./api.ts"
 import {
   copyLink,
   createRetryIds,
-  crumbsOf,
   failureText,
   folderOf,
   isStale,
   moveTarget,
   pickScope,
+  renameProblem,
   reservedOf,
   resolveConflict,
   rowsOf,
@@ -53,12 +53,7 @@ test("a folder lists its subfolders with counts, then its own files, by name", (
   ])
 })
 
-test("crumbs and folders are relative to the scope's root", () => {
-  expect(crumbsOf("")).toEqual([])
-  expect(crumbsOf("notes/research/")).toEqual([
-    { name: "notes", path: "notes/" },
-    { name: "research", path: "notes/research/" },
-  ])
+test("folders are relative to the scope's root", () => {
   expect(folderOf("AGENTS.md")).toBe("")
   expect(folderOf("notes/research/x.txt")).toBe("notes/research/")
 })
@@ -153,4 +148,14 @@ test("a share link is copied when the clipboard takes it, and left to copy by ha
   expect(
     await copyLink("https://ingle.example/s/ab12/a.md", () => Promise.reject(new DOMException("denied", "NotAllowedError"))),
   ).toBe("manual")
+})
+
+test("a rename refuses empty names, slashes, dot names and a sibling's name in any case", () => {
+  const siblings = ["plan.md", "Notes.txt"]
+  expect(renameProblem("  ", "plan.md", siblings)).toBe("Give it a name.")
+  expect(renameProblem("a/b.md", "plan.md", siblings)).toBe("A name can't hold a slash.")
+  expect(renameProblem("..", "plan.md", siblings)).toBe(".. is reserved.")
+  expect(renameProblem("notes.TXT", "plan.md", siblings)).toBe("Notes.txt is already in this folder.")
+  expect(renameProblem("Plan.md", "plan.md", siblings)).toBeUndefined()
+  expect(renameProblem("roadmap.md", "plan.md", siblings)).toBeUndefined()
 })

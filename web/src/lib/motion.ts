@@ -38,7 +38,7 @@ export function trackMotion(): void {
     subtree: true,
     childList: true,
     attributes: true,
-    attributeFilter: ["data-state", "data-open", "data-closing", "aria-checked", "style"],
+    attributeFilter: ["data-state", "data-open", "data-closing", "data-expanded", "aria-checked", "style"],
   })
 }
 

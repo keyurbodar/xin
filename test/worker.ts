@@ -1,4 +1,10 @@
-import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai"
+import {
+  type FauxResponseStep,
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+  type Message,
+} from "@earendil-works/pi-ai"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { defineDoc, defineExtension, defineTool, type ModelRef } from "@earendil-works/pi-durable"
 import type { Provider } from "../src/module.ts"
@@ -175,6 +181,7 @@ const TEST_ROWS = [
 ]
 
 export const FAUX_MODEL = { provider: "faux", modelId: "faux-1" } as const
+export const TEXT_ONLY_MODEL = { provider: "faux-text", modelId: "text-1" } as const
 
 /** The shipped profile without the test rows, so a measurement sees the tool surface a real home offers. */
 const productFaux = fauxProvider({ provider: "faux-product", models: [{ id: "product-1" }] })
@@ -208,6 +215,7 @@ export type TestEnv = Omit<Env, "HOME"> & {
 
 /** Module state outlives an eviction, which replaces only the instance. */
 let answered = 0
+const requested: Message[][] = []
 
 export class Home extends ProductHome {
   readonly hanging = Promise.withResolvers<void>()
@@ -235,11 +243,22 @@ export class Home extends ProductHome {
     setLabel(label)
   }
 
+  /** The messages of every model request this isolate's homes have made, oldest first. */
+  modelRequests(): readonly (readonly Message[])[] {
+    return requested
+  }
+
   override providers(): readonly Provider[] {
     const faux = fauxProvider()
     faux.setResponses(Array.from({ length: 2000 }, () => this.#step()))
+    const textOnly = fauxProvider({
+      provider: TEXT_ONLY_MODEL.provider,
+      models: [{ id: TEXT_ONLY_MODEL.modelId, input: ["text"] }],
+    })
+    textOnly.setResponses(Array.from({ length: 200 }, () => this.#step()))
     return [
       faux.provider,
+      textOnly.provider,
       ...m2.providers,
       ...m3.providers,
       ...m4.providers,
@@ -297,6 +316,8 @@ export class Home extends ProductHome {
 
   #step(): FauxResponseStep {
     return (context, options) => {
+      requested.push([...context.messages])
+      if (requested.length > 50) requested.shift()
       const prompt = lastOwnerText(context.messages)
       const pings = /\bping (\d+)\b/.exec(prompt)
       if (pings !== null) {
