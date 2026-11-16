@@ -50,6 +50,17 @@ describe("fast mode", () => {
     expect(await stored()).toEqual({ model: null })
   })
 
+  it("writes no fast doc for a conversation that never turned fast on", async () => {
+    const stub = fresh()
+    expect((await call(stub, "never-model", "conv.configure", { model: OPENAI })).ok).toBe(true)
+    expect((await call(stub, "never-switch", "conv.configure", { model: FAUX_MODEL })).ok).toBe(true)
+    expect((await call(stub, "never-off", "conv.configure", { fast: false })).ok).toBe(true)
+    const stored = await runInDurableObject(stub, async (home: Home) =>
+      home.harness.snapshot(FastDoc, (await home.root()).id as ConversationId, BACKGROUND_CONTEXT),
+    )
+    expect(stored).toBeUndefined()
+  })
+
   it("clears fast when a disable moves the conversation to a model without it, so switching back keeps it off", async () => {
     const stub = fresh()
     expect((await call(stub, "move-default", "owner.defaults", { role: "chat", model: FAUX_MODEL })).ok).toBe(true)
