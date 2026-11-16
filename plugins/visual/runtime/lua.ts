@@ -10,6 +10,7 @@ import * as lua from "fengari/src/lua.js"
 import { luaopen_utf8 } from "fengari/src/lutf8lib.js"
 import { type DrawCmd, Graphics, GRAPHICS_METHODS, type Pointer } from "./draw.ts"
 import { type HandlerId, type Node, Parser } from "./node.ts"
+import { Meter, metered } from "./limits.ts"
 import { PRELUDE } from "./prelude.lua.ts"
 import { formatNumber, niceTicks, VisualError } from "./style.ts"
 import { type LuaFunction, type LuaTable, type LuaValue, type Plain, plain } from "./value.ts"
@@ -78,6 +79,7 @@ export class Visual {
   private constructor(
     L: LuaState,
     private readonly seed: number,
+    private readonly meter: Meter,
   ) {
     this.L = L
   }
@@ -85,13 +87,16 @@ export class Visual {
   static load(source: string, seed: number): Visual {
     if (new TextEncoder().encode(source).length > MAX_SCRIPT_BYTES)
       throw new VisualError(`the script is over ${MAX_SCRIPT_BYTES / 1024} KB`)
-    const L = lauxlib.luaL_newstate()
-    const visual = new Visual(L, seed)
-    visual.install()
-    const status = lauxlib.luaL_loadbuffer(L, s(source), null, s("=visual"))
-    if (status !== lua.LUA_OK) throw new VisualError(message(L))
-    visual.runSetup()
-    return visual
+    const meter = new Meter()
+    return metered(meter, () => {
+      const L = lauxlib.luaL_newstate()
+      const visual = new Visual(L, seed, meter)
+      visual.install()
+      const status = lauxlib.luaL_loadbuffer(L, s(source), null, s("=visual"))
+      if (status !== lua.LUA_OK) throw new VisualError(message(L))
+      visual.runSetup()
+      return visual
+    })
   }
 
   private install(): void {
@@ -108,6 +113,18 @@ export class Visual {
     }
     for (const name of ["dofile", "loadfile", "load", "require", "collectgarbage"]) {
       lua.lua_pushnil(L)
+      lua.lua_setglobal(L, s(name))
+    }
+    for (const name of ["pcall", "xpcall"]) {
+      lua.lua_getglobal(L, s(name))
+      const raw = lauxlib.luaL_ref(L, lua.LUA_REGISTRYINDEX)
+      lua.lua_pushjsfunction(L, (state) => {
+        lua.lua_rawgeti(state, lua.LUA_REGISTRYINDEX, raw)
+        lua.lua_insert(state, 1)
+        lua.lua_call(state, lua.lua_gettop(state) - 1, lua.LUA_MULTRET)
+        if (this.meter.failure !== undefined) return lauxlib.luaL_error(state, s(this.meter.failure))
+        return lua.lua_gettop(state)
+      })
       lua.lua_setglobal(L, s(name))
     }
     lua.lua_getglobal(L, s("string"))
@@ -181,13 +198,10 @@ export class Visual {
       L,
       (state) => {
         this.ticks += HOOK_EVERY
-        if (this.ticks > this.limit)
-          lauxlib.luaL_error(
-            state,
-            s(
-              "the script ran past its time budget (an endless loop, or too much work per render; precompute data at the top level)",
-            ),
-          )
+        if (this.ticks > this.limit && this.meter.failure === undefined)
+          this.meter.failure =
+            "the script ran past its time budget (an endless loop, or too much work per render; precompute data at the top level)"
+        if (this.meter.failure !== undefined) lauxlib.luaL_error(state, s(this.meter.failure))
       },
       lua.LUA_MASKCOUNT,
       HOOK_EVERY,
@@ -197,7 +211,7 @@ export class Visual {
   private runSetup(): void {
     const L = this.L
     this.budget(CALL_BUDGET)
-    if (lua.lua_pcall(L, 0, 1, 0) !== lua.LUA_OK) throw new VisualError(message(L))
+    this.protect(() => 0, 1)
     const type = lua.lua_type(L, -1)
     if (type === lua.LUA_TNIL) {
       lua.lua_pop(L, 1)
@@ -214,13 +228,27 @@ export class Visual {
   }
 
   private budget(instructions: number): void {
+    this.meter.reset()
+    this.ticks = 0
+    this.limit = instructions
     lua.lua_getglobal(this.L, s("math"))
     lua.lua_getfield(this.L, -1, s("randomseed"))
     lua.lua_pushinteger(this.L, this.seed)
     lua.lua_pcall(this.L, 1, 0, 0)
     lua.lua_pop(this.L, 1)
-    this.ticks = 0
-    this.limit = instructions
+  }
+
+  private protect(push: () => number, nresults: number): void {
+    const L = this.L
+    const base = lua.lua_gettop(L) - 1
+    const failure = metered(this.meter, () => {
+      const status = lua.lua_pcall(L, push(), nresults, 0)
+      const raised = status === lua.LUA_OK ? undefined : message(L)
+      return this.meter.failure ?? raised
+    })
+    if (failure === undefined) return
+    lua.lua_settop(L, base)
+    throw new VisualError(failure)
   }
 
   private release(): void {
@@ -274,8 +302,7 @@ export class Visual {
   private invoke(ref: number, push: () => number, results: number): void {
     const L = this.L
     lua.lua_rawgeti(L, lua.LUA_REGISTRYINDEX, ref)
-    const count = push()
-    if (lua.lua_pcall(L, count, results, 0) !== lua.LUA_OK) throw new VisualError(message(L))
+    this.protect(push, results)
   }
 
   /** Run the view and parse its tree. Handler ids stay valid until the next render. */
@@ -285,7 +312,7 @@ export class Visual {
     const top = lua.lua_gettop(L)
     lua.lua_rawgeti(L, lua.LUA_REGISTRYINDEX, this.viewRef)
     if (lua.lua_type(L, -1) === lua.LUA_TFUNCTION) {
-      if (lua.lua_pcall(L, 0, 1, 0) !== lua.LUA_OK) throw new VisualError(message(L))
+      this.protect(() => 0, 1)
     }
     const refs: number[] = []
     try {

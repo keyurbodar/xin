@@ -38,6 +38,8 @@ const loadFont = (): Promise<ArrayBuffer | undefined> =>
     .then((response) => (response.ok ? response.arrayBuffer() : undefined))
     .catch(() => undefined))
 
+const MAX_FRAME_HEIGHT = 10_000
+
 function srcdoc(script: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"></head><body><script>${script}</script></body></html>`
 }
@@ -62,7 +64,7 @@ function frameMessage(value: unknown): FrameMessage | undefined {
       return { kind: "ready" }
     case "size":
       return typeof record.height === "number" && Number.isFinite(record.height)
-        ? { kind: "size", height: record.height }
+        ? { kind: "size", height: Math.min(Math.max(record.height, 0), MAX_FRAME_HEIGHT) }
         : undefined
     case "state": {
       const state = record.state

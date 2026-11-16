@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest"
 import { check, children } from "./check.ts"
 import { seedFor, Visual } from "./lua.ts"
+import { guardLoops, MAX_LOOP_STEPS, shaderProgram } from "./shader-check.ts"
 import type { Node } from "./node.ts"
 
 function textOf(node: Node): string {
@@ -68,6 +69,41 @@ describe("visual runtime", () => {
   it("stops a runaway script with a budget error instead of hanging", () => {
     expect(failure("while true do end")).toContain("time budget")
     expect(failure("return function() local n = 0 while true do n = n + 1 end end")).toContain("time budget")
+  })
+
+  it("keeps the budget error raised through pcall and xpcall", () => {
+    expect(failure("while true do pcall(function() while true do end end) end")).toContain("time budget")
+    expect(failure("while true do xpcall(function() while true do end end, function() end) end")).toContain(
+      "time budget",
+    )
+    expect(
+      failure("return function() while true do pcall(pcall, function() while true do end end) end end"),
+    ).toContain("time budget")
+  })
+
+  it("bounds memory: string doubling, text churn and table fills stop with a reason", () => {
+    expect(failure(`local s = "x" while true do s = s .. s end`)).toContain("over 1 MB")
+    expect(failure(`local t = {} for i = 1, 1e7 do t[i] = i end`)).toContain("too many entries")
+    expect(failure(`local t = {} for i = 1, 1e7 do t["k" .. i] = true end`)).toContain("too many entries")
+    expect(
+      failure(`local t = {} local s = string.rep("x", 1 << 19) for i = 1, 1e4 do t[i] = s .. i end`),
+    ).toContain("table.concat")
+    expect(failure(`local s = "x" while true do pcall(function() s = s .. s end) end`)).toContain("over 1 MB")
+  })
+
+  it("starts each call with a fresh allowance", () => {
+    const visual = Visual.load(
+      `local n = 0
+      return function()
+        local t = {}
+        for i = 1, 90000 do t[i] = i end
+        n = n + 1
+        return ui.text { tostring(n) }
+      end`,
+      1,
+    )
+    expect(textOf(visual.render())).toBe("1")
+    expect(textOf(visual.render())).toBe("2")
   })
 
   it("has no I/O: the file, load and os functions are gone", () => {
@@ -139,5 +175,30 @@ describe("visual runtime", () => {
     const whole = `return function() return ui.column { ui.text "a", ui.text "b" } end`
     for (const cut of [10, 30, whole.length - 4]) expect(() => Visual.load(whole.slice(0, cut), 1)).toThrow()
     expect(textOf(Visual.load(whole, 1).render())).toBe("a|b")
+  })
+})
+
+describe("shader loop guard", () => {
+  it("adds a step to every loop condition without adding lines", () => {
+    const code = [
+      "void mainImage(out vec4 c, in vec2 p) {",
+      "  float t = 0.0;",
+      "  for (int i = 0; i < int(min(8.0, iTime)); i++) { t += 1.0; }",
+      "  for (;;) { break; }",
+      "  int n = 0;",
+      "  while (n < 100000000) { n++; }",
+      "  do { n--; } while (n > 0);",
+      "  float rainfor = transform(t);",
+      "}",
+    ].join("\n")
+    const guarded = guardLoops(code)
+    expect(guarded.split("\n")).toHaveLength(code.split("\n").length)
+    expect(guarded).toContain("for (int i = 0; ( i < int(min(8.0, iTime))) && ingle_step(); i++)")
+    expect(guarded).toContain("for (; (true) && ingle_step();)")
+    expect(guarded).toContain("while ((n < 100000000) && ingle_step())")
+    expect(guarded).toContain("while ((n > 0) && ingle_step());")
+    expect(guarded).toContain("transform(t)")
+    const { source, offset } = shaderProgram(code, [])
+    expect(source.split("\n")[offset - 1]).toContain(`ingle_steps <= ${MAX_LOOP_STEPS}`)
   })
 })

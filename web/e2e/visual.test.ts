@@ -148,6 +148,53 @@ test("a 3D scene renders with WebGL inside the frame", async () => {
   await page.close()
 }, 60_000)
 
+test("a hostile shader loop is bounded and the page keeps painting", async () => {
+  const { page, frame } = await open()
+  const shader = [
+    "void mainImage(out vec4 c, in vec2 p) {",
+    "  float t = 0.0;",
+    "  for (int i = 0; i < 100000000; i++) { t += sin(float(i) * p.x); }",
+    "  c = vec4(vec3(fract(t)), 1.0);",
+    "}",
+  ].join("\\n")
+  await page.evaluate(
+    (script) => window.visualHarness.set(script, "done"),
+    `return ui.shader { height = 200, code = "${shader}" }`,
+  )
+  await frame.locator(".v-shader canvas").waitFor({ timeout: 30_000 })
+  await page.waitForTimeout(500)
+  const painted = await page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const start = performance.now()
+        let frames = 0
+        const tick = (): void => {
+          frames += 1
+          if (performance.now() - start > 1000) resolve(frames)
+          else requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      }),
+  )
+  expect(painted).toBeGreaterThan(5)
+  expect(await frame.locator(".v-error").isHidden()).toBe(true)
+  await page.close()
+}, 60_000)
+
+test("the host caps the frame height a frame asks for", async () => {
+  const { page, frame } = await open()
+  await page.locator('[data-block="visual"] iframe').evaluate((node) => {
+    const seen: number[] = []
+    Reflect.set(window, "seenHeights", seen)
+    new MutationObserver(() => seen.push(node.getBoundingClientRect().height)).observe(node, { attributes: true })
+  })
+  await frame.evaluate(() => parent.postMessage({ kind: "size", height: 1e9 }, "*"))
+  await page.waitForTimeout(300)
+  const seen = await page.evaluate(() => Reflect.get(window, "seenHeights"))
+  expect(Math.max(...seen)).toBe(10_000)
+  await page.close()
+}, 60_000)
+
 test("full screen opens a second live frame and Esc closes it", async () => {
   const { page } = await open()
   await page.locator('[data-block="visual"]').hover()

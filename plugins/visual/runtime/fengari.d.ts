@@ -34,6 +34,7 @@ declare module "fengari/src/lua.js" {
   export function lua_pushstring(L: LuaState, value: Uint8Array): void
   export function lua_pushliteral(L: LuaState, value: string): void
   export function lua_pushvalue(L: LuaState, index: number): void
+  export function lua_insert(L: LuaState, index: number): void
   export function lua_pushjsfunction(L: LuaState, fn: (L: LuaState) => number): void
   export function lua_newtable(L: LuaState): void
   export function lua_createtable(L: LuaState, narr: number, nrec: number): void

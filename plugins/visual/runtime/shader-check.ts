@@ -46,6 +46,45 @@ export function validateShader(code: string, inputs: readonly string[]): string 
   return undefined
 }
 
+export const MAX_LOOP_STEPS = 4096
+
+function closing(code: string, open: number): number {
+  let depth = 0
+  for (let index = open; index < code.length; index += 1) {
+    if (code[index] === "(") depth += 1
+    else if (code[index] === ")") {
+      depth -= 1
+      if (depth === 0) return index
+    }
+  }
+  return -1
+}
+
+/** Bound every loop: each `for` and `while` condition also spends one step of a per-pixel allowance, so a hostile loop cannot hang the GPU. Only text is inserted, never lines, so compile errors keep their line numbers. */
+export function guardLoops(code: string): string {
+  const loop = /\b(for|while)\s*\(/g
+  let out = ""
+  let from = 0
+  for (let match = loop.exec(code); match !== null; match = loop.exec(code)) {
+    const open = match.index + match[0].length - 1
+    const close = closing(code, open)
+    if (close < 0) break
+    const inner = code.slice(open + 1, close)
+    let header: string
+    if (match[1] === "while") header = `(${inner}) && ingle_step()`
+    else {
+      const parts = inner.split(";")
+      if (parts.length !== 3) continue
+      const [init, test, step] = parts
+      header = `${init}; (${test?.trim() === "" ? "true" : test}) && ingle_step();${step}`
+    }
+    out += `${code.slice(from, open + 1)}${header})`
+    from = close + 1
+    loop.lastIndex = from
+  }
+  return out + code.slice(from)
+}
+
 export function shaderProgram(code: string, inputs: readonly string[]): { source: string; offset: number } {
   const header = [
     "#version 300 es",
@@ -68,8 +107,10 @@ export function shaderProgram(code: string, inputs: readonly string[]): { source
     "uniform int ingle_blend;",
     "out vec4 ingle_color;",
     ...inputs.slice(0, MAX_INPUTS).map((name) => `uniform float ${name};`),
+    "int ingle_steps = 0;",
+    `bool ingle_step() { ingle_steps += 1; return ingle_steps <= ${MAX_LOOP_STEPS}; }`,
   ]
-  const body = code
+  const body = guardLoops(code)
     .split("\n")
     .map((line) => (/^\s*(precision\s|#version\s)/.test(line) ? "" : line))
     .join("\n")

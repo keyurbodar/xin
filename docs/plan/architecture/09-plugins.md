@@ -387,6 +387,22 @@ export function apply(ctx: Context, config: { greeting: string }) {
 
 An extension that carries tools is named `tool-*`; the registry refuses one that is not, because a preset tells a tool row from a service row by that prefix.
 
+## Model-written code: the `visual` plugin
+
+`plugins/visual` ports zeron's `show_visual`. The model writes a Lua 5.3 script (fengari, pure JS), the DO checks it with the same runtime the browser runs, and the web app draws it in a sandboxed `srcdoc` iframe (no `allow-same-origin`, CSP with no network). It ships disabled. The script is hostile by assumption, so the runtime bounds every resource per call (setup, render, handler, draw), in both the DO check and the frame:
+
+| Resource | Bound | Where |
+| --- | --- | --- |
+| Instructions | 5M per call, 1.5M per draw, counted by a hook every 1000 | `runtime/lua.ts` |
+| Escaping the budget | the failure is sticky: the hook raises it again until the call returns, and `pcall`/`xpcall` re-raise it | `runtime/lua.ts` |
+| One allocation | 1 MB (strings and string buffers) | `runtime/limits.ts` |
+| Bytes allocated | 32 MB per call | same |
+| Table entries added | 100k per call | same |
+| Shader loops | 4096 condition checks per pixel, injected into every `for`/`while` | `runtime/shader-check.ts` |
+| Frame height | 0 to 10,000 px | `web/src/components/chat/visual-block.tsx` |
+
+fengari has no allocator hook, and test pools and bundlers do not share its module objects, so for the length of each call `runtime/limits.ts` swaps the globals fengari allocates through for counting versions: `Uint8Array` (every Lua string and buffer) and `Map` (every Lua table). They are restored when the call returns. Bounds are per call, so state that grows a little on every frame of an animation is limited only by how long the visual stays open; the frame's own page is the blast radius. No I/O library is opened, but fengari's `lualib` still bundles `liolib`, `loslib` and `loadlib`, which costs the Worker about 122 KB gzipped.
+
 ## Slices
 
 | Slice | Builds | Status |
