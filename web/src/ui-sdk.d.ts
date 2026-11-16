@@ -1,7 +1,7 @@
 import "solid-js"
 import type { TokenInsert } from "@ui-sdk/web/trigger-menu"
 
-type UiChange<T = unknown> = CustomEvent<{ readonly value: T; readonly reason: string }>
+type UiChange<T = unknown> = CustomEvent<{ readonly value: T; readonly reason: string; readonly event?: Event }>
 
 declare module "solid-js" {
   namespace JSX {
@@ -19,6 +19,7 @@ declare module "solid-js" {
       dismissattempt: CustomEvent<{ readonly reason: string }>
       action: CustomEvent<{ readonly value: string }>
       valuechange: UiChange
+      pressedchange: UiChange<boolean>
       querychange: CustomEvent<{ readonly value: string; readonly trigger: string }>
       itemselect: CustomEvent<{
         readonly value: string

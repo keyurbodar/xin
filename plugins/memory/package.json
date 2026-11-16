@@ -9,12 +9,37 @@
       "memory": {
         "module": "./index.ts",
         "title": "Memory",
-        "description": "Notes with FTS recall and the Dreamer."
+        "description": "Notes with FTS recall and the Dreamer.",
+        "permissions": [
+          "conversations",
+          "models",
+          "runtime",
+          "storage"
+        ],
+        "contributes": {
+          "ops": [
+            "memory.add",
+            "memory.dismiss",
+            "memory.edit",
+            "memory.forget",
+            "memory.list",
+            "memory.pin",
+            "memory.profile",
+            "memory.profile.write",
+            "memory.suggested"
+          ]
+        }
       },
       "tool-memory": {
         "module": "./tools.ts",
         "title": "Memory tools",
-        "description": "The model-facing memory tools. Disable to hide them; the memory service keeps running."
+        "description": "The model-facing memory tools. Disable to hide them; the memory service keeps running.",
+        "contributes": {
+          "tools": [
+            "recall",
+            "remember"
+          ]
+        }
       }
     }
   }

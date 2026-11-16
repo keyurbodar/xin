@@ -27,6 +27,8 @@ export type Op = {
    * only repeat it. The command still runs through `ops/before`.
    */
   readonly receipts?: boolean
+  /** Arg field names that carry a credential, at any depth: `ops/before` listeners see them redacted. */
+  readonly credentials?: readonly string[]
   /** The op changes no owner state, so running it never announces a home change. */
   readonly read?: true
   invoke(api: OpApi, args: unknown): Promise<Outcome>
@@ -51,6 +53,7 @@ export function defineOp<A>(definition: {
   readonly args: Schema<A>
   readonly actors: readonly Actor["kind"][]
   readonly receipts?: boolean
+  readonly credentials?: readonly string[]
   readonly read?: true
   run(api: OpApi, args: A): Promise<JsonValue>
 }): Op {
@@ -59,6 +62,7 @@ export function defineOp<A>(definition: {
     name: definition.name,
     actors: definition.actors,
     ...(definition.receipts === undefined ? {} : { receipts: definition.receipts }),
+    ...(definition.credentials === undefined ? {} : { credentials: definition.credentials }),
     ...(definition.read === undefined ? {} : { read: definition.read }),
     invoke: async (api, args) => {
       if (!validator.check(args)) {
@@ -76,6 +80,20 @@ export function defineOp<A>(definition: {
       }
     },
   }
+}
+
+const scrub = (value: unknown, fields: ReadonlySet<string>): unknown => {
+  if (Array.isArray(value)) return value.map((item) => scrub(item, fields))
+  if (typeof value !== "object" || value === null) return value
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, fields.has(key) ? "[redacted]" : scrub(item, fields)]),
+  )
+}
+
+/** The command as `ops/before` listeners see it: every credential field, however deep, replaced, so no policy row reads one. */
+export function redacted(command: Command, op: Op | undefined): Command {
+  const fields = op?.credentials
+  return fields === undefined ? command : { ...command, args: scrub(command.args, new Set(fields)) }
 }
 
 const isOutcome = (value: unknown): value is Outcome =>

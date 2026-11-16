@@ -9,7 +9,16 @@
       "compact": {
         "module": "./index.ts",
         "title": "Compaction",
-        "description": "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model."
+        "description": "Conversation compaction: the owner's manual compaction, tool-result pruning and summaries on the utility model.",
+        "permissions": [
+          "models",
+          "conversations"
+        ],
+        "contributes": {
+          "ops": [
+            "conv.compact"
+          ]
+        }
       }
     },
     "bundle": [

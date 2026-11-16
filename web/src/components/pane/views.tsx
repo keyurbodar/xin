@@ -1,5 +1,8 @@
 import { For, Show, type JSX } from "solid-js"
-import { Brain, CalendarClock, CircleDot, HardDrive, LayoutList, ListTree, Timer, Users, type LucideProps } from "lucide-solid"
+import { Dynamic } from "solid-js/web"
+import { Brain, CalendarClock, CircleDot, HardDrive, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
+import { activeConversation, host, PluginBoundary, slotItems } from "../../plugins/slots.tsx"
+import { Icon, isIconName } from "../ui/icon.tsx"
 import { MemoryTab } from "../chat/memory.tsx"
 import { AutomationsTab } from "../chat/automations.tsx"
 import { JobsView, ThreadsView } from "./bodies.tsx"
@@ -112,9 +115,28 @@ export const PANE_VIEWS: readonly PaneEntry[] = [
   { id: "threads", label: "All threads", icon: ListTree, render: (context) => <ThreadsView {...context} /> },
 ]
 
-/** The views this pane offers: a Captain's crew in its own pane, a project's files, memory and automations in theirs. */
+function pluginIcon(name: string | undefined): PaneEntry["icon"] {
+  if (name === undefined || !isIconName(name)) return Puzzle
+  return (props) => <Icon name={name} size={Number(props.size ?? 14)} {...(props.class === undefined ? {} : { class: props.class })} />
+}
+
+/** The views this pane offers: a Captain's crew in its own pane, a project's files, memory and automations in theirs, then each enabled plugin's `pane.tab`. */
 export function paneViews(context: PaneContext): readonly PaneEntry[] {
-  return PANE_VIEWS.filter((entry) => fits(entry, context))
+  return [
+    ...PANE_VIEWS.filter((entry) => fits(entry, context)),
+    ...slotItems("pane.tab")().map(
+      (item): PaneEntry => ({
+        id: `plugin:${item.key}`,
+        label: item.title,
+        icon: pluginIcon(item.icon),
+        render: () => (
+          <PluginBoundary plugin={item.plugin}>
+            <Dynamic component={item.component} host={host} conversation={activeConversation()} />
+          </PluginBoundary>
+        ),
+      }),
+    ),
+  ]
 }
 
 const issueEntries = new Map<string, PaneEntry>()

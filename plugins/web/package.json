@@ -9,7 +9,19 @@
       "tool-web": {
         "module": "./index.ts",
         "title": "Web tools",
-        "description": "Search the public web and fetch a page as readable text."
+        "description": "Search the public web and fetch a page as readable text.",
+        "permissions": [
+          "network"
+        ],
+        "contributes": {
+          "tools": [
+            "web_fetch",
+            "web_search"
+          ]
+        },
+        "requires": [
+          "jobs"
+        ]
       }
     },
     "bundle": [

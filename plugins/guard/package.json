@@ -9,7 +9,8 @@
       "guard": {
         "module": "./index.ts",
         "title": "Loop guard",
-        "description": "Reminds the model when it repeats the same tool call with identical arguments."
+        "description": "Reminds the model when it repeats the same tool call with identical arguments.",
+        "contributes": {}
       }
     },
     "bundle": [

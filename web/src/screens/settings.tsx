@@ -1,4 +1,6 @@
-import { For, Match, Switch, type JSX } from "solid-js"
+import { For, Match, Show, Switch, type JSX } from "solid-js"
+import { host, slotItems } from "../plugins/slots.tsx"
+import { PluginPage } from "./plugin-page.tsx"
 import { navigate, route } from "../lib/router.ts"
 import { Glyph, type GlyphName } from "../components/extensions/glyph.tsx"
 import { General } from "../components/settings/general.tsx"
@@ -38,6 +40,11 @@ function entryOf(part: string | undefined): Entry {
 
 export function SettingsScreen(): JSX.Element {
   const current = (): Entry => entryOf(route().parts[1])
+  const pages = slotItems("settings.page")
+  const page = () =>
+    route().parts[1] === "plugin"
+      ? pages().find((item) => item.key === `${route().parts[2]}:${route().parts[3]}`)
+      : undefined
 
   return (
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
@@ -49,12 +56,12 @@ export function SettingsScreen(): JSX.Element {
           {(entry) => (
             <button
               type="button"
-              aria-current={current().id === entry.id ? "page" : undefined}
+              aria-current={page() === undefined && current().id === entry.id ? "page" : undefined}
               onClick={() => navigate(`/settings/${entry.id}`)}
               class="im-press flex h-7 shrink-0 items-center gap-2.5 rounded-md px-2 text-base whitespace-nowrap"
               classList={{
-                "bg-card text-ink shadow-ring": current().id === entry.id,
-                "im-hover text-ink-2": current().id !== entry.id,
+                "bg-card text-ink shadow-ring": page() === undefined && current().id === entry.id,
+                "im-hover text-ink-2": page() !== undefined || current().id !== entry.id,
               }}
             >
               <Glyph name={entry.icon} size={16} class={current().id === entry.id ? "text-ink" : "text-ink-3"} />
@@ -62,37 +69,63 @@ export function SettingsScreen(): JSX.Element {
             </button>
           )}
         </For>
+        <Show when={pages().length > 0}>
+          <span class="label hidden px-2.5 pb-1 pt-3 sm:inline">From plugins</span>
+          <For each={pages()}>
+            {(item) => (
+              <button
+                type="button"
+                onClick={() => navigate(`/settings/plugin/${item.plugin}/${item.id}`)}
+                class="im-press flex h-7 shrink-0 items-center gap-2.5 rounded-md px-2 text-base whitespace-nowrap"
+                classList={{ "bg-card text-ink shadow-ring": page() === item, "im-hover text-ink-2": page() !== item }}
+              >
+                {item.title}
+              </button>
+            )}
+          </For>
+        </Show>
       </nav>
 
       <section class="min-h-0 min-w-0 flex-1 overflow-y-auto">
         <div class="mx-auto w-full max-w-[800px] px-7 pb-16 pt-8">
-          <h1 class="text-xl font-semibold tracking-[-0.015em] text-ink">{current().label}</h1>
-          <p class="mt-1 text-sm text-ink-3">{current().about}</p>
-          <div class="mt-7">
-            <Switch fallback={<General />}>
-              <Match when={current().id === "models"}>
-                <Models />
-              </Match>
-              <Match when={current().id === "usage"}>
-                <Usage />
-              </Match>
-              <Match when={current().id === "notifications"}>
-                <Notifications />
-              </Match>
-              <Match when={current().id === "plugins"}>
-                <Plugins />
-              </Match>
-              <Match when={current().id === "members"}>
-                <Members />
-              </Match>
-              <Match when={current().id === "profile"}>
-                <Profile />
-              </Match>
-              <Match when={current().id === "system"}>
-                <System />
-              </Match>
-            </Switch>
-          </div>
+          <Show
+            when={page()}
+            fallback={
+              <>
+                <h1 class="text-xl font-semibold tracking-[-0.015em] text-ink">{current().label}</h1>
+                <p class="mt-1 text-sm text-ink-3">{current().about}</p>
+                <div class="mt-7">
+                  <Switch fallback={<General />}>
+                    <Match when={current().id === "models"}>
+                      <Models />
+                    </Match>
+                    <Match when={current().id === "usage"}>
+                      <Usage />
+                    </Match>
+                    <Match when={current().id === "notifications"}>
+                      <Notifications />
+                    </Match>
+                    <Match when={current().id === "plugins"}>
+                      <Plugins />
+                    </Match>
+                    <Match when={current().id === "members"}>
+                      <Members />
+                    </Match>
+                    <Match when={current().id === "profile"}>
+                      <Profile />
+                    </Match>
+                    <Match when={current().id === "system"}>
+                      <System />
+                    </Match>
+                  </Switch>
+                </div>
+              </>
+            }
+          >
+            {(found) => (
+              <PluginPage plugin={found().plugin} title={found().title} component={found().component} host={host} />
+            )}
+          </Show>
         </div>
       </section>
     </div>

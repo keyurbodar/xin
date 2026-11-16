@@ -9,7 +9,19 @@
       "tool-git": {
         "module": "./index.ts",
         "title": "Git tools",
-        "description": "Read-only log, diff, show and blame for the project's GitHub repository."
+        "description": "Read-only log, diff, show and blame for the project's GitHub repository.",
+        "permissions": [
+          "network",
+          "secrets"
+        ],
+        "contributes": {
+          "tools": [
+            "git_blame",
+            "git_diff",
+            "git_log",
+            "git_show"
+          ]
+        }
       }
     },
     "bundle": [

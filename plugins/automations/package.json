@@ -9,12 +9,41 @@
       "automations": {
         "module": "./index.ts",
         "title": "Automations",
-        "description": "Stored prompts that start an agent run when a cron schedule, a one-time trigger or a webhook fires, with webhook coalescing and run history."
+        "description": "Stored prompts that start an agent run when a cron schedule, a one-time trigger or a webhook fires, with webhook coalescing and run history.",
+        "permissions": [
+          "conversations",
+          "files",
+          "models",
+          "owner",
+          "routes",
+          "storage"
+        ],
+        "contributes": {
+          "ops": [
+            "automation.create",
+            "automation.delete",
+            "automation.get",
+            "automation.list",
+            "automation.runs",
+            "automation.trigger",
+            "automation.update"
+          ]
+        },
+        "requires": [
+          "push"
+        ]
       },
       "tool-automations": {
         "module": "./tools.ts",
         "title": "Automations tools",
-        "description": "The model-facing create, list, update and trigger tools for automations. Disable to hide them; automations keep running."
+        "description": "The model-facing create, list, update and trigger tools for automations. Disable to hide them; automations keep running.",
+        "contributes": {
+          "tools": [
+            "automation_list",
+            "automation_save",
+            "automation_trigger"
+          ]
+        }
       }
     }
   }

@@ -9,12 +9,27 @@
       "questions": {
         "module": "./index.ts",
         "title": "Questions",
-        "description": "ask_user and pending requests."
+        "description": "ask_user and pending requests.",
+        "permissions": [
+          "conversations"
+        ],
+        "contributes": {
+          "ops": [
+            "request.list",
+            "request.respond"
+          ]
+        }
       },
       "tool-questions": {
         "module": "./tools.ts",
         "title": "Questions tools",
-        "description": "The model-facing questions tools. Disable to hide them; the questions service keeps running."
+        "description": "The model-facing questions tools. Disable to hide them; the questions service keeps running.",
+        "contributes": {
+          "tools": [
+            "ask_user",
+            "pending_request"
+          ]
+        }
       }
     }
   }

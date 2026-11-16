@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis"
 import type { Extension } from "@earendil-works/pi-durable"
 import type { CatalogEntry } from "../src/kernel/loader.ts"
-import { DEFAULT_MANIFEST, type Manifest } from "../src/kernel/manifest.ts"
+import { DEFAULT_MANIFEST, type Manifest, permissionsFor } from "../src/kernel/manifest.ts"
 import type { Op } from "../src/ops.ts"
 
 export type Parts = { readonly extensions?: readonly Extension[]; readonly ops?: readonly Op[] }
@@ -23,7 +23,7 @@ export function testPlugin(
     },
     title: name,
     description: `test plugin ${name}`,
-    manifest: { ...DEFAULT_MANIFEST, ...manifest },
+    manifest: { ...DEFAULT_MANIFEST, permissions: permissionsFor(inject), ...manifest },
     source: "test",
   }
 }

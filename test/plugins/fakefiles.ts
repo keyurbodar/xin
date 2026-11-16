@@ -336,6 +336,11 @@ function createFiles(store: MemoryStore): FilesService {
       const file = store.files.get(normalize(path))
       return file === undefined ? undefined : file.bytes.slice()
     },
+    readBlob: async (sha256) => {
+      for (const [path, file] of store.files)
+        if ((await entryOf(path, file)).sha256 === sha256) return file.bytes.slice()
+      return undefined
+    },
     stat: async (path) => {
       const key = normalize(path)
       const file = store.files.get(key)
@@ -352,14 +357,20 @@ function createFiles(store: MemoryStore): FilesService {
     move: async () => false,
     watch: () => () => {},
     grant: () => () => {},
+    textOf: async () => null,
+    share: async () => undefined,
+    reshare: async () => false,
+    unshare: async () => false,
   }
 }
 
 const fakeFiles = {
   name: "fake-files",
+  inject: ["pi"],
   apply(ctx: Context): void {
-    const store = new MemoryStore()
-    ctx.provide("files", createFiles(store))
+    const files = createFiles(new MemoryStore())
+    ctx.provide("files", files)
+    ctx.pi.env((target) => files.env(target))
   },
 }
 

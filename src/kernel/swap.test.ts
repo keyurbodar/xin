@@ -66,7 +66,7 @@ describe("files seam", () => {
     expect(results.some((text) => text.includes(`Successfully wrote to ${PATH}`))).toBe(true)
     expect(results.some((text) => text.includes(CONTENT))).toBe(true)
 
-    expect(await runInDurableObject(stub, (home: Home) => home.loader.ctx.files.read(PATH))).toBe(CONTENT)
+    expect(await runInDurableObject(stub, (home: Home) => home.services.files.read(PATH))).toBe(CONTENT)
     const indexed = await runInDurableObject(stub, (home: Home) =>
       home.db.get("SELECT 1 AS n FROM files WHERE path = ?", PATH),
     )
@@ -77,7 +77,7 @@ describe("files seam", () => {
     const enabled = await cmd(stub, "on", "plugin.enable", { id: "files", enabled: true })
     expect(enabled.result).toMatchObject({ application: "applied", row: { state: { kind: "active" } } })
     expect(await rowState(stub, "tool-files")).toEqual({ kind: "active" })
-    expect(await runInDurableObject(stub, (home: Home) => home.loader.ctx.files.read(PATH))).toBeUndefined()
+    expect(await runInDurableObject(stub, (home: Home) => home.services.files.read(PATH))).toBeUndefined()
     expect(await r2Texts()).not.toContain(CONTENT)
   })
 })

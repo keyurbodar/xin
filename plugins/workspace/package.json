@@ -9,7 +9,30 @@
       "workspace": {
         "module": "./index.ts",
         "title": "Workspace",
-        "description": "Projects and thread documents."
+        "description": "Projects and thread documents.",
+        "permissions": [
+          "conversations",
+          "models",
+          "runtime"
+        ],
+        "contributes": {
+          "ops": [
+            "owner.read",
+            "owner.set",
+            "project.archive",
+            "project.create",
+            "project.update",
+            "puck.archive",
+            "puck.create",
+            "puck.list",
+            "puck.rename",
+            "space.archive",
+            "space.create",
+            "space.update",
+            "thread.rename",
+            "workspace.read"
+          ]
+        }
       }
     }
   }

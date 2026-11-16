@@ -13,30 +13,8 @@
   color: var(--color-on-inverse);
 }
 
-.composer-chip[data-closing] {
-  opacity: 0;
-  transform: scale(var(--arrive-from));
-  transition-duration: var(--dur-dialog-exit);
-  transition-timing-function: var(--ease-out);
-  pointer-events: none;
-}
-
-.composer-bar {
-  transition: transform var(--dur-base) var(--ease-enter);
-  transform-origin: left;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .composer-press:active:not(:disabled) {
     transform: none;
   }
-  .composer-chip[data-closing] {
-    transform: none;
-    transition-duration: var(--dur-reduce);
-  }
-}
-
-:root[data-motion="reduce"] .composer-chip[data-closing] {
-  transform: none;
-  transition-duration: var(--dur-reduce);
 }

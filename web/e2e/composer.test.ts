@@ -107,7 +107,7 @@ test("pasted text that looks like references stays plain text", async () => {
 })
 
 test("a + menu kind with nothing to offer is hidden", async () => {
-  const page = await harness.open("composer", "?empty=prompt.list")
+  const page = await harness.open("composer", { search: "?empty=prompt.list" })
   await page.getByRole("button", { name: "Add" }).click()
   await settled(page)
   const kinds = (await page.getByRole("menuitem").allTextContents()).map((text) => text.trim())

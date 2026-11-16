@@ -2,6 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, onMount, type JSX } 
 import {
   delegatedThreads,
   liveOf,
+  toolResultsOf,
   type AnsweredView,
   type Attachment,
   type EntryView,
@@ -15,6 +16,7 @@ import { Markdown } from "./markdown.tsx"
 import { AnsweredQuestionCard } from "./cards.tsx"
 import { EntryList, OwnerBubble, itemsOf, type EntryItem, type ItemContext } from "./entries.tsx"
 import { ProjectGlyph } from "./project-glyph.tsx"
+import { bindConversation } from "../../plugins/slots.tsx"
 
 export type PendingMessage = {
   readonly key: string
@@ -68,12 +70,16 @@ export function Transcript(props: {
   let pinned = true
   const [loadingOlder, setLoadingOlder] = createSignal(false)
 
-  const items = (): readonly EntryItem[] => itemsOf([...props.older, ...props.snapshot.entries])
-  const links = createMemo(() => delegatedThreads([...props.older, ...props.snapshot.entries]))
+  const entries = createMemo(() => [...props.older, ...props.snapshot.entries])
+  const items = (): readonly EntryItem[] => itemsOf(entries())
+  const links = createMemo(() => delegatedThreads(entries()))
+  const results = createMemo(() => toolResultsOf(entries()))
+  bindConversation(() => (props.snapshot.id === undefined ? undefined : { id: props.snapshot.id, entries: entries() }))
   const context = createMemo<ItemContext>(() => ({
     project: props.project,
     threads: threadsOf(props.project),
     links: links(),
+    results: results(),
     requests: props.requests,
     density: "chat",
     onOpenThread: props.onOpenThread,
@@ -177,7 +183,7 @@ export function Transcript(props: {
               >
                 <div class="flex min-w-0 flex-1 items-start gap-1">
                   <div class="min-w-0 flex-1">
-                    <Markdown text={live().partial} />
+                    <Markdown streaming text={live().partial} />
                   </div>
                   <span class="im-caret mt-1.5 shrink-0" />
                 </div>

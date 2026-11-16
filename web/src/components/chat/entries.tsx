@@ -10,7 +10,9 @@ import {
   type FailureData,
   type RequestRow,
   type ToolCallView,
+  type ToolResultView,
 } from "../../state/conversation.ts"
+import { ToolRenderer } from "../../plugins/slots.tsx"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
 import { FileChip } from "../ui/file-chip.tsx"
 import { Markdown } from "./markdown.tsx"
@@ -25,7 +27,7 @@ import {
 } from "./cards.tsx"
 import { ProjectGlyph } from "./project-glyph.tsx"
 
-export type EntryItem =
+type EntryItemBody =
   | { readonly kind: "owner"; readonly text: string; readonly attachments: readonly Attachment[] }
   | { readonly kind: "assistant"; readonly text: string; readonly calls: readonly ToolCallView[] }
   | { readonly kind: "report"; readonly row: BatchRow }
@@ -33,6 +35,9 @@ export type EntryItem =
   | { readonly kind: "job"; readonly row: BatchRow }
   | { readonly kind: "failure"; readonly entryId: number; readonly failure: FailureData }
   | { readonly kind: "notice"; readonly text: string }
+  | { readonly kind: "tool"; readonly call: ToolCallView }
+
+export type EntryItem = EntryItemBody & { readonly entryId: number }
 
 /** One entry becomes one stable group of items, cached by the entry view `For` keys on. */
 const ITEM_CACHE = new WeakMap<EntryView, readonly EntryItem[]>()
@@ -40,7 +45,7 @@ const ITEM_CACHE = new WeakMap<EntryView, readonly EntryItem[]>()
 function entryItems(entry: EntryView): readonly EntryItem[] {
   const cached = ITEM_CACHE.get(entry)
   if (cached !== undefined) return cached
-  const items: EntryItem[] = []
+  const items: EntryItemBody[] = []
   if (entry.kind === "xin.batch") {
     for (const row of entryBatchRows(entry)) {
       switch (row.kind) {
@@ -71,13 +76,16 @@ function entryItems(entry: EntryView): readonly EntryItem[] {
     if (text !== "") items.push({ kind: "owner", text, attachments: [] })
   } else if (entry.kind === "pi.assistant") {
     const text = entryText(entry)
-    const calls = entryToolCalls(entry).filter((call) => call.name === "delegate_task")
-    if (text !== "" || calls.length > 0) items.push({ kind: "assistant", text, calls })
+    const calls = entryToolCalls(entry)
+    const delegated = calls.filter((call) => call.name === "delegate_task")
+    if (text !== "" || delegated.length > 0) items.push({ kind: "assistant", text, calls: delegated })
+    for (const call of calls) if (call.name !== "delegate_task") items.push({ kind: "tool", call })
   } else if (entry.kind === "pi.reset") {
     items.push({ kind: "notice", text: "Context reset" })
   }
-  ITEM_CACHE.set(entry, items)
-  return items
+  const stamped = items.map((item) => ({ ...item, entryId: entry.id }))
+  ITEM_CACHE.set(entry, stamped)
+  return stamped
 }
 
 export function itemsOf(entries: readonly EntryView[]): readonly EntryItem[] {
@@ -88,6 +96,7 @@ export type ItemContext = {
   readonly project: ProjectSummary | undefined
   readonly threads: readonly ThreadSummary[]
   readonly links: ReadonlyMap<string, number>
+  readonly results?: ReadonlyMap<string, ToolResultView>
   readonly requests: readonly RequestRow[]
   readonly density: "chat" | "panel"
   readonly onOpenThread: (id: number) => void
@@ -225,6 +234,22 @@ function EntryItemView(props: { item: EntryItem; context: ItemContext }): JSX.El
       return <FailureCard failure={item.failure} onRetry={() => props.context.onRetry(item.entryId)} />
     case "notice":
       return <SystemNotice text={item.text} />
+    case "tool": {
+      const result = (): ToolResultView | undefined =>
+        item.call.id === undefined ? undefined : props.context.results?.get(item.call.id)
+      return (
+        <ToolRenderer
+          class="pl-9"
+          call={{
+            name: item.call.name,
+            args: item.call.arguments,
+            output: result()?.output,
+            details: result()?.details,
+            status: result() === undefined ? "running" : result()?.isError === true ? "error" : "done",
+          }}
+        />
+      )
+    }
     default: {
       const _exhaustive: never = item
       return _exhaustive
@@ -234,6 +259,12 @@ function EntryItemView(props: { item: EntryItem; context: ItemContext }): JSX.El
 
 export function EntryList(props: { items: readonly EntryItem[]; context: ItemContext }): JSX.Element {
   return (
-    <For each={props.items}>{(item) => <EntryItemView item={item} context={props.context} />}</For>
+    <For each={props.items}>
+      {(item) => (
+        <div data-entry={item.entryId} class="contents">
+          <EntryItemView item={item} context={props.context} />
+        </div>
+      )}
+    </For>
   )
 }

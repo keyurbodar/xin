@@ -1,0 +1,29 @@
+{
+  "name": "ingle-plugin-outline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A right-pane tab that lists a conversation's messages and tool calls as a jump list.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "outline": {
+        "module": "./index.ts",
+        "client": "./client.tsx",
+        "title": "Outline",
+        "description": "A right-pane tab that lists a conversation's messages and tool calls as a jump list.",
+        "api": 1,
+        "contributes": {},
+        "slots": [
+          "pane.tab",
+          "message.renderer"
+        ]
+      }
+    },
+    "bundle": [
+      {
+        "id": "outline",
+        "plugin": "outline"
+      }
+    ]
+  }
+}

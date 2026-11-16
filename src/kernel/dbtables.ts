@@ -10,6 +10,7 @@ const TABLE_OWNERS: Readonly<Record<string, string>> = {
   usage_month: "models",
   files: "files",
   file_revisions: "files",
+  file_shares: "files",
   drive_shares: "drive",
   notes: "memory",
   notes_fts: "memory",

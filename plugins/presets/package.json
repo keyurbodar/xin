@@ -9,12 +9,27 @@
       "presets": {
         "module": "./index.ts",
         "title": "Presets",
-        "description": "Named agent presets that choose a conversation's plugins."
+        "description": "Named agent presets that choose a conversation's plugins.",
+        "permissions": [
+          "conversations",
+          "plugins",
+          "storage"
+        ],
+        "contributes": {
+          "ops": [
+            "preset.list",
+            "preset.select",
+            "prompt.delete",
+            "prompt.list",
+            "prompt.put"
+          ]
+        }
       },
       "preset": {
         "module": "./preset.ts",
         "title": "Preset",
-        "description": "One agent preset carried by a row, for bundles."
+        "description": "One agent preset carried by a row, for bundles.",
+        "contributes": {}
       }
     },
     "bundle": [
