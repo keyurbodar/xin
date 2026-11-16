@@ -11,6 +11,7 @@ import { needsOnboarding } from "./lib/onboarding.ts"
 import { WelcomeScreen } from "./screens/welcome.tsx"
 import { BootFailedScreen } from "./screens/boot-failed.tsx"
 import { cutOff, OfflineScreen } from "./screens/offline.tsx"
+import { pullRemote } from "./appearance/store.ts"
 
 type Gate =
   | { readonly kind: "checking" }
@@ -36,6 +37,7 @@ export function App(): JSX.Element {
       return
     }
     entered = true
+    void pullRemote()
     const streams = connect()
     subscribeHome(streams)
     subscribeCaptains(streams)
