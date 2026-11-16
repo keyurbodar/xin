@@ -263,6 +263,8 @@
   transition-duration: var(--dur-grow);
   transition-delay: 60ms;
 }
+.im-grow[data-starting-style] { grid-template-rows: 0fr; }
+.im-grow[data-starting-style] > * > * { opacity: 0; transform: translateY(calc(var(--nudge) * -1)); }
 .im-chevron { transition: transform var(--dur-grow) var(--ease-out); }
 [data-open] > .im-chevron,
 .im-chevron[data-open] { transform: rotate(90deg); }
