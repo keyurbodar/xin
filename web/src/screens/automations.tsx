@@ -146,13 +146,14 @@ function Row(props: {
         <div class="min-w-0 truncate text-mini text-ink-3">
           {TARGET_WORD[props.automation.target]}
           <Show when={project()}>{(name) => <> · {name()}</>}</Show>
-          <span class="md:hidden">
+          <span data-fold="triggers" class="lg:hidden">
             {" "}
-            · {describeTriggers(props.automation)} · {nextLabel(view())}
+            · {describeTriggers(props.automation)}
           </span>
+          <span class="md:hidden"> · {nextLabel(view())}</span>
         </div>
       </div>
-      <span class="hidden w-[220px] shrink-0 truncate text-small text-ink-2 lg:block" title={describeTriggers(props.automation)}>
+      <span data-column="triggers" class="hidden w-[220px] shrink-0 truncate text-small text-ink-2 lg:block" title={describeTriggers(props.automation)}>
         {describeTriggers(props.automation)}
       </span>
       <span

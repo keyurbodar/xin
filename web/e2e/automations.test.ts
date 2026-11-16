@@ -212,3 +212,39 @@ for (const [label, reduce] of [
     await page.close()
   })
 }
+
+for (const width of [800, 1000, 1280]) {
+  test(`at ${width}px a row shows its triggers exactly once`, async () => {
+    const page = await harness.open("automations", { width })
+    await page.getByRole("button", { name: "Weekly pipeline review", exact: true }).waitFor()
+    const shown = await page
+      .locator("[data-automation=a1]")
+      .locator("[data-fold=triggers], [data-column=triggers]")
+      .evaluateAll((parts) => parts.filter((part) => part.getBoundingClientRect().width > 0).length)
+    expect(shown).toBe(1)
+    await page.close()
+  })
+}
+
+test("Pause from the keyboard menu leaves focus on the row's menu trigger", async () => {
+  const page = await list()
+  await page.getByRole("button", { name: "Weekly pipeline review actions" }).focus()
+  await page.keyboard.press("Enter")
+  await page.getByRole("menuitem", { name: "Pause" }).waitFor()
+  for (let step = 0; step < 3; step++) await page.keyboard.press("ArrowDown")
+  expect(await focusedLabel(page)).toBe("Pause")
+  await page.keyboard.press("Enter")
+  await settled(page)
+  expect(await calls(page)).toContain('automation.update:{"id":"a1","enabled":false}')
+  expect(await focusedLabel(page)).toBe("Weekly pipeline review actions")
+  await page.close()
+})
+
+test("the switch keeps focus through its save", async () => {
+  const page = await list()
+  await page.getByRole("switch", { name: "Pause Weekly pipeline review" }).focus()
+  await page.keyboard.press("Space")
+  await settled(page)
+  expect(await focusedLabel(page)).toBe("Resume Weekly pipeline review")
+  await page.close()
+})

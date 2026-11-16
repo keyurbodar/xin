@@ -23,7 +23,10 @@ export async function startHarness(): Promise<Harness> {
   await server.listen()
   const address = server.httpServer?.address()
   if (address === null || address === undefined || typeof address === "string") throw new Error("vite did not bind a port")
-  const browser: Browser = await chromium.launch()
+  const browser: Browser = await chromium.launch().catch(async (problem: unknown) => {
+    await server.close()
+    throw problem
+  })
   return {
     open: async (fixture, options = {}) => {
       const width = options.width ?? 1280
