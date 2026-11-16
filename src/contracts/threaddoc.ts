@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { defineDoc, type ConversationId, type DocumentReader } from "@earendil-works/pi-durable"
-import { bool, compile, int, num, obj, oneOf, opt, str, type Static } from "@earendil-works/pi-schema"
+import { arr, bool, compile, int, num, obj, oneOf, opt, str, type Static } from "@earendil-works/pi-schema"
 import type { ProjectId, ThreadId } from "../ids.ts"
 import { WorkspaceDoc, type ProjectState, type SpaceState, type WorkspaceState } from "./workspace.ts"
 
@@ -31,6 +31,8 @@ const ThreadSchema = obj({
   deadlineAt: opt(num()),
   result: opt(str()),
   clientRequestId: opt(str()),
+  /** Reports from its own threads that arrived while it was working or waiting; its next run starts with them. */
+  inbox: opt(arr(obj({ key: str(), text: str() }))),
 })
 
 export type ThreadDocState = Static<typeof ThreadSchema>
@@ -163,6 +165,19 @@ export type SpaceScope = {
 export type ThreadScope = SpaceScope & { readonly doc: ThreadDocState }
 
 export type ProjectScope = { readonly projectId: string; readonly project: ProjectState }
+
+/**
+ * The conversation that owns a thread's Anchor, Reporter and watchdog: its parent, or for a thread another thread
+ * started, its space's coordinator, so stopping or failing the parent thread aborts none of its children's bookkeeping.
+ */
+export function ownerOf(
+  workspace: Pick<WorkspaceState, "spaces">,
+  thread: { readonly depth?: number; readonly spaceId?: string },
+  parentId: ConversationId,
+): ConversationId {
+  const coordinator = thread.spaceId === undefined ? undefined : workspace.spaces[thread.spaceId]?.coordinatorId
+  return (thread.depth ?? 1) > 1 && coordinator !== undefined ? (coordinator as ConversationId) : parentId
+}
 
 export function defaultSpaceOf(workspace: WorkspaceState, projectId: string): string | undefined {
   for (const [spaceId, space] of Object.entries(workspace.spaces)) {

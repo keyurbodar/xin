@@ -30,6 +30,9 @@ export type ThreadSummary = {
   readonly id: number
   readonly title: string
   readonly status: ThreadStatus
+  /** Present above 1, with the thread that started it in `parentId`. */
+  readonly depth?: number
+  readonly parentId?: number
   readonly statusLine?: string
   readonly result?: string
   /** `provider/modelId`, with ` · <thinking>` when the model reasons. */

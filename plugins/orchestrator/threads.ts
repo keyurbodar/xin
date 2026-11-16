@@ -37,6 +37,7 @@ import { type Actor, defineOp, type Op, OpRejected } from "../../src/ops.ts"
 import {
   ThreadDoc,
   defaultSpaceOf,
+  ownerOf,
   RoleSchema,
   threadState,
   transition,
@@ -158,7 +159,9 @@ const Anchor: AnchorTask = defineTask<null, { readonly phase: "done" }, null>({
     runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), taskContext),
 })
 
-function reporterTask(deps: ThreadDeps, send: SendFn): ReporterTask {
+const TERMINAL = { status: "terminal", outcome: { status: "completed", result: null } } as const
+
+function reporterTask(deps: ThreadDeps, report: ReportFn): ReporterTask {
   return defineTask<ReporterInput, ReporterCheckpoint, null>({
     name: REPORTER_KIND,
     version: 1,
@@ -166,9 +169,24 @@ function reporterTask(deps: ThreadDeps, send: SendFn): ReporterTask {
     phases: {
       deliver: async (task, runtime, taskContext) => {
         const settled = await settle(deps, task.input, runtime, taskContext)
+        const threadId = task.input.threadId as ConversationId
+        const current = await runtime.snapshot(ThreadDoc, threadId, taskContext)
+        const parentId = (current?.parentId ?? task.input.parentId) as ConversationId
+        const nested = (await runtime.snapshot(ThreadDoc, parentId, taskContext)) !== undefined
         await runtime.commit(async (tx) => {
-          const thread = await tx.doc(ThreadDoc, task.input.threadId as ConversationId)
+          const thread = await tx.doc(ThreadDoc, threadId)
           if (thread.status !== "working") {
+            // A parent thread hears of a watchdog failure here; the watchdog itself only reaches coordinators.
+            if (
+              nested &&
+              thread.status === "failed" &&
+              (thread.run ?? 1) === task.input.run &&
+              thread.result !== undefined
+            )
+              return {
+                status: "running",
+                checkpoint: { phase: "report", status: "failed", text: thread.result },
+              } as const
             return { status: "running", checkpoint: { phase: "skip" } } as const
           }
           const next = transition(thread.status, eventOf(settled.status))
@@ -178,13 +196,17 @@ function reporterTask(deps: ThreadDeps, send: SendFn): ReporterTask {
           }
           thread.result = settled.text
           thread.beatAt = runtime.now()
+          if (settled.status === "cancelled") delete thread.inbox
+          // Reports that arrived during this run start the next one, whose answer is the one reported upward.
+          else if (
+            (thread.inbox?.length ?? 0) > 0 &&
+            (await reopen(deps, tx, threadId, thread, [], `reopen:${threadId}:${(thread.run ?? 1) + 1}`, report)) !==
+              undefined
+          )
+            return TERMINAL
           return {
             status: "running",
-            checkpoint: {
-              phase: "report",
-              status: settled.status,
-              text: settled.text,
-            },
+            checkpoint: { phase: "report", status: settled.status, text: settled.text },
           } as const
         }, taskContext)
       },
@@ -192,35 +214,7 @@ function reporterTask(deps: ThreadDeps, send: SendFn): ReporterTask {
         const checkpoint = task.state.checkpoint
         // A thread that joined or left a crew mid-run reports to the coordinator it has now.
         const current = await runtime.snapshot(ThreadDoc, task.input.threadId as ConversationId, taskContext)
-        const parentId = current?.parentId ?? task.input.parentId
-        const admission = await deps.admitConversation(parentId as ConversationId)
-        if (admission.kind === "capped")
-          console.warn(`threads: report of ${task.input.threadId} not delivered: ${capReason(admission)}`)
-        // A parent thread that already settled is reopened, so its next answer reports upward; a stopped one is not.
-        const parent = await runtime.snapshot(ThreadDoc, parentId as ConversationId, taskContext)
-        const live = parent === undefined || parent.status === "working" || parent.status === "waiting"
-        if (admission.kind === "ok" && (parent?.status === "completed" || parent?.status === "failed")) {
-          const title = task.input.title.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
-          await send(deps.harness, {
-            threadId: parentId,
-            text: `<thread id="${task.input.threadId}" title="${title}" status="${checkpoint.status}">${checkpoint.text}</thread>`,
-            mode: "queue",
-            sendKey: `report:${task.input.threadId}:${task.input.run}`,
-          })
-        }
-        const accepted =
-          admission.kind === "ok" &&
-          live &&
-          (await deps.intake.enqueue({
-            target: parentId as ConversationId,
-            commandId: `report:${task.input.threadId}:${task.input.run}`,
-            kind: "report",
-            threadId: String(task.input.threadId),
-            title: task.input.title,
-            status: checkpoint.status,
-            text: checkpoint.text,
-          }))
-        if (accepted) await deps.arm()
+        const parentId = (current?.parentId ?? task.input.parentId) as ConversationId
         const projectId = await projectIdOf(runtime, task.input.threadId, taskContext)
         if (projectId !== undefined)
           deps.settled({
@@ -231,17 +225,94 @@ function reporterTask(deps: ThreadDeps, send: SendFn): ReporterTask {
             status: checkpoint.status,
             result: checkpoint.text,
           })
-        await runtime.commit(
-          () => ({ status: "terminal", outcome: { status: "completed", result: null } }),
-          taskContext,
-        )
+        const admission = await deps.admitConversation(parentId)
+        if (admission.kind === "capped")
+          console.warn(`threads: report of ${task.input.threadId} not delivered: ${capReason(admission)}`)
+        const key = `report:${task.input.threadId}:${task.input.run}`
+        if ((await runtime.snapshot(ThreadDoc, parentId, taskContext)) !== undefined) {
+          const title = task.input.title.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
+          const text = `<thread id="${task.input.threadId}" title="${title}" status="${checkpoint.status}">${checkpoint.text}</thread>`
+          await runtime.commit(async (tx) => {
+            if (admission.kind === "ok") await deliverToThread(deps, tx, parentId, { key, text }, report)
+            return TERMINAL
+          }, taskContext)
+          return
+        }
+        const accepted =
+          admission.kind === "ok" &&
+          (await deps.intake.enqueue({
+            target: parentId,
+            commandId: key,
+            kind: "report",
+            threadId: String(task.input.threadId),
+            title: task.input.title,
+            status: checkpoint.status,
+            text: checkpoint.text,
+          }))
+        if (accepted) await deps.arm()
+        await runtime.commit(() => TERMINAL, taskContext)
       },
-      skip: (_task, runtime, taskContext) =>
-        runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), taskContext),
+      skip: (_task, runtime, taskContext) => runtime.commit(() => TERMINAL, taskContext),
     },
     abort: (_task, runtime, taskContext) =>
       runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), taskContext),
   })
+}
+
+type Post = { readonly key: string; readonly text: string }
+
+/**
+ * Hands a report to a parent thread inside the caller's commit, so a replay finds it done: a working or waiting parent
+ * queues it for its next run, a finished one starts that run now, and a cancelled one drops it.
+ */
+async function deliverToThread(
+  deps: ThreadDeps,
+  tx: Tx,
+  parentId: ConversationId,
+  post: Post,
+  report: ReportFn,
+): Promise<void> {
+  const parent = await tx.doc(ThreadDoc, parentId)
+  const inbox = parent.inbox ?? []
+  if (parent.status === "cancelled" || inbox.some((queued) => queued.key === post.key)) return
+  if (parent.status === "working" || parent.status === "waiting") {
+    parent.inbox = [...inbox, post]
+    return
+  }
+  await reopen(deps, tx, parentId, parent, [post], `reopen:${parentId}:${(parent.run ?? 1) + 1}`, report)
+}
+
+/**
+ * Starts run N+1 of a finished thread in the caller's commit, its brief the queued inbox followed by `posts`. Returns
+ * that brief, or undefined when the thread cannot be reopened.
+ */
+async function reopen(
+  deps: ThreadDeps,
+  tx: Tx,
+  threadId: ConversationId,
+  thread: Draft<ThreadDocState>,
+  posts: readonly Post[],
+  requestId: string,
+  report: ReportFn,
+): Promise<string | undefined> {
+  if (transition(thread.status, "thread_send").kind !== "ok" || thread.parentId === undefined) return undefined
+  const workspace = await tx.doc(WorkspaceDoc)
+  const project = workspace.projects[thread.projectId]
+  if (project === undefined) return undefined
+  const brief = [...(thread.inbox ?? []), ...posts].map((post) => post.text).join("\n\n")
+  const run = (thread.run ?? 1) + 1
+  const now = Date.now()
+  thread.run = run
+  thread.status = "working"
+  delete thread.result
+  delete thread.archived
+  delete thread.inbox
+  thread.beatAt = now
+  thread.deadlineAt = now + project.settings.deadlineMs
+  const parentId = thread.parentId as ConversationId
+  await deps.watchdog.ensure(tx, ownerOf(workspace, thread, parentId))
+  await report(tx, { threadId, parentId, title: thread.title, run, brief, requestId })
+  return brief
 }
 
 async function settle(
@@ -386,20 +457,7 @@ export type Threads = {
 
 const sendKeyOf = (threadId: number, sendKey: string): string => `thread-send:${threadId}:${sendKey}`
 
-type ReportFn = (tx: Tx, input: ReporterInput, owner?: ConversationId) => Promise<void>
-
-/**
- * The conversation that owns a thread's Anchor, Reporter and watchdog: its parent, or for a thread another thread
- * started, its space's coordinator, so stopping the parent thread aborts none of its children's bookkeeping.
- */
-const ownerOf = (
-  workspace: { readonly spaces: Readonly<Record<string, SpaceState>> },
-  thread: { readonly depth?: number; readonly spaceId?: string },
-  parentId: ConversationId,
-): ConversationId => {
-  const coordinator = thread.spaceId === undefined ? undefined : workspace.spaces[thread.spaceId]?.coordinatorId
-  return (thread.depth ?? 1) > 1 && coordinator !== undefined ? (coordinator as ConversationId) : parentId
-}
+type ReportFn = (tx: Tx, input: ReporterInput) => Promise<void>
 
 async function sendToThread(
   deps: ThreadDeps,
@@ -412,6 +470,7 @@ async function sendToThread(
   if (snapshot === undefined) return { kind: "rejected", reason: `no thread ${args.threadId}` }
   if (snapshot.status === "waiting") return { kind: "waiting" }
   if (snapshot.status === "working") return deliver(harness, threadId, args)
+  const requestId = sendKeyOf(args.threadId, args.sendKey)
   const opened = await harness.commit(async (tx) => {
     const thread = await tx.doc(ThreadDoc, threadId)
     if (thread.status === "working") return { kind: "busy" as const }
@@ -420,33 +479,9 @@ async function sendToThread(
     if (next.kind !== "ok") return { kind: "rejected" as const, reason: next.reason }
     if (thread.parentId === undefined)
       return { kind: "rejected" as const, reason: `thread ${args.threadId} has no parent` }
-    const parentId = thread.parentId as ConversationId
-    const workspace = await tx.doc(WorkspaceDoc)
-    const project = workspace.projects[thread.projectId]
-    if (project === undefined) return { kind: "rejected" as const, reason: `no project ${thread.projectId}` }
-    const run = (thread.run ?? 1) + 1
-    const now = Date.now()
-    thread.run = run
-    thread.status = "working"
-    delete thread.result
-    delete thread.archived
-    thread.beatAt = now
-    thread.deadlineAt = now + project.settings.deadlineMs
-    const owner = ownerOf(workspace, thread, parentId)
-    await deps.watchdog.ensure(tx, owner)
-    await report(
-      tx,
-      {
-        threadId: args.threadId,
-        parentId,
-        title: thread.title,
-        run,
-        brief: args.text,
-        requestId: sendKeyOf(args.threadId, args.sendKey),
-      },
-      owner,
-    )
-    return { kind: "opened" as const, run }
+    const brief = await reopen(deps, tx, threadId, thread, [{ key: args.sendKey, text: args.text }], requestId, report)
+    if (brief === undefined) return { kind: "rejected" as const, reason: `no project ${thread.projectId}` }
+    return { kind: "opened" as const, run: thread.run ?? 1, brief }
   }, context)
   switch (opened.kind) {
     case "rejected":
@@ -457,16 +492,8 @@ async function sendToThread(
       return deliver(harness, threadId, args)
     case "opened": {
       const conversation = await harness.conversation(threadId, context)
-      if (conversation !== undefined) {
-        await conversation.submit(
-          {
-            type: "input",
-            content: args.text,
-            requestId: sendKeyOf(args.threadId, args.sendKey),
-          },
-          context,
-        )
-      }
+      if (conversation !== undefined)
+        await conversation.submit({ type: "input", content: opened.brief, requestId }, context)
       return { kind: "sent", run: opened.run, note: `Started run ${opened.run}. Its result will arrive as a report.` }
     }
   }
@@ -533,26 +560,58 @@ const stopThread = defineOp({
     const threadId = args.threadId as ConversationId
     const doc = await api.harness.snapshot(ThreadDoc, threadId, context)
     if (doc === undefined) throw new OpRejected("bad_args", `no thread ${args.threadId}`)
-    const conversation = await api.harness.conversation(threadId, context)
-    if (conversation !== undefined) await conversation.abort(context, { background: true })
-    // A working thread's run ends in the abort; a waiting thread has no run, so its document is the only thing to move.
-    // The Reporter is skipped once the thread is no longer working, so this cannot race a terminal status.
+    const descendants = await liveDescendants(api.harness, doc.projectId, args.threadId)
+    // The status moves before the abort, so each Reporter finds its thread no longer working and reports nothing; a
+    // waiting thread has no run, so its document is the only thing to move.
     const status = await api.harness.commit(async (tx) => {
-      const thread = await tx.doc(ThreadDoc, threadId)
-      const next = transition(thread.status, "abort")
-      if (next.kind !== "ok") return thread.status
-      thread.status = next.status
-      delete thread.statusLine
-      return next.status
+      let stopped: ThreadStatus | undefined
+      for (const id of [args.threadId, ...descendants]) {
+        const thread = await tx.doc(ThreadDoc, id as ConversationId)
+        const next = transition(thread.status, "abort")
+        if (next.kind === "ok") {
+          thread.status = next.status
+          delete thread.statusLine
+          delete thread.inbox
+        }
+        stopped ??= thread.status
+      }
+      return stopped ?? "cancelled"
     }, context)
+    for (const id of [args.threadId, ...descendants]) {
+      const conversation = await api.harness.conversation(id as ConversationId, context)
+      if (conversation !== undefined) await conversation.abort(context, { background: true })
+    }
     return {
       threadId: args.threadId,
       stopped: true,
       status,
+      ...(descendants.length === 0 ? {} : { descendants: [...descendants] }),
       ...(args.reason === undefined ? {} : { reason: args.reason }),
     }
   },
 })
+
+/** The working or waiting threads below `rootId`, nearest first: stopping a thread stops what it started. */
+async function liveDescendants(harness: Harness, projectId: string, rootId: number): Promise<readonly number[]> {
+  const workspace = await harness.snapshot(WorkspaceDoc, context)
+  const children = new Map<number, number[]>()
+  const live = new Set<number>()
+  for (const space of Object.values(workspace?.spaces ?? {})) {
+    if (space.projectId !== projectId) continue
+    for (const id of space.threadIds) {
+      const doc = await harness.snapshot(ThreadDoc, id as ConversationId, context)
+      if (doc?.parentId === undefined || (doc.depth ?? 1) === 1) continue
+      children.set(doc.parentId, [...(children.get(doc.parentId) ?? []), id])
+      if (doc.status === "working" || doc.status === "waiting") live.add(id)
+    }
+  }
+  const found: number[] = []
+  for (let frontier = [rootId]; frontier.length > 0;) {
+    frontier = frontier.flatMap((id) => children.get(id) ?? [])
+    found.push(...frontier.filter((id) => live.has(id)))
+  }
+  return found
+}
 
 async function denied(actor: Actor, harness: Harness, threadId: number): Promise<boolean> {
   if (actor.kind !== "agent") return false
@@ -560,14 +619,16 @@ async function denied(actor: Actor, harness: Harness, threadId: number): Promise
 }
 
 export function lifecycle(deps: ThreadDeps): Threads {
-  const reporter = reporterTask(deps, (harness, args) => send(harness, args))
-  const report: ReportFn = async (tx, input, owner) => {
+  const report: ReportFn = async (tx, input) => {
+    const thread = await tx.doc(ThreadDoc, input.threadId as ConversationId)
+    const workspace = await tx.doc(WorkspaceDoc)
     await tx.createTask(reporter, input, {
       ownership: { kind: "conversation" },
-      conversationId: owner ?? (input.parentId as ConversationId),
+      conversationId: ownerOf(workspace, thread, input.parentId as ConversationId),
       background: true,
     })
   }
+  const reporter = reporterTask(deps, report)
   const send = (harness: Harness, args: SendArgs): Promise<SendOutcome> => sendToThread(deps, harness, args, report)
 
   const createThread = async (tx: Tx, args: CreateThreadArgs): Promise<CreateOutcome> => {
@@ -637,18 +698,14 @@ export function lifecycle(deps: ThreadDeps): Threads {
       clientRequestId: args.clientRequestId,
     })
     trimThreadIds(space, docs)
-    await report(
-      tx,
-      {
-        threadId: child.id,
-        parentId: args.parentId,
-        title: args.title,
-        run: 1,
-        brief: args.task,
-        requestId: args.requestId,
-      },
-      owner,
-    )
+    await report(tx, {
+      threadId: child.id,
+      parentId: args.parentId,
+      title: args.title,
+      run: 1,
+      brief: args.task,
+      requestId: args.requestId,
+    })
     return { kind: "created", threadId: child.id, title: args.title }
   }
 

@@ -15,8 +15,24 @@ const alt = fauxProvider({
   ],
 })
 
-const step: FauxResponseStep = (context, _options, _state, model) => {
+let held: Promise<void> = Promise.resolve()
+
+/** Holds every answer to a brief that contains "hold" until the returned release runs. */
+export const hold = (): (() => void) => {
+  const gate = Promise.withResolvers<void>()
+  held = gate.promise
+  return () => gate.resolve()
+}
+
+const step: FauxResponseStep = async (context, options, _state, model) => {
   const prompt = lastOwnerText(context.messages)
+  if (prompt.includes("hold"))
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => reject(new DOMException("Request interrupted", "AbortError"))
+      if (options?.signal?.aborted === true) abort()
+      options?.signal?.addEventListener("abort", abort, { once: true })
+      void held.then(resolve)
+    })
   if (prompt.includes("structured context checkpoint summary"))
     return fauxAssistantMessage("## Goal\n- keep going\n\n## Progress\n- compacted the early turns")
   const last = context.messages.at(-1)

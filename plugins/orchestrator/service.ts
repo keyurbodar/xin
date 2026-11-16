@@ -58,6 +58,9 @@ const summaryOf = async (harness: Harness, id: number, doc: ThreadDocState): Pro
     id,
     title: doc.title,
     status: doc.status,
+    ...(doc.depth === undefined || doc.depth === 1 || doc.parentId === undefined
+      ? {}
+      : { depth: doc.depth, parentId: doc.parentId }),
     ...(doc.statusLine === undefined ? {} : { statusLine: doc.statusLine }),
     ...(doc.result === undefined ? {} : { result: doc.result }),
     ...(model === undefined ? {} : { model }),

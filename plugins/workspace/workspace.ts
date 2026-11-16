@@ -46,6 +46,9 @@ export type ThreadSummary = {
   readonly role: ThreadRole
   readonly status: ThreadStatus
   readonly run: number
+  readonly parentId?: number
+  /** Present above 1: a thread another thread started. */
+  readonly depth?: number
   readonly statusLine?: string
   readonly result?: string
   readonly beatAt?: number
@@ -205,6 +208,8 @@ function threadSummary(id: ConversationId, thread: ThreadState): ThreadSummary {
     role: thread.role,
     status: thread.status,
     run: thread.run ?? 1,
+    ...(thread.parentId === undefined ? {} : { parentId: thread.parentId }),
+    ...(thread.depth === undefined || thread.depth === 1 ? {} : { depth: thread.depth }),
     ...(thread.statusLine === undefined ? {} : { statusLine: thread.statusLine }),
     ...(thread.result === undefined ? {} : { result: thread.result }),
     ...(thread.beatAt === undefined ? {} : { beatAt: thread.beatAt }),

@@ -13,7 +13,7 @@ import {
   RequestsDoc,
   type RespondOutcome,
 } from "../../src/contracts/questions.ts"
-import { spaceInScope, ThreadDoc, threadInScope, transition } from "../../src/contracts/threaddoc.ts"
+import { ownerOf, spaceInScope, ThreadDoc, threadInScope, transition } from "../../src/contracts/threaddoc.ts"
 import type { ThreadsService } from "../../src/contracts/threads.ts"
 import type { WatchdogService } from "../../src/contracts/watchdog.ts"
 import { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../../src/contracts/workspace.ts"
@@ -71,8 +71,13 @@ export function createQuestions(port: QuestionsPort): QuestionsService {
         doc.statusLine = "waiting for your answer"
       }, callContext)
       if (thread.parentId !== undefined) {
+        // A parent thread has no pending_request, so a nested thread's question goes to its space's coordinator.
+        const workspace = await port.harness.snapshot(WorkspaceDoc, callContext)
         const accepted = await port.intake.enqueue({
-          target: thread.parentId as ConversationId,
+          target:
+            workspace === undefined
+              ? (thread.parentId as ConversationId)
+              : ownerOf(workspace, thread, thread.parentId as ConversationId),
           commandId: `question:${input.requestId}`,
           kind: "question",
           threadId: String(input.threadId),
@@ -241,7 +246,7 @@ async function answer(
   thread.beatAt = now
   thread.deadlineAt = now + (project?.settings.deadlineMs ?? DEFAULT_DEADLINE_MS)
   delete thread.result
-  await port.watchdog.ensure(tx, parentId)
+  await port.watchdog.ensure(tx, ownerOf(workspace, thread, parentId))
   await port.threads.report(tx, {
     threadId,
     parentId,

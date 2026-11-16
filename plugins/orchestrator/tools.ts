@@ -291,13 +291,14 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
           const listed: JsonValue[] = []
           for (const record of found.threads) {
             lines.push(
-              `${record.id} [${record.status}] ${record.title}${record.model === undefined ? "" : ` (${record.model})`}${record.result === undefined ? "" : ` — ${excerpt(record.result)}`}`,
+              `${record.id} [${record.status}]${record.parentId === undefined ? "" : ` under ${record.parentId}`} ${record.title}${record.model === undefined ? "" : ` (${record.model})`}${record.result === undefined ? "" : ` — ${excerpt(record.result)}`}`,
             )
             listed.push({
               id: record.id,
               projectId: found.projectId,
               title: record.title,
               status: record.status,
+              ...(record.parentId === undefined ? {} : { parentId: record.parentId, depth: record.depth ?? 1 }),
               ...(record.model === undefined ? {} : { model: record.model }),
               ...(record.result === undefined ? {} : { result: excerpt(record.result) }),
             })
@@ -309,13 +310,14 @@ function tools(ctx: KernelContext): readonly ToolRegistration[] {
           const listed: JsonValue[] = []
           for (const record of found.threads) {
             lines.push(
-              `${record.id} [${record.status}] ${record.projectId} — ${record.title}${record.model === undefined ? "" : ` (${record.model})`}${record.result === undefined ? "" : ` — ${excerpt(record.result)}`}`,
+              `${record.id} [${record.status}]${record.parentId === undefined ? "" : ` under ${record.parentId}`} ${record.projectId} — ${record.title}${record.model === undefined ? "" : ` (${record.model})`}${record.result === undefined ? "" : ` — ${excerpt(record.result)}`}`,
             )
             listed.push({
               id: record.id,
               projectId: record.projectId,
               title: record.title,
               status: record.status,
+              ...(record.parentId === undefined ? {} : { parentId: record.parentId, depth: record.depth ?? 1 }),
               ...(record.model === undefined ? {} : { model: record.model }),
               ...(record.result === undefined ? {} : { result: excerpt(record.result) }),
             })

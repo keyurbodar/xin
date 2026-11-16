@@ -236,7 +236,11 @@ function failureText(stalled: boolean, tool: string | undefined): string {
 
 async function deliverFailure(ports: WatchdogPorts, victim: Victim): Promise<void> {
   if (victim.kind === "thread") {
-    if (victim.parentId !== undefined) {
+    // A parent thread hears of it from the victim's own Reporter, which can start the parent's next run.
+    const parentIsThread =
+      victim.parentId !== undefined &&
+      (await ports.harness.snapshot(ThreadDoc, victim.parentId as ConversationId, context)) !== undefined
+    if (victim.parentId !== undefined && !parentIsThread) {
       const draft: InboundDraft = {
         target: victim.parentId as ConversationId,
         commandId: `report:${victim.id}:${victim.run}`,
