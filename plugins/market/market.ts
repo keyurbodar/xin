@@ -192,13 +192,16 @@ function codeNeeds(ingle: unknown, label: string): Needs {
 }
 
 function requireConsent(label: string, needs: Needs, consent: Consent, integrity?: string): void {
+  const changed = integrity !== undefined && consent.integrity !== undefined && consent.integrity !== integrity
   const missing = [...needs].filter(
-    ([permission]) => !consent.held.includes(permission) && !consent.grant.includes(permission),
+    ([permission]) => !consent.held.includes(permission) && (changed || !consent.grant.includes(permission)),
   )
-  if (missing.length === 0) return
+  if (missing.length === 0 && !changed) return
   throw new OpRejected(
     "consent_required",
-    `${label} needs your consent for ${missing.map(([permission]) => permission).join(", ")}`,
+    changed
+      ? `${label} is not the tarball you consented to; its pin is now ${integrity}`
+      : `${label} needs your consent for ${missing.map(([permission]) => permission).join(", ")}`,
     {
       permissions: missing
         .toSorted(([left], [right]) => left.localeCompare(right))
@@ -549,8 +552,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       bad(`${spec}: the tarball declares a ${kind} package, the registry says ${claimed}`)
     if (kind === "bundle") return { kind, integrity, ingle: extracted.value.ingle }
     const needs = codeNeeds(extracted.value.ingle, spec)
-    const answered = consent.integrity === undefined || consent.integrity === integrity
-    requireConsent(spec, needs, answered ? consent : { ...consent, grant: [] }, integrity)
+    requireConsent(spec, needs, consent, integrity)
     ports.packages.install(spec, {
       integrity,
       tarball: document.dist.tarball,

@@ -193,8 +193,9 @@ export function PluginDetail(props: { name: string }): JSX.Element {
                 </Show>
                 <Show when={entry().integrity}>
                   {(integrity) => (
-                    <Fact label="Integrity">
+                    <Fact label="Registry pin">
                       <IntegrityPin integrity={integrity()} />
+                      <span class="mt-1 block text-xs text-ink-3">Checked against the tarball when you install.</span>
                     </Fact>
                   )}
                 </Show>

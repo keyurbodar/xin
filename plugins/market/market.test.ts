@@ -710,6 +710,34 @@ describe("market", () => {
     expect(await pending(stub)).toMatchObject({ pins: { [`${GUARDED}@1.1.0`]: { integrity: swapped } } })
   })
 
+  it("asks again when a grant echoes another pin, even for a package that needs no permission", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    const pin = BUILT[SEEDS.findIndex((seed) => seed.name === CODE)]?.find(
+      (built) => built.version === "1.0.0",
+    )?.integrity
+    const other = `sha512-${"A".repeat(86)}==`
+    expect(pin).not.toBe(other)
+
+    expect(await op(stub, "market.install", { name: CODE, version: "1.0.0", integrity: other })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { permissions: [], integrity: pin } },
+    })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
+    expect(await op(stub, "market.install", { name: CODE, version: "1.0.0", integrity: "sha512-short" })).toMatchObject(
+      {
+        ok: false,
+        error: { code: "bad_args" },
+      },
+    )
+    expect(await op(stub, "market.install", { name: CODE, version: "1.0.0", integrity: pin })).toMatchObject({
+      ok: true,
+    })
+    expect(await pending(stub)).toMatchObject({ pins: { [`${CODE}@1.0.0`]: { integrity: pin } } })
+  })
+
   it("refuses a code package that declares owner, even with consent", async () => {
     const transport = fake()
     serve(transport)
