@@ -771,6 +771,18 @@ describe("models", () => {
     await postCommand("owner.compaction.set", { percent: null })
   })
 
+  it("refuses to disable the owner's compaction default", async () => {
+    const stub = fresh()
+    expect(await call(stub, "cdef-set", "owner.defaults", { role: "compaction", model: WIDE_MODEL })).toMatchObject({
+      ok: true,
+      result: { role: "compaction", model: WIDE_MODEL },
+    })
+    expect(await call(stub, "cdef-off", "models.enable", { model: WIDE_MODEL, enabled: false })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
+  })
+
   it("rebuilds the compaction overrides when the catalog changes but keeps its size", async () => {
     const original = globalThis.fetch
     let listed = { id: "swap-1", context_window: 64_000 }
