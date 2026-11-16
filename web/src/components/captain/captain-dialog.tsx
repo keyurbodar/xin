@@ -1,12 +1,9 @@
 import { createResource, createSignal, For, Show, type JSX } from "solid-js"
-import { isDefinitive } from "../../lib/api.ts"
 import { navigate } from "../../lib/router.ts"
 import { slugify } from "../../lib/slug.ts"
-import { archiveCaptain, captainDetail, createCaptain, updateCaptain } from "../../state/captains.ts"
-import { canCreateCaptain, captainModel, modelKey, type CaptainFields, type CaptainProfile } from "../../lib/captains.ts"
-import { activeProjects, routeProject } from "../../state/home.ts"
+import { archiveCaptain, captainDetail, updateCaptain } from "../../state/captains.ts"
+import { captainModel, modelKey, type CaptainFields, type CaptainProfile } from "../../lib/captains.ts"
 import { searchModels, type ModelInfo } from "../../state/settings.ts"
-import { ensureContext } from "../../state/context.ts"
 import { setSidebarDrawer } from "../../state/tabs.ts"
 import { Dialog, FIELD_INPUT, Field, resetOnOpen } from "../ui/dialog.tsx"
 
@@ -14,9 +11,15 @@ const STANDING_LIMIT = 16_000
 
 const [creating, setCreating] = createSignal(false)
 
+export const newCaptainOpen = creating
+
 export function openNewCaptain(): void {
   setSidebarDrawer(false)
   setCreating(true)
+}
+
+export function closeNewCaptain(): void {
+  setCreating(false)
 }
 
 function failureText(problem: unknown): string {
@@ -172,104 +175,6 @@ function Footer(props: { busy: boolean; ready: boolean; label: string; busyLabel
         <span class="kbd border-on-primary/30 text-on-primary">⌘↵</span>
       </button>
     </>
-  )
-}
-
-/** captain.create is idempotent per command id: a retry after a lost ack reuses the id, and a rejection mints a new one, because the host replays a rejected id. */
-export function NewCaptainDialog(): JSX.Element {
-  const [draft, setDraft] = createSignal<Draft>(EMPTY)
-  const [projectId, setProjectId] = createSignal("")
-  const [commandId, setCommandId] = createSignal("")
-  const [busy, setBusy] = createSignal(false)
-  const [failure, setFailure] = createSignal<string>()
-  const close = (): void => {
-    setCreating(false)
-  }
-
-  resetOnOpen(creating, () => {
-    setDraft(EMPTY)
-    setProjectId(routeProject()?.id ?? activeProjects()[0]?.id ?? "")
-    setCommandId(crypto.randomUUID())
-    setFailure(undefined)
-    setBusy(false)
-  })
-
-  const coordinatorId = (): number | undefined => activeProjects().find((project) => project.id === projectId())?.coordinatorId
-  const [coordinator] = createResource(
-    () => (creating() ? coordinatorId() : undefined),
-    async (conv) => (await ensureContext(conv)).model,
-  )
-  const model = () => captainModel(draft().model, coordinator.latest)
-  const shown = (): Draft => {
-    const resolved = model()
-    return { ...draft(), model: resolved === undefined ? "" : modelKey(resolved) }
-  }
-  const ready = (): boolean => !busy() && canCreateCaptain({ name: draft().name, projectId: projectId(), model: model() })
-
-  const create = async (): Promise<void> => {
-    if (!ready()) return
-    const current = draft()
-    const chosen = model()
-    if (chosen === undefined) return
-    setBusy(true)
-    setFailure(undefined)
-    const alias = slugify(current.alias)
-    const fields: CaptainFields & Required<Pick<CaptainFields, "model">> = {
-      name: current.name.trim(),
-      model: chosen,
-      ...(alias === "" ? {} : { alias }),
-      ...(current.description.trim() === "" ? {} : { description: current.description.trim() }),
-      ...(current.rules.trim() === "" ? {} : { rules: current.rules }),
-      ...(current.crewRules.trim() === "" ? {} : { crewRules: current.crewRules }),
-    }
-    try {
-      const created = await createCaptain(projectId(), fields, commandId())
-      close()
-      navigate(`/c/${created.alias}`)
-    } catch (problem) {
-      if (isDefinitive(problem)) setCommandId(crypto.randomUUID())
-      setFailure(failureText(problem))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Dialog
-      open={creating()}
-      onClose={close}
-      title="New Captain"
-      busy={busy()}
-      width="w-[600px]"
-      onSubmit={() => void create()}
-      footer={<Footer busy={busy()} ready={ready()} label="Create Captain" busyLabel="Creating…" onCancel={close} />}
-    >
-      <p class="text-sm text-ink-3">
-        A Captain is a named coordinator that keeps its own chat, notes and crew of threads in one project.
-      </p>
-      <Field label="Project" hint="Its crew threads run in this project">
-        <select
-          class={`${FIELD_INPUT} h-[34px]`}
-          value={projectId()}
-          disabled={busy()}
-          onChange={(event) => setProjectId(event.currentTarget.value)}
-        >
-          <For each={activeProjects()}>{(project) => <option value={project.id}>{project.name}</option>}</For>
-        </select>
-      </Field>
-      <DraftFields
-        draft={shown()}
-        busy={busy()}
-        allowDefaultModel={false}
-        modelHint={
-          model() === undefined && !coordinator.loading
-            ? "This project's coordinator has no model yet, so pick one before creating"
-            : "Starts on the project coordinator's model unless you pick another"
-        }
-        onChange={setDraft}
-      />
-      <Show when={failure()}>{(text) => <div class="text-sm text-failed">{text()}</div>}</Show>
-    </Dialog>
   )
 }
 

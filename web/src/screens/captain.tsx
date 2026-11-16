@@ -99,7 +99,7 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
             )}
           </Show>
           <div class="flex min-h-0 flex-1 flex-col" classList={{ hidden: !onCoordinator() }}>
-            <ProjectChat project={props.space} snapshot={coordinatorSnapshot()} active={onCoordinator()} onOpenThread={openThread} />
+            <ProjectChat project={props.space} captain={props.captain} snapshot={coordinatorSnapshot()} active={onCoordinator()} onOpenThread={openThread} />
           </div>
         </section>
       </Show>
