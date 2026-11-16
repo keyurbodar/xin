@@ -99,6 +99,7 @@ const ALLOWED: Readonly<Record<string, Readonly<Record<string, Member>>>> = {
   pi: {
     install: {},
     env: { needs: "runtime" },
+    compaction: { needs: "conversations" },
     extensions: {},
     extensionsNamed: { needs: "plugins" },
     conversations: { needs: "conversations" },

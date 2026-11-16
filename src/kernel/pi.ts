@@ -3,6 +3,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { createModels, type Models } from "@earendil-works/pi-ai"
 import {
   type ConversationId,
+  type CompactionSettings,
   createRegistry,
   type Cursor,
   type EnvTarget,
@@ -39,6 +40,7 @@ export class Pi extends Service {
   readonly modelSources: (() => Models)[] = []
   readonly envSources: EnvProvider[] = []
   private storage: JournalStorage | undefined
+  readonly compactionSources: (() => CompactionSettings | undefined)[] = []
 
   constructor(ctx: Context) {
     super(ctx, "pi")
@@ -54,7 +56,10 @@ export class Pi extends Service {
       {
         models: () => this.currentModels(),
         registry: this.registry,
-        settings: { stream: { cacheRetention: "long" } },
+        settings: () => {
+          const compaction = this.compactionSources[0]?.()
+          return { stream: { cacheRetention: "long" }, ...(compaction === undefined ? {} : { compaction }) }
+        },
         env: (target) => this.envSources.map((source) => source(target)).find((env) => env !== undefined),
         onWake: (wake) => void this.ctx.clock.arm(wake).catch(() => abort("alarm write failed")),
         onReport: (report: Report) => {
@@ -112,6 +117,16 @@ export class Pi extends Service {
         this.modelSources.splice(this.modelSources.indexOf(source), 1)
       }
     }, "pi.models")
+  }
+
+  /** The owner's compaction policy, read at every use; the first registered source wins. */
+  compaction(source: () => CompactionSettings | undefined): () => void {
+    return this.ctx.effect(() => {
+      this.compactionSources.push(source)
+      return () => {
+        this.compactionSources.splice(this.compactionSources.indexOf(source), 1)
+      }
+    }, "pi.compaction")
   }
 
   env(source: EnvProvider): () => void {
