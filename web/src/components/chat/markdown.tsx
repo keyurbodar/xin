@@ -1,7 +1,7 @@
 import { For, Index, Match, Switch, createMemo, type Accessor, type JSX } from "solid-js"
 import { renderBlock } from "./blocks.tsx"
 import { inline } from "./inline.tsx"
-import { parseBlocks, type MarkdownBlock } from "./markdown-parse.ts"
+import { parseBlocks, settle, type MarkdownBlock } from "./markdown-parse.ts"
 
 type Of<K extends MarkdownBlock["kind"]> = Extract<MarkdownBlock, { kind: K }>
 
@@ -111,7 +111,9 @@ export function Markdown(props: { text: string; small?: boolean; muted?: boolean
         "text-ink-2": props.muted === true,
       }}
     >
-      <Index each={blocks()}>{(block) => <Block block={block} />}</Index>
+      <Index each={blocks()}>
+        {(block) => <Block block={createMemo<MarkdownBlock>((previous) => settle(previous, block()))} />}
+      </Index>
     </div>
   )
 }

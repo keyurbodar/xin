@@ -1,13 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdirSync } from "node:fs"
-import { homedir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 
 const web = fileURLToPath(new URL("..", import.meta.url))
-const renders = join(homedir(), ".capy/drive/captain-bosun/renders/XIN-26")
+const renders = process.env.INGLE_RENDERS_DIR
 
 let browser: Browser
 let server: ViteDevServer
@@ -23,7 +22,7 @@ beforeAll(async () => {
   await server.listen()
   base = server.resolvedUrls?.local[0] ?? ""
   browser = await chromium.launch()
-  mkdirSync(renders, { recursive: true })
+  if (renders !== undefined) mkdirSync(renders, { recursive: true })
 }, 60_000)
 
 afterAll(async () => {
@@ -149,13 +148,14 @@ test("a fence registered at run time replaces the code block and unregisters cle
   await page.close()
 })
 
-test("screenshots in dark and light at desktop and narrow widths", async () => {
+test.skipIf(renders === undefined)("screenshots in dark and light at desktop and narrow widths", async () => {
+  const dir = renders ?? ""
   for (const theme of ["dark", "light"] as const) {
     for (const width of [1280, 390]) {
       const page = await open("all", { theme, width })
       await page.locator('[data-block="mermaid"] .mermaid-diagram svg').waitFor({ timeout: 30_000 })
       await page.locator('[data-block="mermaid-error"]').waitFor({ timeout: 30_000 })
-      await page.screenshot({ path: join(renders, `core-${theme}-${width}.png`), fullPage: true })
+      await page.screenshot({ path: join(dir, `core-${theme}-${width}.png`), fullPage: true })
       await page.close()
     }
   }
@@ -164,6 +164,135 @@ test("screenshots in dark and light at desktop and narrow widths", async () => {
   await page.getByRole("button", { name: "Open diagram full screen" }).click()
   await page.getByRole("dialog").waitFor()
   await page.waitForTimeout(300)
-  await page.screenshot({ path: join(renders, "core-dark-1280-fullscreen.png") })
+  await page.screenshot({ path: join(dir, "core-dark-1280-fullscreen.png") })
   await page.close()
 }, 120_000)
+
+test("a hostile diagram renders without any request leaving the harness origin", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+  const origin = new URL(base).origin
+  const outside: string[] = []
+  await page.route("**/*", (route) => {
+    const url = route.request().url()
+    if (url.startsWith("data:") || new URL(url).origin === origin) return route.continue()
+    outside.push(url)
+    return route.abort()
+  })
+  await page.goto(`${base}e2e/fixtures/rich-content.html?fixture=hostile&theme=dark`)
+  const diagram = page.locator('[data-block="mermaid"] .mermaid-diagram svg')
+  await diagram.waitFor({ timeout: 30_000 })
+  await page.waitForTimeout(500)
+  expect(outside).toEqual([])
+  const leftovers = await diagram.evaluate((svg) => ({
+    tags: svg.querySelectorAll("img, image, foreignObject, a, script").length,
+    links: [...svg.querySelectorAll("*")].flatMap((node) =>
+      [...node.attributes].filter((attribute) => /href|src/i.test(attribute.name) && !attribute.value.startsWith("#")).map((attribute) => attribute.value),
+    ),
+    text: svg.textContent ?? "",
+  }))
+  expect(leftovers.tags).toBe(0)
+  expect(leftovers.links).toEqual([])
+  expect(leftovers.text).toContain("safe")
+  await page.close()
+}, 60_000)
+
+test("a renderer that throws falls back to its source and keeps the message", async () => {
+  const page = await open("stream")
+  await page.evaluate(() => window.harness.register("boom", true))
+  await page.evaluate(() => window.harness.set("Before the block.\n\n```boom\nkaboom source\n```\n\nAfter the block.", false))
+  await page.getByText("After the block.").waitFor()
+  expect(await page.getByText("Before the block.").count()).toBe(1)
+  expect(await page.locator('[data-block="code"]').innerText()).toContain("kaboom source")
+  expect(await page.getByTestId("custom-fence").count()).toBe(0)
+  await page.close()
+})
+
+test("text streaming after finished blocks never re-highlights the code or redraws the diagram", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+  await page.addInitScript(() => {
+    const replaceAll = String.prototype.replaceAll
+    Object.assign(window, { highlights: 0 })
+    Object.defineProperty(String.prototype, "replaceAll", {
+      configurable: true,
+      writable: true,
+      value(this: string, search: string | RegExp, replacement: string) {
+        if (search === '\n<span class="sh__line') Object.assign(window, { highlights: (window as unknown as { highlights: number }).highlights + 1 })
+        return Reflect.apply(replaceAll, this, [search, replacement])
+      },
+    })
+  })
+  await page.goto(`${base}e2e/fixtures/rich-content.html?fixture=stream&theme=dark`)
+  const head = "```ts\nconst a = 1\n```\n\n```mermaid\nflowchart LR\n  a --> b\n```\n\nNow"
+  await page.evaluate((text) => window.harness.set(text, true), head)
+  const svg = page.locator('[data-block="mermaid"] .mermaid-diagram svg')
+  await svg.waitFor({ timeout: 30_000 })
+  await page.waitForTimeout(300)
+  await page.evaluate(() => {
+    Object.assign(document.querySelector('[data-block="mermaid"] .mermaid-diagram svg') ?? {}, { kept: true })
+    Object.assign(document.querySelector('[data-block="code"] code') ?? {}, { kept: true })
+  })
+  const before = await page.evaluate(() => (window as unknown as { highlights: number }).highlights)
+  for (const word of [" the", " reply", " keeps", " streaming", " for", " a", " while"]) {
+    await page.evaluate((text) => window.harness.set(text, true), head + word)
+    await page.waitForTimeout(100)
+  }
+  await page.waitForTimeout(400)
+  const after = await page.evaluate(() => ({
+    highlights: (window as unknown as { highlights: number }).highlights,
+    svg: (document.querySelector('[data-block="mermaid"] .mermaid-diagram svg') as unknown as { kept?: boolean } | null)?.kept,
+    code: (document.querySelector('[data-block="code"] code') as unknown as { kept?: boolean } | null)?.kept,
+  }))
+  expect(before).toBeGreaterThan(0)
+  expect(after).toEqual({ highlights: before, svg: true, code: true })
+  await page.close()
+}, 60_000)
+
+test("a link with a non-http scheme renders as text", async () => {
+  const page = await open("stream")
+  await page.evaluate(() => window.harness.set("Do not [click me](javascript:alert(1)) or [this](data:text/html,x).", false))
+  await page.getByText("Do not").waitFor()
+  expect(await page.locator("main a").count()).toBe(0)
+  expect(await page.locator("main p").innerText()).toContain("[click me](javascript:alert(1))")
+  await page.close()
+})
+
+test("a streaming mermaid fence stays source and never draws", async () => {
+  const page = await open("stream")
+  await page.evaluate(() => window.harness.set("```mermaid\nflowchart LR\n  a --> b\n", true))
+  await page.locator('[data-block="code"]').waitFor()
+  await page.waitForTimeout(1_000)
+  expect(await page.locator(".mermaid-diagram").count()).toBe(0)
+  expect(await page.locator('[data-block="code"]').innerText()).toContain("a --> b")
+  await page.close()
+})
+
+for (const reduce of ["none", "os", "setting"] as const) {
+  test(`the expand transition ${reduce === "none" ? "runs" : `is off under the ${reduce} reduced-motion setting`}`, async () => {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+    await page.emulateMedia({ reducedMotion: reduce === "os" ? "reduce" : "no-preference" })
+    await page.goto(`${base}e2e/fixtures/rich-content.html?fixture=code&theme=dark`)
+    await page.getByRole("button", { name: /Expand/ }).waitFor()
+    if (reduce === "setting") await page.evaluate(() => document.documentElement.setAttribute("data-motion", "reduce"))
+    const transition = await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('[data-block="code"] button[aria-expanded]')?.click()
+      const region = document.querySelector('[data-block="code"] .block-expand')
+      return region === null ? "" : `${getComputedStyle(region).transitionProperty} ${getComputedStyle(region).transitionDuration}`
+    })
+    expect(transition).toBe(reduce === "none" ? "max-height 0.2s" : "none 0s")
+    await page.close()
+  })
+}
+
+test("a registered tool block keeps its DOM node while its args change", async () => {
+  const page = await open("stream")
+  await page.evaluate(() => {
+    window.harness.registerTool()
+  })
+  const block = page.getByTestId("tool-probe")
+  await block.waitFor()
+  await block.evaluate((node) => Object.assign(node, { kept: true }))
+  for (const step of [1, 2, 3]) await page.evaluate((next) => window.harness.step(next), step)
+  expect(await block.innerText()).toBe("step 3")
+  expect(await block.evaluate((node) => (node as unknown as { kept?: boolean }).kept)).toBe(true)
+  await page.close()
+})

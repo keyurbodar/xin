@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { parseBlocks, splitRow } from "./markdown-parse.ts"
+import { parseBlocks, settle, splitRow } from "./markdown-parse.ts"
 
 test("a GFM table keeps its alignment row", () => {
   const [table] = parseBlocks("| Name | Qty | Note |\n| :-- | --: | :-: |\n| apple | 3 | ok |")
@@ -82,4 +82,27 @@ test("a table followed by prose is final even while streaming", () => {
 test("headings, lists and quotes keep their kinds", () => {
   const kinds = parseBlocks("# Title\n- a\n- b\n1. one\n> quoted\nplain").map((block) => block.kind)
   expect(kinds).toEqual(["heading", "list", "list", "quote", "paragraph"])
+})
+
+test("a finished block keeps its identity while later text streams in", () => {
+  const first = parseBlocks("```ts\nconst a = 1\n```\nmore", true)
+  const second = parseBlocks("```ts\nconst a = 1\n```\nmore text", true)
+  const code = first[0]
+  expect(code === undefined ? undefined : settle(code, second[0] ?? code)).toBe(code)
+  const [, prose] = second
+  if (prose === undefined) throw new Error("expected prose")
+  expect(settle(first[1], prose)).toBe(prose)
+})
+
+test("a streaming table reuses the row arrays it already had", () => {
+  const [before] = parseBlocks("| a | b |\n|---|---|\n| 1 | 2 |\n| 3", true)
+  const [after] = parseBlocks("| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |", true)
+  if (before?.kind !== "table" || after?.kind !== "table") throw new Error("expected tables")
+  const settled = settle(before, after)
+  if (settled.kind !== "table") throw new Error("expected a table")
+  expect(settled).not.toBe(before)
+  expect(settled.header).toBe(before.header)
+  expect(settled.rows[0]).toBe(before.rows[0])
+  expect(settled.rows[1]).toEqual(["3", "4"])
+  expect(settle(settled, after)).toBe(settled)
 })
