@@ -1,0 +1,1 @@
+2026-11-15T17:20:00Z	page-15	Env-picker Device submenu and Browser view loading/error states not built	web/src has no env picker and no Browser pane view; building either needs a backend the app does not have	grep of web/src; components/pane/views.tsx registry	skipped

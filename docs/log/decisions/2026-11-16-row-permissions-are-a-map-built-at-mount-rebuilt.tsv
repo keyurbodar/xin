@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	plugins	Row permissions are a Map built at mount, rebuilt on recompose and updated as each row is created	XIN-23 low: every guarded read scanned rows() twice	refuse and pluginRow do one map read	fixed in #19

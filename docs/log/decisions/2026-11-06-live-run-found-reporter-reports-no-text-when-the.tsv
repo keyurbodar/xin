@@ -1,0 +1,1 @@
+2026-11-06T14:19:49Z	M5	Live run found Reporter reports "(no text)" when the thread reply has a thinking part; faux tests missed it	faux replies have no thinking; real opencode-go replies do	src/live.test.ts asserts the report text; thread entry 31 pi.assistant [thinking,text]	re-briefed lane M5-fix; live test now asserts report text

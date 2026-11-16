@@ -1,0 +1,1 @@
+2026-11-16T20:30:00Z	plugins	A batch that published a home snapshot moves the rev without a changed frame	XIN-23 #30: a toggle sent snap:home and changed:home; the client already drops cached reads on a home snapshot	wire.test: the next changed frame after a toggle is the following write's	fixed in #30

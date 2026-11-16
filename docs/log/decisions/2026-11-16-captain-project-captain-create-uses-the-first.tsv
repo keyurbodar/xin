@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	onboarding v5	captain project: captain.create uses the first live project and creates one named after the Captain only when none exists	captain.create needs a projectId and the flow no longer has a project step	web/src/state/onboarding.ts	adopted

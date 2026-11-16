@@ -1,0 +1,1 @@
+2026-11-16T20:30:00Z	plugins	boundaries.ts scans .tsx, and lint runs plugin generate --check	XIN-23 #30: client modules skipped the boundary lint, and stale generated files passed the gate	lint green with both	fixed in #30

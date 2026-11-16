@@ -1,0 +1,1 @@
+2026-11-07T07:30	P6+P7	One commit for P6 and P7	The review fixes for both milestones edited the same kernel files (packages.ts, bundles.ts, loader.ts), so no intermediate tree is green on its own	git diff	accepted

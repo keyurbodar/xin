@@ -1,0 +1,1 @@
+2026-11-09T11:00:23Z	cost	markDone at submission settle is its own commit, not folded into a later enqueue	folding it would leave items claimed in the meantime, so a claim at boot would look like work to replay	plugins/intake/gateway.test.ts resubmits a claimed batch after eviction; done items are visible once the turn settles	kept

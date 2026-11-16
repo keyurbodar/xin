@@ -4,7 +4,7 @@ import {
   errorMessage,
   installFromMarket,
   offeredVersion,
-  type ConsentPermission,
+  type ConsentRequest,
   type InstallResult,
   type MarketDetail,
 } from "../../state/extensions.ts"
@@ -29,7 +29,7 @@ export function InstallSheet(props: {
   }
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [result, setResult] = createSignal<InstallResult | undefined>(undefined)
-  const [consent, setConsent] = createSignal<readonly ConsentPermission[] | undefined>(undefined)
+  const [consent, setConsent] = createSignal<ConsentRequest | undefined>(undefined)
 
   onMount(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -41,13 +41,13 @@ export function InstallSheet(props: {
 
   const version = (): string => offeredVersion(props.detail)?.version ?? "latest"
 
-  const install = async (grant: readonly string[] = []): Promise<void> => {
+  const install = async (grant: readonly string[] = [], integrity?: string): Promise<void> => {
     if (busy()) return
     setBusy(true)
     setError(undefined)
     setConsent(undefined)
     try {
-      setResult(await installFromMarket(props.name, grant))
+      setResult(await installFromMarket(props.name, grant, integrity))
     } catch (failure: unknown) {
       const asked = consentOf(failure)
       if (asked === undefined) setError(errorMessage(failure))
@@ -159,13 +159,15 @@ export function InstallSheet(props: {
               </section>
 
               <Show when={consent()}>
-                {(permissions) => (
+                {(asked) => (
                   <ConsentPrompt
                     subject={props.title}
-                    permissions={permissions()}
+                    permissions={asked().permissions}
+                    integrity={asked().integrity}
+                    changed={asked().changed}
                     action="Allow and install"
                     busy={busy()}
-                    onAllow={(grant) => void install(grant)}
+                    onAllow={(grant) => void install(grant, asked().integrity)}
                     onCancel={() => setConsent(undefined)}
                   />
                 )}

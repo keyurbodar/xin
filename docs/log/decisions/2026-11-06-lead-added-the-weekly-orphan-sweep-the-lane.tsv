@@ -1,0 +1,1 @@
+2026-11-06T13:54:16Z	M4	Lead added the weekly orphan sweep the lane skipped, with a 24h grace window	Spec 08 requires it; the grace protects an upload between R2 put and commit	plugins/files/files.test.ts sweep case, gate cde67a63	accepted
