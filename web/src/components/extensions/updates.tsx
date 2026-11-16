@@ -9,7 +9,7 @@ import {
   skipMarketVersion,
   unskipMarketVersion,
   updateFromMarket,
-  type ConsentPermission,
+  type ConsentRequest,
   type MarketDetail,
   type MarketSummary,
 } from "../../state/extensions.ts"
@@ -23,7 +23,7 @@ export function Updates(): JSX.Element {
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [note, setNote] = createSignal<string | undefined>(undefined)
   const [consent, setConsent] = createSignal<
-    { readonly entry: MarketSummary; readonly permissions: readonly ConsentPermission[] } | undefined
+    ({ readonly entry: MarketSummary } & ConsentRequest) | undefined
   >(undefined)
 
   onMount(() => {
@@ -37,7 +37,7 @@ export function Updates(): JSX.Element {
     return state.value.filter((entry) => entry.status === "update-available")
   }
 
-  const updateOne = async (entry: MarketSummary, grant: readonly string[] = []): Promise<void> => {
+  const updateOne = async (entry: MarketSummary, grant: readonly string[] = [], integrity?: string): Promise<void> => {
     setError(undefined)
     setNote(undefined)
     setConsent(undefined)
@@ -48,16 +48,16 @@ export function Updates(): JSX.Element {
       const state = detail.state()
       const offered = state.kind === "ready" ? offeredVersion(state.value) : undefined
       if (offered === undefined) throw new Error(`${entry.name} offers no compatible version`)
-      const result = await updateFromMarket(entry.name, offered.version, grant)
+      const result = await updateFromMarket(entry.name, offered.version, grant, integrity)
       setNote(
         result.application === "applied"
           ? `${entry.name} updated to ${offered.version}`
           : `${entry.name} recorded for the next update`,
       )
     } catch (failure: unknown) {
-      const permissions = consentOf(failure)
-      if (permissions === undefined) setError(errorMessage(failure))
-      else setConsent({ entry, permissions })
+      const asked = consentOf(failure)
+      if (asked === undefined) setError(errorMessage(failure))
+      else setConsent({ entry, ...asked })
     } finally {
       setBusy(undefined)
     }
@@ -94,9 +94,11 @@ export function Updates(): JSX.Element {
           <ConsentPrompt
             subject={asked().entry.name}
             permissions={asked().permissions}
+            integrity={asked().integrity}
+            changed={asked().changed}
             action="Allow and update"
             busy={busy() !== undefined}
-            onAllow={(grant) => void updateOne(asked().entry, grant)}
+            onAllow={(grant) => void updateOne(asked().entry, grant, asked().integrity)}
             onCancel={() => setConsent(undefined)}
           />
         )}
