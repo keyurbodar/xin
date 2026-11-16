@@ -7,7 +7,7 @@ import {
   DEFAULT_COMPACTION_POLICY,
   ProviderDoc,
 } from "@earendil-works/pi-durable"
-import { type Admission, type ModelDefaults, resolveModel } from "../../src/contracts/models.ts"
+import { type Admission, type ModelDefaults } from "../../src/contracts/models.ts"
 
 /** Longest tool result text a summary source keeps verbatim; longer ones keep half of this from each end. */
 const TOOL_RESULT_CAP = 2000
@@ -135,9 +135,9 @@ async function summarize(
   context: HookContext,
   ports: SummaryPorts,
 ): Promise<string | undefined> {
-  const utility = resolveModel({ role: "utility", owner: await ports.ownerDefaults() })
+  const owner = await ports.ownerDefaults()
   const current = (await api.snapshot(AgentDoc, api.conversationId, context))?.model
-  const refs = [...(utility.kind === "none" ? [] : [utility.model]), ...(current === undefined ? [] : [current])]
+  const refs = [owner.compaction, owner.utility, current].filter((ref) => ref !== undefined)
   const models = refs
     .filter(
       (ref, index) =>
