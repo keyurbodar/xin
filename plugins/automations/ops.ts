@@ -160,6 +160,7 @@ export function automationOps(engine: Engine): readonly Op[] {
     }),
     defineOp({
       name: "automation.runs",
+      read: true,
       args: RunsArgs,
       actors: ACTORS,
       run: async (api, args) => ({

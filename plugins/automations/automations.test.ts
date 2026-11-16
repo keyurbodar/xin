@@ -503,6 +503,28 @@ describe("automations", () => {
       expect(seen[index]).toBeGreaterThan(seen[index - 1] ?? Infinity)
   }, 30_000)
 
+  it("names in the home snapshot the revision of each automation's own latest change", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "touched")
+    const home = () => runInDurableObject(stub, (owner: Home) => owner.loader.ctx.wire.snapshot())
+    const make = (id: string, title: string) =>
+      op<AutomationView>(stub, id, "automation.create", { title, prompt: "Count", project: project.id, triggers: [] })
+    const first = await make("t1", "First")
+    const afterFirst = await home()
+    const second = await make("t2", "Second")
+    const afterSecond = await home()
+    await op<AutomationView>(stub, "t3", "automation.update", { id: second.id, enabled: false })
+    const afterUpdate = await home()
+
+    expect(afterFirst).toMatchObject({ automations: { touched: { [first.id]: expect.any(Number) } } })
+    const touched = (snapshot: typeof afterFirst, id: string) =>
+      (snapshot as { automations: { touched: Record<string, number> } }).automations.touched[id]
+    expect(touched(afterSecond, first.id)).toBe(touched(afterFirst, first.id))
+    expect(touched(afterUpdate, first.id)).toBe(touched(afterFirst, first.id))
+    expect(touched(afterUpdate, second.id)).toBeGreaterThan(touched(afterSecond, second.id) ?? Infinity)
+    expect(afterUpdate).toMatchObject({ automations: { revision: touched(afterUpdate, second.id) } })
+  }, 30_000)
+
   it("takes back the rules it hands out, nulls included, so a batching webhook can be edited and rotated", async () => {
     const stub = fresh()
     const project = await makeProject(stub, "nullrules")
