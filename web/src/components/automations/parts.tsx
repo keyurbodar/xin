@@ -46,6 +46,7 @@ export function createAutomationActions(list: Accessor<readonly Automation[] | u
   })
 
   const run = async (id: string, work: () => Promise<void>): Promise<boolean> => {
+    if (busy() !== undefined) return false
     setBusy(id)
     setFailed(undefined)
     try {
@@ -384,7 +385,7 @@ export function DeleteAutomationDialog(props: {
 
 /** The dialogs a list of rows opens: new, edit, run now and delete, plus where each row action goes. */
 export function createRowDialogs(
-  actions: Pick<ReturnType<typeof createAutomationActions>, "toggle" | "remove">,
+  actions: Pick<ReturnType<typeof createAutomationActions>, "busy" | "toggle" | "remove">,
   options: {
     project?: string | undefined
     onDeleted?: (() => void) | undefined
@@ -400,6 +401,7 @@ export function createRowDialogs(
   const [running, setRunning] = createSignal<Automation>()
   const [deleting, setDeleting] = createSignal<Automation>()
   const handle = (automation: Automation, action: RowAction): void => {
+    if (action !== "open" && actions.busy() !== undefined) return
     switch (action) {
       case "open":
         navigate(`/automations/${encodeURIComponent(automation.id)}`)
