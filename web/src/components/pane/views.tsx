@@ -1,6 +1,6 @@
 import { For, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import { Brain, CalendarClock, HardDrive, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
+import { Brain, CalendarClock, CircleDot, HardDrive, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
 import { activeConversation, host, slotItems } from "../../plugins/slots.tsx"
 import { Icon, isIconName } from "../ui/icon.tsx"
 import { MemoryTab } from "../chat/memory.tsx"
@@ -8,6 +8,8 @@ import { AutomationsTab } from "../chat/automations.tsx"
 import { JobsView, ThreadsView } from "./bodies.tsx"
 import { CrewSection, CrewView } from "./crew.tsx"
 import { DriveView } from "./drive.tsx"
+import { IssueView } from "./issue.tsx"
+import { IssuesSection } from "./issues.tsx"
 import { DriveSection, InProgressSection, NeedsYouSection, ThreadsSection, type PaneContext } from "./overview.tsx"
 
 export type { PaneContext }
@@ -51,6 +53,7 @@ export const OVERVIEW_SECTIONS: readonly OverviewSection[] = [
   section("needs", "Needs you", NeedsYouSection),
   section("crew", "Crew", CrewOverview, "captain"),
   section("progress", "In progress", InProgressSection, "project"),
+  section("issues", "Issues", IssuesSection),
   section("threads", "Threads", ThreadsSection, "project"),
   section("drive", "Drive", DriveSection, "project"),
 ]
@@ -132,8 +135,25 @@ export function paneViews(context: PaneContext): readonly PaneEntry[] {
   ]
 }
 
+const issueEntries = new Map<string, PaneEntry>()
+
+/** An issue opens as its own pane view, `issue:<id>`, outside the + menu's fixed list. One entry per id, so a home update never remounts it. */
+function issueEntry(id: string): PaneEntry | undefined {
+  const match = /^issue:(\d+)$/u.exec(id)
+  if (match === null) return undefined
+  const issue = Number(match[1])
+  const entry = issueEntries.get(id) ?? {
+    id,
+    label: `Issue #${issue}`,
+    icon: CircleDot,
+    render: (context: PaneContext) => <IssueView {...context} id={issue} />,
+  }
+  issueEntries.set(id, entry)
+  return entry
+}
+
 export function paneEntry(id: string, context: PaneContext): PaneEntry | undefined {
-  return paneViews(context).find((entry) => entry.id === id)
+  return paneViews(context).find((entry) => entry.id === id) ?? issueEntry(id)
 }
 
 export function paneView(id: string, context: PaneContext): PaneEntry {

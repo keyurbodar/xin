@@ -33,10 +33,20 @@
       "tool-issues": {
         "module": "./tools.ts",
         "title": "Issue tools",
-        "description": "The model-facing issue tool (create, read, update, comment). Off by default: its declaration adds about a kilobyte to every request.",
+        "description": "The model-facing issue tool: create, read and update. Coordinators and Captains get it; delegated threads leave it out.",
         "contributes": {
           "tools": [
             "issue"
+          ]
+        }
+      },
+      "tool-issue-comment": {
+        "module": "./comment.ts",
+        "title": "Issue comments",
+        "description": "The issue_comment tool, so any conversation, delegated threads included, can report on an issue.",
+        "contributes": {
+          "tools": [
+            "issue_comment"
           ]
         }
       }
@@ -48,8 +58,11 @@
       },
       {
         "id": "tool-issues",
-        "plugin": "tool-issues",
-        "disabled": true
+        "plugin": "tool-issues"
+      },
+      {
+        "id": "tool-issue-comment",
+        "plugin": "tool-issue-comment"
       }
     ]
   }

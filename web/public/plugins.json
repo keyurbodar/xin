@@ -281,13 +281,25 @@
     {
       "name": "tool-issues",
       "title": "Issue tools",
-      "description": "The model-facing issue tool (create, read, update, comment). Off by default: its declaration adds about a kilobyte to every request.",
+      "description": "The model-facing issue tool: create, read and update. Coordinators and Captains get it; delegated threads leave it out.",
       "package": "ingle-plugin-issues",
       "version": "0.1.0",
       "permissions": [],
       "slots": [],
       "rows": [
         "tool-issues"
+      ]
+    },
+    {
+      "name": "tool-issue-comment",
+      "title": "Issue comments",
+      "description": "The issue_comment tool, so any conversation, delegated threads included, can report on an issue.",
+      "package": "ingle-plugin-issues",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "tool-issue-comment"
       ]
     },
     {

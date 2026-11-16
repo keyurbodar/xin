@@ -18,31 +18,32 @@ import * as p16 from "../plugins/hello/index.ts"
 import * as p17 from "../plugins/intake/index.ts"
 import * as p18 from "../plugins/issues/index.ts"
 import * as p19 from "../plugins/issues/tools.ts"
-import * as p20 from "../plugins/jobs/index.ts"
-import * as p21 from "../plugins/market/index.ts"
-import * as p22 from "../plugins/mcp/index.ts"
-import * as p23 from "../plugins/mcp/tools.ts"
-import * as p24 from "../plugins/mcp/server.ts"
-import * as p25 from "../plugins/memory/index.ts"
-import * as p26 from "../plugins/memory/tools.ts"
-import * as p27 from "../plugins/models/index.ts"
-import * as p28 from "../plugins/models/tools.ts"
-import * as p29 from "../plugins/orchestrator/index.ts"
-import * as p30 from "../plugins/orchestrator/tools.ts"
-import * as p31 from "../plugins/outline/index.ts"
-import * as p32 from "../plugins/presets/index.ts"
-import * as p33 from "../plugins/presets/preset.ts"
-import * as p34 from "../plugins/push/index.ts"
-import * as p35 from "../plugins/questions/index.ts"
-import * as p36 from "../plugins/questions/tools.ts"
-import * as p37 from "../plugins/skills/index.ts"
-import * as p38 from "../plugins/skills/tools.ts"
-import * as p39 from "../plugins/standup/index.ts"
-import * as p40 from "../plugins/theme-pack/index.ts"
-import * as p41 from "../plugins/time/index.ts"
-import * as p42 from "../plugins/watchdog/index.ts"
-import * as p43 from "../plugins/web/index.ts"
-import * as p44 from "../plugins/workspace/index.ts"
+import * as p20 from "../plugins/issues/comment.ts"
+import * as p21 from "../plugins/jobs/index.ts"
+import * as p22 from "../plugins/market/index.ts"
+import * as p23 from "../plugins/mcp/index.ts"
+import * as p24 from "../plugins/mcp/tools.ts"
+import * as p25 from "../plugins/mcp/server.ts"
+import * as p26 from "../plugins/memory/index.ts"
+import * as p27 from "../plugins/memory/tools.ts"
+import * as p28 from "../plugins/models/index.ts"
+import * as p29 from "../plugins/models/tools.ts"
+import * as p30 from "../plugins/orchestrator/index.ts"
+import * as p31 from "../plugins/orchestrator/tools.ts"
+import * as p32 from "../plugins/outline/index.ts"
+import * as p33 from "../plugins/presets/index.ts"
+import * as p34 from "../plugins/presets/preset.ts"
+import * as p35 from "../plugins/push/index.ts"
+import * as p36 from "../plugins/questions/index.ts"
+import * as p37 from "../plugins/questions/tools.ts"
+import * as p38 from "../plugins/skills/index.ts"
+import * as p39 from "../plugins/skills/tools.ts"
+import * as p40 from "../plugins/standup/index.ts"
+import * as p41 from "../plugins/theme-pack/index.ts"
+import * as p42 from "../plugins/time/index.ts"
+import * as p43 from "../plugins/watchdog/index.ts"
+import * as p44 from "../plugins/web/index.ts"
+import * as p45 from "../plugins/workspace/index.ts"
 import type { Row } from "./kernel/layers.ts"
 import type { Catalog } from "./kernel/loader.ts"
 
@@ -354,13 +355,21 @@ export const CATALOG: Catalog = {
     plugin: p19,
     title: "Issue tools",
     description:
-      "The model-facing issue tool (create, read, update, comment). Off by default: its declaration adds about a kilobyte to every request.",
+      "The model-facing issue tool: create, read and update. Coordinators and Captains get it; delegated threads leave it out.",
     manifest: { api: 1, requires: [], permissions: [], contributes: { tools: ["issue"], ops: [] }, slots: [] },
     local: true,
     source: "ingle-plugin-issues@0.1.0",
   },
-  jobs: {
+  "tool-issue-comment": {
     plugin: p20,
+    title: "Issue comments",
+    description: "The issue_comment tool, so any conversation, delegated threads included, can report on an issue.",
+    manifest: { api: 1, requires: [], permissions: [], contributes: { tools: ["issue_comment"], ops: [] }, slots: [] },
+    local: true,
+    source: "ingle-plugin-issues@0.1.0",
+  },
+  jobs: {
+    plugin: p21,
     title: "Jobs",
     description: "Slow tools as jobs that report back.",
     manifest: {
@@ -374,7 +383,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-jobs@0.1.0",
   },
   market: {
-    plugin: p21,
+    plugin: p22,
     title: "Market",
     description: "Discovery, install and update checks for plugin packages.",
     manifest: {
@@ -404,7 +413,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-market@0.1.0",
   },
   mcp: {
-    plugin: p22,
+    plugin: p23,
     title: "MCP",
     description: "MCP servers as deferred tools.",
     manifest: {
@@ -421,7 +430,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-mcp@0.1.0",
   },
   "tool-mcp": {
-    plugin: p23,
+    plugin: p24,
     title: "MCP tools",
     description: "The model-facing mcp tools. Disable to hide them; the mcp service keeps running.",
     manifest: {
@@ -435,7 +444,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-mcp@0.1.0",
   },
   "mcp-server": {
-    plugin: p24,
+    plugin: p25,
     title: "MCP server",
     description: "One MCP server connection carried by a row, for bundles.",
     manifest: { api: 1, requires: [], permissions: ["network", "secrets"], slots: [] },
@@ -443,7 +452,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-mcp@0.1.0",
   },
   memory: {
-    plugin: p25,
+    plugin: p26,
     title: "Memory",
     description: "Notes with FTS recall and the Dreamer.",
     manifest: {
@@ -470,7 +479,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-memory@0.1.0",
   },
   "tool-memory": {
-    plugin: p26,
+    plugin: p27,
     title: "Memory tools",
     description: "The model-facing memory tools. Disable to hide them; the memory service keeps running.",
     manifest: {
@@ -484,7 +493,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-memory@0.1.0",
   },
   models: {
-    plugin: p27,
+    plugin: p28,
     title: "Models",
     description: "Run-time model catalog, credentials and set_model.",
     manifest: {
@@ -521,7 +530,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-models@0.1.0",
   },
   "tool-models": {
-    plugin: p28,
+    plugin: p29,
     title: "Models tools",
     description: "The model-facing models tools. Disable to hide them; the models service keeps running.",
     manifest: {
@@ -535,7 +544,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-models@0.1.0",
   },
   orchestrator: {
-    plugin: p29,
+    plugin: p30,
     title: "Orchestrator",
     description: "Coordinator tools and threads.",
     manifest: {
@@ -552,7 +561,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-orchestrator@0.1.0",
   },
   "tool-orchestrator": {
-    plugin: p30,
+    plugin: p31,
     title: "Orchestrator tools",
     description: "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running.",
     manifest: {
@@ -579,7 +588,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-orchestrator@0.1.0",
   },
   outline: {
-    plugin: p31,
+    plugin: p32,
     title: "Outline",
     description: "A right-pane tab that lists a conversation's messages and tool calls as a jump list.",
     manifest: {
@@ -593,7 +602,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-outline@0.1.0",
   },
   presets: {
-    plugin: p32,
+    plugin: p33,
     title: "Presets",
     description: "Named agent presets that choose a conversation's plugins.",
     manifest: {
@@ -607,7 +616,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-presets@0.1.0",
   },
   preset: {
-    plugin: p33,
+    plugin: p34,
     title: "Preset",
     description: "One agent preset carried by a row, for bundles.",
     manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] }, slots: [] },
@@ -615,7 +624,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-presets@0.1.0",
   },
   push: {
-    plugin: p34,
+    plugin: p35,
     title: "Web Push",
     description: "Encrypted pushes when no tab is open.",
     manifest: {
@@ -642,7 +651,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-push@0.1.0",
   },
   questions: {
-    plugin: p35,
+    plugin: p36,
     title: "Questions",
     description: "ask_user and pending requests.",
     manifest: {
@@ -656,7 +665,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-questions@0.1.0",
   },
   "tool-questions": {
-    plugin: p36,
+    plugin: p37,
     title: "Questions tools",
     description: "The model-facing questions tools. Disable to hide them; the questions service keeps running.",
     manifest: {
@@ -670,7 +679,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-questions@0.1.0",
   },
   skills: {
-    plugin: p37,
+    plugin: p38,
     title: "Skills",
     description: "Markdown skills loaded on demand.",
     manifest: {
@@ -684,7 +693,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-skills@0.1.0",
   },
   "tool-skills": {
-    plugin: p38,
+    plugin: p39,
     title: "Skills tools",
     description: "The model-facing skills tools. Disable to hide them; the skills service keeps running.",
     manifest: { api: 1, requires: [], permissions: ["plugins"], contributes: { tools: ["skill"], ops: [] }, slots: [] },
@@ -692,7 +701,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-skills@0.1.0",
   },
   standup: {
-    plugin: p39,
+    plugin: p40,
     title: "Standup",
     description: "A /standup prompt, with a palette command and a composer button that start it.",
     manifest: {
@@ -706,7 +715,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-standup@0.1.0",
   },
   "theme-pack": {
-    plugin: p40,
+    plugin: p41,
     title: "Theme pack",
     description: "Three extra themes, Harbor, Moss and Paper, as pure colour data.",
     manifest: { api: 1, requires: [], permissions: [], contributes: { tools: [], ops: [] }, slots: ["theme"] },
@@ -714,7 +723,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-theme-pack@0.1.0",
   },
   time: {
-    plugin: p41,
+    plugin: p42,
     title: "Current time",
     description:
       "A user-role time reading with the owner's zone and the elapsed time before each request, without a tool.",
@@ -723,7 +732,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-time@0.1.0",
   },
   watchdog: {
-    plugin: p42,
+    plugin: p43,
     title: "Watchdog",
     description: "Fails stalled threads and overdue jobs.",
     manifest: { api: 1, requires: [], permissions: ["conversations"], contributes: { tools: [], ops: [] }, slots: [] },
@@ -731,7 +740,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-watchdog@0.1.0",
   },
   "tool-web": {
-    plugin: p43,
+    plugin: p44,
     title: "Web tools",
     description: "Search the public web and fetch a page as readable text.",
     manifest: {
@@ -745,7 +754,7 @@ export const CATALOG: Catalog = {
     source: "ingle-plugin-web@0.1.0",
   },
   workspace: {
-    plugin: p44,
+    plugin: p45,
     title: "Workspace",
     description: "Projects and thread documents.",
     manifest: {
@@ -807,7 +816,8 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
   "ingle-plugin-intake": [{ id: "intake", name: "cordis:intake" }],
   "ingle-plugin-issues": [
     { id: "issues", name: "cordis:issues" },
-    { id: "tool-issues", name: "cordis:tool-issues", disabled: true },
+    { id: "tool-issues", name: "cordis:tool-issues" },
+    { id: "tool-issue-comment", name: "cordis:tool-issue-comment" },
   ],
   "ingle-plugin-jobs": [{ id: "jobs", name: "cordis:jobs" }],
   "ingle-plugin-market": [{ id: "market", name: "cordis:market" }],
@@ -832,7 +842,7 @@ export const BUNDLES: Readonly<Record<string, readonly Row[]>> = {
     {
       id: "presets",
       name: "cordis:presets",
-      config: { default: "full", threadOmits: ["tool-automations", "tool-goals"] },
+      config: { default: "full", threadOmits: ["tool-automations", "tool-goals", "tool-issues"] },
     },
     {
       id: "preset-full",
