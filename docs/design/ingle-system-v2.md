@@ -160,7 +160,7 @@ Adopt means we build it as described. Change means we take the idea with a state
 | Floating New thread button, bottom right, pill with label | Adopt | Opens the new-thread screen |
 | New thread screen: close X, title, centred prompt, composer with project and branch chips | Adopt | Replaces the New thread dialog on phones |
 | Thread screen header: back, title with a subtitle line, companions button with a count badge, overflow menu | Adopt | Companions is the right pane (overview, files, issues, crew); overflow holds side thread, pin, copy transcript, archive, delete |
-| Capsule composer pinned to the bottom ("+ Message", send), growing into a card with chips when focused | Adopt | Chips: model, reasoning, context. It stays above the on-screen keyboard through `--keyboard-inset`, which UI SDK's Dialog and Drawer content set themselves; Ingle defines no such token |
+| Capsule composer pinned to the bottom ("+ Message", send), growing into a card with chips when focused | Adopt | Chips: model, reasoning, context. It stays above the on-screen keyboard because the pinned composer calls `bindAvoidKeyboard` from `@ui-sdk/core` (UI SDK's "Keep a Bar Above the Keyboard"). UI SDK sets `--keyboard-inset` only inside Dialog and Drawer content, sheets and the toast region, so sheets get it for free; Ingle defines no such token |
 | Floating activity pills above the composer ("1 working", side threads count) | Adopt | Tap opens the companions sheet at the crew section |
 | Bottom sheets: grabber, large title, close X, grouped options with section labels, selected row filled with a check | Adopt | Model picker (with segmented provider tabs), project picker, session menu, companions |
 | Swipe down to dismiss with momentum | Adopt | UI SDK Drawer (`side="bottom"`), per emil momentum dismissal |
@@ -270,14 +270,14 @@ Two adapter facts each surface must respect: options are set as attributes or pr
 | `pane/issues.tsx` priority and state pickers | Single-choice button groups with `aria-pressed` | Radio Group styled as segments (priority), Select (state) | Issues |
 | `automations/triggers.tsx` cron presets | Single-choice `aria-pressed` buttons | Radio Group styled as segments | Automations |
 | `onboarding/captain-step.tsx` templates | Single-choice `aria-pressed` buttons | Radio Group | Settings (onboarding) |
-| `pane/drive.tsx` content/history mode | Two `aria-pressed` buttons | Segmented Control | Drive |
+| `pane/drive.tsx` History toggle | One `aria-pressed` button | Toggle | Drive |
 | `pane/drive.tsx` version list | `aria-pressed` per version row, one selected | Listbox | Drive |
 | Independent toggles: `chat/markdown.tsx` wrap, `composer/model-picker.tsx` favourite, `shell/sidebar.tsx` search, `pane/issues.tsx` show closed | `aria-pressed` buttons | Toggle | Composer and thread, Composer and thread, Shell and sidebar, Issues |
 | `screens/signin.tsx` reveal | `aria-pressed` show/hide on a password field | Password Input (its own toggle) | Settings (sign-in) |
 | Native `<select>`: `captain/captain-dialog.tsx` (2), `automations/dialog.tsx`, `settings/parts.tsx`, `settings/models.tsx`, `extensions/config-form.tsx`, `onboarding/provider-step.tsx`, `onboarding/captain-step.tsx`, `pane/drive.tsx` | Native select | Select, styled with our tokens; it keeps form submission through `name` and adds typeahead that agents can see | Captains, Automations, Settings ×3, Settings (after #35), Settings (onboarding) ×2, Drive |
 | `settings/models.tsx` native checkbox | `type="checkbox"` | Checkbox | Settings |
-| Enter or mod+Enter to submit: `chat/composer.tsx` (2), `chat/cards.tsx`, `onboarding/thread-step.tsx`, `settings/usage.tsx`, `pane/issue.tsx` | `onKeyDown` on native inputs and textareas | Input and Textarea; the submit key stays app code, because submitting is the app's action and not a control behaviour | The surface that owns each field |
-| `composer/model-picker.tsx` mod+D favourite | `onKeyDown` on the list | Moves with the picker to Combobox; the shortcut stays app code on the highlighted item | Composer and thread |
+| Enter or mod+Enter to submit: `chat/composer.tsx` (2), `chat/cards.tsx`, `chat/memory.tsx` (2, mod+Enter), `onboarding/thread-step.tsx`, `settings/usage.tsx`, `pane/issue.tsx`, `pane/issue-edit.tsx` (title Enter, description mod+Enter) | `onKeyDown` on native inputs and textareas | Input and Textarea; the submit key stays app code, because submitting is the app's action and not a control behaviour | The surface that owns each field |
+| `composer/model-picker.tsx` mod+D favourite | `onKeyDown` on the search input (`Listbox.Input`) | Moves with the picker to Combobox; the handler attaches to the native input inside `ui-combobox-input` and acts on the highlighted item, as app code | Composer and thread |
 | `shell/conversation-tabs.tsx` ContextMenu / Shift+F10 | Hand-rolled key handler | Menu context trigger (handles both keys) | Shell and sidebar |
 | `lib/motion.ts` keyboard/pointer tracking | Window listeners for `data-instant` | Skip: motion policy, not a behaviour UI SDK owns | — |
 | Tooltips (`title` attributes today) | Native | Tooltip where a control has no visible text, with delay skip on subsequent hovers | Each surface |
