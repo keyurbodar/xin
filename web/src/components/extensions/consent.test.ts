@@ -1,6 +1,6 @@
 import { expect, mock, test } from "bun:test"
-import { createRoot } from "solid-js"
-import { createComponent, insert, root, textOf, type TestNode } from "../../../test/universal.ts"
+import { createComponent, createRoot } from "solid-js"
+import { insert, root, textOf, type TestNode } from "../../../test/universal.ts"
 
 void mock.module("./glyph.tsx", () => ({ Glyph: () => undefined }))
 const { ConsentPrompt } = await import("./consent.tsx")

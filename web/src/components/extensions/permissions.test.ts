@@ -31,7 +31,7 @@ test("Explore's package lines describe what a bundle or code plugin brings", () 
     "Mounts no plugin rows of its own",
     "Asks before it uses anything that needs your consent",
   ])
-  const row = { id: "a", plugin: "p", disabled: false }
+  const row = { id: "a", plugin: "p", config: {}, disabled: false }
   expect(packageLines({ kind: "code", rows: [row, { ...row, id: "b" }], requires: ["x@1"] })).toEqual([
     "Runs its own code in your Home, with your authority",
     "Mounts 2 plugin rows, which you can switch off",
