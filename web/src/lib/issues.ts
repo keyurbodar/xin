@@ -1,3 +1,4 @@
+import { isDefinitive } from "./api.ts"
 import { isRecord, listOf, numOf, recordOf, strOf, stringsOf } from "./parse.ts"
 
 export const PRIORITIES = ["urgent", "high", "normal", "low"] as const
@@ -31,6 +32,7 @@ export type IssueSummary = {
   readonly threads: readonly number[]
   readonly prs: readonly string[]
   readonly updatedAt: number
+  readonly project: string | null
 }
 
 export type Issue = IssueSummary & { readonly description: string }
@@ -55,7 +57,8 @@ export type IssueDetail = {
     readonly related: readonly LinkedIssue[]
   }
   readonly timeline: readonly IssueEvent[]
-  readonly earlier: boolean
+  /** The `before` cursor for the next older timeline page, or null when this page reaches the first event. */
+  readonly earlier: number | null
 }
 
 /** The state the contract seeds first; the Overview always lists it on top, wherever the owner moved it. */
@@ -129,6 +132,7 @@ function summaryOf(value: unknown): IssueSummary | undefined {
     threads: idsOf(record.threads),
     prs: stringsOf(record.prs),
     updatedAt: numOf(record.updatedAt) ?? 0,
+    project: strOf(record.project) ?? null,
   }
 }
 
@@ -182,7 +186,7 @@ export function parseIssueDetail(value: unknown): IssueDetail | undefined {
       const event = eventOf(entry)
       return event === undefined ? [] : [event]
     }),
-    earlier: numOf(record.earlier) !== undefined,
+    earlier: numOf(record.earlier) ?? null,
   }
 }
 
@@ -197,6 +201,16 @@ export function parseStatesRev(home: unknown): number | undefined {
 }
 
 export type IssueGroup = { readonly state: IssueState; readonly issues: readonly IssueSummary[] }
+
+/** Closed issues under their closed state in the owner's order, for the Overview's closed toggle. */
+export function closedGroups(states: readonly IssueState[], issues: readonly IssueSummary[]): readonly IssueGroup[] {
+  return states
+    .filter((state) => state.closed)
+    .flatMap((state) => {
+      const members = issues.filter((issue) => issue.state === state.id)
+      return members.length === 0 ? [] : [{ state, issues: members }]
+    })
+}
 
 const PRIORITY_RANK: Readonly<Record<Priority, number>> = { urgent: 0, high: 1, normal: 2, low: 3 }
 
@@ -391,9 +405,186 @@ export function newIssueArgs(input: NewIssue): Record<string, unknown> | undefin
   }
 }
 
+export const LIST_MAX = 20
+
+/** One issue.update payload, or the reason the edit cannot be sent, or nothing when it changes nothing. */
+export type Edit = { readonly kind: "send"; readonly fields: Record<string, unknown> } | { readonly kind: "invalid"; readonly message: string } | { readonly kind: "same" }
+
+const SAME: Edit = { kind: "same" }
+
+export function titleEdit(current: string, draft: string): Edit {
+  const title = draft.trim()
+  if (title === current) return SAME
+  if (title === "") return { kind: "invalid", message: "A title cannot be empty" }
+  return { kind: "send", fields: { title } }
+}
+
+export function descriptionEdit(current: string, draft: string): Edit {
+  const description = draft.trimEnd()
+  return description === current ? SAME : { kind: "send", fields: { description } }
+}
+
+/** A date input's value (YYYY-MM-DD, or empty for Clear) as the `due` field. */
+export function dueEdit(current: string | null, value: string): Edit {
+  const due = value === "" ? null : value
+  if (due === current) return SAME
+  if (due !== null && !/^\d{4}-\d{2}-\d{2}$/u.test(due)) return { kind: "invalid", message: "Pick a date" }
+  return { kind: "send", fields: { due } }
+}
+
+export function sameAssignee(left: Assignee, right: Assignee): boolean {
+  return left.kind === right.kind && left.id === right.id
+}
+
+/** The whole assignee list after one add or remove, since issue.update replaces the list. */
+export function assigneesEdit(current: readonly Assignee[], change: { readonly add: Assignee } | { readonly remove: Assignee }): Edit {
+  if ("remove" in change) {
+    const next = current.filter((entry) => !sameAssignee(entry, change.remove))
+    return next.length === current.length ? SAME : { kind: "send", fields: { assignees: next } }
+  }
+  if (current.some((entry) => sameAssignee(entry, change.add))) return SAME
+  if (current.length >= LIST_MAX) return { kind: "invalid", message: `At most ${LIST_MAX} assignees` }
+  return { kind: "send", fields: { assignees: [...current, change.add] } }
+}
+
+export type Candidate = { readonly assignee: Assignee; readonly name: string; readonly detail: string }
+
+/** Who can be assigned: the owner, this project's threads and every Captain, minus who already is, matched on the query. */
+export function assigneeCandidates(all: readonly Candidate[], current: readonly Assignee[], query: string): readonly Candidate[] {
+  const text = query.trim().toLowerCase()
+  return all.filter(
+    (candidate) =>
+      !current.some((entry) => sameAssignee(entry, candidate.assignee)) &&
+      (text === "" || candidate.name.toLowerCase().includes(text) || candidate.detail.toLowerCase().includes(text)),
+  )
+}
+
+export const LINK_KINDS = ["blocks", "blocked_by", "related"] as const
+export type LinkKind = (typeof LINK_KINDS)[number]
+
+export const LINK_LABEL: Readonly<Record<LinkKind, string>> = { blocks: "Blocks", blocked_by: "Blocked by", related: "Related" }
+
+/** "12" or "#12" as an issue id, for the link field's direct entry. */
+export function issueIdOf(text: string): number | undefined {
+  const match = /^#?(\d+)$/u.exec(text.trim())
+  if (match === null) return undefined
+  const id = Number(match[1])
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined
+}
+
+export function linkedIds(links: IssueDetail["links"]): ReadonlySet<number> {
+  return new Set([...links.blocks, ...links.blockedBy, ...links.related].map((entry) => entry.id))
+}
+
+/** issue.link args, or why that link cannot be made from here. */
+export function linkArgs(
+  id: number,
+  kind: LinkKind,
+  other: number,
+  links: IssueDetail["links"],
+): { readonly kind: "send"; readonly args: Record<string, unknown> } | { readonly kind: "invalid"; readonly message: string } {
+  if (other === id) return { kind: "invalid", message: "An issue cannot link to itself" }
+  const existing = kind === "blocks" ? links.blocks : kind === "blocked_by" ? links.blockedBy : links.related
+  if (existing.some((entry) => entry.id === other)) return { kind: "invalid", message: `#${other} is already listed there` }
+  return { kind: "send", args: { id, kind, other } }
+}
+
+/** Every timeline event the view has read, oldest first, and the cursor for the page before them. */
+export type TimelinePages = { readonly events: readonly IssueEvent[]; readonly cursor: number | null; readonly paged: boolean }
+
+function mergeEvents(left: readonly IssueEvent[], right: readonly IssueEvent[]): readonly IssueEvent[] {
+  const byId = new Map<number, IssueEvent>()
+  for (const event of [...left, ...right]) byId.set(event.id, event)
+  return [...byId.values()].toSorted((a, b) => a.id - b.id)
+}
+
+/** A re-read of the newest page joins what was read before, so a page loaded earlier never leaves a gap, and keeps the older cursor once paging began. */
+export function withHead(pages: TimelinePages | undefined, head: IssueDetail): TimelinePages {
+  if (pages === undefined) return { events: head.timeline, cursor: head.earlier, paged: false }
+  return { events: mergeEvents(pages.events, head.timeline), cursor: pages.paged ? pages.cursor : head.earlier, paged: pages.paged }
+}
+
+export function withOlder(pages: TimelinePages, older: IssueDetail): TimelinePages {
+  return { events: mergeEvents(older.timeline, pages.events), cursor: older.earlier, paged: true }
+}
+
 /** Issues are scoped by project; a Captain's pane carries its space as the project, so it reads its project's issues. */
 export function issueScope(pane: { readonly id: string }, captain: { readonly projectId: string } | undefined): string {
   return captain?.projectId ?? pane.id
+}
+
+export type CommandIds = {
+  readonly idFor: (payload: unknown) => string
+  readonly settle: (problem: unknown) => void
+}
+
+/**
+ * Command ids for one draft. The host dedupes on the id, so a resend of the same payload after a network failure keeps
+ * its id and lands once; an edited payload gets a fresh id, so its change is never deduped away; a success or a
+ * definite rejection (the host replays a rejected id) forgets the id.
+ */
+export function createCommandIds(mint: () => string): CommandIds {
+  let current: { readonly key: string; readonly id: string } | undefined
+  return {
+    idFor: (payload) => {
+      const key = JSON.stringify(payload)
+      if (current?.key !== key) current = { key, id: mint() }
+      return current.id
+    },
+    settle: (problem) => {
+      if (problem === undefined || isDefinitive(problem)) current = undefined
+    },
+  }
+}
+
+type AssignableProject = { readonly id: string; readonly name: string; readonly coordinatorId: number }
+type AssignableCaptain = { readonly projectId: string; readonly coordinatorId: number; readonly name: string; readonly archived: boolean }
+
+/** Who an issue can be assigned to from its pane: the owner, then its own project's threads, live Captains and lead. */
+export function assignableCandidates(
+  project: AssignableProject,
+  threads: readonly { readonly id: number; readonly title: string }[],
+  captains: readonly AssignableCaptain[],
+): readonly Candidate[] {
+  const own = captains.filter((captain) => !captain.archived && captain.projectId === project.id)
+  return [
+    { assignee: { kind: "person", id: "owner" }, name: "You", detail: "Person" },
+    ...threads.map((thread): Candidate => ({ assignee: { kind: "thread", id: thread.id }, name: thread.title, detail: "Thread" })),
+    ...own.map((captain): Candidate => ({ assignee: { kind: "captain", id: captain.coordinatorId }, name: captain.name, detail: "Captain" })),
+    ...(own.some((captain) => captain.coordinatorId === project.coordinatorId)
+      ? []
+      : [{ assignee: { kind: "captain", id: project.coordinatorId }, name: project.name, detail: "Project lead" } satisfies Candidate]),
+  ]
+}
+
+/** Why a search result cannot be offered as a link from a pane scoped to `project`; the host refuses a typed `#id` itself. */
+export function outsideProject(issue: { readonly id: number; readonly project: string | null }, project: string): string | undefined {
+  return issue.project === project ? undefined : `#${issue.id} is in another project`
+}
+
+export const LINK_QUERY_MAX = 200
+
+/** The link picker's search text as `issue.list` takes it: trimmed and within the contract's 200-character `q`. */
+export function linkQuery(text: string): string {
+  return text.trim().slice(0, LINK_QUERY_MAX)
+}
+
+export type ThreadHome = { readonly id: string; readonly slug: string; readonly threads: readonly { readonly id: number; readonly title: string }[] }
+
+export type ThreadPlace =
+  | { readonly kind: "here"; readonly title: string }
+  | { readonly kind: "elsewhere"; readonly title: string; readonly projectId: string; readonly slug: string }
+  | { readonly kind: "unknown" }
+
+/** Where a linked thread opens: in this pane's project, under the project the home lists it in, or nowhere when the home does not list it. */
+export function threadPlace(thread: number, pane: ThreadHome, projects: readonly ThreadHome[]): ThreadPlace {
+  const here = pane.threads.find((entry) => entry.id === thread)
+  if (here !== undefined) return { kind: "here", title: here.title }
+  for (const project of projects) {
+    const found = project.threads.find((entry) => entry.id === thread)
+    if (found !== undefined) return { kind: "elsewhere", title: found.title, projectId: project.id, slug: project.slug }
+  }
+  return { kind: "unknown" }
 }
 
 /** A write's ack only replaces the shown issue when it is not older, so a slow ack cannot undo a newer change the rev already showed. */

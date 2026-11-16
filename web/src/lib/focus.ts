@@ -33,3 +33,26 @@ export function firstFocusable(container: ParentNode | null | undefined): HTMLEl
 export function returnTarget<T extends { readonly isConnected: boolean }>(candidates: readonly (T | null | undefined)[]): T | undefined {
   return candidates.find((candidate): candidate is T => candidate !== null && candidate !== undefined && candidate.isConnected)
 }
+
+export type EditorExit = "key" | "button" | "blur"
+
+export type FocusReturn = {
+  readonly trigger: (element: { readonly focus: () => void }) => void
+  readonly exit: (how: EditorExit) => void
+}
+
+/**
+ * An inline editor swaps its trigger for an input. Leaving it by key or button puts focus back on the trigger that
+ * mounts in its place, once it has mounted; a blur leaves focus where the person moved it.
+ */
+export function createFocusReturn(defer: (run: () => void) => void = queueMicrotask): FocusReturn {
+  let trigger: { readonly focus: () => void } | undefined
+  return {
+    trigger: (element) => {
+      trigger = element
+    },
+    exit: (how) => {
+      if (how !== "blur") defer(() => trigger?.focus())
+    },
+  }
+}
