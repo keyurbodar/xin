@@ -12,6 +12,7 @@
         "description": "Coordinator tools and threads.",
         "permissions": [
           "conversations",
+          "files",
           "models"
         ],
         "contributes": {
@@ -23,13 +24,17 @@
             "thread.side",
             "thread.stop"
           ]
-        }
+        },
+        "requires": [
+          "presets"
+        ]
       },
       "tool-orchestrator": {
         "module": "./tools.ts",
         "title": "Orchestrator tools",
         "description": "The model-facing orchestrator tools. Disable to hide them; the orchestrator service keeps running.",
         "permissions": [
+          "conversations",
           "plugins"
         ],
         "contributes": {
@@ -44,7 +49,10 @@
             "thread_read",
             "thread_send"
           ]
-        }
+        },
+        "requires": [
+          "jobs"
+        ]
       }
     }
   }

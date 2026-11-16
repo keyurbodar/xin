@@ -21,13 +21,15 @@ import {
   grants,
   injectOf,
   permissionFor,
+  PROVIDED,
+  requiresPlugin,
   type Manifest,
   type ManifestProblem,
   type Permission,
 } from "./manifest.ts"
 import { sourcePackage, sourceVersion } from "./packages.ts"
 import { FOR_ROW } from "../contracts/rowbound.ts"
-import { facade } from "./facade.ts"
+import { facade, providedFacade } from "./facade.ts"
 import { readOwnerPatch, writeOwnerPatch } from "./patch.ts"
 import type { Runtime } from "./types.ts"
 
@@ -127,13 +129,13 @@ export class IngleLoader extends Loader {
     })
     ctx.on("internal/get", (target: Context, service: string, _error: Error, next: () => unknown) => {
       this.refuse(target, service)
-      return this.handOut(target, next())
+      return this.handOut(target, service, next())
     })
     const reflect: Context["reflect"] = Reflect.get(ctx.reflect, symbols.original)
     const get = reflect.get
     const serve = (caller: Context, service: string, value: unknown): unknown => {
       this.refuse(caller, service)
-      return this.handOut(caller, value)
+      return this.handOut(caller, service, value)
     }
     reflect.get = function (this: Context["reflect"], name: string, strict?: boolean): unknown {
       return serve(this.ctx, name, get.call(this, name, strict))
@@ -232,7 +234,7 @@ export class IngleLoader extends Loader {
    */
   refuse(ctx: Context, service: string): void {
     const permission = permissionFor(service)
-    if (permission === undefined) return
+    if (permission === undefined) return this.refuseProvided(ctx, service)
     const id = this.locate(ctx.fiber)
     if (id === undefined) {
       if (this.trusted.has(ctx)) return
@@ -244,14 +246,57 @@ export class IngleLoader extends Loader {
   }
 
   /**
-   * What a plugin row gets for a service read: a Cordis service becomes a frozen facade with no `ctx` and no
-   * `cordis.original`, so the row can call it but never reach the kernel context behind it.
+   * Throws when a plugin row reads a service another package's plugin provides without what `PROVIDED` asks: the
+   * permission listed for that service, or else a `requires` naming the providing plugin. Kernel services are not
+   * refused here.
    */
-  private handOut(caller: Context, value: unknown): unknown {
+  private refuseProvided(ctx: Context, service: string): void {
+    const id = this.pluginRow(ctx.fiber)
+    if (id === undefined) return
+    const provider = this.providerOf(ctx, service)
+    if (provider === undefined) return
+    const reader = this.pluginOfRow(id)
+    const plugin = this.pluginOfRow(provider)
+    if (reader === undefined || plugin === undefined || this.packageOf(reader) === this.packageOf(plugin)) return
+    const permissions = this.permissions.get(id) ?? []
+    if (grants(permissions, "runtime")) return
+    const needs = PROVIDED[service]
+    if (needs !== undefined) {
+      if (grants(permissions, needs)) return
+      throw new Error(`${id} uses the ${service} service without declaring the ${needs} permission`)
+    }
+    if (requiresPlugin(this.composition.catalog[reader]?.manifest ?? DEFAULT_MANIFEST, plugin)) return
+    throw new Error(`${id} uses the ${service} service from ${plugin} without requiring it`)
+  }
+
+  /** The plugin row that provides `service` as `ctx` sees it, or undefined when kernel code or Cordis provides it. */
+  private providerOf(ctx: Context, service: string): string | undefined {
+    const reflect: unknown = Reflect.get(this.ctx.reflect, symbols.original)
+    const store: unknown = typeof reflect === "object" && reflect !== null ? Reflect.get(reflect, "store") : undefined
+    const key: unknown = Reflect.get(ctx[symbols.isolate], service)
+    if (typeof store !== "object" || store === null || typeof key !== "symbol") return undefined
+    const impl: unknown = Reflect.get(store, key)
+    const owner: unknown = typeof impl === "object" && impl !== null ? Reflect.get(impl, "ctx") : undefined
+    if (!(owner instanceof Object)) return undefined
+    return this.pluginRow(Reflect.get(owner, "fiber"))
+  }
+
+  private packageOf(plugin: string): string {
+    const entry = this.composition.catalog[plugin]
+    return entry === undefined ? plugin : sourcePackage(entry.source)
+  }
+
+  /**
+   * What a plugin row gets for a service read: a Cordis service becomes a frozen facade with no `ctx` and no
+   * `cordis.original`, and a service another plugin provides becomes a frozen object of its methods alone, so the row
+   * can call either but never reach the kernel context behind it or change what other rows call.
+   */
+  private handOut(caller: Context, service: string, value: unknown): unknown {
     const id = this.pluginRow(caller.fiber)
     if (id === undefined) return value
     const bind: unknown = typeof value === "object" && value !== null ? Reflect.get(value, FOR_ROW) : undefined
     if (typeof bind === "function") return Object.freeze(Reflect.apply(bind, value, [id]))
+    if (this.providerOf(caller, service) !== undefined) return providedFacade(value, caller)
     return facade(value, caller, { id, permissions: this.permissions.get(id) ?? [] })
   }
 
