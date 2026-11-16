@@ -12,6 +12,7 @@ import {
 import { Button, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { InstallSheet } from "../extensions/install-sheet.tsx"
+import { IntegrityPin } from "../extensions/integrity.tsx"
 import { packageLines } from "../extensions/permissions.ts"
 import { Card, DetailColumns, ExternalLink, Fact, LoadFailed, LogoTile, Page, SkeletonRows } from "./parts.tsx"
 import { crumbsFor, logoOf, pluginAction, statusWord } from "./routes.ts"
@@ -187,6 +188,13 @@ export function PluginDetail(props: { name: string }): JSX.Element {
                       <Show when={dateOf(version().publishTimestamp)}>
                         {(date) => <span class="ml-2 text-ink-2">{date()}</span>}
                       </Show>
+                    </Fact>
+                  )}
+                </Show>
+                <Show when={entry().integrity}>
+                  {(integrity) => (
+                    <Fact label="Integrity">
+                      <IntegrityPin integrity={integrity()} />
                     </Fact>
                   )}
                 </Show>

@@ -646,6 +646,29 @@ describe("market", () => {
     })
   })
 
+  it("shows a registry code package's pin in its entry and in the consent it asks for, and no pin for a bundle or git version", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    const pin = BUILT[SEEDS.findIndex((seed) => seed.name === GUARDED)]?.find(
+      (built) => built.version === "1.1.0",
+    )?.integrity
+    expect(pin).toMatch(/^sha512-/)
+
+    expect((await op(stub, "market.entry", { name: GUARDED })).result).toMatchObject({ kind: "code", integrity: pin })
+    expect((await op(stub, "market.entry", { name: NOTES })).result).toMatchObject({ kind: "bundle", integrity: null })
+    expect((await op(stub, "market.entry", { name: TOOLS })).result).toMatchObject({ integrity: null })
+    expect(await op(stub, "market.install", { name: GUARDED })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { integrity: pin } },
+    })
+    expect(await op(stub, "market.install", { name: GUARDED, grant: ["network", "secrets"] })).toMatchObject({
+      ok: true,
+    })
+    expect(await pending(stub)).toMatchObject({ pins: { [`${GUARDED}@1.1.0`]: { integrity: pin } } })
+  })
+
   it("refuses a code package that declares owner, even with consent", async () => {
     const transport = fake()
     serve(transport)

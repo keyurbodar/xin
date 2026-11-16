@@ -4,7 +4,7 @@ import {
   errorMessage,
   installFromMarket,
   offeredVersion,
-  type ConsentPermission,
+  type ConsentRequest,
   type InstallResult,
   type MarketDetail,
 } from "../../state/extensions.ts"
@@ -29,7 +29,7 @@ export function InstallSheet(props: {
   }
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [result, setResult] = createSignal<InstallResult | undefined>(undefined)
-  const [consent, setConsent] = createSignal<readonly ConsentPermission[] | undefined>(undefined)
+  const [consent, setConsent] = createSignal<ConsentRequest | undefined>(undefined)
 
   onMount(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -159,10 +159,11 @@ export function InstallSheet(props: {
               </section>
 
               <Show when={consent()}>
-                {(permissions) => (
+                {(asked) => (
                   <ConsentPrompt
                     subject={props.title}
-                    permissions={permissions()}
+                    permissions={asked().permissions}
+                    integrity={asked().integrity}
                     action="Allow and install"
                     busy={busy()}
                     onAllow={(grant) => void install(grant)}

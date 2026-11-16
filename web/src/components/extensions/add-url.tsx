@@ -1,5 +1,5 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
-import { addSpec, consentOf, errorMessage, packages, type ConsentPermission } from "../../state/extensions.ts"
+import { addSpec, consentOf, errorMessage, packages, type ConsentRequest } from "../../state/extensions.ts"
 import { Button, Failure, MONO_INPUT, Note } from "./chrome.tsx"
 import { ConsentPrompt } from "./consent.tsx"
 import { Glyph } from "./glyph.tsx"
@@ -12,7 +12,7 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [added, setAdded] = createSignal<string | undefined>(undefined)
-  const [consent, setConsent] = createSignal<readonly ConsentPermission[] | undefined>(undefined)
+  const [consent, setConsent] = createSignal<ConsentRequest | undefined>(undefined)
   const [closing, setClosing] = createSignal(false)
   const close = (): void => {
     if (closing()) return
@@ -128,10 +128,11 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
           </Show>
 
           <Show when={consent()}>
-            {(permissions) => (
+            {(asked) => (
               <ConsentPrompt
                 subject={spec().trim()}
-                permissions={permissions()}
+                permissions={asked().permissions}
+                integrity={asked().integrity}
                 action="Allow and add"
                 busy={busy()}
                 onAllow={(grant) => void submit(grant)}

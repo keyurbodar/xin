@@ -43,3 +43,35 @@ test("the consent prompt lists plain sentences and grants exactly the ids the ba
   click()
   expect(granted).toEqual([["secrets", "network", "calendar"]])
 })
+
+const PIN = `sha512-ABCDEFGH${"x".repeat(72)}stuvwx==`
+
+const consent = (integrity: string | undefined): TestNode => {
+  const tree = root()
+  createRoot(() =>
+    insert(
+      tree,
+      createComponent(ConsentPrompt, {
+        subject: "@lahn/ingle-guarded",
+        permissions: [{ id: "network", title: "Reach the network", why: "guarded declares it" }],
+        integrity,
+        action: "Allow and install",
+        busy: false,
+        onAllow: () => undefined,
+        onCancel: () => undefined,
+      }),
+    ),
+  )
+  return tree
+}
+
+test("the consent sheet shows the exact pin being consented to, and no row when there is none", () => {
+  const pinned = consent(PIN)
+  expect(textOf(pinned)).toContain("Integritysha512ABCDEFGH…stuvwx==")
+  expect(find(pinned, (node) => node.tag === "code" && node.props["title"] === PIN)).toBeDefined()
+
+  const unpinned = consent(undefined)
+  expect(textOf(unpinned)).toContain("Says it connects to websites")
+  expect(textOf(unpinned)).not.toContain("Integrity")
+  expect(textOf(unpinned)).not.toContain("sha512")
+})

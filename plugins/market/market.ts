@@ -168,7 +168,7 @@ type Needs = ReadonlyMap<Permission, readonly string[]>
 type Consent = { readonly grant: readonly string[]; readonly held: readonly Permission[] }
 
 const UNREAD_CODE = "its code arrives with the next build, so its permissions cannot be read before you consent"
-const SHA512 = /^sha512-[A-Za-z0-9+/]{86}==$/
+const pinCheck = compile(str({ pattern: "^sha512-[A-Za-z0-9+/]{86}==$" }))
 
 function codeNeeds(ingle: unknown, label: string): Needs {
   const needs = new Map<Permission, string[]>()
@@ -187,7 +187,7 @@ function codeNeeds(ingle: unknown, label: string): Needs {
   return needs
 }
 
-function requireConsent(label: string, needs: Needs, consent: Consent): void {
+function requireConsent(label: string, needs: Needs, consent: Consent, integrity?: string): void {
   const missing = [...needs].filter(
     ([permission]) => !consent.held.includes(permission) && !consent.grant.includes(permission),
   )
@@ -199,6 +199,7 @@ function requireConsent(label: string, needs: Needs, consent: Consent): void {
       permissions: missing
         .toSorted(([left], [right]) => left.localeCompare(right))
         .map(([permission, why]) => ({ id: permission, title: PERMISSIONS[permission].title, why: why.join("; ") })),
+      ...(integrity === undefined ? {} : { integrity }),
     },
   )
 }
@@ -465,6 +466,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
         ? undefined
         : maybeDeclaration(document.ingle, `${name}@${document.version}`)
     const skipped = readSkipped()[name]
+    const pin = document?.dist.integrity
     return toJson({
       name,
       kind,
@@ -476,6 +478,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
         skipped: version.version === skipped,
       })),
       readme: document?.readme ?? null,
+      integrity: kind === "code" && pinCheck.check(pin) ? pin : null,
       requires: declaration === undefined ? [] : [...declaration.requires],
       rows:
         declaration === undefined
@@ -530,7 +533,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
   const registryInstall = async (budget: Budget, spec: string, document: VersionDocument, consent: Consent) => {
     const integrity = document.dist.integrity
     if (integrity === undefined) bad(`${spec} has no dist.integrity`)
-    if (!SHA512.test(integrity)) bad(`${spec}: dist.integrity must be a sha512 SRI`)
+    if (!pinCheck.check(integrity)) bad(`${spec}: dist.integrity must be a sha512 SRI`)
     const fetched = await fetchTarball(countingFetch(ports.fetch, budget), document.dist.tarball)
     if (!fetched.ok) throw new Error(`${spec}: ${fetched.error.message}`)
     const extracted = await extractBundle({ bytes: fetched.value, integrity })
@@ -542,7 +545,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
       bad(`${spec}: the tarball declares a ${kind} package, the registry says ${claimed}`)
     if (kind === "bundle") return { kind, integrity, ingle: extracted.value.ingle }
     const needs = codeNeeds(extracted.value.ingle, spec)
-    requireConsent(spec, needs, consent)
+    requireConsent(spec, needs, consent, integrity)
     ports.packages.install(spec, {
       integrity,
       tarball: document.dist.tarball,

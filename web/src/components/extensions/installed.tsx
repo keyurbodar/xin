@@ -4,7 +4,7 @@ import {
   packages,
   consentOf,
   rollbackPackage,
-  type ConsentPermission,
+  type ConsentRequest,
   rows,
   setRowEnabled,
   uninstallPackage,
@@ -191,7 +191,7 @@ function RowPanel(props: {
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [note, setNote] = createSignal<string | undefined>(undefined)
-  const [consent, setConsent] = createSignal<readonly ConsentPermission[] | undefined>(undefined)
+  const [consent, setConsent] = createSignal<ConsentRequest | undefined>(undefined)
 
   const rollback = async (grant: readonly string[] = []): Promise<void> => {
     const bundle = props.bundle
@@ -205,9 +205,9 @@ function RowPanel(props: {
       if (result.application === "applied") setNote(`${bundle.package} rolled back to the version recorded before this one.`)
       else setError(result.reason ?? "The rollback did not apply.")
     } catch (failure: unknown) {
-      const permissions = consentOf(failure)
-      if (permissions === undefined) setError(errorMessage(failure))
-      else setConsent(permissions)
+      const asked = consentOf(failure)
+      if (asked === undefined) setError(errorMessage(failure))
+      else setConsent(asked)
     } finally {
       setBusy(false)
     }
@@ -313,11 +313,12 @@ function RowPanel(props: {
                   Every applied install is recorded, so this returns to the version that ran before the current one.
                 </p>
                 <Show when={consent()}>
-                  {(permissions) => (
+                  {(asked) => (
                     <div class="mt-2">
                       <ConsentPrompt
                         subject={bundle().package}
-                        permissions={permissions()}
+                        permissions={asked().permissions}
+                        integrity={asked().integrity}
                         action="Allow and roll back"
                         busy={busy()}
                         onAllow={(grant) => void rollback(grant)}

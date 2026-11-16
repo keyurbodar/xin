@@ -92,6 +92,7 @@ export type MarketDetail = {
   readonly status: MarketStatus
   readonly versions: readonly MarketVersion[]
   readonly readme?: string | undefined
+  readonly integrity?: string | undefined
   readonly requires: readonly string[]
   readonly rows: readonly MarketDeclaration[]
 }
@@ -327,6 +328,14 @@ const parseMarket = (value: unknown): readonly MarketSummary[] => {
   })
 }
 
+const SRI = /^sha512-[A-Za-z0-9+/]{86}==$/u
+
+/** A registry pin as the market sends it: a sha512 SRI, or nothing for anything that has no pin. */
+const integrityOf = (value: unknown): string | undefined => {
+  const text = strOf(value)
+  return text !== undefined && SRI.test(text) ? text : undefined
+}
+
 const parseMarketDetail = (value: unknown): MarketDetail | undefined => {
   if (!isRecord(value)) return undefined
   const name = strOf(value["name"])
@@ -350,6 +359,7 @@ const parseMarketDetail = (value: unknown): MarketDetail | undefined => {
       ]
     }),
     readme: strOf(value["readme"]),
+    integrity: kind === "code" ? integrityOf(value["integrity"]) : undefined,
     requires: stringsOf(value["requires"]),
     rows: records(value["rows"]).flatMap((item) => {
       const id = strOf(item["id"])
@@ -497,13 +507,18 @@ export async function configureRow(id: string, config: Readonly<Record<string, u
 
 export type ConsentPermission = { readonly id: string; readonly title: string; readonly why: string }
 
-/** The permissions an install was refused for, when the market asks for the owner's consent before it runs. */
-export function consentOf(failure: unknown): readonly ConsentPermission[] | undefined {
+/** What the owner is asked to allow: the permissions, and the registry pin when a code package is pinned. */
+export type ConsentRequest = { readonly permissions: readonly ConsentPermission[]; readonly integrity?: string | undefined }
+
+/** The consent an install was refused for, when the market asks for the owner's consent before it runs. */
+export function consentOf(failure: unknown): ConsentRequest | undefined {
   if (!(failure instanceof OpError) || failure.code !== "consent_required") return undefined
-  return records(isRecord(failure.details) ? failure.details["permissions"] : undefined).flatMap((item) => {
+  const details = isRecord(failure.details) ? failure.details : {}
+  const permissions = records(details["permissions"]).flatMap((item) => {
     const id = strOf(item["id"])
     return id === undefined ? [] : [{ id, title: strOf(item["title"]) ?? id, why: strOf(item["why"]) ?? "" }]
   })
+  return { permissions, integrity: integrityOf(details["integrity"]) }
 }
 
 const granted = (grant: readonly string[]): { grant?: readonly string[] } => (grant.length === 0 ? {} : { grant })
