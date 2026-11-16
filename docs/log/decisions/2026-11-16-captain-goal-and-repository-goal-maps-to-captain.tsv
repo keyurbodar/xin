@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	onboarding v5	captain goal and repository: Goal maps to captain.create description (200 characters); the optional repository goes into rules as Repository: owner/repo	the Captain prompt reads description and rules (plugins/orchestrator/captains.ts:128), and the API has no repository field	docs api/captains.md	adopted

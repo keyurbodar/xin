@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	client	Signal waiting and merged ship with no producer yet	the lane asks for the family in every state; the backend has no review-wait or merged thread status, so nothing maps onto them	web/src/lib/status.ts visualState	adopted

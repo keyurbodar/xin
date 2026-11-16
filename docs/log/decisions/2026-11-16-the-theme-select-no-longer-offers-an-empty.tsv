@@ -1,0 +1,1 @@
+2026-11-16T20:15:00Z	XIN-25	The Theme select no longer offers an empty Catalog default entry	The old native select always rendered an empty option, and choosing it applied a theme with id ""; every theme select entry is now a real theme	code review of general.tsx	fixed

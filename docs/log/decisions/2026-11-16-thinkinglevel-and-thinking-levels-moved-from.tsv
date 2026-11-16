@@ -1,0 +1,1 @@
+2026-11-16T20:00:00Z	composer reasoning	ThinkingLevel and THINKING_LEVELS moved from state/conversation.ts to lib/thinking.ts	the clamp is a plain module under bun test and should not pull the conversation store; one source for the levels	web/src/lib/thinking.ts	adopted

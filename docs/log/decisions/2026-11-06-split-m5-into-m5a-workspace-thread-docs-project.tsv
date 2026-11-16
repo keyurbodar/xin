@@ -1,0 +1,1 @@
+2026-11-06T13:34:52Z	M5	split M5 into M5a (workspace/thread docs, project ops, status machine) now and M5b (delegate_task, Anchor, Reporter, orchestrator tools) after M2	M5a needs no intake; starting it now shortens the critical path M2 -> M5 -> M6	plugins/workspace/workspace.ts stub + test/plugins/m5.ts slot added; lane spawned	M5b brief waits for the M2 report (enqueue API)

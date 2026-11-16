@@ -1,0 +1,1 @@
+2026-11-16T16:00:00Z	web-issues	The pane renders the current view untracked, with the project passed through a getter, so a home snapshot no longer re-creates the open view	each home snapshot re-ran current.render because it read props.project, which remounted the view, threw away drafts and refetched	web/src/components/pane/pane.tsx	adopted

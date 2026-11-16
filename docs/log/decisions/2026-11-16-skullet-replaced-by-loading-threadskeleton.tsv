@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	client	Skullet replaced by Loading + ThreadSkeleton/RowSkeleton/PaneSkeleton/Bar on .im-skeleton; skullet dependency removed	v5 page 16.3 draws fixed skeletons at the v4 measure (46px rows, 28px section headers) that fade in after 150ms; Skullet's measured ghost layer is no longer needed	bun remove skullet; typecheck + build green	adopted

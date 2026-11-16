@@ -1,0 +1,1 @@
+2026-11-07T17:25	P14	The Home spend cell reads 'Spend', not 'Spend today': pi's usage ledger is lifetime and carries no day bucket	labelling lifetime cost as today's would be a lie the owner would act on	plugins/models/models.ts usage.summary reads harness.usage(); ledger has no timestamp	label changed; superseded by the 19:50 row (usage_daily gives the day bucket)

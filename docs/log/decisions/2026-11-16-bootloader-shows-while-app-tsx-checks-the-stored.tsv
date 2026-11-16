@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	client	BootLoader shows while app.tsx checks the stored token, faded in only after 400ms	16.2 says load start, only if over 400ms; the token check is the client's one whole-screen wait	web/src/app.tsx	adopted

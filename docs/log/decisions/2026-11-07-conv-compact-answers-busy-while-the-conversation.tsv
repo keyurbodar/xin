@@ -1,0 +1,1 @@
+2026-11-07T14:40	P11	conv.compact answers busy while the conversation has a live run, although pi can compact mid-run	dsh command-compact reports unavailable mid-turn; a predictable commit order beats a background summary the owner cannot see land	docs/plan/architecture/13-always-on.md; dsh compaction/command-compact	accepted

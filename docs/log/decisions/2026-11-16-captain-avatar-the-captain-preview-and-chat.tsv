@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	onboarding v5	captain avatar: The Captain preview and chat header use the ingle mark on a tile instead of a yukiusagi avatar	the avatar package is not vendored in web/ yet; swap when @ingle/avatar lands	design-system §9	adopted

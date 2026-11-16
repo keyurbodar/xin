@@ -1,0 +1,1 @@
+2026-11-16T17:00:00Z	web-issues-edit	Person assignees offer only the owner (You); adding other people needs an op that lists people, which #33 does not have	the Assignee type allows person ids, but no op names any person besides the owner	plugins/issues/index.ts; handoffs/api/issues.md	left out: needs a new op

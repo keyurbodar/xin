@@ -1,0 +1,1 @@
+2026-11-16T18:00:00Z	AMA-23 (XIN-25)	A prompt picked from the + menu goes to the start of the draft and replaces any leading prompt	expandSlash only expands /name at the start, as the old applyPrompt did	e2e composer.test.ts /prompt test	adopted

@@ -1,0 +1,1 @@
+2026-11-07T20:47	P14	One FileChip for the composer and the transcript; notify prefs read through one helper	the same chip markup was copied and both notification screens re-derived the fallback prefs	web/src/components/ui/file-chip.tsx; web/src/state/settings.ts notifyNow; composer.tsx, entries.tsx, notifications.tsx, notifications-step.tsx	client builds
