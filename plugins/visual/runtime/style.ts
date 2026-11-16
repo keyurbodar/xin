@@ -126,6 +126,11 @@ export function parseJustify(name: string): Justify {
   return name === "between" || name === "space-between" ? "between" : parseAlign(name)
 }
 
+export const DITHER_VARIANTS = ["gradient", "dotted", "hatched", "solid"] as const
+export type DitherVariant = (typeof DITHER_VARIANTS)[number]
+export const BLOOMS = ["off", "low", "high", "aura"] as const
+export type Bloom = (typeof BLOOMS)[number]
+
 export type NumberFormat = { readonly prefix: string; readonly unit: string; readonly decimals: number | undefined }
 
 export const PLAIN_FORMAT: NumberFormat = { prefix: "", unit: "", decimals: undefined }

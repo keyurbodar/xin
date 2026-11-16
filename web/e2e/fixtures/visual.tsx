@@ -41,6 +41,19 @@ const SCENE = `return ui.scene { height = 260, draw = function(s)
   s:grid { size = 6, step = 1 }
 end }`
 
+const DITHER = `local tracks = { "Every Second Counts", "Set It and Forget It", "Reactive Meets AI" }
+local s = ui.state { track = 1 }
+return function()
+  return ui.column { gap = 12,
+    ui.tabs { options = tracks, value = tracks[s.track], on_change = function(v) for i, t in ipairs(tracks) do if t == v then s.track = i end end end },
+    ui.chart { type = "bar", horizontal = true, dither = true, bloom = "low", height = 220,
+      x = { "QueueSnap", "Liquidity Shepherd", "HealthBeat", "LoopMeter" },
+      series = { { name = tracks[s.track], values = { 4.6, 3.9, 3.4, 3.1 }, color = ui.series(s.track) } } },
+    ui.chart { type = "area", dither = "dotted", height = 160, x = { "Mon", "Tue", "Wed", "Thu", "Fri" },
+      series = { { name = "Submissions", values = { 3, 7, 5, 11, 9 } } } },
+  }
+end`
+
 const params = new URLSearchParams(location.search)
 setTheme(themeOf(params.get("theme")))
 registerBlock("tool:show_visual", (call) => <VisualBlock {...call} />)
@@ -48,7 +61,10 @@ registerBlock("tool:show_visual", (call) => <VisualBlock {...call} />)
 const [call, setCall] = createSignal<BlockPayloads["tool"]>({
   name: "show_visual",
   callId: "call-1",
-  args: { title: "Latency", script: params.get("fixture") === "scene" ? SCENE : DASHBOARD },
+  args: {
+    title: "Latency",
+    script: params.get("fixture") === "scene" ? SCENE : params.get("fixture") === "dither" ? DITHER : DASHBOARD,
+  },
   status: "done",
 })
 
@@ -63,7 +79,8 @@ declare global {
 }
 
 window.visualHarness = {
-  set: (script, status) => setCall({ name: "show_visual", callId: "call-1", args: { title: "Latency", script }, status }),
+  set: (script, status) =>
+    setCall({ name: "show_visual", callId: "call-1", args: { title: "Latency", script }, status }),
   theme: (next) => setTheme(themeOf(next)),
   dashboard: DASHBOARD,
 }
