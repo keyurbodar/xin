@@ -3,7 +3,9 @@ import { render } from "solid-js/web"
 import type { BlockPayloads } from "../../src/components/chat/registry.ts"
 import { VisualBlock } from "../../src/components/chat/visual-block.tsx"
 import { registerBlock, renderBlock } from "../../src/components/chat/blocks.tsx"
-import { setTheme, themeOf } from "../../src/lib/theme.ts"
+import { BUILT_IN_THEMES, DEFAULT_THEME, setTheme } from "../../src/lib/theme.ts"
+
+const themeOf = (id: string | null) => BUILT_IN_THEMES.find((entry) => entry.id === id) ?? DEFAULT_THEME
 
 const DASHBOARD = `local s = ui.state { metric = "p95" }
 local data = {
