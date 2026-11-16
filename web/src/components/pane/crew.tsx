@@ -106,7 +106,7 @@ export function CrewView(props: CrewContext): JSX.Element {
   const crew = createCrew(() => props)
   const action = createPaneAction()
   const crewKey = () => `${props.captain.id}:${crew().crew.map((member) => `${member.threadId}.${member.run}`).join(",")}`
-  const [detail] = createResource(crewKey, () => captainDetail(props.captain.id))
+  const [detail] = createResource(crewKey, () => captainDetail(props.captain.id).catch(() => undefined))
   const candidates = createMemo((): readonly ThreadSummary[] => {
     const captainSpaces = new Set(homeCaptains().map((captain) => captain.spaceId))
     const project = homeProjects().find((entry) => entry.id === props.captain.projectId)
