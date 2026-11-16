@@ -1,0 +1,1 @@
+2026-11-07T07:00	P7	Workers include lint and types in their gate jobs	Two merges in a row failed lint on worker code (scoping, shadowing) that tests never catch	AGENTS.md, brief-template.md	accepted

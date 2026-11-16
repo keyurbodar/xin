@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	plugins	An op from a row that does not grant conversations gets a harness that throws on use	XIN-23: every op handler got api.harness whatever its row declared; a refusing stand-in keeps OpApi's shape for every other op	k-reach harness is refused; the test plugin that bumps a counter through the harness now declares conversations	fixed in #19

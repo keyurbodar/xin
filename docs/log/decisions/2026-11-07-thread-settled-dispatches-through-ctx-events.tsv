@@ -1,0 +1,1 @@
+2026-11-07T03:30:00Z	P5	thread/settled dispatches through ctx.events.dispatch with per-listener try/catch and rejection handling; projectId is read at report time, not from the checkpoint	ctx.emit does not contain listener errors; old checkpoints lack projectId	plugins/orchestrator/settled.test.ts	pass

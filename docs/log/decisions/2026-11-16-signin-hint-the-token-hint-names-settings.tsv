@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	onboarding v5	signin hint: The token hint names Settings → Profile + token and wrangler secret put OWNER_TOKEN, not an ingle_own_ prefix	owner tokens have no prefix (src/worker.ts compares OWNER_TOKEN as is); the settings tab is called Profile + token	src/worker.ts:21, web/src/screens/settings.tsx:27	adopted

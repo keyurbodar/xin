@@ -1,6 +1,5 @@
+import "@ui-sdk/web/menu"
 import { createEffect, createMemo, createResource, createSignal, For, on, Show, untrack, type JSX } from "solid-js"
-import { Portal } from "solid-js/web"
-import { Menu } from "@ark-ui/solid/menu"
 import { Check, ChevronDown, GitPullRequest, X } from "lucide-solid"
 import {
   actorName,
@@ -50,7 +49,9 @@ import { openThreadTab, showPaneView } from "../../state/tabs.ts"
 import { createPaneAction, ResourceError } from "../chat/ui.tsx"
 import { Button } from "../ui/button.tsx"
 import { PaneSkeleton, Loading } from "../ui/skeleton.tsx"
-import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM } from "../shell/menu.ts"
+import { ICON_BUTTON } from "../shell/menu.ts"
+import { createOverlayMount } from "../shell/presence.ts"
+import { POPUP, POPUP_ITEM } from "../ui/surface.ts"
 import { PANE_ROW } from "./bodies.tsx"
 import { AddLink, AssigneesField, createFieldAction, DescriptionField, DueField, FieldError, TitleField } from "./issue-edit.tsx"
 import { PriorityMark, StateMark } from "./issue-marks.tsx"
@@ -58,9 +59,13 @@ import { issueNames, IssueRow, issueView, mintCommandId } from "./issues.tsx"
 import type { PaneContext } from "./overview.tsx"
 
 const PICKER =
-  "im-press im-hover flex h-7 items-center gap-1.5 rounded-sm px-1.5 text-sm text-ink outline-none data-[state=open]:bg-hover disabled:opacity-50"
+  "im-press im-hover -mx-1.5 flex h-7 max-w-full items-center gap-1.5 rounded-sm px-1.5 text-small text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary-soft aria-expanded:bg-hover aria-disabled:opacity-50"
 
-const LABEL = "px-2 pb-1 pt-3 text-xs text-ink-3"
+const LABEL = "px-2 pb-1 pt-4 text-mini font-title text-ink-3"
+
+const FIELD = "flex min-w-0 flex-col gap-0.5"
+
+const FIELD_LABEL = "text-mini text-ink-3"
 
 export function IssueView(props: PaneContext & { id: number }): JSX.Element {
   const [data, { mutate, refetch }] = createResource(
@@ -122,7 +127,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
           return (
             <div class="flex flex-col pb-2">
               <div class="flex flex-col gap-1 px-2 pt-1">
-                <span class="font-mono text-2xs text-ink-3">#{issue().id}</span>
+                <span class="font-mono text-mini text-ink-3">#{issue().id}</span>
                 <TitleField
                   value={issue().title}
                   busy={action.busy() === "title"}
@@ -131,74 +136,84 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
                 <FieldError message={action.error("title")} />
               </div>
 
-              <dl class="mt-2 grid grid-cols-[88px_1fr] items-start gap-x-2 gap-y-0.5 px-2 text-sm">
-                <dt class="flex h-7 items-center text-ink-3">State</dt>
-                <dd>
-                  <Picker
-                    label={stateName(issue().state)}
-                    mark={<StateMark tone={stateTone(stateOf(issue().state))} />}
-                    value={issue().state}
-                    busy={action.busy() === "state"}
-                    options={loaded().states.map((state) => ({
-                      value: state.id,
-                      label: state.name,
-                      mark: <StateMark tone={stateTone(state)} />,
-                    }))}
-                    onPick={(state) => void edit("state", { kind: "send", fields: { state } })}
-                  />
-                  <FieldError message={action.error("state")} />
-                </dd>
-                <dt class="flex h-7 items-center text-ink-3">Priority</dt>
-                <dd>
-                  <Picker
-                    label={PRIORITY_LABEL[issue().priority]}
-                    mark={<PriorityMark priority={issue().priority} decorative />}
-                    value={issue().priority}
-                    busy={action.busy() === "priority"}
-                    options={PRIORITIES.map((level: Priority) => ({
-                      value: level,
-                      label: PRIORITY_LABEL[level],
-                      mark: <PriorityMark priority={level} decorative />,
-                    }))}
-                    onPick={(priority) => void edit("priority", { kind: "send", fields: { priority } })}
-                  />
-                  <FieldError message={action.error("priority")} />
-                </dd>
-                <dt class="flex h-7 items-center text-ink-3">Due</dt>
-                <dd>
-                  <DueField
-                    value={issue().due}
-                    label={due()?.text}
-                    overdue={due()?.overdue === true}
-                    busy={action.busy() === "due"}
-                    onSave={(value) => edit("due", dueEdit(issue().due, value))}
-                  />
-                  <FieldError message={action.error("due")} />
-                </dd>
-                <dt class="flex h-7 items-center text-ink-3">Assignees</dt>
-                <dd>
-                  <AssigneesField
-                    assignees={issue().assignees}
-                    name={(assignee) => assigneeName(assignee, names())}
-                    candidates={candidates()}
-                    busy={action.busy() === "assignees"}
-                    onAdd={(add) => edit("assignees", assigneesEdit(issue().assignees, { add }))}
-                    onRemove={(remove) => edit("assignees", assigneesEdit(issue().assignees, { remove }))}
-                  />
-                  <FieldError message={action.error("assignees")} />
-                </dd>
+              <dl class="mt-3 grid grid-cols-2 items-start gap-x-3 gap-y-2 px-2 text-small">
+                <div class={FIELD}>
+                  <dt class={FIELD_LABEL}>State</dt>
+                  <dd>
+                    <Picker
+                      name="State"
+                      label={stateName(issue().state)}
+                      mark={<StateMark tone={stateTone(stateOf(issue().state))} />}
+                      value={issue().state}
+                      busy={action.busy() !== undefined}
+                      options={loaded().states.map((state) => ({
+                        value: state.id,
+                        label: state.name,
+                        mark: <StateMark tone={stateTone(state)} />,
+                      }))}
+                      onPick={(state) => void edit("state", { kind: "send", fields: { state } })}
+                    />
+                    <FieldError message={action.error("state")} />
+                  </dd>
+                </div>
+                <div class={FIELD}>
+                  <dt class={FIELD_LABEL}>Priority</dt>
+                  <dd>
+                    <Picker
+                      name="Priority"
+                      label={PRIORITY_LABEL[issue().priority]}
+                      mark={<PriorityMark priority={issue().priority} decorative />}
+                      value={issue().priority}
+                      busy={action.busy() !== undefined}
+                      options={PRIORITIES.map((level: Priority) => ({
+                        value: level,
+                        label: PRIORITY_LABEL[level],
+                        mark: <PriorityMark priority={level} decorative />,
+                      }))}
+                      onPick={(priority) => void edit("priority", { kind: "send", fields: { priority } })}
+                    />
+                    <FieldError message={action.error("priority")} />
+                  </dd>
+                </div>
+                <div class={FIELD}>
+                  <dt class={FIELD_LABEL}>Due</dt>
+                  <dd>
+                    <DueField
+                      value={issue().due}
+                      label={due()?.text}
+                      overdue={due()?.overdue === true}
+                      busy={action.busy() === "due"}
+                      onSave={(value) => edit("due", dueEdit(issue().due, value))}
+                    />
+                    <FieldError message={action.error("due")} />
+                  </dd>
+                </div>
                 <Show when={issue().parent}>
                   {(parent) => (
-                    <>
-                      <dt class="flex h-7 items-center text-ink-3">Parent</dt>
+                    <div class={FIELD}>
+                      <dt class={FIELD_LABEL}>Parent</dt>
                       <dd>
-                        <button type="button" class={`${PICKER} font-mono text-xs text-ink-2`} onClick={() => open(parent())}>
+                        <button type="button" class={`${PICKER} font-mono text-mini text-ink-2`} onClick={() => open(parent())}>
                           #{parent()}
                         </button>
                       </dd>
-                    </>
+                    </div>
                   )}
                 </Show>
+                <div class={`${FIELD} col-span-2`}>
+                  <dt class={FIELD_LABEL}>Assignees</dt>
+                  <dd>
+                    <AssigneesField
+                      assignees={issue().assignees}
+                      name={(assignee) => assigneeName(assignee, names())}
+                      candidates={candidates()}
+                      busy={action.busy() !== undefined}
+                      onAdd={(add) => edit("assignees", assigneesEdit(issue().assignees, { add }))}
+                      onRemove={(remove) => edit("assignees", assigneesEdit(issue().assignees, { remove }))}
+                    />
+                    <FieldError message={action.error("assignees")} />
+                  </dd>
+                </div>
               </dl>
 
               <span class={LABEL}>Description</span>
@@ -213,7 +228,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
 
               <Show when={detail().children.length > 0}>
                 <span class={LABEL}>
-                  Sub-issues <span class="font-mono text-2xs text-icon">{detail().children.length}</span>
+                  Sub-issues <span class="font-mono text-mini font-normal text-icon">{detail().children.length}</span>
                 </span>
                 <For each={detail().children}>
                   {(child) => (
@@ -229,7 +244,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
                   ["blocked_by", detail().links.blockedBy],
                   ["related", detail().links.related],
                 ]}
-                busy={action.busy() === "links"}
+                busy={action.busy() !== undefined}
                 stateOf={stateOf}
                 onOpen={open}
                 onRemove={(kind, other) => void link(kind, other, false)}
@@ -237,7 +252,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
               <AddLink
                 project={issueScope(props.project, props.captain)}
                 detail={detail()}
-                busy={action.busy() === "links"}
+                busy={action.busy() !== undefined}
                 error={action.error("links")}
                 onLink={(kind, other) => link(kind, other, true)}
               />
@@ -247,7 +262,7 @@ export function IssueView(props: PaneContext & { id: number }): JSX.Element {
 
               <Show when={issue().threads.length > 0}>
                 <span class={LABEL}>
-                  Threads <span class="font-mono text-2xs text-icon">{issue().threads.length}</span>
+                  Threads <span class="font-mono text-mini font-normal text-icon">{issue().threads.length}</span>
                 </span>
                 <For each={issue().threads}>
                   {(thread, index) => {
@@ -357,6 +372,7 @@ function openLinkedThread(thread: number, place: ThreadPlace, openHere: (id: num
 type Option = { readonly value: string; readonly label: string; readonly mark: JSX.Element }
 
 function Picker(props: {
+  name: string
   label: string
   mark: JSX.Element
   value: string
@@ -364,38 +380,50 @@ function Picker(props: {
   options: readonly Option[]
   onPick: (value: string) => void
 }): JSX.Element {
+  const [open, setOpen] = createSignal(false)
+  const content = createOverlayMount(open)
   return (
-    <Menu.Root positioning={{ placement: "bottom-start", gutter: 4 }} lazyMount unmountOnExit>
-      <Menu.Trigger class={PICKER} disabled={props.busy}>
-        {props.mark}
-        <span>{props.label}</span>
-        <ChevronDown size={12} stroke-width={1.5} class="text-icon" />
-      </Menu.Trigger>
-      <Portal>
-        <Menu.Positioner>
-          <Menu.Content class={`${MENU_CONTENT} w-[200px]`}>
-            <Menu.RadioItemGroup
-              value={props.value}
-              onValueChange={(details) => {
-                if (details.value !== props.value) props.onPick(details.value)
-              }}
-            >
-              <For each={props.options}>
-                {(option) => (
-                  <Menu.RadioItem value={option.value} class={MENU_ITEM}>
-                    {option.mark}
-                    <Menu.ItemText class="flex-1 truncate">{option.label}</Menu.ItemText>
-                    <Menu.ItemIndicator>
-                      <Check size={14} stroke-width={1.5} class="text-ink-2" />
-                    </Menu.ItemIndicator>
-                  </Menu.RadioItem>
-                )}
-              </For>
-            </Menu.RadioItemGroup>
-          </Menu.Content>
-        </Menu.Positioner>
-      </Portal>
-    </Menu.Root>
+    <ui-menu
+      on:openchange={(event) => {
+        if (event.detail.value && props.busy) {
+          event.preventDefault()
+          return
+        }
+        setOpen(event.detail.value)
+      }}
+      on:openchangecomplete={content.settle}
+    >
+      <ui-menu-trigger>
+        <button type="button" class={PICKER} aria-label={`${props.name}: ${props.label}`} aria-disabled={props.busy ? "true" : undefined}>
+          {props.mark}
+          <span class="truncate">{props.label}</span>
+          <ChevronDown size={12} stroke-width={1.5} class="shrink-0 text-icon" />
+        </button>
+      </ui-menu-trigger>
+      <ui-menu-content side="bottom" align="start" side-offset="4" class={`${POPUP} w-[200px]`}>
+        <Show when={content.mounted()}>
+          <ui-menu-radio-group
+            prop:value={props.value}
+            on:valuechange={(event) => {
+              const value = event.detail.value
+              if (typeof value === "string" && value !== props.value) props.onPick(value)
+            }}
+          >
+            <For each={props.options}>
+              {(option) => (
+                <ui-menu-radio-item value={option.value} label={option.label} close-on-select class={POPUP_ITEM}>
+                  {option.mark}
+                  <span class="min-w-0 flex-1 truncate">{option.label}</span>
+                  <ui-menu-item-indicator class="text-ink-2">
+                    <Check size={14} stroke-width={1.5} />
+                  </ui-menu-item-indicator>
+                </ui-menu-radio-item>
+              )}
+            </For>
+          </ui-menu-radio-group>
+        </Show>
+      </ui-menu-content>
+    </ui-menu>
   )
 }
 

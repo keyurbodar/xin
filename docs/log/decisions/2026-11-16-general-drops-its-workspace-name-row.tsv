@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	web-settings	General drops its Workspace name row	it said Not stored yet: no op stores a workspace name, and the lane forbids speculative UI	web/src/components/settings/general.tsx	adopted

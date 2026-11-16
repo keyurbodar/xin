@@ -1,0 +1,1 @@
+2026-11-06T18:40:00Z	P4	thermo-nuclear review of the P2-P4 diff: all 10 findings accepted and fixed in lanes R-orch, R-data, R-wiring, then R-tests and R-typed; no-comments pass deleted 0 and kept 3 contract doc comments	CLAUDE.md definition of done requires both reviews on every milestone diff	review report in session; lane reports	gate all green on the final tree

@@ -21,6 +21,7 @@ import {
 } from "@earendil-works/pi-durable"
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
 import { createToolSearchTool } from "@earendil-works/pi-durable/tool-search"
+import { num, obj, opt, str } from "@earendil-works/pi-schema"
 import { loaderRow } from "../contributions.ts"
 import { JournalStorage } from "./journal.ts"
 import { hidden } from "./hidden.ts"
@@ -37,6 +38,12 @@ export type InstalledName = {
   readonly kind: "kernel" | "row"
 }
 type EnvProvider = (target: EnvTarget) => ExecutionEnv | undefined
+
+/**
+ * Provider retries per model request: 2, 4, 8, 16, 32 and 60 s apart (pi-ai caps one wait at 60 s), so a run rides out
+ * about two minutes of rate limiting or overload before it fails. Each wait is one durable sleep commit.
+ */
+const PROVIDER_RETRIES = 6
 
 const own = hidden<Pi, Context>()
 
@@ -84,36 +91,50 @@ const deferredIndex = async (input: PromptInput, context: ChordContext): Promise
 const SEARCH_LIMIT = 3
 const rankedSearch = createToolSearchTool()
 
+type Described = { readonly name: string; readonly description: string }
+
+const loadedResult = (tools: readonly Described[]) => {
+  const loaded = tools.map((tool) => tool.name)
+  if (loaded.length === 0)
+    return { output: [{ type: "text" as const, text: "No matching tools found." }], details: { loaded } }
+  return {
+    output: [
+      {
+        type: "text" as const,
+        text: [
+          `Loaded ${loaded.length} tool${loaded.length === 1 ? "" : "s"}. They are available from your next call:`,
+          ...tools.map((tool) => `- ${tool.name}: ${summary(tool.description)}`),
+        ].join("\n"),
+      },
+    ],
+    details: { loaded },
+    control: { addTools: loaded },
+  }
+}
+
 /**
  * pi's `tool_search`, except that a query naming deferred tools (the index's names, separated by spaces or commas)
- * loads exactly those, and a ranked search loads at most `SEARCH_LIMIT`. Removed tools are never loaded.
+ * loads exactly those, a ranked search loads at most `SEARCH_LIMIT`, and a removed tool is never ranked or loaded.
  */
 const searchTool: typeof rankedSearch = {
   ...rankedSearch,
+  parameters: obj(
+    {
+      query: str({ description: "What you need, or the exact names of the tools to load." }),
+      limit: opt(num({ description: `Most tools to load, ${SEARCH_LIMIT} by default and at most.` })),
+    },
+    { open: true },
+  ),
   execute: async (args, api, context) => {
     const removed = await removedTools(api, api.conversationId, context)
     const deferred = (await api.agent(context)).deferred.filter((tool) => !removed.has(tool.name))
     const words = args.query.split(/[\s,]+/).filter((word) => word !== "")
     const named = deferred.filter((tool) => words.includes(tool.name))
-    if (named.length === 0 || named.length !== words.length) {
-      const result = await rankedSearch.execute({ ...args, limit: args.limit ?? SEARCH_LIMIT }, api, context)
-      const loaded = result.control?.addTools?.filter((name) => !removed.has(name))
-      return loaded === undefined ? result : { ...result, control: { ...result.control, addTools: loaded } }
-    }
-    const loaded = named.map((tool) => tool.name)
-    return {
-      output: [
-        {
-          type: "text",
-          text: [
-            `Loaded ${loaded.length} tool${loaded.length === 1 ? "" : "s"}. They are available from your next call:`,
-            ...named.map((tool) => `- ${tool.name}: ${summary(tool.description)}`),
-          ].join("\n"),
-        },
-      ],
-      details: { loaded },
-      control: { addTools: loaded },
-    }
+    if (named.length > 0 && named.length === words.length) return loadedResult(named)
+    const limit = Math.max(1, Math.min(Math.trunc(args.limit ?? SEARCH_LIMIT), SEARCH_LIMIT))
+    const ranked = await rankedSearch.execute({ query: args.query, limit: limit + removed.size }, api, context)
+    const names = (ranked.control?.addTools ?? []).filter((name) => !removed.has(name)).slice(0, limit)
+    return loadedResult(names.flatMap((name) => deferred.filter((tool) => tool.name === name)))
   },
 }
 
@@ -153,7 +174,11 @@ export class Pi extends Service {
         registry: this.registry,
         settings: () => {
           const compaction = this.compactionSources[0]?.()
-          return { stream: { cacheRetention: "long" }, ...(compaction === undefined ? {} : { compaction }) }
+          return {
+            stream: { cacheRetention: "long" },
+            retry: { maxRetries: PROVIDER_RETRIES },
+            ...(compaction === undefined ? {} : { compaction }),
+          }
         },
         env: (target) => this.envSources.map((source) => source(target)).find((env) => env !== undefined),
         onWake: (wake) => void this.ctx.clock.arm(wake).catch(() => abort("alarm write failed")),

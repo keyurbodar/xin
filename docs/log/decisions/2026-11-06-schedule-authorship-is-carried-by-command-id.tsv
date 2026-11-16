@@ -1,0 +1,1 @@
+2026-11-06T14:01:56Z	M8	Schedule authorship is carried by command id sched:<id>:<slotIso>; inbound has no author column	avoids a migration; the id is already the idempotency key	plugins/schedules/schedules.test.ts gate 4b2faad5	accepted

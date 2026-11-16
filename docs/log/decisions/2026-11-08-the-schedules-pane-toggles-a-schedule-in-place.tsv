@@ -1,0 +1,1 @@
+2026-11-08T00:55	P14	The Schedules pane toggles a schedule in place	D6 puts a switch on each row; schedule.edit already understood {action:"update", active}, so the pane calls it and refetches	web/src/components/chat/panel.tsx SchedulesTab toggle	P14-schedules-panel.png; clicking Resume on sch1 flipped it back, schedule.list shows active true

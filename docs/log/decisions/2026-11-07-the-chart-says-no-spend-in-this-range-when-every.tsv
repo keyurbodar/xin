@@ -1,0 +1,1 @@
+2026-11-07T21:14	P14	The chart says "No spend in this range" when every day is zero instead of drawing a flat row of bars	the free models report no cost, so a flat baseline read as a broken chart rather than a true zero	web/src/components/settings/usage.tsx SpendChart fallback; the screenshot artifact is gone	checked on screen

@@ -1,0 +1,1 @@
+2026-11-15T17:20:00Z	page-15	Undo toasts time out from the life bar's animationend instead of a JS timer	the CSS in ingle-motion.css already pauses .im-toast-life on hover and under :root[data-visibility=hidden], so one clock serves both the bar and the dismissal and they cannot drift	Playwright: animationPlayState paused on hover and when hidden; toast gone after 6.8s	adopted
