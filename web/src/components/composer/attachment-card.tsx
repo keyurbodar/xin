@@ -2,6 +2,7 @@ import "@ui-sdk/web/file-input"
 import "@ui-sdk/web/progress"
 import { CircleAlert, File as FileIcon, X } from "lucide-solid"
 import { For, Show, createEffect, createResource, createSignal, onCleanup, type JSX } from "solid-js"
+import type { Lightbox as LightboxView, LightboxItem } from "../ui/lightbox.tsx"
 import { render } from "solid-js/web"
 import {
   blobUrl,
@@ -195,9 +196,11 @@ function SentThumbnail(props: { file: SentAttachment }): JSX.Element {
   return <Thumbnail source={source()} failed={false} />
 }
 
+const opensInLightbox = (file: SentAttachment): boolean => file.sha256 !== undefined && hasThumbnail(file.type)
+
 /**
- * A sent message's files. An image is a button that calls `onOpen` with its index in `attachments`, where the lightbox
- * opens; any other file is shown, not pressed.
+ * A sent message's files. An image whose bytes are stored is a button that calls `onOpen` with its index in
+ * `attachments`, where the lightbox opens; any other file is shown, not pressed.
  */
 export function MessageAttachments(props: {
   attachments: readonly SentAttachment[]
@@ -208,32 +211,86 @@ export function MessageAttachments(props: {
       .filter((part) => part !== undefined)
       .join(" · ")
   return (
-    <ul aria-label="Attachments" class="grid w-full max-w-[520px] grid-cols-1 gap-2 min-[560px]:grid-cols-2">
-      <For each={props.attachments}>
-        {(file, index) => (
-          <li class="min-w-0">
-            <Show
-              when={hasThumbnail(file.type)}
-              fallback={
-                <div class={CARD}>
+    <div class="@container w-full">
+      <ul aria-label="Attachments" class="grid grid-cols-1 gap-2 @[400px]:grid-cols-2">
+        <For each={props.attachments}>
+          {(file, index) => (
+            <li class="min-w-0">
+              <Show
+                when={opensInLightbox(file)}
+                fallback={
+                  <div class={CARD}>
+                    <SentThumbnail file={file} />
+                    <Label name={file.name} meta={meta(file)} />
+                  </div>
+                }
+              >
+                <button
+                  type="button"
+                  aria-label={`Open ${file.name}`}
+                  class={`im-press w-full hover:bg-hover ${CARD}`}
+                  onClick={() => props.onOpen(index())}
+                >
                   <SentThumbnail file={file} />
                   <Label name={file.name} meta={meta(file)} />
-                </div>
-              }
-            >
-              <button
-                type="button"
-                aria-label={`Open ${file.name}`}
-                class={`im-press w-full hover:bg-hover ${CARD}`}
-                onClick={() => props.onOpen(index())}
-              >
-                <SentThumbnail file={file} />
-                <Label name={file.name} meta={meta(file)} />
-              </button>
-            </Show>
-          </li>
-        )}
-      </For>
-    </ul>
+                </button>
+              </Show>
+            </li>
+          )}
+        </For>
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * A sent message's files with the lightbox behind them, loaded on the first open so it stays out of the startup
+ * bundle: opening an image shows every image of the message, each read
+ * once from `GET /blobs/<sha256>` into the object URL its thumbnail already uses. An image whose bytes are gone becomes a
+ * plain card and is left out of the lightbox.
+ */
+let lightboxLoader: Promise<typeof LightboxView> | undefined
+
+export function SentAttachments(props: { attachments: readonly SentAttachment[] }): JSX.Element {
+  const [Lightbox, setLightbox] = createSignal<typeof LightboxView>()
+  const [open, setOpen] = createSignal(false)
+  const [index, setIndex] = createSignal(0)
+  const images = (): readonly SentAttachment[] => props.attachments.filter(opensInLightbox)
+  const [sources] = createResource(images, (files) =>
+    Promise.all(files.map((file) => blobUrl(file.sha256 ?? "", file.type).catch(() => undefined))),
+  )
+  const items = (): readonly (LightboxItem & { readonly file: SentAttachment })[] =>
+    images().flatMap((file, at) => {
+      const src = sources()?.[at]
+      return src === undefined ? [] : [{ src, name: file.name, size: file.size, type: file.type, file }]
+    })
+  const shown = (): readonly SentAttachment[] => {
+    const loaded = sources()
+    if (loaded === undefined) return props.attachments
+    const gone = new Set(images().filter((_file, at) => loaded[at] === undefined))
+    return props.attachments.map((file) => (gone.has(file) ? { ...file, sha256: undefined } : file))
+  }
+  return (
+    <>
+      <MessageAttachments
+        attachments={shown()}
+        onOpen={(at) => {
+          const found = items().findIndex((item) => item.file === props.attachments[at])
+          if (found < 0) return
+          setIndex(found)
+          lightboxLoader ??= import("../ui/lightbox.tsx").then((module) => module.Lightbox)
+          void lightboxLoader.then((view) => {
+            setLightbox(() => view)
+            setOpen(true)
+          })
+        }}
+      />
+      <Show when={Lightbox()}>
+        {(View) => {
+          const Viewer = View()
+          return <Viewer items={items()} index={index()} open={open()} onClose={() => setOpen(false)} onIndexChange={setIndex} />
+        }}
+      </Show>
+    </>
   )
 }
