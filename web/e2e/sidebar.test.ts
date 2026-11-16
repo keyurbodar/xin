@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, setDefaultTimeout, test } from "bun:test"
-import type { Page, Route } from "playwright"
-import { startHarness, type Harness } from "./harness.ts"
+import type { Page } from "playwright"
+import { holdChunk, startHarness, type Harness } from "./harness.ts"
 
 setDefaultTimeout(60_000)
 
@@ -16,17 +16,6 @@ afterAll(async () => {
 
 const segment = (page: Page, name: string) => page.getByRole("radio", { name })
 const rows = (page: Page) => page.locator("aside button").allTextContents()
-
-/** Holds the prebundled UI SDK module for `family` until `release` runs, or fails it when `abort` is set. */
-async function holdChunk(page: Page, family: string, abort = false): Promise<() => Promise<void>> {
-  const held: Route[] = []
-  const pattern = `**/.vite/deps/@ui-sdk_web_${family}.js*`
-  await page.route(pattern, (route) => (abort ? route.abort() : void held.push(route)))
-  return async () => {
-    await Promise.all(held.map((route) => route.continue()))
-    await page.unroute(pattern)
-  }
-}
 
 const menuShown = (page: Page) =>
   page.evaluate(() => {

@@ -17,6 +17,7 @@ import {
   toggleSidebar,
   wideShell,
 } from "../../state/tabs.ts"
+import { Breadcrumb, type Crumb } from "../ui/breadcrumb.tsx"
 import { Signal } from "../ui/signal.tsx"
 import { showToast } from "../../state/toasts.ts"
 import { nearestKept } from "../../lib/tab-order.ts"
@@ -49,8 +50,6 @@ export type ConversationAction = {
 
 const TAB =
   "group relative flex h-[var(--h-tab)] items-center gap-2 rounded-sm px-2 text-sm"
-
-const CRUMB = "im-hover im-focus min-w-0 truncate rounded-xs px-1.5 py-0.5 text-sm"
 
 const warm = (): void => warmUiSdk("menu")
 
@@ -147,6 +146,11 @@ export function ConversationTabs(props: {
   const [menuTarget, setMenuTarget] = createSignal<number | undefined>()
   const activeThread = (): ThreadSummary | undefined =>
     props.threads.find((thread) => thread.id === props.activeThreadId)
+  const crumbs = (): Crumb[] => {
+    const project = { label: props.project.name, href: `#${props.base}`, lead: props.mark }
+    const thread = activeThread()
+    return thread === undefined ? [project] : [project, { label: thread.title, href: `#${props.base}/t/${thread.id}` }]
+  }
 
   const act = (action: string): void => {
     const id = menuTarget()
@@ -215,40 +219,7 @@ export function ConversationTabs(props: {
             <MenuIcon {...ICON} />
           </button>
         </Show>
-        <nav aria-label="Breadcrumb" class="min-w-0 flex-1">
-          <ol class="flex min-w-0 items-center gap-0.5">
-            <li class="flex min-w-0 shrink-0 items-center gap-1.5 pl-0.5">
-              {props.mark}
-              <a
-                href={`#${props.base}`}
-                aria-current={activeThread() === undefined ? "page" : undefined}
-                class={`${CRUMB} max-w-[240px]`}
-                classList={{
-                  "font-title text-ink": activeThread() === undefined,
-                  "text-ink-3": activeThread() !== undefined,
-                }}
-              >
-                {props.project.name}
-              </a>
-            </li>
-            <Show when={activeThread()}>
-              {(thread) => (
-                <li class="flex min-w-0 items-center gap-0.5">
-                  <span aria-hidden="true" class="text-icon">
-                    /
-                  </span>
-                  <a
-                    href={`#${props.base}/t/${thread().id}`}
-                    aria-current="page"
-                    class={`${CRUMB} font-title text-ink`}
-                  >
-                    {thread().title}
-                  </a>
-                </li>
-              )}
-            </Show>
-          </ol>
-        </nav>
+        <Breadcrumb class="flex-1 pl-1" crumbs={crumbs()} />
         <Show when={props.cost !== undefined && props.cost > 0}>
           <span class="px-1.5 font-mono text-sm tabular-nums text-ink-2" title="Spend on this conversation">
             {money(props.cost ?? 0)}
@@ -304,6 +275,7 @@ export function ConversationTabs(props: {
             <div
               role="tablist"
               class="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]"
+              on:pointerdown={(event) => setMenuTarget(threadOf(event.target))}
               on:contextmenu={(event) => {
                 setMenuTarget(threadOf(event.target))
                 if (menuTarget() === undefined) return

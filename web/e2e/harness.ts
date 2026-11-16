@@ -1,4 +1,4 @@
-import { chromium, type Browser, type Page } from "playwright"
+import { chromium, type Browser, type Page, type Route } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 
 export type OpenOptions = {
@@ -56,5 +56,16 @@ export async function startHarness(): Promise<Harness> {
         await server.close()
       }
     },
+  }
+}
+
+/** Holds the prebundled UI SDK module for `family` until the returned release runs, or fails it when `abort` is set. */
+export async function holdChunk(page: Page, family: string, abort = false): Promise<() => Promise<void>> {
+  const held: Route[] = []
+  const pattern = `**/.vite/deps/@ui-sdk_web_${family}.js*`
+  await page.route(pattern, (route) => (abort ? route.abort() : void held.push(route)))
+  return async () => {
+    await Promise.all(held.map((route) => route.continue()))
+    await page.unroute(pattern)
   }
 }
