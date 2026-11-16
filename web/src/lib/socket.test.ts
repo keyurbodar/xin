@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { installGlobal, snapshotGlobals } from "../../test/globals.ts"
 import { REFUSED_HANDSHAKES, Streams } from "./api.ts"
 import { CUT_OFF_MS, cutOffIn } from "./cutoff.ts"
 
@@ -61,16 +62,7 @@ class FakeSocket {
   }
 }
 
-const saved = Object.fromEntries(
-  ["fetch", "setTimeout", "clearTimeout", "WebSocket", "document", "location", "localStorage"].map((name) => [
-    name,
-    Reflect.get(globalThis, name),
-  ]),
-)
-
-function install(name: string, value: unknown): void {
-  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true })
-}
+let restore = (): void => undefined
 
 const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
@@ -89,6 +81,7 @@ async function advance(ms: number): Promise<void> {
 }
 
 beforeEach(() => {
+  restore = snapshotGlobals(["fetch", "setTimeout", "clearTimeout", "WebSocket", "document", "location", "localStorage"])
   requests = []
   dialled = []
   statusReply = 401
@@ -100,10 +93,10 @@ beforeEach(() => {
   sockets = []
   now = 0
   timers = []
-  install("WebSocket", FakeSocket)
-  install("location", { href: "https://ingle.test/" })
-  install("document", { visibilityState: "visible", addEventListener: () => {}, removeEventListener: () => {} })
-  install("localStorage", {
+  installGlobal("WebSocket", FakeSocket)
+  installGlobal("location", { href: "https://ingle.test/" })
+  installGlobal("document", { visibilityState: "visible", addEventListener: () => {}, removeEventListener: () => {} })
+  installGlobal("localStorage", {
     getItem: () => stored,
     setItem: (_key: string, value: string) => {
       stored = value
@@ -112,15 +105,15 @@ beforeEach(() => {
       stored = ""
     },
   })
-  install("setTimeout", (run: () => void, delay = 0) => {
+  installGlobal("setTimeout", (run: () => void, delay = 0) => {
     const id = nextId++
     timers.push({ id, at: now + delay, run })
     return id
   })
-  install("clearTimeout", (id: number | undefined) => {
+  installGlobal("clearTimeout", (id: number | undefined) => {
     timers = timers.filter((timer) => timer.id !== id)
   })
-  install("fetch", async (input: string, init?: { headers?: Record<string, string> }) => {
+  installGlobal("fetch", async (input: string, init?: { headers?: Record<string, string> }) => {
     requests.push(`fetch ${input} ${init?.headers?.["authorization"] ?? ""}`.trim())
     const status = hold ? await new Promise<number>((resolve) => (pending = resolve)) : statusReply
     return new Response(null, { status })
@@ -128,7 +121,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  for (const [name, value] of Object.entries(saved)) install(name, value)
+  restore()
 })
 
 const HOUR = 60 * 60_000
