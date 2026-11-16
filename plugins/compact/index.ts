@@ -47,7 +47,11 @@ export function apply(ctx: Context): void {
       name: "xin.compact",
       hooks: [
         hook(CompactionTask, {
-          beforeCompact: beforeCompact({ ownerDefaults: () => ctx.models.ownerDefaults(), harness: ctx.harness }),
+          beforeCompact: beforeCompact({
+            ownerDefaults: () => ctx.models.ownerDefaults(),
+            admit: () => ctx.models.admit("compaction"),
+            charge: (conversation, message) => ctx.models.charge("compaction", conversation, message),
+          }),
         }),
       ],
     }),
