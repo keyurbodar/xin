@@ -10,6 +10,7 @@ declare global {
   }
 }
 
+for (const link of document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')) link.dataset.entry = ""
 window.ingleBooted = true
 const search = location.search.replace(/[?&]boot=\d+/, "").replace(/^&/, "?")
 if (search !== location.search) history.replaceState(history.state, "", location.pathname + search + location.hash)

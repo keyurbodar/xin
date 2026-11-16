@@ -13,10 +13,11 @@
         "error",
         (event) => {
           const el = event.target
+          const entryCss = el instanceof HTMLLinkElement && el.rel === "stylesheet" && el.dataset.entry !== undefined
           const chunk =
             el instanceof HTMLScriptElement ||
             (el instanceof HTMLLinkElement && (el.rel === "modulepreload" || el.rel === "stylesheet"))
-          if (!chunk || window.ingleBooted) return
+          if (!entryCss && (!chunk || window.ingleBooted)) return
           if (!/[?&]boot=\d+/.test(location.search)) {
             location.replace(
               location.pathname +
