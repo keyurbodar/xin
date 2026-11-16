@@ -166,6 +166,15 @@ Motion is the handoff file `web/src/styles/ingle-motion.css` (design system §0.
 
 The composer lane owns the Send/Stop morph, upload progress, the context ring and attachment chips.
 
+## Appearance
+
+Settings → Appearance (`web/src/appearance/`) holds one document per home: mode, theme, custom themes, background and interface sizing. `plugins/appearance` stores it as one row (`appearance.read`, `appearance.set`), and the client keeps a copy in localStorage so the first paint needs no round trip.
+
+- **The backend stores the document opaquely.** It checks only that the document is a JSON object of 32 KB or less, and guards each save with `rev`. The client parses every copy it reads (from the home, localStorage or another tab) through `parseAppearance`, which clamps numbers, checks enums, accepts only opaque `#rgb` and `#rrggbb` colours, and falls back to the defaults. This is the only place the document becomes CSS, so a schema on the server would repeat it without guarding anything new: the owner is the only writer.
+- **The newest edit wins.** A tab broadcasts each edit and each saved `rev` to the other tabs. A save that comes back `busy` re-reads `rev` and saves its own document again, so an edit is never dropped silently. A tab that regains focus pulls the home's copy.
+- **Contrast is derived.** A custom theme is three colours per variant. `tokensOf` derives every other token and pushes ink, secondary text and accent text to WCAG AA against the background.
+- **Wallpapers are unlisted share links.** An upload goes to `/me/appearance/wallpapers/` in Drive and gets a `drive.share` link, which other devices and the canvas can load because it is same-origin. Anyone who has the link can open it, and the page says so. Remove revokes the link and deletes the file. A wallpaper URL must be one of this home's `/s/` links or an inline `data:image/` URL, so a synced document cannot make devices fetch from a third party.
+
 ## Decisions taken from the review frame's open questions
 
 1. **Owner token is the only sign-in.** The backend authenticates one owner; members would need their own auth, which does not exist.

@@ -3,8 +3,10 @@ export type Rgb = { readonly r: number; readonly g: number; readonly b: number; 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/iu
 const RGB = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/iu
 
+const OPAQUE_HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/iu
+
 export function isHex(value: string): boolean {
-  return HEX.test(value.trim())
+  return OPAQUE_HEX.test(value.trim())
 }
 
 export function parseColor(value: string): Rgb | undefined {

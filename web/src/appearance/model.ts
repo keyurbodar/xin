@@ -16,7 +16,6 @@ export type CustomTheme = {
   readonly id: string
   readonly label: string
   /** The catalogue id this theme was added from, so Explore shows it as added. */
-  readonly source?: string
   readonly dark: Palette
   readonly light: Palette
   readonly background?: Background
@@ -119,10 +118,12 @@ const clamp = (value: unknown, [low, high]: readonly [number, number, number], f
 const text = (value: unknown, max: number): string | undefined =>
   typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, max) : undefined
 
+const SHARE_PATH = /^\/s\/[\w-]+\/[^/?#]+$/u
+
 function parseWallpaper(value: unknown): Wallpaper | undefined {
   const raw = record(value)
   const url = text(raw["url"], 2048)
-  if (url === undefined || !(url.startsWith("/") || url.startsWith("https://") || url.startsWith("data:image/"))) return undefined
+  if (url === undefined || !(SHARE_PATH.test(url) || url.startsWith("data:image/"))) return undefined
   const path = text(raw["path"], 1024)
   return { name: text(raw["name"], 120) ?? "Wallpaper", url, ...(path === undefined ? {} : { path }) }
 }
@@ -163,12 +164,10 @@ export function parseCustomTheme(value: unknown): CustomTheme | undefined {
   const id = text(raw["id"], 64)
   const label = text(raw["label"], 48)
   if (id === undefined || label === undefined || !/^[\w-]+$/u.test(id)) return undefined
-  const source = text(raw["source"], 128)
   const background = raw["background"] === undefined ? undefined : parseBackground(raw["background"])
   return {
     id,
     label,
-    ...(source === undefined ? {} : { source }),
     dark: parsePalette(raw["dark"], INGLE_DARK),
     light: parsePalette(raw["light"], INGLE_LIGHT),
     ...(background === undefined ? {} : { background }),
