@@ -284,18 +284,49 @@ test("an aborted New issue or toggle chunk raises no unhandled rejection and the
     },
   })
   await page.locator("[data-issue='1']").waitFor()
-  await page.getByRole("button", { name: "New issue" }).click()
-  await page.getByRole("button", { name: "Closed issues" }).click()
+  const rejections = () => page.evaluate(() => (window as unknown as { rejections: string[] }).rejections)
+  await page.getByRole("button", { name: "New issue" }).hover()
+  await page.getByRole("button", { name: "Closed issues" }).focus()
   await page.waitForTimeout(600)
   expect([...aborted].sort()).toEqual(["new-issue", "toggle"])
+  expect(await rejections()).toEqual([])
   expect(await page.getByRole("dialog").count()).toBe(0)
-  expect(await page.evaluate(() => (window as unknown as { rejections: string[] }).rejections)).toEqual([])
   await page.getByRole("button", { name: "New issue" }).click()
   await page.getByRole("dialog").waitFor()
   await page.keyboard.press("Escape")
   await page.getByRole("dialog").waitFor({ state: "detached" })
   await page.getByRole("button", { name: "Closed issues" }).click()
   await page.locator("[data-issue='5']").waitFor()
-  expect(await page.evaluate(() => (window as unknown as { rejections: string[] }).rejections)).toEqual([])
+  expect(await rejections()).toEqual([])
+  await page.close()
+})
+
+test("a double press while the New issue and toggle chunks load opens New issue once and turns the toggle on once", async () => {
+  const page = await harness.open("issues", {
+    search: "?view=list",
+    width: 900,
+    before: (target) =>
+      target.route(/new-issue\.tsx|ui-sdk_web_toggle|@ui-sdk\/web\/dist\/toggle/, async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        await route.continue()
+      }),
+  })
+  await page.locator("[data-issue='1']").waitFor()
+  const doublePress = (label: string) =>
+    page.evaluate((name) => {
+      const button = document.querySelector<HTMLButtonElement>(`[aria-label='${name}']`)!
+      button.click()
+      button.click()
+    }, label)
+  await doublePress("New issue")
+  await page.getByRole("dialog").waitFor()
+  await page.waitForTimeout(1200)
+  expect(await page.getByRole("dialog").count()).toBe(1)
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await doublePress("Closed issues")
+  await page.waitForTimeout(2200)
+  expect(await page.getByRole("button", { name: "Closed issues" }).getAttribute("aria-pressed")).toBe("true")
+  await page.locator("[data-issue='5']").waitFor()
   await page.close()
 })

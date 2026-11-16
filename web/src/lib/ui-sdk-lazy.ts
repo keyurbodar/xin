@@ -5,6 +5,7 @@ const LOADERS = {
   combobox: () => import("@ui-sdk/web/combobox"),
   editor: () => Promise.all([import("@ui-sdk/web/token-input"), import("@ui-sdk/web/trigger-menu")]),
   toggle: () => import("@ui-sdk/web/toggle"),
+  "new-issue": () => import("../components/pane/new-issue.tsx"),
 } as const
 
 export type LazyElements = keyof typeof LOADERS
