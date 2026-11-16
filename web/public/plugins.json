@@ -264,6 +264,33 @@
       ]
     },
     {
+      "name": "issues",
+      "title": "Issues",
+      "description": "Issues with editable states, sub-issues, links, a timeline and search. Comments, state and assignee changes wake the owning thread.",
+      "package": "ingle-plugin-issues",
+      "version": "0.1.0",
+      "permissions": [
+        "conversations",
+        "storage"
+      ],
+      "slots": [],
+      "rows": [
+        "issues"
+      ]
+    },
+    {
+      "name": "tool-issues",
+      "title": "Issue tools",
+      "description": "The model-facing issue tool (create, read, update, comment). Off by default: its declaration adds about a kilobyte to every request.",
+      "package": "ingle-plugin-issues",
+      "version": "0.1.0",
+      "permissions": [],
+      "slots": [],
+      "rows": [
+        "tool-issues"
+      ]
+    },
+    {
       "name": "jobs",
       "title": "Jobs",
       "description": "Slow tools as jobs that report back.",

@@ -52,6 +52,7 @@ flowchart LR
 - [14 Client](./architecture/14-client.md): the web client, its design source, screens, ops and motion.
 - [15 Web](./architecture/15-web.md): public web search and page fetch as built-in tools.
 - [16 Git](./architecture/16-git.md): read-only GitHub history tools scoped to a project.
+- [17 Issues](./architecture/17-issues.md): the shared work record, its wakes, scope and cost.
 - [Provenance](./provenance.md): what came from pi-durable, pi-ai, t3code, kiko and the other sources.
 - [Milestones](./milestones.md): build order, each with its proof, dependencies and parallel work.
 - [Write a plugin](../plugins/README.md): the author docs: scaffold, the dev loop, client slots, permissions, publishing to a market.
