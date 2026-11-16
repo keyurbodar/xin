@@ -1,0 +1,1 @@
+2026-11-16T13:00:00Z	client	XIN-23 #1: Loading for a resource is driven by firstLoad() (lib/loading.ts), true only for resource.state "pending"	resource.loading is also true while refreshing, so every mutation's refetch flashed the skeleton; stale data now stays on screen	web/src/lib/loading.test.ts (unresolved, pending, ready, refreshing, errored)	adopted

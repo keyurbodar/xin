@@ -1,0 +1,1 @@
+2026-11-06T16:20:43Z	P1	everything is a plugin row, kernel services included (db, pi, ops, http, wire, clock, secrets); Home only boots the root context and the loader	dsh: no privileged core; any row is replaceable by a patch	dsh's own docs/architecture.md and BRIEF.md §0	accepted

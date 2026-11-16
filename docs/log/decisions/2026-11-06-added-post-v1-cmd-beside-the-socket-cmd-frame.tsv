@@ -1,0 +1,1 @@
+2026-11-06T13:21:05Z	M1	added POST /v1/cmd beside the socket cmd frame	the verify skill drives commands with curl, and the same Commands.run backs both	M1-commands-socket evidence under wrangler dev	03 spec updated

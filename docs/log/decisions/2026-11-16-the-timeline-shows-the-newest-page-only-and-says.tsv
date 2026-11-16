@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	web-issues	The timeline shows the newest page only and says when older activity exists, without a load-more control	issue.get returns up to 500 events with `earlier`; no screen needs more yet	web/src/components/pane/issue.tsx	adopted

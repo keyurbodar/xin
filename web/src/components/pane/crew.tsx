@@ -1,6 +1,4 @@
-import { createMemo, For, Show, type JSX } from "solid-js"
-import { Portal } from "solid-js/web"
-import { Menu } from "@ark-ui/solid/menu"
+import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
 import { ArrowUpRight, UserMinus, UserPlus } from "lucide-solid"
 import { ago } from "../../lib/format.ts"
 import { STATE_WORD, visualState } from "../../lib/status.ts"
@@ -11,7 +9,10 @@ import { homeProjects, projectThreads, type ProjectSummary, type ThreadSummary }
 import { showPaneView } from "../../state/tabs.ts"
 import { Signal } from "../ui/signal.tsx"
 import { createPaneAction, EmptyState } from "../chat/ui.tsx"
-import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL } from "../shell/menu.ts"
+import { ICON_BUTTON } from "../shell/menu.ts"
+import { createOverlayMount } from "../shell/presence.ts"
+import { loadOnIntent } from "../../lib/ui-sdk-lazy.ts"
+import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
 import { PANE_ROW } from "./bodies.tsx"
 import { Section } from "./overview.tsx"
 
@@ -109,33 +110,7 @@ export function CrewView(props: CrewContext): JSX.Element {
     <div class="flex flex-col gap-1">
       <div class="flex items-center gap-2 px-2 pb-1">
         <span class="flex-1 text-xs text-ink-3">Threads {props.captain.name} runs. Their reports reach its chat in batches.</span>
-        <Menu.Root
-          lazyMount
-          unmountOnExit
-          positioning={{ placement: "bottom-end", gutter: 6 }}
-          onSelect={(details) => void action.run("add", () => addToCrew(props.captain.id, Number(details.value)))}
-        >
-          <Menu.Trigger class={ICON_BUTTON} aria-label="Add a thread to the crew" disabled={action.busy() !== undefined}>
-            <UserPlus size={14} stroke-width={1.5} />
-          </Menu.Trigger>
-          <Portal>
-            <Menu.Positioner>
-              <Menu.Content class={`${MENU_CONTENT} max-h-[360px] w-[280px] overflow-y-auto`}>
-                <Menu.ItemGroup>
-                  <Menu.ItemGroupLabel class={MENU_LABEL}>Add from this project</Menu.ItemGroupLabel>
-                  <For each={candidates()} fallback={<span class="block px-2 py-1.5 text-sm text-ink-3">No other threads</span>}>
-                    {(thread) => (
-                      <Menu.Item value={String(thread.id)} class={MENU_ITEM}>
-                        <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
-                        <Menu.ItemText class="flex-1 truncate">{thread.title}</Menu.ItemText>
-                      </Menu.Item>
-                    )}
-                  </For>
-                </Menu.ItemGroup>
-              </Menu.Content>
-            </Menu.Positioner>
-          </Portal>
-        </Menu.Root>
+        <AddToCrew candidates={candidates()} busy={action.busy() !== undefined} onAdd={(id) => void action.run("add", () => addToCrew(props.captain.id, id))} />
       </div>
       <Show when={action.failed()}>
         {(text) => <span class="px-2 pb-1 text-xs text-failed">{text()}</span>}
@@ -163,5 +138,52 @@ export function CrewView(props: CrewContext): JSX.Element {
         </For>
       </Show>
     </div>
+  )
+}
+
+/** The trigger stays focusable while an add is in flight, so focus returns to it, but the menu won't open. */
+function AddToCrew(props: { candidates: readonly ThreadSummary[]; busy: boolean; onAdd: (id: number) => void }): JSX.Element {
+  const [open, setOpen] = createSignal(false)
+  const content = createOverlayMount(open)
+  return (
+    <ui-menu
+      on:openchange={(event) => {
+        if (event.detail.value && props.busy) {
+          event.preventDefault()
+          return
+        }
+        setOpen(event.detail.value)
+      }}
+      on:openchangecomplete={content.settle}
+      on:action={(event) => props.onAdd(Number(event.detail.value))}
+    >
+      <ui-menu-trigger>
+        <button
+          type="button"
+          class={`${ICON_BUTTON} aria-expanded:bg-hover aria-expanded:text-ink aria-disabled:opacity-50`}
+          aria-label="Add a thread to the crew"
+          title="Add a thread to the crew"
+          aria-disabled={props.busy ? "true" : undefined}
+          {...loadOnIntent("menu")}
+        >
+          <UserPlus size={14} stroke-width={1.5} />
+        </button>
+      </ui-menu-trigger>
+      <ui-menu-content side="bottom" align="end" side-offset="6" class={`${POPUP} max-h-[360px] w-[280px]`}>
+        <Show when={content.mounted()}>
+          <ui-menu-group>
+            <ui-menu-group-label class={POPUP_LABEL}>Add from this project</ui-menu-group-label>
+            <For each={props.candidates} fallback={<span class="block px-2 py-1.5 text-small text-ink-3">No other threads</span>}>
+              {(thread) => (
+                <ui-menu-item value={String(thread.id)} label={thread.title} class={POPUP_ITEM}>
+                  <Signal state={visualState(thread.status)} size={14} class="shrink-0" />
+                  <span class="min-w-0 flex-1 truncate">{thread.title}</span>
+                </ui-menu-item>
+              )}
+            </For>
+          </ui-menu-group>
+        </Show>
+      </ui-menu-content>
+    </ui-menu>
   )
 }

@@ -1,0 +1,1 @@
+2026-11-15T19:00:00Z	captains	Side threads fork the coordinator with tx.forkConversation at its newest entry and keep its model	the brief need not restate context, and the same model keeps the provider prefix cache useful; the fork gets a fresh provider session id	captains.test.ts: forks a side thread	adopted

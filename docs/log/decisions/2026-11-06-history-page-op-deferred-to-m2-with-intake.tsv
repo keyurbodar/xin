@@ -1,0 +1,1 @@
+2026-11-06T13:21:05Z	M1	history.page op deferred to M2 with intake	it needs the message/turn model M2 defines; M1 has no product ops yet (BUNDLED is empty)	bundled.ts empty, test plugin proves the contract	delivered 2026-11-10: plugins/intake/history.ts defines history.page (the client pages older entries with it, 14-client)
