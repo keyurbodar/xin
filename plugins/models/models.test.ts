@@ -461,8 +461,8 @@ describe("models", () => {
     expect(typeof wide?.cost.cacheRead).toBe("number")
     expect(first.providers.find((provider) => provider.id === WIDE_MODEL.provider)).toMatchObject({
       keyed: true,
-      models: 2,
-      enabled: 2,
+      models: 3,
+      enabled: 3,
     })
 
     expect(await call(stub, "catalog-fav", "models.favorite", { model: WIDE_MODEL, favorite: true })).toMatchObject({
@@ -477,7 +477,7 @@ describe("models", () => {
     expect(second.favorites).toEqual([WIDE_MODEL])
     const enabledOnly = await catalog("catalog-3", { provider: WIDE_MODEL.provider, enabledOnly: true })
     expect(entry(enabledOnly, WIDE_MODEL)).toBeUndefined()
-    expect(enabledOnly.providers.find((provider) => provider.id === WIDE_MODEL.provider)).toMatchObject({ enabled: 1 })
+    expect(enabledOnly.providers.find((provider) => provider.id === WIDE_MODEL.provider)).toMatchObject({ enabled: 2 })
 
     expect(await call(stub, "catalog-pick", "conv.configure", { model: WIDE_MODEL })).toMatchObject({
       ok: false,
@@ -516,7 +516,7 @@ describe("models", () => {
     const outcome = await runInDurableObject(stub, (home: Home) =>
       home.loader.ctx.threads.delegate(
         { conversationId: project.coordinatorId as ConversationId, taskId: "off-task" },
-        { task: "say hi", title: "hi", model: narrow, mode: "async", clientRequestId: "off-delegate" },
+        { task: "say hi", title: "hi", choice: { model: narrow }, mode: "async", clientRequestId: "off-delegate" },
         context,
       ),
     )
@@ -782,6 +782,18 @@ describe("models", () => {
     const set = await postCommand("owner.compaction.set", { percent: 70 })
     expect(set.headers.get("x-ingle-rev")).not.toBeNull()
     await postCommand("owner.compaction.set", { percent: null })
+  })
+
+  it("refuses to disable the owner's compaction default", async () => {
+    const stub = fresh()
+    expect(await call(stub, "cdef-set", "owner.defaults", { role: "compaction", model: WIDE_MODEL })).toMatchObject({
+      ok: true,
+      result: { role: "compaction", model: WIDE_MODEL },
+    })
+    expect(await call(stub, "cdef-off", "models.enable", { model: WIDE_MODEL, enabled: false })).toMatchObject({
+      ok: false,
+      error: { code: "bad_args" },
+    })
   })
 
   it("rebuilds the compaction overrides when the catalog changes but keeps its size", async () => {
