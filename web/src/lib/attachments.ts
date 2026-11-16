@@ -163,6 +163,14 @@ export const isBlobType = (type: string): boolean => /^(application\/octet-strea
 
 const blobUrls = new Map<string, Promise<string>>()
 
+/** A stored blob's bytes, typed as `type`. Rejects when the blob is gone or the answer is not the file. */
+export async function fetchBlob(sha256: string, type: string): Promise<Blob> {
+  const response = await fetch(`/blobs/${sha256}`, { headers: { authorization: `Bearer ${token()}` } })
+  if (!response.ok) throw new OpError("http", `blob ${sha256.slice(0, 8)}: HTTP ${response.status}`)
+  if (!isBlobType(response.headers.get("content-type") ?? "")) throw new OpError("http", `blob ${sha256.slice(0, 8)}: not file bytes`)
+  return new Blob([await response.arrayBuffer()], { type })
+}
+
 /**
  * An object URL for a stored blob, fetched once per page: blobs are content-addressed, so a URL never goes stale.
  * Rejects when the blob is gone, so the caller can show the file without a thumbnail.
@@ -170,12 +178,7 @@ const blobUrls = new Map<string, Promise<string>>()
 export function blobUrl(sha256: string, type: string): Promise<string> {
   const known = blobUrls.get(sha256)
   if (known !== undefined) return known
-  const loading = fetch(`/blobs/${sha256}`, { headers: { authorization: `Bearer ${token()}` } }).then(async (response) => {
-    if (!response.ok) throw new OpError("http", `blob ${sha256.slice(0, 8)}: HTTP ${response.status}`)
-    if (!isBlobType(response.headers.get("content-type") ?? ""))
-      throw new OpError("http", `blob ${sha256.slice(0, 8)}: not file bytes`)
-    return URL.createObjectURL(new Blob([await response.arrayBuffer()], { type }))
-  })
+  const loading = fetchBlob(sha256, type).then((blob) => URL.createObjectURL(blob))
   loading.catch(() => blobUrls.delete(sha256))
   blobUrls.set(sha256, loading)
   return loading
