@@ -333,6 +333,44 @@ test("before the editor chunk lands, the placeholder shows, and the text and sel
   }
 })
 
+test("a backwards selection made before the upgrade keeps its direction", async () => {
+  const { page, release } = await openHeld()
+  try {
+    await editor(page).click()
+    await page.keyboard.type("hello world")
+    await page.keyboard.press("Home")
+    for (let step = 0; step < 4; step += 1) await page.keyboard.press("ArrowRight")
+    for (let step = 0; step < 2; step += 1) await page.keyboard.press("Shift+ArrowLeft")
+    release()
+    await upgraded(page)
+    await settled(page)
+    await page.keyboard.press("Shift+ArrowLeft")
+    await page.keyboard.type("X")
+    expect(await editor(page).innerText()).toBe("hXo world")
+  } finally {
+    release()
+    await page.close()
+  }
+})
+
+test("the first undo after the upgrade keeps the draft typed before it", async () => {
+  const { page, release } = await openHeld()
+  try {
+    await editor(page).click()
+    await page.keyboard.type("draft text")
+    release()
+    await upgraded(page)
+    await settled(page)
+    await page.keyboard.press("ControlOrMeta+Z")
+    await settled(page)
+    expect(await editor(page).innerText()).toBe("draft text")
+    expect(await page.getByRole("button", { name: "Send message" }).isEnabled()).toBe(true)
+  } finally {
+    release()
+    await page.close()
+  }
+})
+
 test("an input method composing when the editor chunk lands finishes in the textarea and carries over committed", async () => {
   const { page, release } = await openHeld()
   const cdp = await page.context().newCDPSession(page)
