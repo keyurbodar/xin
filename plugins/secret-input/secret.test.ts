@@ -120,10 +120,12 @@ describe("request_secret", () => {
       expect(await everyEntry(stub, thread.threadId)).not.toContain(VALUE)
 
       const rows = await everyRow(stub)
-      expect(rows, "the scan reads the journal blobs").toContain(NAME)
+      expect(rows, "the scan reads the journal blobs").toContain(`stored as ${NAME}`)
       expect(rows).not.toContain(VALUE)
 
+      await env.FILES.put("cards/seed.txt", "a seeded object, so the scan has something to read")
       const objects = await everyObject()
+      expect(objects.count, "the scan reads the bucket").toBeGreaterThan(0)
       expect(objects.text).not.toContain(VALUE)
 
       const frames = socket.received().join("\n")
