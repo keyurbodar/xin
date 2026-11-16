@@ -394,6 +394,7 @@ export function createTools(jobs: JobsService): readonly ToolRegistration[] {
   const search = jobs.tool(
     {
       name: "web_search",
+      deferred: true,
       description: "Search the public web. Returns result titles, URLs and snippets. Use web_fetch to read a result.",
       parameters: SearchArgs,
     },
@@ -413,6 +414,7 @@ export function createTools(jobs: JobsService): readonly ToolRegistration[] {
   const fetchTool = jobs.tool(
     {
       name: "web_fetch",
+      deferred: true,
       description:
         "Fetch a public http or https page as readable text. Long pages are paged with offset. Non-text responses return metadata only.",
       parameters: FetchArgs,
