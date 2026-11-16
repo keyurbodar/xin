@@ -64,7 +64,7 @@ The client needed owner-only ops the agent never asks for: the reads behind ever
 
 | Op | Args | Result |
 | --- | --- | --- |
-| `request.list` | `{ limit?, projectId? }` | pending questions across live projects, or one project's: `{ requests: [{ id, conversationId, projectId, projectName, threadTitle?, question, options?, askedAt }] }`. Reads run in parallel and never read a coordinator, which cannot hold an open request |
+| `request.list` | `{ limit?, projectId? }` | pending questions across live projects, or one project's: `{ requests: [{ id, conversationId, projectId, projectName, threadTitle?, question, options?, askedAt }] }`. Reads run in parallel and never read a coordinator, which cannot hold an open request. The project and Captain screens send it once on open and again only when the space's `requestsRev` in the home snapshot moves (06), and a refresh asked for mid-flight runs once more after it (`lib/requests.ts`) |
 | `usage.summary` | `{}` | pi's usage ledger, summed: `{ spend, tokens, today, month, days[], cap, alert, byModel[], byTool[], byProject[] }`. `spend`/`tokens` are all time; `today` and `month` are `{ spend, tokens }` from `usage_daily`, flushed before the read; `cap` is the monthly cap or null, `alert` the daily alert in USD, and `byProject` sums each project's coordinator and threads |
 | `usage.cap` / `usage.cap.set` | `{}` / `{ usd?, clear? }` | the monthly cap in USD or null; a cap at or below the month's spend makes `message.send` answer `forbidden` |
 | `usage.alert` / `usage.alert.set` | `{}` / `{ usd }` | the daily alert threshold in USD (default 8) |

@@ -1,8 +1,7 @@
-import { createEffect, createMemo, on, createResource, createSignal, onMount, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, onMount, Show, type JSX } from "solid-js"
 import { connect } from "../state/connection.ts"
 import {
   homeLoaded,
-  homeRequests,
   projectThreads,
   routeProject,
   routeThreadId,
@@ -22,7 +21,7 @@ import {
 } from "../state/conversation.ts"
 import { modelSwitch, type ThinkingLevel } from "../lib/thinking.ts"
 import { cmd, uploadFile } from "../lib/api.ts"
-import { requestsKey } from "../lib/requests.ts"
+import { onRequestsRev } from "../lib/requests.ts"
 import { spaceRequests } from "../lib/spaces.ts"
 import { recordOf, numOf } from "../lib/parse.ts"
 import { openRequests, refreshRequests, respondToQuestion } from "../state/requests.ts"
@@ -299,8 +298,8 @@ function ProjectWorkspace(props: { project: ProjectSummary }): JSX.Element {
     void prompts.reload()
     void presetStore.reload()
   })
-  const requestsDependOn = createMemo(() => requestsKey(props.project, homeRequests()))
-  createEffect(on(requestsDependOn, () => void refreshRequests()))
+  const noteRequestsRev = onRequestsRev(() => void refreshRequests())
+  createEffect(() => noteRequestsRev(props.project))
 
   const openThread = (id: number): void => {
     openThreadTab(props.project.id, id)
