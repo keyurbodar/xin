@@ -4,7 +4,7 @@ import type { ChartNode, Series } from "../runtime/node.ts"
 import type { DitherVariant } from "../runtime/style.ts"
 import { formatNumber, niceTicks } from "../runtime/style.ts"
 import type { FrameTheme } from "./protocol.ts"
-import { type DitherLayer, ditherLayer, paintStrip } from "./dither.ts"
+import { type DitherLayer, ditherLayer, type Pixels, paintStrip } from "./dither.ts"
 import { cssColor, tokenCss } from "./theme.ts"
 import type { Widget, WidgetHost } from "./widget.ts"
 import { widthOf } from "./widget.ts"
@@ -84,6 +84,7 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
   const svg = el("svg", { role: "img" })
   element.append(svg)
   let layer: { readonly bloom: ChartNode["bloom"]; readonly paint: DitherLayer } | undefined
+  let version = 0
 
   const categories = (): number =>
     node.type === "scatter" ? 0 : Math.max(node.x.length, ...node.series.map((s) => s.values.length))
@@ -143,7 +144,7 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
 
     const colorOf = (series: Series): string => cssColor(series.color, theme)
     const variant = node.dither
-    const fills: ((context: CanvasRenderingContext2D, cells: Grid, sx: number, sy: number) => void)[] = []
+    const fills: ((pixels: Pixels, sx: number, sy: number) => void)[] = []
     const marks = el("g", {})
     const band = (horizontal ? frame.height : frame.width) / Math.max(1, count)
     const centerOf = (index: number): number => (horizontal ? frame.top : frame.left) + band * (index + 0.5)
@@ -224,25 +225,16 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
             return
           }
           const color = colorOf(series)
-          fills.push((context, cells, sx, sy) => {
+          fills.push((pixels, sx, sy) => {
             const laneScale = horizontal ? sy : sx
             const alongScale = horizontal ? sx : sy
             const first = Math.round(start * laneScale)
             const end = Math.max(first + 1, Math.round((start + across) * laneScale))
             for (let lane = first; lane < end; lane += 1)
-              paintStrip(
-                context,
-                cells,
-                horizontal ? "horizontal" : "vertical",
-                lane,
-                b * alongScale,
-                a * alongScale,
-                color,
-                {
-                  variant,
-                  dim: dim ? 0.45 : 1,
-                },
-              )
+              paintStrip(pixels, horizontal ? "horizontal" : "vertical", lane, b * alongScale, a * alongScale, color, {
+                variant,
+                dim: dim ? 0.45 : 1,
+              })
           })
         })
       }
@@ -302,7 +294,7 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
               .join("")
             if (variant === undefined)
               marks.append(el("path", { d: `${line}${back}Z`, fill: color, "fill-opacity": 0.18 }))
-            else fills.push((context, cells, sx, sy) => paintBand(context, cells, sx, sy, segment, color, variant))
+            else fills.push((pixels, sx, sy) => paintBand(pixels, sx, sy, segment, color, variant))
           }
           marks.append(
             el("path", {
@@ -361,11 +353,13 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
     }
     if (layer?.bloom !== node.bloom) {
       layer?.paint.element.remove()
-      layer = { bloom: node.bloom, paint: ditherLayer({ bloom: node.bloom }) }
+      layer = { bloom: node.bloom, paint: ditherLayer(node.bloom) }
       element.prepend(layer.paint.element)
     }
-    layer.paint.paint(width, node.height, (context, cols, rows) => {
-      for (const fill of fills) fill(context, { cols, rows }, cols / width, rows / node.height)
+    const dimmed = node.type === "bar" ? (hover?.index ?? -1) : -1
+    const key = `${version}|${width}|${node.height}|${dimmed}|${Object.values(theme.colors).join(",")}`
+    layer.paint.paint(width, node.height, key, (pixels) => {
+      for (const fill of fills) fill(pixels, pixels.cols / width, pixels.rows / node.height)
     })
   }
 
@@ -401,6 +395,7 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
     element,
     update(next) {
       node = next
+      version += 1
       draw()
     },
     repaint: draw,
@@ -408,12 +403,9 @@ export function chartWidget(initial: ChartNode, host: WidgetHost): Widget<ChartN
   }
 }
 
-type Grid = { readonly cols: number; readonly rows: number }
-
 /** Dither an area band column by column, interpolating its top and floor between the segment's points. */
 function paintBand(
-  context: CanvasRenderingContext2D,
-  grid: Grid,
+  pixels: Pixels,
   sx: number,
   sy: number,
   segment: readonly (readonly [number, number, number])[],
@@ -432,7 +424,7 @@ function paintBand(
     const mix = x1 === x0 ? 0 : Math.min(1, Math.max(0, (x - x0) / (x1 - x0)))
     const top = top0 + (top1 - top0) * mix
     const floor = floor0 + (floor1 - floor0) * mix
-    paintStrip(context, grid, "vertical", lane, top * sy, floor * sy, color, { variant, dim: 1 })
+    paintStrip(pixels, "vertical", lane, top * sy, floor * sy, color, { variant, dim: 1 })
   }
 }
 

@@ -199,6 +199,31 @@ test("a dithered chart paints its bars dense at the base and dissolving toward t
       expect(bar.layers).toBe(2)
       expect(bar.blend).toContain("plus-lighter")
       expect(await frame.locator(".v-error").isHidden()).toBe(true)
+      await frame.evaluate(() => {
+        const counted = window as unknown as { puts: number }
+        counted.puts = 0
+        const put = CanvasRenderingContext2D.prototype.putImageData
+        CanvasRenderingContext2D.prototype.putImageData = function (
+          this: CanvasRenderingContext2D,
+          ...args: unknown[]
+        ) {
+          counted.puts += 1
+          Reflect.apply(put, this, args)
+        } as typeof put
+      })
+      const puts = (): Promise<number> => frame.evaluate(() => (window as unknown as { puts: number }).puts)
+      const area = frame.locator(".v-chart svg").nth(1)
+      const box = await area.boundingBox()
+      if (box === null) throw new Error("no area chart")
+      for (const fraction of [0.3, 0.5, 0.7]) {
+        await page.mouse.move(box.x + box.width * fraction, box.y + box.height / 2)
+        await page.waitForTimeout(50)
+      }
+      expect(await puts()).toBe(0)
+      const bars = await frame.locator(".v-chart svg").first().boundingBox()
+      if (bars === null) throw new Error("no bar chart")
+      await page.mouse.move(bars.x + bars.width / 2, bars.y + bars.height * 0.3)
+      await frame.waitForFunction(() => (window as unknown as { puts: number }).puts === 1)
       await frame.getByRole("tab", { name: "Reactive Meets AI" }).click()
       await frame.locator(".v-chart canvas").first().waitFor({ state: "attached" })
       if (renders !== undefined)
@@ -208,17 +233,6 @@ test("a dithered chart paints its bars dense at the base and dissolving toward t
     }
   }
 }, 90_000)
-
-test("the shared dither engine paints a wash that dissolves toward its direction", async () => {
-  const { page } = await open({ fixture: "dither" })
-  try {
-    const wash = await page.evaluate(() => window.visualHarness.wash())
-    expect(wash.bottom).toBeGreaterThan(0.8)
-    expect(wash.top).toBeLessThan(0.1)
-  } finally {
-    await page.close()
-  }
-}, 60_000)
 
 test("a 3D scene renders with WebGL inside the frame", async () => {
   const { page, frame } = await open({ fixture: "scene" })

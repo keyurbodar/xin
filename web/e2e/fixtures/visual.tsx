@@ -4,7 +4,6 @@ import type { BlockPayloads } from "../../src/components/chat/registry.ts"
 import { VisualBlock } from "../../src/components/chat/visual-block.tsx"
 import { registerBlock, renderBlock } from "../../src/components/chat/blocks.tsx"
 import { BUILT_IN_THEMES, DEFAULT_THEME, setTheme } from "../../src/lib/theme.ts"
-import { paintWash } from "../../../plugins/visual/frame/dither.ts"
 
 const themeOf = (id: string | null) => BUILT_IN_THEMES.find((entry) => entry.id === id) ?? DEFAULT_THEME
 
@@ -74,7 +73,6 @@ declare global {
     visualHarness: {
       set: (script: string, status: BlockPayloads["tool"]["status"]) => void
       theme: (next: string) => void
-      wash: () => { readonly top: number; readonly bottom: number }
       readonly dashboard: string
     }
   }
@@ -84,21 +82,6 @@ window.visualHarness = {
   set: (script, status) =>
     setCall({ name: "show_visual", callId: "call-1", args: { title: "Latency", script }, status }),
   theme: (next) => setTheme(themeOf(next)),
-  wash: () => {
-    const canvas = document.createElement("canvas")
-    canvas.width = 32
-    canvas.height = 32
-    const context = canvas.getContext("2d")
-    if (context === null) return { top: 0, bottom: 0 }
-    paintWash(context, 32, 32, "rgb(255 0 0)", { direction: "up", opacity: 1 })
-    const alpha = (row: number): number => {
-      const data = context.getImageData(0, row, 32, 1).data
-      let sum = 0
-      for (let at = 3; at < data.length; at += 4) sum += data[at] ?? 0
-      return sum / 32 / 255
-    }
-    return { top: alpha(0), bottom: alpha(31) }
-  },
   dashboard: DASHBOARD,
 }
 
