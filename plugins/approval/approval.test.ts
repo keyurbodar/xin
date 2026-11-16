@@ -11,7 +11,12 @@ import { cmd, eventually, fresh, setRow, turn } from "../../test/support.ts"
 import type { Home } from "../../test/worker.ts"
 
 const context = BACKGROUND_CONTEXT
-const CARD = { row: "tool-approval", search: "approve action", tool: "request_approval", args: { action: "delete the staging bucket" } }
+const CARD = {
+  row: "tool-approval",
+  search: "approve action",
+  tool: "request_approval",
+  args: { action: "delete the staging bucket" },
+}
 
 type Declared = { readonly name: string; readonly bytes: number }
 
