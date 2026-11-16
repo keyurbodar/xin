@@ -55,6 +55,8 @@ const firstOf = (entries: readonly EntryRecord[], kind: string): EntryRecord | u
 const cmd = (id: string, op: string, args?: unknown) =>
   api("/v1/cmd", { method: "POST", body: JSON.stringify({ id, op, args }) }).then((reply) => reply.json())
 
+const custom = (host: string, key: string) => ({ baseUrl: `https://${host}/v1`, key, api: "openai-completions" })
+
 type Slice = {
   readonly name?: string
   readonly provider?: string
@@ -822,6 +824,84 @@ describe("models", () => {
     } finally {
       globalThis.fetch = original
       await cmd("custom-3", "credential.delete", { provider: "endpoint" })
+    }
+  })
+
+  it("keeps a custom provider's endpoint when its key alone is edited", async () => {
+    const original = globalThis.fetch
+    const seen: string[] = []
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(`${String(input)} ${new Headers(init?.headers).get("authorization") ?? ""}`)
+      return new Response(JSON.stringify({ object: "list", data: [{ id: "stub-1", object: "model" }] }), {
+        headers: { "content-type": "application/json" },
+      })
+    }
+    try {
+      const created = await cmd("edit-custom-1", "credential.set", {
+        provider: "edited",
+        custom: { baseUrl: "https://edited.test/v1", key: "first-key", api: "openai-completions" },
+      })
+      expect(created).toMatchObject({ ok: true })
+      const edited = await cmd("edit-custom-2", "credential.set", { provider: "edited", key: "second-key" })
+      expect(edited).toMatchObject({ ok: true, result: { provider: "edited", custom: false } })
+
+      seen.length = 0
+      const listed = (await cmd("edit-custom-3", "models.catalog", {})) as {
+        result: { providers: { id: string; custom: boolean; keyed: boolean }[] }
+      }
+      const providers = listed.result.providers
+      expect(providers.find((provider) => provider.id === "edited")).toMatchObject({ custom: true, keyed: true })
+      const accepted = await cmd("edit-custom-4", "owner.defaults", {
+        role: "chat",
+        model: { provider: "edited", modelId: "stub-1" },
+      })
+      expect(accepted).toMatchObject({ ok: true })
+      expect(seen.some((line) => line.startsWith("https://edited.test/v1/") && line.endsWith("second-key"))).toBe(true)
+    } finally {
+      globalThis.fetch = original
+      await cmd("edit-custom-5", "credential.delete", { provider: "edited" })
+    }
+  })
+
+  it("refreshes only the custom provider whose credential changed, once and with its new key", async () => {
+    const original = globalThis.fetch
+    const seen: string[] = []
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(`${new URL(String(input)).host} ${new Headers(init?.headers).get("authorization") ?? ""}`)
+      return new Response(JSON.stringify({ object: "list", data: [{ id: "stub-1", object: "model" }] }), {
+        headers: { "content-type": "application/json" },
+      })
+    }
+    const stub = fresh()
+    const requests = async (id: string, op: string, args: unknown): Promise<string[]> => {
+      seen.length = 0
+      const reply = await call(stub, id, op, args)
+      expect(reply.ok, JSON.stringify(reply)).toBe(true)
+      return [...seen]
+    }
+    try {
+      expect(
+        await requests("rotate-1", "credential.set", { provider: "kept", custom: custom("kept.test", "kept-key") }),
+      ).toEqual(["kept.test Bearer kept-key"])
+      expect(
+        await requests("rotate-2", "credential.set", {
+          provider: "rotate",
+          custom: custom("rotate.test", "first-key"),
+        }),
+      ).toEqual(["rotate.test Bearer first-key"])
+      expect(
+        await requests("rotate-3", "credential.set", {
+          provider: "rotate",
+          custom: custom("rotate.test", "second-key"),
+        }),
+      ).toEqual(["rotate.test Bearer second-key"])
+      expect(await requests("rotate-4", "credential.set", { provider: "rotate", key: "third-key" })).toEqual([
+        "rotate.test Bearer third-key",
+      ])
+      expect(await requests("rotate-5", "credential.delete", { provider: "rotate" })).toEqual([])
+      expect(await requests("rotate-6", "models.catalog", {})).toEqual(["kept.test Bearer kept-key"])
+    } finally {
+      globalThis.fetch = original
     }
   })
 

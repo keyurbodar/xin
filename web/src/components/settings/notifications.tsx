@@ -15,9 +15,9 @@ import {
   type PushDevice,
   type QuietHours,
 } from "../../state/settings.ts"
-import { Button, Chip, Failure, Note, Panel, Pending, Toggle, failureOf } from "../extensions/chrome.tsx"
+import { Button, Chip, Failure, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
-import { Group, Row } from "./parts.tsx"
+import { Card, Group, MONO_FIELD, Row, Switch } from "./parts.tsx"
 
 const EVENTS: readonly { readonly key: NotifyKind; readonly title: string; readonly detail: string }[] = [
   { key: "waiting", title: "A thread is waiting on you", detail: "The choices show as buttons" },
@@ -27,8 +27,7 @@ const EVENTS: readonly { readonly key: NotifyKind; readonly title: string; reado
 
 const MINUTES_IN_DAY = 24 * 60
 
-const TIME_FIELD =
-  "h-8 w-[68px] rounded-sm border border-line-2 bg-bg px-2 text-center font-mono text-sm text-ink tabular-nums placeholder:text-icon focus:border-line-3 focus:outline-none disabled:opacity-40"
+const TIME_FIELD = `${MONO_FIELD.replace("w-full", "w-[68px]")} text-center tabular-nums`
 
 type Problem = { readonly message: string; readonly retry?: (() => void) | undefined }
 
@@ -72,7 +71,7 @@ function minutesOf(text: string): number | undefined {
 function Saving(props: { show: boolean }): JSX.Element {
   return (
     <Show when={props.show}>
-      <span class="text-xs text-ink-3">Saving</span>
+      <span class="text-mini text-ink-3">Saving</span>
     </Show>
   )
 }
@@ -85,9 +84,9 @@ function DeviceRow(props: {
   onRemove: () => void
 }): JSX.Element {
   return (
-    <div class="flex items-center gap-2.5 border-b border-line-2 px-3.5 py-2.5 last:border-0">
-      <Glyph name="monitor" size={14} class="shrink-0 text-ink-3" />
-      <span class="min-w-0 flex-1 truncate font-mono text-xs text-ink-2" title={props.device.origin}>
+    <div class="flex items-center gap-2.5 px-4 py-2.5">
+      <Glyph name="monitor" size={16} class="shrink-0 text-ink-3" />
+      <span class="min-w-0 flex-1 truncate font-mono text-mini text-ink-2" title={props.device.origin}>
         {originLabel(props.device.origin)}
       </span>
       <Show when={props.thisBrowser}>
@@ -255,12 +254,13 @@ export function Notifications(): JSX.Element {
   })
 
   return (
-    <div class="flex max-w-[820px] flex-col gap-6">
+    <>
       <Show when={problem()}>
         {(failure) => <Failure message={failure().message} onRetry={failure().retry} />}
       </Show>
 
       <Group title="Push to this browser">
+        <Card>
         <Row title="This browser" detail={permissionDetail(permission())}>
           <div class="flex flex-wrap items-center gap-2">
             <Show
@@ -278,32 +278,34 @@ export function Notifications(): JSX.Element {
               }
             >
               <Chip tone="ok">Subscribed</Chip>
-              <span class="font-mono text-2xs text-icon">{endpoint()?.replace(/^https:\/\//u, "").slice(0, 42)}…</span>
+              <span class="font-mono text-micro text-icon">{endpoint()?.replace(/^https:\/\//u, "").slice(0, 42)}…</span>
               <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void turnOff()}>Turn off</Button>
             </Show>
             <Show when={sent()}>
-              <span class="text-xs text-ink-3">Delivery is confirmed when a push watcher runs.</span>
+              <span class="text-mini text-ink-3">Delivery is confirmed when a push watcher runs.</span>
             </Show>
           </div>
         </Row>
         <Row title="Send test" detail="Delivers one notification to every subscribed browser">
           <div class="flex items-center gap-2">
             <Show when={tested()}>
-              {(result) => <span class="text-sm text-ink-3">{result()}</span>}
+              {(result) => <span class="text-small text-ink-3">{result()}</span>}
             </Show>
             <Button size="sm" variant="quiet" disabled={busy()} onClick={() => void sendTest()}>
               Send test
             </Button>
           </div>
         </Row>
+        </Card>
       </Group>
 
       <Group title="Tell me when">
+        <Card>
         <For each={EVENTS}>
           {(event) => (
             <Row title={event.title} detail={event.detail}>
               <div class="flex items-center gap-2.5">
-                <Toggle
+                <Switch
                   on={notifyNow()[event.key]}
                   disabled={saving() !== undefined}
                   label={event.title}
@@ -316,7 +318,7 @@ export function Notifications(): JSX.Element {
         </For>
         <Row title="Spend passes the alert" detail={spendDetail()}>
           <div class="flex items-center gap-2.5">
-            <Toggle
+            <Switch
               on={notifyNow()["spend"]}
               disabled={saving() !== undefined}
               label="Spend passes the alert"
@@ -327,7 +329,7 @@ export function Notifications(): JSX.Element {
         </Row>
         <Row title="A schedule runs" detail="Off: results still land in chat">
           <div class="flex items-center gap-2.5">
-            <Toggle
+            <Switch
               on={notifyNow()["schedule"]}
               disabled={saving() !== undefined}
               label="A schedule runs"
@@ -336,29 +338,30 @@ export function Notifications(): JSX.Element {
             <Saving show={saving() === "schedule"} />
           </div>
         </Row>
-        <div class="pt-2">
+        </Card>
           <Note>
             Push is skipped while this tab is open: the socket already shows the change. During quiet hours a report waits
             for the window to end; a question comes through once it has waited two hours.
           </Note>
-        </div>
       </Group>
 
       <Group title="Quiet hours">
         <Show when={failureOf(quietHours.state())}>
           {(message) => <Failure message={message()} onRetry={() => void quietHours.reload()} />}
         </Show>
+        <Card>
         <Row title="Quiet hours" detail="Shown on this browser's clock">
           <Show
             when={quiet()}
             fallback={
-              <span class="text-sm text-ink-3">
+              <span class="text-small text-ink-3">
                 {quietHours.state().kind === "loading" ? "Reading quiet hours…" : "Not loaded"}
               </span>
             }
           >
             {(value) => (
               <div class="flex items-center gap-2">
+                <ui-input class="flex">
                 <input
                   type="text"
                   inputMode="numeric"
@@ -371,7 +374,9 @@ export function Notifications(): JSX.Element {
                   value={shownTime("start")}
                   onChange={(event) => void commitTime("start", event.currentTarget)}
                 />
-                <span class="text-sm text-ink-3">to</span>
+                </ui-input>
+                <span class="text-small text-ink-3">to</span>
+                <ui-input class="flex">
                 <input
                   type="text"
                   inputMode="numeric"
@@ -384,9 +389,10 @@ export function Notifications(): JSX.Element {
                   value={shownTime("end")}
                   onChange={(event) => void commitTime("end", event.currentTarget)}
                 />
-                <div class="ml-auto flex items-center gap-2">
+                </ui-input>
+                <div class="ml-2 flex items-center gap-2">
                   <Saving show={saving() === "quiet"} />
-                  <Toggle
+                  <Switch
                     on={value().enabled}
                     disabled={saving() === "quiet"}
                     label="Quiet hours"
@@ -397,9 +403,8 @@ export function Notifications(): JSX.Element {
             )}
           </Show>
         </Row>
-        <div class="pt-2">
-          <Note>Waiting-on-you still comes through.</Note>
-        </div>
+        </Card>
+        <Note>Waiting-on-you still comes through.</Note>
       </Group>
 
       <Group title="Other devices">
@@ -407,7 +412,7 @@ export function Notifications(): JSX.Element {
           {(message) => <Failure message={message()} onRetry={() => void pushDevices.reload()} />}
         </Show>
         <Show when={pushDevices.state().kind !== "failed"}>
-          <Panel>
+          <Card>
             <Show when={pushDevices.state().kind === "loading"}>
               <Pending label="Reading devices" />
             </Show>
@@ -415,7 +420,7 @@ export function Notifications(): JSX.Element {
               {(list) => (
                 <Show
                   when={list().length > 0}
-                  fallback={<div class="px-3.5 py-3 text-sm text-ink-3">No device has a push subscription.</div>}
+                  fallback={<div class="px-4 py-3 text-small text-ink-3">No device has a push subscription.</div>}
                 >
                   <For each={list()}>
                     {(device) => (
@@ -431,10 +436,10 @@ export function Notifications(): JSX.Element {
                 </Show>
               )}
             </Show>
-          </Panel>
+          </Card>
         </Show>
       </Group>
-    </div>
+    </>
   )
 }
 
