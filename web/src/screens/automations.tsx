@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
 import { Plus } from "lucide-solid"
 import { firstLoad } from "../lib/loading.ts"
 import { describeTriggers, nextLabel, TARGET_WORD, type Automation } from "../lib/automations.ts"
+import { firstFocusable, neighbourAfter } from "../lib/focus.ts"
 import { createAutomationList } from "../state/automations.ts"
 import { homeProjects } from "../state/home.ts"
 import { AutomationDialog } from "../components/automations/dialog.tsx"
@@ -17,11 +18,20 @@ export function AutomationsScreen(): JSX.Element {
   const [creating, setCreating] = createSignal(false)
   const [deleting, setDeleting] = createSignal<Automation>()
   const shown = createMemo(() => (list.latest ?? []).filter((automation) => !actions.removed(automation)))
+  let heading!: HTMLHeadingElement
+  let rows: HTMLDivElement | undefined
+  const focusAfter = (automation: Automation): HTMLElement | undefined => {
+    const next = neighbourAfter(
+      shown().map((item) => item.id),
+      automation.id,
+    )
+    return next === undefined ? heading : firstFocusable(rows?.querySelector(`[data-automation="${CSS.escape(next)}"]`))
+  }
 
   return (
     <>
       <header class="flex h-[var(--h-topbar)] shrink-0 items-center gap-2 border-b border-line-1 px-4">
-        <h1 class="text-base font-medium text-ink">Automations</h1>
+        <h1 ref={heading} tabindex={-1} class="text-base font-medium text-ink outline-none">Automations</h1>
         <Show when={list.latest !== undefined}>
           <span class="font-mono text-xs tabular-nums text-ink-3">{shown().length}</span>
         </Show>
@@ -81,7 +91,7 @@ export function AutomationsScreen(): JSX.Element {
                   <span>Last run</span>
                   <span class="text-right">On</span>
                 </div>
-                <div class="im-stagger">
+                <div ref={rows} class="im-stagger">
                   <For each={shown()}>
                     {(automation, index) => (
                       <Row
@@ -101,7 +111,7 @@ export function AutomationsScreen(): JSX.Element {
         </div>
       </div>
       <AutomationDialog open={creating()} onClose={() => setCreating(false)} />
-      <DeleteAutomationDialog automation={deleting()} onClose={() => setDeleting(undefined)} onDelete={actions.remove} />
+      <DeleteAutomationDialog automation={deleting()} onClose={() => setDeleting(undefined)} onDelete={actions.remove} focusAfter={focusAfter} />
     </>
   )
 }
@@ -118,6 +128,7 @@ function Row(props: {
   const view = (): Automation => ({ ...props.automation, enabled: props.enabled })
   return (
     <div
+      data-automation={props.automation.id}
       class={`flex items-start gap-3 border-b border-line-1 px-4 py-3 last:border-0 ${GRID}`}
       style={{ "--i": props.index }}
     >

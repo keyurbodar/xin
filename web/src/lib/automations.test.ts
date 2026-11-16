@@ -3,7 +3,9 @@ import {
   automationsRevisionOf,
   createArgs,
   cronInWords,
+  CRON_MAX_LENGTH,
   cronProblem,
+  keepUnchanged,
   describeTriggers,
   draftReady,
   nextLabel,
@@ -105,6 +107,7 @@ test("the dialog creates one schedule trigger in the browser zone, trimmed", () 
   const draft = { title: " Digest ", prompt: " Summarise ", cron: " 0  9 * * 1 ", project: "prj_1", target: "fresh" as const }
   expect(draftReady(draft, "UTC")).toBe(true)
   expect(draftReady({ ...draft, project: "" }, "UTC")).toBe(false)
+  expect(draftReady({ ...draft, cron: `${Array.from({ length: 44 }, (_, i) => i).join(",")} * * * *` }, "UTC")).toBe(false)
   expect(draftReady({ ...draft, cron: "  " }, "UTC")).toBe(false)
   expect(draftReady({ ...draft, cron: "*/60 * * * *" }, "UTC")).toBe(false)
   expect(createArgs(draft, "Asia/Kolkata")).toEqual({
@@ -126,4 +129,21 @@ test("the dialog refuses exactly the crons the server's parser refuses, in its w
   expect(cronProblem("0 0 31 2 *", "UTC")).toBe('"0 0 31 2 *" never fires')
   expect(cronProblem("*/45 * * * *", "UTC")).toBeUndefined()
   expect(cronProblem("0 9 * * MON-FRI", "UTC")).toBeUndefined()
+  const minutes = (n: number) => Array.from({ length: n }, (_, i) => i % 60).join(",")
+  const atLimit = `${minutes(43)},1 * * * *`
+  expect(atLimit.length).toBe(CRON_MAX_LENGTH)
+  expect(cronProblem(atLimit, "UTC")).toBeUndefined()
+  expect(`${minutes(44)} * * * *`.length).toBe(CRON_MAX_LENGTH + 1)
+  expect(cronProblem(`${minutes(44)} * * * *`, "UTC")).toBe("A schedule is at most 128 characters")
+  expect(cronProblem(`  ${minutes(40)}   *  *  *  *  `, "UTC")).toBeUndefined()
+})
+
+test("a reload keeps the previous object of each unchanged automation and takes the new one otherwise", () => {
+  const [first] = parseAutomationList({ automations: [wire] })
+  const [again] = parseAutomationList({ automations: [wire] })
+  const [renamed] = parseAutomationList({ automations: [{ ...wire, title: "Renamed" }] })
+  if (first === undefined || again === undefined || renamed === undefined) throw new Error("fixture did not parse")
+  expect(keepUnchanged([first], [again])[0]).toBe(first)
+  expect(keepUnchanged([first], [renamed])[0]).toBe(renamed)
+  expect(keepUnchanged(undefined, [again])[0]).toBe(again)
 })

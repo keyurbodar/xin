@@ -1,6 +1,6 @@
 import { createResource, type Resource } from "solid-js"
 import { cmd } from "../lib/api.ts"
-import { parseAutomationList, type Automation } from "../lib/automations.ts"
+import { keepUnchanged, parseAutomationList, type Automation } from "../lib/automations.ts"
 import { homeAutomationsRevision, homeLoaded } from "./home.ts"
 
 /**
@@ -8,9 +8,9 @@ import { homeAutomationsRevision, homeLoaded } from "./home.ts"
  * Actions never reload by hand: every create, update, delete, run start and run finish bumps the revision.
  */
 export function createAutomationList(): readonly [Resource<readonly Automation[]>, () => void] {
-  const [list, { refetch }] = createResource(
+  const [list, { refetch }] = createResource<readonly Automation[], number | false>(
     () => (homeLoaded() ? (homeAutomationsRevision() ?? 0) : false),
-    async () => parseAutomationList(await cmd("automation.list", {})),
+    async (_, { value }) => keepUnchanged(value, parseAutomationList(await cmd("automation.list", {}))),
   )
   return [list, () => void refetch()]
 }

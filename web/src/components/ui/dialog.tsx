@@ -22,6 +22,7 @@ export function Dialog(props: {
   width?: string
   footer?: JSX.Element
   onSubmit?: (() => void) | undefined
+  returnFocus?: HTMLElement | undefined
   children: JSX.Element
 }): JSX.Element {
   const { mounted, leaving } = createPresence(() => props.open, 140)
@@ -35,6 +36,7 @@ export function Dialog(props: {
         footer={props.footer}
         onSubmit={props.onSubmit}
         onClose={props.onClose}
+        returnFocus={() => props.returnFocus}
       >
         {props.children}
       </Frame>
@@ -50,6 +52,7 @@ function Frame(props: {
   footer: JSX.Element | undefined
   onSubmit: (() => void) | undefined
   onClose: () => void
+  returnFocus: () => HTMLElement | undefined
   children: JSX.Element
 }): JSX.Element {
   let panel!: HTMLFormElement
@@ -111,7 +114,7 @@ function Frame(props: {
   onCleanup(() => {
     document.removeEventListener("keydown", onKey)
     document.removeEventListener("focusin", onFocusIn)
-    returnTarget([escaped, opener])?.focus()
+    returnTarget([props.returnFocus(), escaped, opener])?.focus()
   })
 
   return (

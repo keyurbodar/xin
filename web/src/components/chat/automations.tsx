@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
 import { Plus } from "lucide-solid"
 import { firstLoad } from "../../lib/loading.ts"
 import { describeTriggers, nextLabel, type Automation } from "../../lib/automations.ts"
+import { firstFocusable, neighbourAfter } from "../../lib/focus.ts"
 import { createAutomationList } from "../../state/automations.ts"
 import type { ProjectSummary } from "../../state/home.ts"
 import { AutomationDialog } from "../automations/dialog.tsx"
@@ -18,11 +19,22 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
   const mine = createMemo(() =>
     (list.latest ?? []).filter((automation) => automation.project === props.project.id && !actions.removed(automation)),
   )
+  let heading!: HTMLHeadingElement
+  let rows: HTMLDivElement | undefined
+  const focusAfter = (automation: Automation): HTMLElement | undefined => {
+    const next = neighbourAfter(
+      mine().map((item) => item.id),
+      automation.id,
+    )
+    return next === undefined ? heading : firstFocusable(rows?.querySelector(`[data-automation="${CSS.escape(next)}"]`))
+  }
 
   return (
     <div class="flex flex-col">
       <div class="flex h-9 items-center gap-2 border-b border-line-1 pl-3 pr-1.5">
-        <span class="min-w-0 flex-1 truncate text-sm text-ink-3">Runs land in this project's threads</span>
+        <h2 ref={heading} tabindex={-1} class="min-w-0 flex-1 truncate text-sm font-normal text-ink-3 outline-none">
+          Runs land in this project's threads
+        </h2>
         <button type="button" class={ICON_BUTTON} aria-label="New automation" title="New automation" onClick={() => setCreating(true)}>
           <Plus size={16} stroke-width={1.5} />
         </button>
@@ -55,13 +67,13 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
             </Show>
           }
         >
-          <div class="im-stagger flex flex-col">
+          <div ref={rows} class="im-stagger flex flex-col">
             <For each={mine()}>
               {(automation, index) => {
                 const enabled = (): boolean => actions.enabled(automation)
                 const busy = (): boolean => actions.busy() === automation.id
                 return (
-                  <div class="flex items-center gap-2.5 border-b border-line-1 py-2 pl-3 pr-1.5" style={{ "--i": index() }}>
+                  <div data-automation={automation.id} class="flex items-center gap-2.5 border-b border-line-1 py-2 pl-3 pr-1.5" style={{ "--i": index() }}>
                     <div class="min-w-0 flex-1">
                       <div class="truncate text-base" classList={{ "text-ink": enabled(), "text-ink-3": !enabled() }}>
                         {automation.title}
@@ -88,7 +100,7 @@ export function AutomationsTab(props: { project: ProjectSummary }): JSX.Element 
         </Show>
       </Loading>
       <AutomationDialog open={creating()} project={props.project.id} onClose={() => setCreating(false)} />
-      <DeleteAutomationDialog automation={deleting()} onClose={() => setDeleting(undefined)} onDelete={actions.remove} />
+      <DeleteAutomationDialog automation={deleting()} onClose={() => setDeleting(undefined)} onDelete={actions.remove} focusAfter={focusAfter} />
     </div>
   )
 }

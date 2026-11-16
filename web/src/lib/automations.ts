@@ -67,6 +67,15 @@ export function parseRun(value: unknown): AutomationRun | undefined {
   return { id, status: record.status, threadId: numOf(record.threadId) ?? null, createdAt, error: nullableStr(record.error) }
 }
 
+/** A reload hands back the previous object for every automation that did not change, so its row stays mounted and keeps focus. */
+export function keepUnchanged(previous: readonly Automation[] | undefined, next: readonly Automation[]): readonly Automation[] {
+  const before = new Map((previous ?? []).map((automation) => [automation.id, automation]))
+  return next.map((automation) => {
+    const kept = before.get(automation.id)
+    return kept !== undefined && JSON.stringify(kept) === JSON.stringify(automation) ? kept : automation
+  })
+}
+
 export function parseAutomation(value: unknown): Automation | undefined {
   const record = recordOf(value)
   const id = strOf(record?.id)
@@ -168,7 +177,10 @@ export function cronInWords(cron: string): string {
  * Why the server would refuse this cron, in its own words: the dialog runs the backend's parser, so it blocks
  * exactly what `automation.create` would answer `bad_args` for. Undefined when the cron is fine.
  */
+export const CRON_MAX_LENGTH = 128
+
 export function cronProblem(cron: string, tz: string, now = Date.now()): string | undefined {
+  if (cron.trim().replace(/\s+/gu, " ").length > CRON_MAX_LENGTH) return `A schedule is at most ${CRON_MAX_LENGTH} characters`
   try {
     return nextCron(parseCron(cron), tz, now) === undefined ? `"${cron.trim()}" never fires` : undefined
   } catch (problem) {

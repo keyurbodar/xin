@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { nextFocus, returnTarget } from "./focus.ts"
+import { neighbourAfter, nextFocus, returnTarget } from "./focus.ts"
 
 test("Tab wraps from the last stop to the first, and Shift+Tab from the first to the last", () => {
   expect(nextFocus(3, 0, false)).toBe(1)
@@ -21,4 +21,12 @@ test("a closing dialog returns focus to where it last escaped to, else to its op
   expect(returnTarget([trigger, item])).toBe(trigger)
   expect(returnTarget([undefined, item, trigger])).toBe(trigger)
   expect(returnTarget([undefined, null])).toBeUndefined()
+})
+
+test("a removed row hands focus to the row after it, else the row before, else to nothing", () => {
+  expect(neighbourAfter(["a", "b", "c"], "a")).toBe("b")
+  expect(neighbourAfter(["a", "b", "c"], "b")).toBe("c")
+  expect(neighbourAfter(["a", "b", "c"], "c")).toBe("b")
+  expect(neighbourAfter(["a"], "a")).toBeUndefined()
+  expect(neighbourAfter(["a", "b"], "z")).toBeUndefined()
 })
