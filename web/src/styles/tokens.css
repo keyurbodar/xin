@@ -62,6 +62,34 @@
   --text-xl--line-height: 1.25;
   --text-2xl: 24px;
   --text-2xl--line-height: 1.25;
+  --text-micro: 11px;
+  --text-micro--line-height: 16px;
+  --text-mini: 12px;
+  --text-mini--line-height: 16px;
+  --text-small: 13px;
+  --text-small--line-height: 18px;
+  --text-small--letter-spacing: -0.005em;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-body--letter-spacing: -0.006em;
+  --text-reading: 15px;
+  --text-reading--line-height: 24px;
+  --text-reading--letter-spacing: -0.011em;
+  --text-title-mini: 16px;
+  --text-title-mini--line-height: 24px;
+  --text-title-mini--letter-spacing: -0.011em;
+  --text-title-sm: 18px;
+  --text-title-sm--line-height: 24px;
+  --text-title-sm--letter-spacing: -0.015em;
+  --text-title: 24px;
+  --text-title--line-height: 32px;
+  --text-title--letter-spacing: -0.02em;
+  --text-title-lg: 28px;
+  --text-title-lg--line-height: 32px;
+  --text-title-lg--letter-spacing: -0.022em;
+
+  --font-weight-title: 510;
+  --font-weight-strong: 590;
 
   --radius-*: initial;
   --radius-2xs: 2px;
@@ -69,7 +97,8 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --radius-full: 999px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
 
   --shadow-ring: 0 0 0 0.5px var(--color-line-2);
   --shadow-overlay: 0 0 0 0.5px var(--color-line-2), 0 1px 1px rgb(0 0 0 / 0.12), 0 3px 9px rgb(0 0 0 / 0.14),
@@ -123,6 +152,15 @@
   --w-dialog: 560px;
   --w-sheet: 440px;
   --w-palette: 640px;
+  --w-settings: 640px;
+  --w-dialog-sm: 440px;
+  --w-dialog-md: 560px;
+  --w-dialog-lg: 640px;
+  --page-gutter: 16px;
+  --section-inset: calc(var(--page-gutter) / 2);
+  --h-header: 48px;
+  --h-control-lg: 36px;
+  --h-list-row: 36px;
   --z-sidebar: 50;
   --z-sheet: 350;
   --z-dialog: 500;
@@ -198,6 +236,8 @@
   --inset: 0px;
   --h-tab: 32px;
   --h-section: 32px;
+  --h-control-lg: 44px;
+  --h-list-row: 56px;
   --page-pad: 24px;
   --text-2xs: 12px;
   --text-xs: 13px;
@@ -206,6 +246,9 @@
   --text-lg: 17px;
   --text-xl: 22px;
   --text-2xl: 26px;
+  --text-small: 14px;
+  --text-body: 15px;
+  --text-reading: 16px;
 }
 
 @media (pointer: coarse) {
@@ -221,6 +264,8 @@
     --inset: 0px;
     --h-tab: 32px;
     --h-section: 32px;
+  --h-control-lg: 44px;
+  --h-list-row: 56px;
     --page-pad: 24px;
     --text-2xs: 12px;
     --text-xs: 13px;
@@ -229,6 +274,15 @@
     --text-lg: 17px;
     --text-xl: 22px;
     --text-2xl: 26px;
+  --text-small: 14px;
+  --text-body: 15px;
+  --text-reading: 16px;
+  }
+}
+
+@media (min-width: 640px) {
+  :root {
+    --page-gutter: 24px;
   }
 }
 

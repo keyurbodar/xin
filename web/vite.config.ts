@@ -6,6 +6,7 @@ const backend = process.env.INGLE_DEV_URL ?? "http://127.0.0.1:8799"
 
 export default defineConfig({
   plugins: [solid(), tailwindcss()],
+  optimizeDeps: { exclude: ["@ui-sdk/core"] },
   server: {
     proxy: {
       "/v1": { target: backend, changeOrigin: true, ws: true },

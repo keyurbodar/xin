@@ -1,7 +1,12 @@
-import { Show, createEffect, onCleanup, onMount, type Accessor, type JSX } from "solid-js"
-import { returnTarget } from "../../lib/focus.ts"
-import { createPresence } from "../shell/presence.ts"
+import "@ui-sdk/web/dialog"
+import { Show, createEffect, type Accessor, type JSX } from "solid-js"
+import { createOverlayMount } from "../shell/presence.ts"
 import { Icon } from "./icon.tsx"
+
+export const DIALOG_BACKDROP = "im-scrim fixed inset-0 bg-scrim"
+
+export const DIALOG_CONTENT =
+  "im-dialog fixed inset-0 m-auto h-fit max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] overflow-y-auto rounded-lg bg-card p-0 text-ink shadow-overlay"
 
 /** A dialog keeps its state between openings, so the fields reset when it opens again. */
 export function resetOnOpen(open: Accessor<boolean>, reset: () => void): void {
@@ -13,7 +18,7 @@ export function resetOnOpen(open: Accessor<boolean>, reset: () => void): void {
   })
 }
 
-/** V3: one dialog shell. It fades and scales in from .96 over 200 (`im-dialog`), leaves in 140, traps focus, and closes on Escape or the scrim. */
+/** V3: one dialog shell on ui-sdk's Dialog: it fades and scales in from .96 over 200 (`im-dialog`), leaves in 140, traps focus, and closes on Escape or the scrim. */
 export function Dialog(props: {
   open: boolean
   onClose: () => void
@@ -25,139 +30,61 @@ export function Dialog(props: {
   returnFocus?: HTMLElement | undefined
   children: JSX.Element
 }): JSX.Element {
-  const { mounted, leaving } = createPresence(() => props.open, 140)
+  const { mounted, settle } = createOverlayMount(() => props.open)
   return (
     <Show when={mounted()}>
-      <Frame
-        closing={leaving()}
-        title={props.title}
-        busy={props.busy === true}
-        width={props.width ?? "w-[640px]"}
-        footer={props.footer}
-        onSubmit={props.onSubmit}
-        onClose={props.onClose}
-        returnFocus={() => props.returnFocus}
-      >
-        {props.children}
-      </Frame>
-    </Show>
-  )
-}
-
-function Frame(props: {
-  closing: boolean
-  title: string
-  busy: boolean
-  width: string
-  footer: JSX.Element | undefined
-  onSubmit: (() => void) | undefined
-  onClose: () => void
-  returnFocus: () => HTMLElement | undefined
-  children: JSX.Element
-}): JSX.Element {
-  let panel!: HTMLFormElement
-
-  const focusables = (): readonly HTMLElement[] => [
-    ...panel.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-    ),
-  ]
-
-  const onKey = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") {
-      event.preventDefault()
-      if (!props.busy) props.onClose()
-      return
-    }
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault()
-      props.onSubmit?.()
-      return
-    }
-    if (event.key !== "Tab") return
-    const items = focusables()
-    const first = items[0]
-    const last = items[items.length - 1]
-    if (first === undefined || last === undefined) return
-    const active = document.activeElement
-    if (event.shiftKey) {
-      if (active === first || !panel.contains(active)) {
-        event.preventDefault()
-        last.focus()
-      }
-      return
-    }
-    if (active === last || !panel.contains(active)) {
-      event.preventDefault()
-      first.focus()
-    }
-  }
-
-  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
-  let escaped: HTMLElement | undefined
-  const focusInitial = (): void => {
-    panel.querySelector<HTMLElement>("[autofocus], input, textarea")?.focus()
-  }
-  /** A menu that opened this dialog restores focus to its trigger after the dialog mounts; pull it back in and remember the trigger. */
-  const onFocusIn = (event: FocusEvent): void => {
-    const target = event.target
-    if (!(target instanceof HTMLElement) || panel.contains(target) || target.closest('[data-part="positioner"]') !== null) return
-    escaped = target
-    focusInitial()
-  }
-
-  onMount(() => {
-    focusInitial()
-    document.addEventListener("keydown", onKey)
-    document.addEventListener("focusin", onFocusIn)
-  })
-  onCleanup(() => {
-    document.removeEventListener("keydown", onKey)
-    document.removeEventListener("focusin", onFocusIn)
-    returnTarget([props.returnFocus(), escaped, opener])?.focus()
-  })
-
-  return (
-    <div
-      class="fixed inset-0 z-50 grid place-items-center p-4"
-      onMouseDown={() => {
-        if (!props.busy) props.onClose()
-      }}
-    >
-      <div class="im-scrim absolute inset-0 bg-scrim" data-state={props.closing ? "closed" : "open"} />
-      <form
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-label={props.title}
-        class={`im-dialog relative max-h-[calc(100vh-32px)] ${props.width} max-w-[calc(100vw-32px)] overflow-y-auto rounded-md border border-line-2 bg-card shadow-[0_24px_64px_rgba(0,0,0,0.65)]`}
-        data-state={props.closing ? "closed" : "open"}
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={(event) => {
+      <ui-dialog
+        prop:open={props.open}
+        dismissible={props.busy === true ? "false" : undefined}
+        on:openchange={(event) => {
+          if (event.detail.value) return
           event.preventDefault()
-          props.onSubmit?.()
+          queueMicrotask(props.onClose)
+        }}
+        on:openchangecomplete={(event) => {
+          if (!event.detail.value && props.returnFocus?.isConnected === true) props.returnFocus.focus()
+          settle(event)
         }}
       >
-        <div class="flex items-center border-b border-line-1 px-5 py-3.5">
-          <h2 class="text-[15px] font-medium">{props.title}</h2>
-          <button
-            type="button"
-            onClick={props.onClose}
-            aria-label="Close"
-            disabled={props.busy}
-            class="ml-auto grid h-7 w-7 place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink disabled:opacity-50"
+        <ui-dialog-backdrop class={DIALOG_BACKDROP} />
+        <ui-dialog-content
+          initial-focus="[autofocus], input, textarea"
+         
+          class={`${DIALOG_CONTENT} ${props.width ?? "w-[var(--w-dialog-lg)]"}`}
+        >
+          <form
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return
+              event.preventDefault()
+              props.onSubmit?.()
+            }}
+            onSubmit={(event) => {
+              event.preventDefault()
+              props.onSubmit?.()
+            }}
           >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
+            <div class="flex h-[var(--h-header)] items-center border-b border-line-1 pl-6 pr-3">
+              <ui-dialog-title class="text-title-mini font-title">{props.title}</ui-dialog-title>
+              <button
+                type="button"
+                onClick={props.onClose}
+                aria-label="Close"
+                disabled={props.busy}
+                class="im-press im-hover ml-auto grid h-[var(--h-control)] w-[var(--h-control)] place-items-center rounded-sm text-ink-3 hover:bg-secondary hover:text-ink disabled:opacity-50"
+              >
+                <Icon name="x" size={14} />
+              </button>
+            </div>
 
-        <div class="flex flex-col gap-4 px-5 py-4">{props.children}</div>
+            <div class="flex flex-col gap-4 p-6">{props.children}</div>
 
-        <Show when={props.footer}>
-          {(footer) => <div class="flex items-center gap-2 border-t border-line-1 px-5 py-3">{footer()}</div>}
-        </Show>
-      </form>
-    </div>
+            <Show when={props.footer}>
+              {(footer) => <div class="flex h-14 items-center gap-2 border-t border-line-1 px-6">{footer()}</div>}
+            </Show>
+          </form>
+        </ui-dialog-content>
+      </ui-dialog>
+    </Show>
   )
 }
 
