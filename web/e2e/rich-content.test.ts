@@ -296,3 +296,23 @@ test("a registered tool block keeps its DOM node while its args change", async (
   expect(await block.evaluate((node) => (node as unknown as { kept?: boolean }).kept)).toBe(true)
   await page.close()
 })
+
+test("mermaid never renders while its fence streams, only once it settles", async () => {
+  const page = await open("stream")
+  await page.evaluate(async () => {
+    const count = await window.harness.spyMermaid()
+    Object.assign(window, { renders: count })
+  })
+  const renders = (): Promise<number> => page.evaluate(() => (window as unknown as { renders: () => number }).renders())
+  let source = "```mermaid\nflowchart LR\n  a --> b"
+  for (const line of ["\n  b --> c", "\n  c --> d", "\n  d --> e"]) {
+    source += line
+    await page.evaluate((text) => window.harness.set(text, true), source)
+    await page.waitForTimeout(400)
+  }
+  expect(await renders()).toBe(0)
+  await page.evaluate((text) => window.harness.set(text + "\n```\nDone.", false), source)
+  await page.locator('[data-block="mermaid"] .mermaid-diagram svg').waitFor({ timeout: 30_000 })
+  expect(await renders()).toBe(1)
+  await page.close()
+}, 60_000)

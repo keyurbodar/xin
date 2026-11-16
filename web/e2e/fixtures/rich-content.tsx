@@ -62,6 +62,7 @@ declare global {
       theme: (next: string) => void
       register: (lang: string, throws?: boolean) => () => void
       registerTool: () => () => void
+      spyMermaid: () => Promise<() => number>
       step: (step: number) => void
     }
   }
@@ -85,6 +86,16 @@ window.harness = {
   registerTool: () =>
     registerBlock("tool:probe", (tool) => <div data-testid="tool-probe">step {String(tool.args.step)}</div>),
   step: (step) => setCall({ ...call(), args: { step } }),
+  spyMermaid: async () => {
+    const mermaid = (await import("mermaid")).default
+    const render = mermaid.render
+    let calls = 0
+    mermaid.render = (...args) => {
+      calls += 1
+      return render(...args)
+    }
+    return () => calls
+  },
 }
 
 const root = document.getElementById("root")
