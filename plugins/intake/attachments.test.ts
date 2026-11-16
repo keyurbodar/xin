@@ -286,6 +286,25 @@ describe("the attachment policy", () => {
     )
   }, 30_000)
 
+  it("folds bidi controls so a name cannot read backwards", async () => {
+    const port = portOf({}, true)
+    const name = "invoice\u202Efdp.exe\u2066\u200F"
+    const text = textIn(
+      await renderTurn(port, 1 as ConversationId, "see", [{ ...file("x.exe", "application/octet-stream", 3), name }]),
+    )
+    expect(text).not.toMatch(/\p{Bidi_Control}/u)
+    expect(text).toContain("- invoice fdp.exe  (application/octet-stream, 3 bytes)")
+  }, 30_000)
+
+  it("keeps the zero-width joiner in an emoji name", async () => {
+    const port = portOf({}, true)
+    const name = "\u{1F469}\u200D\u{1F4BB} notes.pdf"
+    const text = textIn(
+      await renderTurn(port, 1 as ConversationId, "see", [{ ...file("n.pdf", "application/pdf", 3), name }]),
+    )
+    expect(text).toContain(`- ${name} (application/pdf, 3 bytes)`)
+  }, 30_000)
+
   it("never sends HTML stored as image/png as an image", async () => {
     const html = new TextEncoder().encode("<html><script>alert(1)</script></html>")
     const port = portOf({ "fake.png": html }, true)
