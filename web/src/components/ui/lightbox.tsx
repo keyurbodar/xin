@@ -20,6 +20,7 @@ type Point = { readonly x: number; readonly y: number }
 const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4] as const
 const EPSILON = 0.001
 const COPIED_MS = 1500
+const BLOCKED_MS = 4000
 
 const ICON_BUTTON =
   "im-press im-hover grid h-[var(--h-control)] w-[var(--h-control)] shrink-0 place-items-center rounded-sm border border-line-2 bg-card text-ink-2 hover:bg-card-hover hover:text-ink disabled:opacity-40"
@@ -124,6 +125,8 @@ export function Lightbox(props: {
   const zoomIn = (): void => zoomTo(ZOOM_STEPS.find((step) => step > scale() + EPSILON) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1]!)
   const zoomOut = (): void => zoomTo(ZOOM_STEPS.findLast((step) => step < scale() - EPSILON) ?? ZOOM_STEPS[0])
   const reset = (): void => {
+    clearTimeout(copiedTimer)
+    setCopied(undefined)
     setZoom(null)
     setPan({ x: 0, y: 0 })
   }
@@ -160,7 +163,7 @@ export function Lightbox(props: {
     const outcome = (await copyImage(item.src)) ? "copied" : "failed"
     setCopied(outcome)
     clearTimeout(copiedTimer)
-    if (outcome === "copied") copiedTimer = setTimeout(() => setCopied(undefined), COPIED_MS)
+    copiedTimer = setTimeout(() => setCopied(undefined), outcome === "copied" ? COPIED_MS : BLOCKED_MS)
   }
 
   const onKey = (event: KeyboardEvent): void => {

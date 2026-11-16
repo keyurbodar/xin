@@ -222,6 +222,32 @@ test("a refused clipboard shows a status instead of failing silently", async () 
   await page.close()
 })
 
+test("the blocked-clipboard status clears on its timer, on the next image and on reopening", async () => {
+  const page = await openAt(0)
+  await page.evaluate(() => {
+    const refuse = () => Promise.reject(new DOMException("denied", "NotAllowedError"))
+    Object.defineProperty(navigator, "clipboard", { value: { write: refuse, writeText: refuse } })
+  })
+  const blocked = page.getByText("The browser blocked the clipboard.")
+  const copy = page.getByRole("button", { name: "Copy image" })
+  await copy.click()
+  await blocked.waitFor()
+  await page.getByRole("button", { name: "Next image" }).click()
+  expect(await blocked.count()).toBe(0)
+  await copy.click()
+  await blocked.waitFor()
+  await page.getByRole("button", { name: "Close" }).click()
+  await settled(page)
+  await page.click("#thumb-2")
+  await settled(page)
+  expect(await blocked.count()).toBe(0)
+  await copy.click()
+  await blocked.waitFor()
+  await page.waitForTimeout(4200)
+  expect(await blocked.count()).toBe(0)
+  await page.close()
+})
+
 test("a cross-origin image downloads as a file without navigating the app", async () => {
   const page = await gallery({ origin: "https://images.example" })
   const before = page.url()
@@ -259,6 +285,22 @@ test("a keyboard switch is instant and a pointer switch crossfades", async () =>
   expect(await duration()).toBe("0s")
   await page.close()
 })
+
+for (const [label, reduce] of [
+  ["the OS setting", (page: Page) => page.emulateMedia({ reducedMotion: "reduce" })],
+  ["the Appearance setting", (page: Page) => page.evaluate(() => document.documentElement.setAttribute("data-motion", "reduce"))],
+] as const) {
+  test(`under reduced motion from ${label} a keyboard switch is still instant`, async () => {
+    const page = await openAt(0)
+    await reduce(page)
+    await page.getByRole("button", { name: "Close" }).focus()
+    await page.keyboard.press("ArrowRight")
+    expect(
+      await page.locator("[data-testid=lightbox-stage] img[data-active]").evaluate((image) => getComputedStyle(image).transitionDuration),
+    ).toBe("0s")
+    await page.close()
+  })
+}
 
 test("a pan stops at the image's edge", async () => {
   const page = await openAt(1)
