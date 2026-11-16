@@ -17,7 +17,7 @@ function read(): { readonly rows: readonly Row[]; readonly problems: readonly st
       continue
     }
     const text = readFileSync(join(DIR, file), "utf8")
-    if (!text.endsWith("\n") || text.slice(0, -1).includes("\n")) {
+    if (!text.endsWith("\n") || /[\r\n]/.test(text.slice(0, -1))) {
       problems.push(`${file}: must hold exactly one row ending in a newline`)
       continue
     }
@@ -27,7 +27,7 @@ function read(): { readonly rows: readonly Row[]; readonly problems: readonly st
       continue
     }
     if (fields.some((field) => field.trim() === "")) problems.push(`${file}: has an empty field`)
-    if (!fields[0]?.startsWith(name[1] ?? "")) problems.push(`${file}: time ${fields[0]} is not on ${name[1]}`)
+    if (!new RegExp(`^${name[1] ?? ""}T\\d\\d:\\d\\d`).test(fields[0] ?? "")) problems.push(`${file}: time ${fields[0]} is not on ${name[1]}`)
     rows.push({ file, fields })
   }
   return { rows, problems }
