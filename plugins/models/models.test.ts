@@ -152,6 +152,12 @@ const readContext = async (stub: ReturnType<typeof fresh>, id: string) => {
   return reply.result
 }
 
+const postCommand = (op: string, args: object) =>
+  api("/v1/cmd", {
+    method: "POST",
+    body: JSON.stringify({ id: `compaction-rev-${crypto.randomUUID()}`, op, args }),
+  })
+
 const compactionsIn = async (home: Home): Promise<number> => {
   const page = await (await home.root()).entries({ order: "ascending" }, 500, undefined, context)
   return page.items.filter((entry) => entry.kind === "pi.compaction").length
@@ -755,6 +761,45 @@ describe("models", () => {
       await runInDurableObject(stub, (home: Home) => home.harness.waitForIdle(context))
       expect(await compactions()).toBe(1)
     }, 60_000)
+
+  it("declares owner.compaction a read, so it announces no change, while owner.compaction.set does", async () => {
+    expect((await postCommand("owner.compaction", {})).headers.get("x-ingle-rev")).toBeNull()
+    const set = await postCommand("owner.compaction.set", { percent: 70 })
+    expect(set.headers.get("x-ingle-rev")).not.toBeNull()
+    await postCommand("owner.compaction.set", { percent: null })
+  })
+
+  it("rebuilds the compaction overrides when the catalog changes but keeps its size", async () => {
+    const original = globalThis.fetch
+    let listed = { id: "swap-1", context_window: 64_000 }
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ object: "list", data: [{ ...listed, object: "model" }] }), {
+        headers: { "content-type": "application/json" },
+      })
+    const stub = fresh()
+    const keys = (): Promise<string[]> =>
+      runInDurableObject(stub, (home: Home) =>
+        Object.keys(home.loader.ctx.pi.compactionSources[0]?.()?.modelOverrides ?? {}).filter((key) =>
+          key.startsWith("swap/"),
+        ),
+      )
+    try {
+      const set = await call(stub, "swap-cred", "credential.set", {
+        provider: "swap",
+        key: "swap-key",
+        custom: { baseUrl: "https://swap.test/v1", key: "swap-key", api: "openai-completions" },
+      })
+      expect(set.ok, JSON.stringify(set)).toBe(true)
+      expect((await call(stub, "swap-percent", "owner.compaction.set", { percent: 80 })).ok).toBe(true)
+      expect((await call(stub, "swap-list-1", "models.catalog", { provider: "swap" })).ok).toBe(true)
+      expect(await keys()).toEqual(["swap/swap-1"])
+      listed = { id: "swap-2", context_window: 32_000 }
+      expect((await call(stub, "swap-list-2", "models.catalog", { provider: "swap" })).ok).toBe(true)
+      expect(await keys()).toEqual(["swap/swap-2"])
+    } finally {
+      globalThis.fetch = original
+    }
+  })
 
   it("keeps a stored custom endpoint resolvable without listing its models first", async () => {
     const original = globalThis.fetch
