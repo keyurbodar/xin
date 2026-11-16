@@ -80,8 +80,8 @@ const hasTurns = (messages: readonly { readonly role: string }[]): boolean =>
   messages.some((message) => message.role === "user" || message.role === "assistant")
 
 /**
- * The extensions a preset removes: every installed extension whose plugin the preset does not name, plus those of
- * the plugins in `omits`.
+ * The extensions a preset removes: every installed tool extension (`tool-*`) whose plugin the preset does not name,
+ * plus those of the plugins in `omits`. Hook, task and section extensions stay, since a preset chooses tools.
  */
 const removalsOf = (
   preset: PresetView | undefined,
@@ -91,7 +91,9 @@ const removalsOf = (
   const allowed = preset === undefined || preset.plugins === "all" ? undefined : new Set(preset.plugins)
   return installed
     .filter(
-      ({ plugin }) => plugin !== undefined && (omits.has(plugin) || (allowed !== undefined && !allowed.has(plugin))),
+      ({ extension, plugin }) =>
+        plugin !== undefined &&
+        (omits.has(plugin) || (allowed !== undefined && extension.name.startsWith("tool-") && !allowed.has(plugin))),
     )
     .map(({ extension }) => extension)
 }

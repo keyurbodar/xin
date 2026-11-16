@@ -1,5 +1,6 @@
 import "@ui-sdk/web/dialog"
 import { Show, createEffect, type Accessor, type JSX } from "solid-js"
+import { returnTarget } from "../../lib/focus.ts"
 import { createOverlayMount } from "../shell/presence.ts"
 import { Icon } from "./icon.tsx"
 
@@ -31,6 +32,26 @@ export function Dialog(props: {
   children: JSX.Element
 }): JSX.Element {
   const { mounted, settle } = createOverlayMount(() => props.open)
+  let fallback: readonly (HTMLElement | null | undefined)[] = []
+  createEffect(() => {
+    if (!props.open) return
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+    const menu = opener?.closest<HTMLElement>("[role=menu]")
+    const trigger =
+      menu === null || menu === undefined
+        ? undefined
+        : document.querySelector<HTMLElement>(`[aria-controls="${menu.id}"], [data-controls="${menu.id}"]`)
+    fallback = [opener, trigger]
+  })
+  const restoreFocus = (): void => {
+    if (props.returnFocus?.isConnected === true) {
+      props.returnFocus.focus()
+      return
+    }
+    const active = document.activeElement
+    if (active !== null && active !== document.body && active.isConnected) return
+    returnTarget(fallback)?.focus()
+  }
   return (
     <Show when={mounted()}>
       <ui-dialog
@@ -42,14 +63,13 @@ export function Dialog(props: {
           queueMicrotask(props.onClose)
         }}
         on:openchangecomplete={(event) => {
-          if (!event.detail.value && props.returnFocus?.isConnected === true) props.returnFocus.focus()
+          if (!event.detail.value) restoreFocus()
           settle(event)
         }}
       >
         <ui-dialog-backdrop class={DIALOG_BACKDROP} />
         <ui-dialog-content
           initial-focus="[autofocus], input, textarea"
-         
           class={`${DIALOG_CONTENT} ${props.width ?? "w-[var(--w-dialog-lg)]"}`}
         >
           <form
