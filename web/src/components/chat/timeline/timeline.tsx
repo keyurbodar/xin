@@ -1,6 +1,7 @@
 import { ArrowDown } from "lucide-solid"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
 import { count } from "../../../lib/format.ts"
+import { FallbackNote } from "../cards.tsx"
 import { OwnerBubble } from "../entries.tsx"
 import { Markdown, renderBlock } from "./blocks-port.ts"
 import { DateDivider, plainLink, TurnSummary, WaitingLine, type RenderLink } from "./dividers.tsx"
@@ -77,6 +78,10 @@ function ItemView(props: {
     case "summary": {
       const item = follow(props.item, first)
       return <TurnSummary phrase={item().phrase} renderLink={props.renderLink} />
+    }
+    case "fallback": {
+      const item = follow(props.item, first)
+      return <FallbackNote fallback={item().fallback} />
     }
     default: {
       const _exhaustive: never = first

@@ -1,6 +1,6 @@
 import { ariaKeyshortcuts, formatShortcut } from "@ui-sdk/core"
 import { Check, ChevronDown, Star } from "lucide-solid"
-import { For, Show, createMemo, createSignal, type JSX } from "solid-js"
+import { For, Show, createMemo, createSignal, createUniqueId, type JSX } from "solid-js"
 import { isFavorite, missingFavorites, toggleFavorite, type ModelInfo, type ModelRef } from "../../state/settings.ts"
 import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
@@ -59,6 +59,7 @@ export function ModelPicker(props: {
   const { mounted, settle } = createOverlayMount(open)
   let content: HTMLElement | undefined
   let trigger: HTMLButtonElement | undefined
+  const triggerId = `model-picker-${createUniqueId()}`
 
   const providers = createMemo(() => [...new Set(props.models.map((model) => model.provider))])
   const favorites = createMemo<readonly Entry[]>(() =>
@@ -122,6 +123,7 @@ export function ModelPicker(props: {
       <ui-combobox-trigger>
         <button
           ref={trigger}
+          id={triggerId}
           type="button"
           aria-label={`Model: ${props.label}`}
           class={TOOL}
@@ -134,6 +136,7 @@ export function ModelPicker(props: {
       </ui-combobox-trigger>
       <ui-combobox-content
         ref={(element: HTMLElement) => (content = element)}
+        anchor={`#${triggerId}`}
         side="top"
         align="start"
         side-offset="8"

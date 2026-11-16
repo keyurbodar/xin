@@ -3,11 +3,13 @@ import {
   type Attachment,
   entryBatchRows,
   entryFailure,
+  entryFallback,
   entryText,
   entryToolCalls,
   type BatchRow,
   type EntryView,
   type FailureData,
+  type FallbackData,
   type RequestRow,
   type ToolCallView,
   type ToolResultView,
@@ -18,6 +20,7 @@ import { SentAttachments } from "../composer/attachment-card.tsx"
 import { Markdown } from "./markdown.tsx"
 import {
   FailureCard,
+  FallbackNote,
   JobCard,
   OpenQuestionCard,
   QuestionInboundCard,
@@ -35,6 +38,7 @@ type EntryItemBody =
   | { readonly kind: "job"; readonly row: BatchRow }
   | { readonly kind: "failure"; readonly entryId: number; readonly failure: FailureData }
   | { readonly kind: "notice"; readonly text: string }
+  | { readonly kind: "fallback"; readonly fallback: FallbackData }
   | { readonly kind: "tool"; readonly call: ToolCallView }
 
 export type EntryItem = EntryItemBody & { readonly entryId: number }
@@ -82,6 +86,9 @@ function entryItems(entry: EntryView): readonly EntryItem[] {
     for (const call of calls) if (call.name !== "delegate_task") items.push({ kind: "tool", call })
   } else if (entry.kind === "pi.reset") {
     items.push({ kind: "notice", text: "Context reset" })
+  } else if (entry.kind === "xin.fallback") {
+    const fallback = entryFallback(entry)
+    if (fallback !== undefined) items.push({ kind: "fallback", fallback })
   }
   const stamped = items.map((item) => ({ ...item, entryId: entry.id }))
   ITEM_CACHE.set(entry, stamped)
@@ -234,6 +241,8 @@ function EntryItemView(props: { item: EntryItem; context: ItemContext }): JSX.El
       return <FailureCard failure={item.failure} onRetry={() => props.context.onRetry(item.entryId)} />
     case "notice":
       return <SystemNotice text={item.text} />
+    case "fallback":
+      return <FallbackNote fallback={item.fallback} />
     case "tool": {
       const result = (): ToolResultView | undefined =>
         item.call.id === undefined ? undefined : props.context.results?.get(item.call.id)

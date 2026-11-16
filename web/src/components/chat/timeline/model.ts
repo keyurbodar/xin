@@ -3,11 +3,13 @@ import { listOf, numOf, recordOf, strOf } from "../../../lib/parse.ts"
 import {
   entryBatchRows,
   entryFailure,
+  entryFallback,
   type Attachment,
   type BatchRow,
   type ChatMessage,
   type EntryView,
   type FailureData,
+  type FallbackData,
   type Snapshot,
 } from "../../../state/conversation.ts"
 
@@ -38,6 +40,7 @@ export type TimelineItem =
   | { readonly kind: "tools"; readonly key: string; readonly calls: readonly ToolCall[]; readonly live: boolean }
   | { readonly kind: "block"; readonly key: string; readonly call: ToolCall }
   | { readonly kind: "summary"; readonly key: string; readonly phrase: Phrase }
+  | { readonly kind: "fallback"; readonly key: string; readonly fallback: FallbackData }
 
 export type LivePart =
   | { readonly kind: "text"; readonly text: string }
@@ -263,7 +266,12 @@ function messageText(message: TimedMessage): string {
     .join("\n")
 }
 
-type Segment = { readonly kind: "text"; readonly text: string; readonly streaming: boolean } | { readonly kind: "call"; readonly call: ToolCall }
+type FallbackSegment = { readonly kind: "fallback"; readonly key: string; readonly fallback: FallbackData }
+
+type Segment =
+  | { readonly kind: "text"; readonly text: string; readonly streaming: boolean }
+  | { readonly kind: "call"; readonly call: ToolCall }
+  | FallbackSegment
 
 type TurnFacts = {
   readonly items: TimelineItem[]
@@ -318,6 +326,11 @@ function segmentItems(turnKey: string, segments: readonly Segment[], live: boole
     group = undefined
   }
   for (const segment of segments) {
+    if (segment.kind === "fallback") {
+      close()
+      items.push(segment)
+      continue
+    }
     if (segment.kind === "text") {
       close()
       items.push({ kind: "text", key: `${turnKey}:${items.length}`, text: segment.text, streaming: segment.streaming })
@@ -340,7 +353,7 @@ function turnItems(turn: Turn, live: LiveTimeline | undefined, options: BuildOpt
   const results = new Map<string, TimedMessage>()
   const created = new Map<string, number>()
   const calls: { readonly callId: string; readonly name: string; readonly args: Readonly<Record<string, unknown>> }[] = []
-  const order: ({ readonly kind: "text"; readonly text: string } | { readonly kind: "call"; readonly callId: string })[] = []
+  const order: ({ readonly kind: "text"; readonly text: string } | { readonly kind: "call"; readonly callId: string } | FallbackSegment)[] = []
   let agent = false
   for (const entry of turn.entries) {
     if (INPUT_KINDS.has(entry.kind) && !agent) {
@@ -355,6 +368,11 @@ function turnItems(turn: Turn, live: LiveTimeline | undefined, options: BuildOpt
     }
     if (entry.kind === "pi.reset") {
       facts.items.push({ kind: "pass", key: `e${entry.id}`, item: { kind: "notice", text: "Context reset" } })
+      continue
+    }
+    if (entry.kind === "xin.fallback") {
+      const fallback = entryFallback(entry)
+      if (fallback !== undefined) order.push({ kind: "fallback", key: `e${entry.id}`, fallback })
       continue
     }
     for (const message of entry.model) {
@@ -378,6 +396,7 @@ function turnItems(turn: Turn, live: LiveTimeline | undefined, options: BuildOpt
   const byId = new Map(calls.map((call) => [call.callId, call]))
   const segments: Segment[] = order.flatMap((part): Segment[] => {
     if (part.kind === "text") return [{ kind: "text", text: part.text, streaming: false }]
+    if (part.kind === "fallback") return [part]
     const call = byId.get(part.callId)
     if (call === undefined) return []
     const result = results.get(call.callId)
@@ -458,6 +477,7 @@ function reuseItem(before: TimelineItem | undefined, item: TimelineItem): Timeli
     case "owner":
     case "pass":
     case "summary":
+    case "fallback":
       return sameJson(before, item) ? before : item
     default: {
       const _exhaustive: never = item

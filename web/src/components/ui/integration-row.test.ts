@@ -9,6 +9,7 @@ type Frame = { readonly id: string; readonly op: string }
 const realFetch = globalThis.fetch
 stubGlobals({ window: { location: { hash: "" }, addEventListener: () => undefined } })
 void mock.module("../extensions/glyph.tsx", () => ({ Glyph: () => undefined }))
+void mock.module("../settings/fallbacks.tsx", () => ({ FallbackList: () => undefined }))
 let Connectors: (typeof import("../extensions/customize-connectors.tsx"))["Connectors"]
 let Models: (typeof import("../settings/models.tsx"))["Models"]
 let servers: (typeof import("../../state/extensions.ts"))["servers"]
