@@ -11,12 +11,8 @@ declare global {
 }
 
 window.ingleBooted = true
-sessionStorage.removeItem("ingle.boot.retry")
-const booted = new URL(location.href)
-if (booted.searchParams.has("boot")) {
-  booted.searchParams.delete("boot")
-  history.replaceState(history.state, "", booted)
-}
+const search = location.search.replace(/[?&]boot=\d+/, "").replace(/^&/, "?")
+if (search !== location.search) history.replaceState(history.state, "", location.pathname + search + location.hash)
 
 const root = document.getElementById("root")
 if (root === null) throw new Error("missing #root")

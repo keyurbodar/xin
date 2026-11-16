@@ -9,20 +9,22 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <script>
-      const scheme = localStorage.getItem("ingle.theme.scheme") ?? localStorage.getItem("ingle.theme")
-      document.documentElement.dataset.theme = ["light", "rose"].includes(scheme) ? scheme : "dark"
-      if (localStorage.getItem("ingle.motion") === "reduce") document.documentElement.dataset.motion = "reduce"
       addEventListener(
         "error",
         (event) => {
           const el = event.target
-          const chunk = el instanceof HTMLScriptElement || (el instanceof HTMLLinkElement && el.rel === "modulepreload")
+          const chunk =
+            el instanceof HTMLScriptElement ||
+            (el instanceof HTMLLinkElement && (el.rel === "modulepreload" || el.rel === "stylesheet"))
           if (!chunk || window.ingleBooted) return
-          if (sessionStorage.getItem("ingle.boot.retry") === null) {
-            sessionStorage.setItem("ingle.boot.retry", "1")
-            const url = new URL(location.href)
-            url.searchParams.set("boot", String(Date.now()))
-            location.replace(url)
+          if (!/[?&]boot=\d+/.test(location.search)) {
+            location.replace(
+              location.pathname +
+                (location.search ? location.search + "&" : "?") +
+                "boot=" +
+                Date.now() +
+                location.hash,
+            )
             return
           }
           if (document.getElementById("boot-failed") !== null) return
@@ -40,16 +42,18 @@
           button.textContent = "Reload"
           button.style.cssText =
             "font:inherit;padding:6px 14px;border-radius:6px;border:1px solid GrayText;background:ButtonFace;color:ButtonText;cursor:pointer"
-          button.onclick = () => {
-            sessionStorage.removeItem("ingle.boot.retry")
-            location.reload()
-          }
+          button.onclick = () => location.reload()
           box.append(text, button)
           document.body.append(box)
           button.focus()
         },
         true,
       )
+      try {
+        const scheme = localStorage.getItem("ingle.theme.scheme") ?? localStorage.getItem("ingle.theme")
+        document.documentElement.dataset.theme = ["light", "rose"].includes(scheme) ? scheme : "dark"
+        if (localStorage.getItem("ingle.motion") === "reduce") document.documentElement.dataset.motion = "reduce"
+      } catch {}
     </script>
   </head>
   <body>
