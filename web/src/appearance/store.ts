@@ -1,5 +1,5 @@
 import { createEffect, createRoot, createSignal, on } from "solid-js"
-import { cmd, OpError } from "../lib/api.ts"
+import { cmd } from "../lib/api.ts"
 import { theme } from "../lib/theme.ts"
 import { applyTheme, themes } from "../plugins/slots.tsx"
 import {
@@ -7,10 +7,12 @@ import {
   customId,
   DEFAULT_APPEARANCE,
   DIFF,
+  fromLegacyTheme,
   INGLE_DARK,
   INGLE_LIGHT,
   ROSE,
   parseAppearance,
+  pickedInMenu,
   tokensOf,
   variantOf,
   type Appearance,
@@ -18,6 +20,7 @@ import {
   type Palette,
   type Variant,
 } from "./model.ts"
+import { createSync, type Change, type HomeCopy } from "./sync.ts"
 
 const KEY = "ingle.appearance"
 const SAVE_DELAY_MS = 700
@@ -45,16 +48,12 @@ const LEGACY_THEME_KEY = "ingle.theme"
 /** The saved document, or on the first load after upgrading, the theme the old picker stored. */
 function stored(): Appearance {
   const saved = localStorage.getItem(KEY)
-  if (saved !== null) {
-    try {
-      return parseAppearance(JSON.parse(saved))
-    } catch {
-      return DEFAULT_APPEARANCE
-    }
+  if (saved === null) return fromLegacyTheme(localStorage.getItem(LEGACY_THEME_KEY))
+  try {
+    return parseAppearance(JSON.parse(saved))
+  } catch {
+    return DEFAULT_APPEARANCE
   }
-  const legacy = localStorage.getItem(LEGACY_THEME_KEY)
-  if (legacy === null || legacy === "dark") return DEFAULT_APPEARANCE
-  return parseAppearance(legacy === "light" ? { ...DEFAULT_APPEARANCE, mode: "light" } : { ...DEFAULT_APPEARANCE, theme: legacy })
 }
 
 const [appearance_, setAppearance_] = createSignal<Appearance>(stored())
@@ -66,102 +65,39 @@ export const appearance = appearance_
 export const saveState = saving
 export const variant = (): Variant => variantOf(appearance_().mode, systemDark())
 
-type Change = (current: Appearance) => Appearance
-type Home = { readonly doc: string | null; readonly rev: number }
-
-let home: { readonly rev: number; readonly doc: Appearance | undefined } | undefined
-let pending: readonly Change[] = []
 let timer: ReturnType<typeof setTimeout> | undefined
 const channel = typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel("ingle.appearance")
 
-function show(next: Appearance): void {
-  setAppearance_(next)
-  localStorage.setItem(KEY, JSON.stringify(next))
-}
-
-const replay = (onto: Appearance, changes: readonly Change[]): Appearance =>
-  changes.reduce((doc, change) => parseAppearance(change(doc)), onto)
-
-async function readHome(): Promise<NonNullable<typeof home>> {
-  const reply = await cmd<Home>("appearance.read")
-  home = { rev: reply.rev, doc: reply.doc === null ? undefined : parseAppearance(JSON.parse(reply.doc)) }
-  return home
-}
-
-/**
- * Saves the edits made since the home's copy was last seen, replayed on top of that copy, so an edit
- * never overwrites newer settings from another tab or device. A save that lost the race re-reads and replays.
- */
-async function pushRemote(): Promise<void> {
-  if (appearance_().sync !== "synced") {
-    pending = []
-    return
-  }
-  setSaving("saving")
-  try {
-    for (let attempt = 0; ; attempt += 1) {
-      const known = home ?? (await readHome())
-      const included = pending
-      const next = known.doc === undefined ? appearance_() : replay(known.doc, included)
-      try {
-        const reply = await cmd<{ readonly rev: number }>("appearance.set", { doc: JSON.stringify(next), rev: known.rev })
-        home = { rev: reply.rev, doc: next }
-        pending = pending.slice(included.length)
-        show(replay(next, pending))
-        channel?.postMessage({ kind: "saved", rev: reply.rev, doc: next })
-        setSaving("saved")
-        return
-      } catch (problem) {
-        if (!(problem instanceof OpError && problem.code === "busy") || attempt >= 2) throw problem
-        home = undefined
-      }
-    }
-  } catch {
-    setSaving("failed")
-  }
-}
+const sync = createSync({
+  read: () => cmd<HomeCopy>("appearance.read"),
+  write: (doc, rev) => cmd<{ readonly rev: number }>("appearance.set", { doc, rev }),
+  current: appearance_,
+  show: (next) => {
+    setAppearance_(next)
+    localStorage.setItem(KEY, JSON.stringify(next))
+  },
+  broadcast: (message) => channel?.postMessage(message),
+  status: setSaving,
+})
 
 /** One write per settled burst of changes, so a slider drag costs one row write. */
 function schedule(): void {
   if (timer !== undefined) clearTimeout(timer)
   timer = setTimeout(() => {
     timer = undefined
-    void pushRemote()
+    void sync.save()
   }, SAVE_DELAY_MS)
 }
 
 export function update(change: Change): void {
-  pending = [...pending, change]
-  const next = parseAppearance(change(appearance_()))
-  show(next)
-  channel?.postMessage({ kind: "doc", doc: next })
+  sync.edit(change)
   schedule()
 }
 
 /** The home's copy wins on load and on focus, with this tab's unsaved edits replayed on top, unless this device opted out of sync. */
-export async function pullRemote(): Promise<void> {
-  const known = await readHome().catch(() => undefined)
-  if (known === undefined) return
-  const local = appearance_()
-  if (local.sync === "device") return
-  if (known.doc === undefined) {
-    if (local.sync === "synced" && JSON.stringify(local) !== JSON.stringify(DEFAULT_APPEARANCE)) schedule()
-    return
-  }
-  const next = replay(known.doc, pending)
-  if (JSON.stringify(next) !== JSON.stringify(local)) show(next)
-}
+export const pullRemote = (): Promise<void> => sync.pull()
 
-channel?.addEventListener("message", (event: MessageEvent<unknown>) => {
-  const data = event.data
-  if (typeof data !== "object" || data === null || !("kind" in data) || !("doc" in data)) return
-  const doc = parseAppearance(data.doc)
-  if (data.kind === "saved" && "rev" in data && typeof data.rev === "number" && data.rev > (home?.rev ?? -1)) {
-    home = { rev: data.rev, doc }
-    setAppearance_(replay(doc, pending))
-  }
-  if (data.kind === "doc" && pending.length === 0) setAppearance_(doc)
-})
+channel?.addEventListener("message", (event: MessageEvent<unknown>) => sync.receive(event.data))
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") void pullRemote()
@@ -258,9 +194,7 @@ createRoot(() => {
       (picked) => {
         const expected = registryId(appearance_(), variant())
         if (picked === expected) return
-        update((current) =>
-          picked === "dark" || picked === "light" ? { ...current, mode: picked, theme: "ingle" } : { ...current, theme: picked },
-        )
+        update((current) => pickedInMenu(current, picked))
       },
       { defer: true },
     ),

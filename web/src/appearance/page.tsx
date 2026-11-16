@@ -5,6 +5,7 @@ import { drive } from "../lib/drive.ts"
 import { themes } from "../plugins/slots.tsx"
 import { Backdrop } from "./backdrop.tsx"
 import { isHex } from "./color.ts"
+import { forgetWallpaper } from "./wallpapers.ts"
 import {
   contrastChecks,
   CUSTOM_PREFIX,
@@ -35,6 +36,7 @@ import {
 } from "./store.ts"
 
 const WALLPAPER_ROOT = "/me/"
+const USER = { kind: "user" } as const
 const WALLPAPER_FOLDER = "appearance/wallpapers/"
 
 type Swatch = { readonly id: string; readonly label: string; readonly palette: Palette }
@@ -390,24 +392,11 @@ function BackgroundSection(): JSX.Element {
     }
   }
 
-  const forget = async (wallpaper: Wallpaper): Promise<void> => {
+  const forget = (wallpaper: Wallpaper): void => {
     setProblem(undefined)
-    try {
-      if (wallpaper.path !== undefined) {
-        await drive.unshare({ kind: "user" }, wallpaper.path)
-        await drive.remove({ kind: "user" }, wallpaper.path)
-      }
-      update((value) => {
-        const { image, ...rest } = value.background
-        return {
-          ...value,
-          background: image?.url === wallpaper.url ? rest : value.background,
-          wallpapers: value.wallpapers.filter((entry) => entry.url !== wallpaper.url),
-        }
-      })
-    } catch (error) {
-      setProblem(error instanceof Error ? error.message : String(error))
-    }
+    void forgetWallpaper(wallpaper, { unshare: (path) => drive.unshare(USER, path), remove: (path) => drive.remove(USER, path), edit: update }).catch(
+      (error: unknown) => setProblem(error instanceof Error ? error.message : String(error)),
+    )
   }
 
   const sliders: readonly (readonly [keyof typeof LIMITS & keyof Background, string, string])[] = [
@@ -536,7 +525,7 @@ function BackgroundSection(): JSX.Element {
                       <button
                         type="button"
                         aria-label={`Forget ${wallpaper.name}`}
-                        onClick={() => void forget(wallpaper)}
+                        onClick={() => forget(wallpaper)}
                         class="shrink-0 text-xs text-ink-3 hover:text-failed"
                       >
                         Remove
