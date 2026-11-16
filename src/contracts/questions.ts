@@ -1,5 +1,5 @@
 import type { Context as ChordContext } from "@earendil-works/chord"
-import { defineDoc, type ConversationId, type ToolExecutionApi } from "@earendil-works/pi-durable"
+import { defineDoc, type ConversationId, type ToolExecutionApi, type Tx } from "@earendil-works/pi-durable"
 import { arr, compile, map, num, obj, opt, str, type Static, union } from "@earendil-works/pi-schema"
 
 /** `ask_user` is a free question. Any other kind is a card: only the owner answers it, and only with one of its options. */
@@ -44,14 +44,24 @@ export type SettleOutcome =
   | { readonly kind: "already_answered"; readonly answer: string }
 
 /** Runs inside the answer's commit once every check has passed, before the request closes; throwing aborts the answer. */
-export type Admitted = (open: OpenRequest) => Promise<void>
+export type Admitted = (open: OpenRequest, tx: Tx) => Promise<void>
 
 export interface QuestionsService {
+  /** `ask_user` opens only in a thread; a card opens in any conversation: a thread, a coordinator or the root chat. */
   ask(input: AskInput, context: ChordContext): Promise<AskOutcome>
   open(conversationId: ConversationId): Promise<OpenOutcome>
   respond(api: ToolExecutionApi, threadId: number, requestId: string, answer: string): Promise<RespondOutcome>
-  /** Answers a card for the owner with any text, past its options: the plugin that owns the card decides the answer. */
-  settle(threadId: ConversationId, requestId: string, answer: string, admitted?: Admitted): Promise<SettleOutcome>
+  /**
+   * Answers a card for the owner with any text, past its options: the plugin that owns the card decides the answer. The
+   * next run starts with `brief`, or the answer when it is omitted. `run` is the thread's run, 0 outside a thread.
+   */
+  settle(
+    conversationId: ConversationId,
+    requestId: string,
+    answer: string,
+    admitted?: Admitted,
+    brief?: string,
+  ): Promise<SettleOutcome>
 }
 
 /** What a request is about: a card's name (a secret's ref, a service), or the gated call a policy approval holds. */

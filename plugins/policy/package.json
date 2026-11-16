@@ -1,0 +1,27 @@
+{
+  "name": "ingle-plugin-policy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The owner's tool policy (allow, ask, off) and the approvals ask asks for.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "policy": {
+        "module": "./index.ts",
+        "title": "Tool policy",
+        "description": "Allow, ask or turn off each tool for Home or a project; an ask call waits for the owner's approval.",
+        "permissions": [
+          "conversations",
+          "plugins",
+          "secrets"
+        ],
+        "contributes": {
+          "ops": [
+            "tool.policy.read",
+            "tool.policy.set"
+          ]
+        }
+      }
+    }
+  }
+}

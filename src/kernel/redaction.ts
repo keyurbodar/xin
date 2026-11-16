@@ -9,12 +9,16 @@ const redact = (text: string, secrets: readonly string[]): string => {
   return redacted
 }
 
-const redactValue = (value: JsonValue, secrets: readonly string[]): JsonValue => {
+export const redactValue = (value: JsonValue, secrets: readonly string[]): JsonValue => {
   if (typeof value === "string") return redact(value, secrets)
   if (Array.isArray(value)) return value.map((item) => redactValue(item, secrets))
   if (typeof value === "object" && value !== null)
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactValue(item, secrets)]))
-  return value
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [redact(key, secrets), redactValue(item, secrets)]),
+    )
+  if (value === null) return value
+  const text = String(value)
+  return redact(text, secrets) === text ? value : REDACTED
 }
 
 const redactResult = (result: ToolExecutionResult, secrets: readonly string[]): ToolExecutionResult => ({

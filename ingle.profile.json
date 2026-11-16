@@ -20,6 +20,7 @@
     "ingle-plugin-presets",
     "ingle-plugin-push",
     "ingle-plugin-questions",
+    "ingle-plugin-policy",
     "ingle-plugin-automations",
     "ingle-plugin-skills",
     "ingle-plugin-time",
