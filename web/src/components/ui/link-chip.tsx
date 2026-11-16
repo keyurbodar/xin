@@ -8,7 +8,7 @@ import {
   GitPullRequestDraft,
   MessagesSquare,
 } from "lucide-solid"
-import { Match, Show, Switch, createResource, createSignal, type Accessor, type JSX } from "solid-js"
+import { Match, Show, Switch, createEffect, createMemo, createResource, createSignal, type Accessor, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { bytes } from "../../lib/format.ts"
 import { STATE_WORD, type SignalState } from "../../lib/status.ts"
@@ -32,7 +32,7 @@ export type IssueDetails = { readonly key: string; readonly title: string; reado
 export type CommitDetails = { readonly sha: string; readonly message: string }
 export type FileDetails = { readonly path: string; readonly size?: number | undefined }
 
-type Common = { label: string; href: string }
+type Common = { label: string; href: string; version?: string | number | undefined }
 
 export type LinkChipProps = Common &
   (
@@ -67,17 +67,22 @@ const CHIP =
   "im-focus inline-flex max-w-full items-baseline gap-1 rounded-xs text-primary-ink no-underline decoration-primary-ink/40 underline-offset-2 hover:underline"
 
 /**
- * An inline reference to a PR, thread, issue, commit or file. Its hover card calls `load` when the card settles and the
- * chip's href, label or PR state differ from the last load, so sweeping the pointer across chips loads none of them and a
- * changed item reloads on its next settle.
+ * An inline reference to a PR, thread, issue, commit or file. Its hover card loads the details through `load` while it is
+ * settled, once per href and `version`: the caller sets `version` from whatever changes the content (PR state, issue
+ * status, a thread's updated time), so a changed item reloads and an unchanged one never does. The card shows only details
+ * loaded for the chip's current href and version, and the loading state otherwise.
  */
 export function LinkChip(props: LinkChipProps): JSX.Element {
   const mono = (): boolean => props.kind === "commit" || props.kind === "file"
-  const [settled, setSettled] = createSignal<string | false>(false)
-  const identity = (): string => JSON.stringify([props.href, props.label, props.kind === "pr" ? props.state : ""])
+  const identity = (): string => JSON.stringify([props.href, props.version ?? null])
+  const [settled, setSettled] = createSignal(false)
+  const [wanted, setWanted] = createSignal<string | false>(false)
+  createEffect(() => {
+    if (settled()) setWanted(identity())
+  })
   return (
     <HoverCard
-      onSettle={() => setSettled(identity())}
+      onSettledChange={setSettled}
       trigger={
         <a href={props.href} class={CHIP} data-kind={props.kind}>
           <span class={`shrink-0 self-center ${props.kind === "pr" ? PR_TONE[props.state] : "text-ink-3"}`}>
@@ -89,15 +94,15 @@ export function LinkChip(props: LinkChipProps): JSX.Element {
     >
       <div class="flex flex-col gap-1.5 p-2">
         <Switch>
-          <Match when={props.kind === "pr" && props}>{(chip) => <Loaded when={settled} load={chip().load} render={PrCard} />}</Match>
+          <Match when={props.kind === "pr" && props}>{(chip) => <Loaded wanted={wanted} current={identity} load={chip().load} render={PrCard} />}</Match>
           <Match when={props.kind === "thread" && props}>
-            {(chip) => <Loaded when={settled} load={chip().load} render={ThreadCard} />}
+            {(chip) => <Loaded wanted={wanted} current={identity} load={chip().load} render={ThreadCard} />}
           </Match>
-          <Match when={props.kind === "issue" && props}>{(chip) => <Loaded when={settled} load={chip().load} render={IssueCard} />}</Match>
+          <Match when={props.kind === "issue" && props}>{(chip) => <Loaded wanted={wanted} current={identity} load={chip().load} render={IssueCard} />}</Match>
           <Match when={props.kind === "commit" && props}>
-            {(chip) => <Loaded when={settled} load={chip().load} render={CommitCard} />}
+            {(chip) => <Loaded wanted={wanted} current={identity} load={chip().load} render={CommitCard} />}
           </Match>
-          <Match when={props.kind === "file" && props}>{(chip) => <Loaded when={settled} load={chip().load} render={FileCard} />}</Match>
+          <Match when={props.kind === "file" && props}>{(chip) => <Loaded wanted={wanted} current={identity} load={chip().load} render={FileCard} />}</Match>
         </Switch>
       </div>
     </HoverCard>
@@ -105,18 +110,22 @@ export function LinkChip(props: LinkChipProps): JSX.Element {
 }
 
 function Loaded<T>(props: {
-  when: Accessor<string | false>
+  wanted: Accessor<string | false>
+  current: Accessor<string>
   load: () => Promise<T>
   render: (details: T) => JSX.Element
 }): JSX.Element {
-  const [details] = createResource(props.when, () => props.load())
+  const [details] = createResource(props.wanted, async (key) => ({ key, details: await props.load() }))
+  const failed = (): boolean => details.error !== undefined && !details.loading && props.wanted() === props.current()
+  const fresh = createMemo(() => {
+    if (details.error !== undefined || details.loading) return undefined
+    const loaded = details.latest
+    return loaded?.key === props.current() ? loaded.details : undefined
+  })
   return (
-    <Show
-      when={!details.error}
-      fallback={<p class="text-small text-ink-3">Couldn't load the details.</p>}
-    >
+    <Show when={!failed()} fallback={<p class="text-small text-ink-3">Couldn't load the details.</p>}>
       <Show
-        when={details()}
+        when={fresh()}
         keyed
         fallback={
           <div role="status" aria-busy="true" aria-label="Loading" class="flex flex-col gap-2 py-0.5">
