@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { cmd, field, fresh, type Stub } from "../../test/support.ts"
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai"
+import { answer, respond } from "../../test/plugins/m8.ts"
+import { cmd, field, fresh, toolTexts, turn, type Stub } from "../../test/support.ts"
 
 type Issue = { readonly kind: string; readonly [key: string]: unknown }
 
@@ -169,8 +171,22 @@ describe("plugin doctor", () => {
       granted: expect.stringContaining("without declaring the secrets permission"),
       plantSnapshot: "snapshot is frozen",
       plantedSeen: false,
-      replaceExecute: "tool is frozen",
+      functions: 0,
+      writes: 0,
+      plantedNested: false,
     })
+  })
+
+  it("leaves what runs untouched when a row holding plugins writes into every registry snapshot it reads", async () => {
+    const stub = fresh()
+    await cmd(stub, "k-reach-plugins-on", "plugin.enable", { id: "hello", enabled: true })
+    await cmd(stub, "k-reach-plugins-2", "k.reach-plugins")
+    respond([
+      fauxAssistantMessage([fauxToolCall("hello", { who: "world" })], { stopReason: "toolUse" }),
+      answer("done"),
+    ])
+    await turn(stub, `k-reach-plugins-turn-${crypto.randomUUID()}`)
+    expect(await toolTexts(stub)).toEqual(["Hi, world!"])
   })
 
   it("fails a row that registers an op its manifest does not declare", async () => {
