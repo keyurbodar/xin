@@ -7,6 +7,7 @@ import { FAUX_MODEL, type Home } from "../../test/worker.ts"
 import { FastDoc, fastPayload } from "./fast.ts"
 
 const OPENAI = { provider: "openai", modelId: "gpt-5.4" }
+const OPENAI_OTHER = { provider: "openai", modelId: "gpt-5.2" }
 
 type Entry = { provider: string; modelId: string; modes: string[] }
 
@@ -41,12 +42,12 @@ describe("fast mode", () => {
       runInDurableObject(stub, async (home: Home) =>
         home.harness.snapshot(FastDoc, (await home.root()).id as ConversationId, BACKGROUND_CONTEXT),
       )
-    expect(await stored()).toEqual({ on: true })
+    expect(await stored()).toEqual({ model: OPENAI })
     expect(await call(stub, "fast-switch", "conv.configure", { model: FAUX_MODEL })).toMatchObject({
       ok: true,
       result: { fast: false },
     })
-    expect(await stored()).toEqual({ on: false })
+    expect(await stored()).toEqual({ model: null })
   })
 
   it("clears fast when a disable moves the conversation to a model without it, so switching back keeps it off", async () => {
@@ -68,10 +69,10 @@ describe("fast mode", () => {
     const stored = await runInDurableObject(stub, async (home: Home) =>
       home.harness.snapshot(FastDoc, (await home.root()).id as ConversationId, BACKGROUND_CONTEXT),
     )
-    expect(stored).toEqual({ on: false })
+    expect(stored).toEqual({ model: null })
   })
 
-  it("puts service_tier priority on the wire to OpenAI only while fast is on", async () => {
+  it("puts service_tier priority on the wire only while fast is on for the model the request goes to", async () => {
     const stub = fresh()
     const bodies: Record<string, unknown>[] = []
     const original = globalThis.fetch
@@ -97,6 +98,16 @@ describe("fast mode", () => {
       }
       expect((await send(true, "wire-fast"))?.service_tier).toBe("priority")
       expect(await send(false, "wire-plain")).not.toHaveProperty("service_tier")
+      expect((await send(true, "wire-again"))?.service_tier).toBe("priority")
+      const before = bodies.length
+      await runInDurableObject(stub, async (home: Home) => {
+        const root = await home.root()
+        await root.configure({ model: OPENAI_OTHER }, BACKGROUND_CONTEXT)
+        await root.submit({ type: "input", content: "hi", requestId: "wire-other" }, BACKGROUND_CONTEXT)
+        await root.waitForIdle(BACKGROUND_CONTEXT)
+      })
+      expect(bodies[before]).toMatchObject({ model: OPENAI_OTHER.modelId })
+      expect(bodies[before]).not.toHaveProperty("service_tier")
     } finally {
       globalThis.fetch = original
     }

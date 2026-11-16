@@ -37,7 +37,7 @@ import {
 } from "@earendil-works/pi-durable"
 import { arr, bool, compile, int, lit, map, num, obj, oneOf, opt, str, union, unknown } from "@earendil-works/pi-schema"
 import { conversationCost, createBudget, untag } from "./budget.ts"
-import { FastDoc, modesOf } from "./fast.ts"
+import { FastDoc, fastOn, modesOf } from "./fast.ts"
 import type { GoalsService } from "../../src/contracts/goals.ts"
 import {
   FeatureSchema,
@@ -786,12 +786,10 @@ async function moveOff(
     })
     const next = resolved.kind === "model" ? resolved.model : null
     const found = next === null ? undefined : models.getModel(next.provider, next.modelId)
-    const fastable = found !== undefined && modesOf(found).includes("fast")
     await harness.commit(async (tx) => {
       await configureAgent(tx, id, { model: next, ...(found?.reasoning === true ? {} : { thinkingLevel: null }) })
-      if (fastable) return
       const fast = await tx.doc(FastDoc, id)
-      if (fast.on) fast.on = false
+      if (fast.model !== null) fast.model = null
     }, BACKGROUND_CONTEXT)
     moved.push(id)
   }
@@ -901,13 +899,19 @@ export function create(deps: ModelsPort): ModelsParts {
           "bad_args",
           `${target === undefined ? "this conversation's model" : `${target.provider}/${target.modelId}`} has no fast mode`,
         )
-      const fast = args.fast ?? (args.model !== undefined && !fastable ? false : undefined)
+      const current = await api.harness.snapshot(FastDoc, conversation.id, BACKGROUND_CONTEXT)
+      const fast =
+        args.fast === true
+          ? (target ?? null)
+          : args.fast === false || (args.model !== undefined && !fastOn(current, args.model))
+            ? null
+            : undefined
       await api.harness.commit(async (tx) => {
         const chosen = change.model
         if (chosen !== undefined && chosen !== null && isOff(chosen))
           throw new OpRejected("bad_args", `model ${chosen.provider}/${chosen.modelId} is disabled`)
         if (Object.keys(change).length > 0) await configureAgent(tx, conversation.id, change satisfies AgentChange)
-        if (fast !== undefined) (await tx.doc(FastDoc, conversation.id)).on = fast
+        if (fast !== undefined) (await tx.doc(FastDoc, conversation.id)).model = fast
       }, BACKGROUND_CONTEXT)
       if (change.model !== undefined && change.model !== null) await remember(db, change.model)
       const agent = await conversation.agent(BACKGROUND_CONTEXT)
@@ -915,7 +919,7 @@ export function create(deps: ModelsPort): ModelsParts {
         conversation: conversation.id,
         model: agent.model ?? null,
         thinking: agent.thinkingLevel,
-        fast: fastable && (await api.harness.snapshot(FastDoc, conversation.id, BACKGROUND_CONTEXT))?.on === true,
+        fast: fastOn(await api.harness.snapshot(FastDoc, conversation.id, BACKGROUND_CONTEXT), agent.model),
         effectiveFrom: "next request",
       }
     },
