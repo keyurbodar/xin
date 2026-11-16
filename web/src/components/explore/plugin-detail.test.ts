@@ -6,7 +6,7 @@ import { invalidateReads } from "../../lib/api.ts"
 type Frame = { readonly id: string; readonly op: string; readonly args: { readonly name?: string } }
 
 const realFetch = globalThis.fetch
-if (!("window" in globalThis))
+if (Reflect.get(globalThis, "window") === undefined)
   Object.defineProperty(globalThis, "window", {
     value: { location: { hash: "" }, addEventListener: () => undefined },
     configurable: true,
