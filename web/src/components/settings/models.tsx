@@ -144,7 +144,7 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
         }
         name={props.provider.id}
         detail={providerDetail(props.provider)}
-        status={providerStatus(props.provider, error())}
+        status={providerStatus(error())}
         actions={
           <Show when={!confirming()}>
             <Button size="sm" variant="quiet" onClick={() => setEditing((open) => !open)}>Edit</Button>

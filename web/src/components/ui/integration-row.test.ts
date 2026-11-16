@@ -24,7 +24,7 @@ const REPLIES: Readonly<Record<string, unknown>> = {
   "models.list": {
     models: [
       { provider: "acme", modelId: "acme-1", name: "Acme 1", keyed: true },
-      { provider: "zeta", modelId: "zeta-1", name: "Zeta 1", keyed: false },
+      { provider: "zeta", modelId: "zeta-1", name: "Zeta 1", keyed: true },
     ],
   },
 }
@@ -62,6 +62,6 @@ test("each provider row ends in a status pill", async () => {
   const tree = root()
   createRoot(() => insert(tree, createComponent(Models, {})))
   await Bun.sleep(20)
-  expect(pills(tree)).toEqual(["connected:Connected", "needs-key:Needs key"])
+  expect(pills(tree)).toEqual(["connected:Connected", "connected:Connected"])
   expect(textOf(tree)).toContain("1 model · stored sealed")
 })

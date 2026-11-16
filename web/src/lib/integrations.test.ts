@@ -3,7 +3,7 @@ import type { McpServer } from "../state/extensions.ts"
 import type { ModelInfo, ProviderSummary } from "../state/settings.ts"
 import { providerDetail, providerStatus, serverDetail, serverStatus, STATUS_LABEL } from "./integrations.ts"
 
-const model = (keyed: boolean): ModelInfo => ({
+const model: ModelInfo = {
   provider: "acme",
   modelId: "acme-1",
   name: "Acme 1",
@@ -11,30 +11,22 @@ const model = (keyed: boolean): ModelInfo => ({
   vision: false,
   reasoning: false,
   thinking: ["off"],
-  keyed,
+  keyed: true,
   cost: undefined,
-})
+}
 
 const provider = (...models: readonly ModelInfo[]): ProviderSummary => ({ id: "acme", models })
 
 const server = (fields: Partial<McpServer> = {}): McpServer => ({ name: "ats", url: "https://mcp.example.com", tools: 3, ...fields })
 
-test("a provider whose models all carry a key is connected", () => {
-  expect(providerStatus(provider(model(true), model(true)), undefined)).toBe("connected")
-})
-
-test("a provider with an unkeyed model or no models needs a key", () => {
-  expect(providerStatus(provider(model(true), model(false)), undefined)).toBe("needs-key")
-  expect(providerStatus(provider(), undefined)).toBe("needs-key")
-})
-
-test("a failed save or remove shows the provider as an error", () => {
-  expect(providerStatus(provider(model(true)), "rejected")).toBe("error")
+test("a provider is connected until a save or remove fails", () => {
+  expect(providerStatus(undefined)).toBe("connected")
+  expect(providerStatus("rejected")).toBe("error")
 })
 
 test("the provider detail counts its models", () => {
-  expect(providerDetail(provider(model(true)))).toBe("1 model · stored sealed")
-  expect(providerDetail(provider(model(true), model(true)))).toBe("2 models · stored sealed")
+  expect(providerDetail(provider(model))).toBe("1 model · stored sealed")
+  expect(providerDetail(provider(model, model))).toBe("2 models · stored sealed")
 })
 
 test("a server is connected until it reports an error", () => {
@@ -49,5 +41,5 @@ test("the server detail is its error, else its tools and source", () => {
 })
 
 test("every status has a label", () => {
-  expect(STATUS_LABEL).toEqual({ connected: "Connected", "needs-key": "Needs key", error: "Error" })
+  expect(STATUS_LABEL).toEqual({ connected: "Connected", error: "Error" })
 })
