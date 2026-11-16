@@ -197,3 +197,17 @@ test("a streamed token rebuilds only the item it lands in", () => {
   const before = next.filter((item) => item.kind === "tools")
   expect(groups[0]).toBe(before[0])
 })
+
+test("a re-parsed snapshot with equal details keeps every item", () => {
+  const turn = (details: unknown) => [
+    ask(1, "Delegate it", NOW - 9_000),
+    answer(2, NOW - 8_000, call("a", "delegate_task", { title: "Docs" })),
+    entry(3, "pi.tool-result", [{ role: "toolResult", toolCallId: "a", content: [{ type: "text", text: "Started" }], details, timestamp: NOW - 7_000 }]),
+  ]
+  const options = { ...OPTIONS, hasBlock: (name: string) => name === "delegate_task" }
+  const first = buildTimeline(turn({ threadId: 7 }), IDLE, options)
+  const again = reuseItems(first, buildTimeline(turn({ threadId: 7 }), IDLE, options))
+  expect(again.every((item, index) => item === first[index])).toBe(true)
+  const moved = reuseItems(again, buildTimeline(turn({ threadId: 8 }), IDLE, options))
+  expect(moved.filter((item, index) => item !== again[index]).map((item) => item.kind)).toEqual(["block"])
+})

@@ -48,7 +48,7 @@ const history: EntryView[] = [
     call("c6", "delegate_task", { title: "Regression tests", task: "Add a parallel refresh regression test." }),
   ]),
   result(YESTERDAY + 70_000, "c5", "Edited src/auth.ts"),
-  entry("pi.tool-result", [{ role: "toolResult", toolCallId: "c6", content: [text("Started thread 23")], threadId: 23, timestamp: YESTERDAY + 80_000 }]),
+  entry("pi.tool-result", [{ role: "toolResult", toolCallId: "c6", content: [text("Started thread 23")], threadId: 23, details: { threadId: 23 }, timestamp: YESTERDAY + 80_000 }]),
   assistant(YESTERDAY + 87_000, [text("The fix is in, and a thread is writing the regression test. I'll report back when it lands.")]),
   entry(
     "xin.batch",
@@ -89,6 +89,13 @@ const [entries, setEntries] = createSignal<readonly EntryView[]>(history)
 const [live, setLive] = createSignal<Live>({ busy: false, content: [], tools: [] })
 const [project, setProject] = createSignal(projectWith("working"))
 const [pending, setPending] = createSignal<readonly PendingMessage[]>([])
+const [older, setOlder] = createSignal<readonly EntryView[]>([])
+const [hasOlder, setHasOlder] = createSignal(false)
+let pages: EntryView[][] = []
+const sameDay = (at: number, ask: string): EntryView[] => [
+  user(at, ask),
+  assistant(at + 4_000, [text("Everything is green: the last deploy finished and every check passed. Nothing needs you.")]),
+]
 
 const snapshot = (): Snapshot => {
   const now = live()
@@ -177,7 +184,13 @@ Object.assign(window, {
       )),
     longer: () => commit(assistant(NOW + 90_000, [text(LONG)])),
     stopWaiting: () => setProject(projectWith("completed")),
-    reconnect: () => setEntries((current) => current.map((item) => ({ ...item, model: item.model.map((message) => ({ ...message })) }))),
+    reconnect: () => setEntries((current) => structuredClone(current)),
+    paginate: () => {
+      const today = history.findIndex((item) => item.kind === "xin.batch" && item.id > 1)
+      pages = [history.slice(0, today), sameDay(NOW - 3 * 3600_000, "Check the deploy status."), sameDay(NOW - 2 * 3600_000, "Is staging healthy?")]
+      setEntries(history.slice(today))
+      setHasOlder(true)
+    },
   },
 })
 
@@ -191,14 +204,18 @@ function App() {
         snapshot={snapshot()}
         project={project()}
         optimistic={pending()}
-        older={[]}
-        hasOlder={false}
+        older={older()}
+        hasOlder={hasOlder()}
         requests={[]}
         answered={[]}
         onOpenThread={() => undefined}
         onAnswer={async () => undefined}
         onRetry={async () => undefined}
-        onLoadOlder={async () => undefined}
+        onLoadOlder={async () => {
+          const page = pages.pop() ?? []
+          setOlder((current) => [...page, ...current])
+          setHasOlder(pages.length > 0)
+        }}
       />
       <form
         class="mx-auto mb-4 flex w-full max-w-[var(--w-column)] px-6"

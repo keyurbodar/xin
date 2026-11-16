@@ -22,6 +22,7 @@ type Fixture = {
     readonly longer: () => void
     readonly stopWaiting: () => void
     readonly reconnect: () => void
+    readonly paginate: () => void
   }
 }
 
@@ -211,11 +212,13 @@ test("delegate_task renders as the thread fan in its place, and thread names are
   await page.close()
 })
 
-test("a reconnect that resends the same entries leaves the DOM and the scroll alone", async () => {
+test("a reconnect that re-parses the same entries leaves the DOM, the blocks and the scroll alone", async () => {
   const page = await harness.open("timeline")
-  await tl(page, (fixture) => fixture.run(6))
+  await tl(page, (fixture) => fixture.blockVisuals())
+  await tl(page, (fixture) => fixture.run(8))
   await page.evaluate(() => {
     document.querySelector<HTMLElement>("[data-timeline]")!.scrollTop = 300
+    Object.assign(window, { held: [document.querySelector("[data-block=c6]")?.firstElementChild, document.querySelector("[data-test-block=l3]")] })
   })
   await settled(page)
   await page.evaluate(() => {
@@ -229,5 +232,32 @@ test("a reconnect that resends the same entries leaves the DOM and the scroll al
   await settled(page)
   expect(await page.evaluate(() => (window as unknown as { counts: { mutations: number } }).counts.mutations)).toBe(0)
   expect(await scrollTop(page)).toBe(300)
+  expect(
+    await page.evaluate(() => {
+      const [fan, block] = (window as unknown as { held: (Element | null | undefined)[] }).held
+      return [fan?.isConnected, block?.isConnected, fan === document.querySelector("[data-block=c6]")?.firstElementChild]
+    }),
+  ).toEqual([true, true, true])
+  await page.close()
+})
+
+test("loading older pages of the same day keeps what was on screen where it was", async () => {
+  const page = await harness.open("timeline")
+  await page.setViewportSize({ width: 1280, height: 480 })
+  await tl(page, (fixture) => fixture.paginate())
+  await settled(page)
+  const marker = page.getByText("Added refresh.parallel.test.ts", { exact: false })
+  for (const round of [1, 2]) {
+    await page.evaluate(() => {
+      document.querySelector<HTMLElement>("[data-timeline]")!.scrollTop = 0
+    })
+    await settled(page)
+    const before = (await marker.boundingBox())!.y
+    await page.click("[data-load-older]")
+    await settled(page)
+    expect(await page.getByText("Everything is green", { exact: false }).count()).toBe(round)
+    expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(1)
+  }
+  expect(await page.getByRole("separator", { name: "Today" }).count()).toBe(1)
   await page.close()
 })

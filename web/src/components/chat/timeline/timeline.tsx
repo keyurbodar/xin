@@ -170,13 +170,11 @@ export function Timeline(props: {
     const load = props.onLoadOlder
     if (load === undefined || loadingOlder()) return
     setLoadingOlder(true)
-    const anchor = content.querySelector("[data-item]")
-    const before = anchor?.getBoundingClientRect().top
+    const fromEnd = scroller.scrollHeight - scroller.scrollTop
     try {
       await load()
       requestAnimationFrame(() => {
-        if (anchor === null || before === undefined) return
-        scroller.scrollTop += anchor.getBoundingClientRect().top - before
+        scroller.scrollTop = scroller.scrollHeight - fromEnd
         lastTop = scroller.scrollTop
       })
     } finally {

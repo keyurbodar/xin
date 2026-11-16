@@ -442,7 +442,7 @@ const sameCall = (a: ToolCall, b: ToolCall): boolean =>
   a.name === b.name &&
   a.status === b.status &&
   a.output === b.output &&
-  a.details === b.details &&
+  sameJson(a.details, b.details) &&
   sameJson(a.args, b.args)
 
 function reuseItem(before: TimelineItem | undefined, item: TimelineItem): TimelineItem {
