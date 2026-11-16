@@ -1,5 +1,3 @@
-import "@ui-sdk/web/command"
-import "@ui-sdk/web/menu"
 import { ariaKeyshortcuts, formatShortcut } from "@ui-sdk/core"
 import { ChevronRight, Paperclip, Plus } from "lucide-solid"
 import { For, Show, createSignal, type JSX } from "solid-js"
@@ -8,6 +6,7 @@ import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM, POPUP_SEPARATOR } from "../ui/surface.ts"
 import { KIND, KindIcon } from "./kinds.tsx"
 import { createSources, type Suggestion } from "./sources.ts"
+import { loadMenuElements, loadOnIntent } from "./lazy-elements.ts"
 import { TOOL } from "./styles.ts"
 import type { ComposerToken, TokenKind } from "./tokens.ts"
 
@@ -114,7 +113,7 @@ export function PlusMenu(props: {
       }}
     >
       <ui-menu-trigger>
-        <button type="button" aria-label="Add" disabled={props.disabled} class={`${TOOL} w-[var(--h-control)] justify-center px-0`}>
+        <button type="button" aria-label="Add" disabled={props.disabled} class={`${TOOL} w-[var(--h-control)] justify-center px-0`} {...loadOnIntent(loadMenuElements, "ui-menu")}>
           <Plus size={16} stroke-width={1.5} />
         </button>
       </ui-menu-trigger>

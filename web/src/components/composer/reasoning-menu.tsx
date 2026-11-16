@@ -1,10 +1,10 @@
-import "@ui-sdk/web/menu"
 import { Check, ChevronDown, Layers } from "lucide-solid"
 import { For, Show, createSignal, type JSX } from "solid-js"
 import { isThinkingLevel, type ThinkingLevel } from "../../lib/thinking.ts"
 import type { PresetRow } from "../../state/extensions.ts"
 import { createOverlayMount } from "../shell/presence.ts"
 import { POPUP, POPUP_ITEM, POPUP_LABEL, POPUP_SEPARATOR } from "../ui/surface.ts"
+import { loadMenuElements, loadOnIntent } from "./lazy-elements.ts"
 import { TOOL } from "./styles.ts"
 
 const LEVEL_LABEL: Readonly<Record<ThinkingLevel, string>> = {
@@ -56,7 +56,7 @@ export function ReasoningMenu(props: {
         on:openchangecomplete={settle}
       >
         <ui-menu-trigger>
-          <button type="button" class={TOOL}>
+          <button type="button" class={TOOL} {...loadOnIntent(loadMenuElements, "ui-menu")}>
             <span>{label()}</span>
             <ChevronDown size={14} stroke-width={1.5} class="text-icon" />
           </button>

@@ -1,11 +1,10 @@
-import "@ui-sdk/web/token-input"
-import "@ui-sdk/web/trigger-menu"
 import type { Token, TokenInputValue, UiTokenInputElement } from "@ui-sdk/web/token-input"
 import { For, Show, createSignal, onMount, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { POPUP, POPUP_ITEM, POPUP_LABEL } from "../ui/surface.ts"
 import { KIND, KindIcon } from "./kinds.tsx"
 import type { Sources, Suggestion } from "./sources.ts"
+import { loadEditorElements } from "./lazy-elements.ts"
 import { composerCodec, fromInputToken, toInputToken, type ComposerToken, type TokenKind } from "./tokens.ts"
 
 /** What the composer, the + menu and plugin actions do to the draft. A prompt chip always goes first, replacing any other. */
@@ -92,7 +91,7 @@ export function ComposerEditor(props: {
   const groups = (): readonly (readonly [TokenKind, readonly Suggestion[]])[] =>
     kinds().map((kind) => [kind, props.sources.list(kind)] as const)
 
-  onMount(() => {
+  onMount(() => void loadEditorElements().then(() => {
     const foundInput = root.querySelector("ui-token-input")
     const foundEditor = root.querySelector("ui-token-input-editor")
     const menu = root.querySelector("ui-trigger-menu")
@@ -129,7 +128,7 @@ export function ComposerEditor(props: {
       clear: () => input.api.clear(),
       focus: () => input.api.focus({ at: "end" }),
     })
-  })
+  }))
 
   return (
     <div ref={root} class="contents">
@@ -147,7 +146,7 @@ export function ComposerEditor(props: {
       <ui-token-input-editor
         aria-label={props.label}
         placeholder={props.placeholder}
-        class="block max-h-[320px] min-h-[48px] w-full overflow-y-auto whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-body text-ink outline-none data-[empty]:before:pointer-events-none data-[empty]:before:text-placeholder data-[empty]:before:content-[attr(aria-placeholder)] data-[disabled]:opacity-60"
+        class="block max-h-[320px] min-h-[48px] w-full overflow-y-auto whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-body text-ink outline-none data-[empty]:before:pointer-events-none data-[empty]:before:text-placeholder data-[empty]:before:content-[attr(aria-placeholder)] [&:not(:defined)]:before:text-placeholder [&:not(:defined)]:before:content-[attr(placeholder)] data-[disabled]:opacity-60"
       />
       <ui-trigger-menu
         on:openchange={(event) => {
