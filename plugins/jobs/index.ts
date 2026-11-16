@@ -8,6 +8,7 @@ export const inject = ["pi", "harness", "clock", "intake", "ops"]
 export const Config = Schema.object({
   waitMs: Schema.number()
     .min(0)
+    .max(600_000)
     .step(1)
     .default(JOB_WAIT_MS)
     .description("How long a coordinator's tool call waits for its job before it returns started and reports later."),

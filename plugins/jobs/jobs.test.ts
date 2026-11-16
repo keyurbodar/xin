@@ -160,6 +160,14 @@ describe("job cancellation", () => {
 })
 
 describe("jobs", () => {
+  it("refuses a waitMs over ten minutes and keeps the configured wait", async () => {
+    const stub = fresh()
+    const over = await cmd(stub, "wait-over", "plugin.configure", { id: "jobs", config: { waitMs: 600_001 } })
+    expect(over).toMatchObject({ ok: false, error: { code: "bad_args" } })
+    const max = await cmd(stub, "wait-max", "plugin.configure", { id: "jobs", config: { waitMs: 600_000 } })
+    expect(max).toMatchObject({ ok: true })
+  })
+
   it("returns a fast tool's result inline without a job report", async () => {
     const stub = fresh()
     const project = await makeProject(stub, "quick")
