@@ -7,7 +7,9 @@ export const DOC_MAX = 32_768
 export const MIGRATIONS: readonly SqliteMigration[] = [
   {
     version: 1,
-    statements: ["CREATE TABLE IF NOT EXISTS appearance (id INTEGER PRIMARY KEY CHECK (id = 1), doc TEXT NOT NULL, rev INTEGER NOT NULL)"],
+    statements: [
+      "CREATE TABLE IF NOT EXISTS appearance (id INTEGER PRIMARY KEY CHECK (id = 1), doc TEXT NOT NULL, rev INTEGER NOT NULL)",
+    ],
   },
 ]
 
@@ -47,7 +49,10 @@ export function createAppearance(db: SqliteDatabase): readonly Op[] {
       const row = await current()
       const stored = row?.rev ?? 0
       if (rev !== undefined && rev !== stored)
-        throw new OpRejected("busy", `appearance changed elsewhere (rev ${stored})`, { doc: row?.doc ?? null, rev: stored })
+        throw new OpRejected("busy", `appearance changed elsewhere (rev ${stored})`, {
+          doc: row?.doc ?? null,
+          rev: stored,
+        })
       const next = stored + 1
       await db.run(
         "INSERT INTO appearance (id, doc, rev) VALUES (1, ?, ?) ON CONFLICT (id) DO UPDATE SET doc = excluded.doc, rev = excluded.rev",
