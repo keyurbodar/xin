@@ -15,6 +15,7 @@ import { cmd, connect, fresh, owner, recordOffers, turn } from "../../test/suppo
 import type { Home } from "../../test/worker.ts"
 import type { ProjectId, ThreadId } from "../../src/ids.ts"
 import { ThreadDoc, transition, type ThreadEvent, type ThreadStatus } from "../../src/contracts/threaddoc.ts"
+import type { RequestsState } from "../../src/contracts/questions.ts"
 import { RequestsDoc, WorkspaceDoc } from "./workspace.ts"
 
 type Summary = {
@@ -79,6 +80,18 @@ const projectOf = async (harness: Harness, threadId: ThreadId): Promise<string |
 
 const statuses: readonly ThreadStatus[] = ["working", "waiting", "completed", "failed", "cancelled"]
 const events: readonly ThreadEvent[] = ["done", "ask_user", "unanswered", "abort", "answer", "thread_send"]
+
+const ask =
+  (id: string) =>
+  (doc: RequestsState): void => {
+    doc.open[id] = { kind: "question", question: `Question ${id}?`, at: Date.now() }
+  }
+const answer =
+  (id: string) =>
+  (doc: RequestsState): void => {
+    delete doc.open[id]
+    doc.answered[id] = { kind: "question", question: `Question ${id}?`, at: 1, answer: "yes", answeredAt: Date.now() }
+  }
 
 describe("workspace", () => {
   it("creates the coordinator conversation with the workspace entry, once per command", async () => {
@@ -412,5 +425,79 @@ describe("workspace", () => {
     } finally {
       await harness.close(BACKGROUND_CONTEXT)
     }
+  })
+
+  it("moves a space's requestsRev on every request open and resolve, never for another space, and never back across an eviction", async () => {
+    const stub = fresh()
+    const created = await Promise.all(
+      ["rev-a", "rev-b"].map(async (slug) => {
+        const ack = await cmd(stub, `${slug}-1`, "project.create", { slug, name: slug })
+        expect(ack.ok).toBe(true)
+        return ack.result as { id: string; spaceId: string }
+      }),
+    )
+    const [mine, other] = created
+    if (mine === undefined || other === undefined) throw new Error("projects not created")
+    const [asker, chatter] = await runInDurableObject(stub, async (home: Home) => {
+      const ids = [await conversation(home), await conversation(home)]
+      await home.harness.commit(async (tx) => {
+        await addThread(tx, { projectId: mine.id as ProjectId, threadId: ids[0] as ThreadId, title: "Asker" })
+        await addThread(tx, { projectId: other.id as ProjectId, threadId: ids[1] as ThreadId, title: "Chatter" })
+      }, BACKGROUND_CONTEXT)
+      return ids as [ConversationId, ConversationId]
+    })
+    let reads = 0
+    const revs = async (): Promise<{ mine: number; other: number }> => {
+      reads += 1
+      const ack = await cmd(stub, `rev-read-${reads}`, "workspace.read")
+      const spaces = (ack.result as { spaces: { id: string; requestsRev: number }[] }).spaces
+      const rev = (id: string): number => spaces.find((space) => space.id === id)?.requestsRev ?? Number.NaN
+      return { mine: rev(mine.spaceId), other: rev(other.spaceId) }
+    }
+    const requests = (threadId: ConversationId, change: (doc: RequestsState) => void) =>
+      runInDurableObject(stub, (home: Home) =>
+        home.harness.commit(async (tx) => change(await tx.doc(RequestsDoc, threadId)), BACKGROUND_CONTEXT),
+      )
+
+    const start = await revs()
+    await requests(asker, ask("q1"))
+    const opened = await revs()
+    expect(opened.mine).toBeGreaterThan(start.mine)
+    expect(opened.other).toBe(start.other)
+
+    await runInDurableObject(stub, (home: Home) =>
+      home.harness.commit(async (tx) => {
+        ;(await tx.doc(ThreadDoc, chatter)).status = "waiting"
+        ;(await tx.doc(ThreadDoc, asker)).statusLine = "thinking"
+      }, BACKGROUND_CONTEXT),
+    )
+    expect(await revs()).toEqual(opened)
+
+    await requests(asker, answer("q1"))
+    const resolved = await revs()
+    expect(resolved.mine).toBeGreaterThan(opened.mine)
+    expect(resolved.other).toBe(start.other)
+
+    await requests(asker, ask("q2"))
+    const reasked = await revs()
+    expect(reasked.mine).toBeGreaterThan(resolved.mine)
+
+    await requests(asker, (doc) => {
+      answer("q2")(doc)
+      ask("q3")(doc)
+    })
+    const swapped = await revs()
+    expect(swapped.mine).toBeGreaterThan(reasked.mine)
+    expect(swapped.other).toBe(start.other)
+
+    await requests(chatter, ask("q9"))
+    const elsewhere = await revs()
+    expect(elsewhere.mine).toBe(swapped.mine)
+    expect(elsewhere.other).toBeGreaterThan(swapped.other)
+
+    await evictDurableObject(stub)
+    const rebooted = await revs()
+    expect(rebooted.mine).toBeGreaterThan(Math.max(swapped.mine, elsewhere.other))
+    expect(rebooted.other).toBeGreaterThan(Math.max(swapped.mine, elsewhere.other))
   })
 })

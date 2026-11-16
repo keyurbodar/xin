@@ -63,6 +63,7 @@ export type SpaceSummary = {
   readonly coordinatorId: ConversationId
   readonly threads: ThreadGroups
   readonly openRequests: number
+  readonly requestsRev: number
 }
 
 export type ProjectSummary = {
@@ -77,12 +78,16 @@ export type ProjectSummary = {
   readonly coordinatorId?: ConversationId
   readonly threads?: ThreadGroups
   readonly spaceId?: SpaceId
+  readonly requestsRev?: number
 }
 
 type Projection = {
   workspace: WorkspaceState
   threads: Map<ConversationId, ThreadState>
-  requests: Map<ConversationId, number>
+  requests: Map<ConversationId, readonly string[]>
+  booted: number
+  revision: number
+  touched: Map<ConversationId, number>
 }
 
 export type OwnerKv = {
@@ -211,13 +216,15 @@ function spacesOf(workspace: WorkspaceState, projectId: string): [string, SpaceS
 function spaceSummary(projection: Projection, id: string, space: SpaceState): SpaceSummary {
   const threads: ThreadGroups = { working: [], waiting: [], completed: [], failed: [], cancelled: [] }
   const coordinatorId = space.coordinatorId as ConversationId
-  let openRequests = projection.requests.get(coordinatorId) ?? 0
+  let openRequests = projection.requests.get(coordinatorId)?.length ?? 0
+  let requestsRev = Math.max(projection.booted, projection.touched.get(coordinatorId) ?? 0)
   for (const threadId of space.threadIds) {
     const conversationId = threadId as ConversationId
     const thread = projection.threads.get(conversationId)
     if (thread !== undefined && thread.archived !== true)
       threads[thread.status].push(threadSummary(conversationId, thread))
-    openRequests += projection.requests.get(conversationId) ?? 0
+    openRequests += projection.requests.get(conversationId)?.length ?? 0
+    requestsRev = Math.max(requestsRev, projection.touched.get(conversationId) ?? 0)
   }
   return {
     id: id as SpaceId,
@@ -228,6 +235,7 @@ function spaceSummary(projection: Projection, id: string, space: SpaceState): Sp
     coordinatorId,
     threads,
     openRequests,
+    requestsRev,
   }
 }
 
@@ -257,6 +265,7 @@ function projectSummaries(projection: Projection): ProjectSummary[] {
             coordinatorId: preferred.coordinatorId,
             threads: preferred.threads,
             spaceId: preferred.id,
+            requestsRev: preferred.requestsRev,
           }),
     }
   })
@@ -304,10 +313,14 @@ async function spacePrompt(read: DocumentReader, conversationId: ConversationId)
 }
 
 export function create(port: WorkspacePort): WorkspaceFeature {
+  const booted = Date.now()
   const projection: Projection = {
     workspace: { projects: {}, spaces: {} },
     threads: new Map(),
     requests: new Map(),
+    booted,
+    revision: booted,
+    touched: new Map(),
   }
   let dirty = false
   let scheduled = false
@@ -328,9 +341,14 @@ export function create(port: WorkspacePort): WorkspaceFeature {
     if (state !== undefined) projection.threads.set(conversationId, state)
   }
 
-  const applyRequests = (value: unknown, conversationId: ConversationId): void => {
+  const applyRequests = (value: unknown, conversationId: ConversationId, live: boolean): void => {
     if (!parseRequests.check(value)) return
-    projection.requests.set(conversationId, Object.keys(value.open).length)
+    const open = Object.keys(value.open).toSorted()
+    const before = projection.requests.get(conversationId) ?? []
+    projection.requests.set(conversationId, open)
+    if (!live || (open.length === before.length && open.every((id, index) => id === before[index]))) return
+    projection.revision = Math.max(projection.revision + 1, Date.now())
+    projection.touched.set(conversationId, projection.revision)
   }
 
   const apply = (publication: CommitPublication): void => {
@@ -348,7 +366,7 @@ export function create(port: WorkspacePort): WorkspaceFeature {
           break
         }
         case "xin.requests": {
-          if (change.conversationId !== undefined) applyRequests(change.value, change.conversationId)
+          if (change.conversationId !== undefined) applyRequests(change.value, change.conversationId, true)
           dirty = true
           break
         }
@@ -700,11 +718,11 @@ export function create(port: WorkspacePort): WorkspaceFeature {
           const thread = await harness.snapshot(ThreadDoc, conversationId, BACKGROUND_CONTEXT)
           if (thread !== undefined) applyThread(thread, conversationId)
           const requests = await harness.snapshot(RequestsDoc, conversationId, BACKGROUND_CONTEXT)
-          if (requests !== undefined) applyRequests(requests, conversationId)
+          if (requests !== undefined) applyRequests(requests, conversationId, false)
         }
         const coordinatorId = space.coordinatorId as ConversationId
         const requests = await harness.snapshot(RequestsDoc, coordinatorId, BACKGROUND_CONTEXT)
-        if (requests !== undefined) applyRequests(requests, coordinatorId)
+        if (requests !== undefined) applyRequests(requests, coordinatorId, false)
       }
       return () => observation.detach()
     },

@@ -9,6 +9,7 @@ import { captainSpace, routeCaptain, routeCrewThreadId } from "../state/captains
 import { offersSideThread, type CaptainRow } from "../lib/captains.ts"
 import { models } from "../state/settings.ts"
 import { presets, prompts } from "../state/extensions.ts"
+import { onRequestsRev } from "../lib/requests.ts"
 import { refreshRequests } from "../state/requests.ts"
 import { openThreadTab, openThreadTabs, paneOpen, pruneThreadTabs, sidebarHidden, toggleSidebar, wideShell } from "../state/tabs.ts"
 import { ICON_BUTTON } from "../components/shell/menu.ts"
@@ -54,10 +55,8 @@ function CaptainWorkspace(props: { captain: CaptainRow; space: ProjectSummary })
     if (current !== undefined) openThreadTab(props.space.id, current.id)
   })
   createEffect(() => pruneThreadTabs(props.space.id, new Set(threads().keys())))
-  createEffect(() => {
-    void props.space.openRequests
-    void refreshRequests()
-  })
+  const noteRequestsRev = onRequestsRev(() => void refreshRequests())
+  createEffect(() => noteRequestsRev(props.space))
 
   const openThread = (id: number): void => {
     openThreadTab(props.space.id, id)
