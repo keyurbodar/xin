@@ -558,6 +558,50 @@ export async function pushUnsubscribe(endpoint: string): Promise<void> {
   await cmd("push.unsubscribe", { endpoint })
 }
 
+export const TOOL_MODES = ["allow", "ask", "off"] as const
+
+export type ToolMode = (typeof TOOL_MODES)[number]
+
+/** One tool as `tool.policy.read` reports it: Home's mode, and the project's only where that project overrides it. */
+export type ToolPolicy = {
+  readonly name: string
+  readonly plugin: string
+  readonly title: string
+  readonly home: ToolMode
+  readonly project: ToolMode | undefined
+}
+
+const modeOf = (value: unknown): ToolMode | undefined => TOOL_MODES.find((mode) => mode === value)
+
+const parseToolPolicy = (value: unknown): readonly ToolPolicy[] =>
+  (isRecord(value) && Array.isArray(value["tools"]) ? value["tools"] : []).flatMap((entry) => {
+    if (!isRecord(entry)) return []
+    const name = entry["name"]
+    const plugin = entry["plugin"]
+    const title = entry["title"]
+    const home = modeOf(entry["home"])
+    if (typeof name !== "string" || typeof plugin !== "string" || home === undefined) return []
+    return [{ name, plugin, title: typeof title === "string" ? title : name, home, project: modeOf(entry["project"]) }]
+  })
+
+const policies = new Map<string, RemoteHandle<readonly ToolPolicy[]>>()
+
+/** The tool list for Home (`undefined`) or one project, one handle per scope. */
+export function toolPolicy(projectId: string | undefined): RemoteHandle<readonly ToolPolicy[]> {
+  const key = projectId ?? ""
+  const existing = policies.get(key)
+  if (existing !== undefined) return existing
+  const created = remote(() => cmd("tool.policy.read", projectId === undefined ? {} : { projectId }), parseToolPolicy)
+  policies.set(key, created)
+  return created
+}
+
+/** `inherit` clears a project's override, so it is only sent with a project. */
+export async function setToolPolicy(tool: string, mode: ToolMode | "inherit", projectId: string | undefined): Promise<void> {
+  await cmd("tool.policy.set", projectId === undefined ? { tool, mode } : { tool, mode, projectId })
+  await toolPolicy(projectId).reload()
+}
+
 export function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   const padded = base64.replace(/-/gu, "+").replace(/_/gu, "/")
   const full = padded.padEnd(Math.ceil(padded.length / 4) * 4, "=")
