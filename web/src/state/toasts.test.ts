@@ -59,3 +59,37 @@ test("a toast already dismissed does not expire again when a newer toast evicts 
   await Bun.sleep(TOAST_EXIT_MS + 20)
   expect(toasts()).toEqual([])
 })
+
+function notice(title: string) {
+  const calls = { expire: 0 }
+  showToast({ icon, title, detail: undefined, expire: () => calls.expire++ })
+  return calls
+}
+
+test("notices never push an undo toast out: they drop the oldest notice, or themselves when only undo toasts show", async () => {
+  const closed = counted("Closed tab")
+  for (const title of ["one", "two", "three"]) notice(title)
+  expect(liveToasts().map((toast) => toast.title)).toEqual(["three", "two", "Closed tab"])
+  expect(closed).toEqual({ undo: 0, expire: 0 })
+  for (const toast of liveToasts()) dismissToast(toast)
+  await Bun.sleep(TOAST_EXIT_MS + 20)
+  const undos = ["a", "b", "c"].map(counted)
+  notice("chatty")
+  expect(liveToasts().map((toast) => toast.title)).toEqual(["c", "b", "a"])
+  expect(undos).toEqual([0, 1, 2].map(() => ({ undo: 0, expire: 0 })))
+  for (const toast of liveToasts()) dismissToast(toast)
+  await Bun.sleep(TOAST_EXIT_MS + 20)
+  expect(toasts()).toEqual([])
+})
+
+test("a new undo toast pushes out a notice before an older undo toast", async () => {
+  const older = counted("a")
+  notice("n")
+  counted("b")
+  counted("c")
+  expect(liveToasts().map((toast) => toast.title)).toEqual(["c", "b", "a"])
+  expect(older).toEqual({ undo: 0, expire: 0 })
+  for (const toast of liveToasts()) dismissToast(toast)
+  await Bun.sleep(TOAST_EXIT_MS + 20)
+  expect(toasts()).toEqual([])
+})

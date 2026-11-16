@@ -9,7 +9,8 @@ export const PLUGIN_API = 1
  * without declaring the permission fails at mount (its `inject`) or at the access (any other service read,
  * see `IngleLoader.refusal`), and `scripts/boundaries.ts` refuses the reads the runtime cannot see. `runtime`
  * guards `host`, the raw Durable Object storage, environment and bindings, so it implies every other
- * permission. `network` guards no service and is shown to the owner but not enforced. Rows run in the Home's
+ * permission. A service a plugin provides is guarded too (see `PROVIDED`). `network` guards no service and is shown to
+ * the owner but not enforced. Rows run in the Home's
  * own isolate with no sandbox: the checks keep honest code to its declaration, they do not confine hostile code.
  */
 export const PERMISSIONS = {
@@ -151,6 +152,24 @@ export function permissionFor(service: string): Permission | undefined {
     if ((spec.services as readonly string[]).includes(service) && isPermission(permission)) return permission
   return undefined
 }
+
+/**
+ * What a plugin row outside the providing package needs to read a service another plugin provides. The first-party
+ * services that reach owner data need the permission they amount to; any other needs the row's manifest to `requires`
+ * the providing plugin. `runtime` covers both.
+ */
+export const PROVIDED: Readonly<Record<string, Permission>> = {
+  drive: "files",
+  intake: "conversations",
+  threads: "conversations",
+  watchdog: "conversations",
+  questions: "conversations",
+  memory: "conversations",
+}
+
+/** Whether a manifest's `requires` names `plugin`, which lets the row use the services that plugin provides. */
+export const requiresPlugin = (manifest: Manifest, plugin: string): boolean =>
+  manifest.requires.some((spec) => parseRequire(spec)?.name === plugin)
 
 /** The permissions a plugin's `inject` needs, sorted. */
 export const permissionsFor = (services: readonly string[]): readonly Permission[] =>

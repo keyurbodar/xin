@@ -112,3 +112,28 @@ export function facade(value: unknown, ctx: Context, caller: Caller): unknown {
   faces.set(raw, byContext)
   return face
 }
+
+const provided = new WeakMap<object, WeakMap<Context, object>>()
+
+/**
+ * What a plugin row holds for a service another plugin provides: a frozen object with no prototype that forwards each
+ * of the service's methods, its own and inherited ones, and carries none of its data members. The row can call the
+ * service but cannot read its state or replace a method that other rows call.
+ */
+export function providedFacade(value: unknown, ctx: Context): unknown {
+  if (typeof value !== "object" || value === null) return value
+  const known = provided.get(value)?.get(ctx)
+  if (known !== undefined) return known
+  const face: Record<string, unknown> = Object.create(null)
+  for (let at: object | null = value; at !== null && at !== Object.prototype; at = Object.getPrototypeOf(at))
+    for (const name of Object.getOwnPropertyNames(at)) {
+      if (name === "constructor" || name in face) continue
+      const member: unknown = Reflect.get(value, name)
+      if (typeof member === "function") face[name] = (...args: unknown[]): unknown => Reflect.apply(member, value, args)
+    }
+  Object.freeze(face)
+  const byContext = provided.get(value) ?? new WeakMap<Context, object>()
+  byContext.set(ctx, face)
+  provided.set(value, byContext)
+  return face
+}

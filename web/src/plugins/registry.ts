@@ -6,8 +6,8 @@ import { navigate } from "../lib/router.ts"
 import { CLIENT_PLUGINS } from "../plugins.gen.ts"
 import { homeLoaded, homePlugins } from "../state/home.ts"
 import { showToast } from "../state/toasts.ts"
+import { loadEach, themeChoice } from "./isolate.ts"
 import {
-  THEME_TOKENS,
   type ClientEntry,
   type ComposerHandle,
   type Host,
@@ -30,12 +30,7 @@ function toast(text: string): void {
   showToast({ icon: Puzzle, title: text, detail: undefined, expire: () => undefined })
 }
 
-/** Each client module loads on its own: one that throws at import is logged and left out, and the others still load. */
-for (const entry of CLIENT_PLUGINS)
-  entry.load().then(
-    (module) => setLoaded((current) => new Map([...current, [entry.name, module.default]])),
-    (error: unknown) => console.error(`plugin ${entry.name} failed to load`, error),
-  )
+void loadEach(CLIENT_PLUGINS, (name, plugin) => setLoaded((current) => new Map([...current, [name, plugin]])))
 
 type Loaded = { readonly name: string; readonly plugin: PluginDef }
 
@@ -114,7 +109,11 @@ const DECORATE: { readonly [K in SlotName]: Decorate<K> } = {
 function itemsOf<K extends SlotName>(entries: readonly Loaded[], slot: K): readonly SlotItem<K>[] {
   const decorate: Decorate<K> = DECORATE[slot]
   const items = entries.flatMap((entry) =>
-    (entry.plugin.slots[slot] ?? []).map((registration) => decorate(entry.name, registration)),
+    (entry.plugin.slots[slot] ?? []).flatMap((registration: unknown) =>
+      typeof registration === "object" && registration !== null
+        ? [decorate(entry.name, registration as SlotMap[K])]
+        : [],
+    ),
   )
   return items.sort((left, right) => orderOf(left) - orderOf(right))
 }
@@ -127,19 +126,12 @@ export function rendererFor(tool: string): SlotItem<"message.renderer"> | undefi
   return itemsOf(enabled(), "message.renderer").find((item) => item.tool === tool)
 }
 
-const KNOWN_TOKENS: ReadonlySet<string> = new Set(THEME_TOKENS)
-
-function choiceOf(registration: Theme): ThemeChoice {
-  const tokens = Object.fromEntries(
-    Object.entries(registration.tokens).filter(
-      (pair): pair is [string, string] => KNOWN_TOKENS.has(pair[0]) && typeof pair[1] === "string",
-    ),
-  )
-  return { id: registration.id, label: registration.label, scheme: registration.scheme, tokens }
+function choicesOf(entries: readonly Loaded[]): readonly ThemeChoice[] {
+  return itemsOf(entries, "theme").flatMap((item) => themeChoice(item.plugin, item) ?? [])
 }
 
 export function themes(): readonly ThemeChoice[] {
-  return [...BUILT_IN_THEMES, ...itemsOf(enabled(), "theme").map(choiceOf)]
+  return [...BUILT_IN_THEMES, ...choicesOf(enabled())]
 }
 
 export function applyTheme(id: string): void {
@@ -149,7 +141,7 @@ export function applyTheme(id: string): void {
 createRoot(() => {
   createEffect(() => {
     const wanted = theme()
-    const pool = homeLoaded() ? themes() : [...BUILT_IN_THEMES, ...itemsOf(loadedOf(CLIENT_PLUGINS), "theme").map(choiceOf)]
+    const pool = homeLoaded() ? themes() : [...BUILT_IN_THEMES, ...choicesOf(loadedOf(CLIENT_PLUGINS))]
     paintTheme(pool.find((entry) => entry.id === wanted) ?? DEFAULT_THEME)
   })
 })

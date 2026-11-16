@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",
-    "prebuild": "bun test src",
+    "test": "bun test --conditions=browser --tsconfig-override=tsconfig.bun.json",
+    "prebuild": "bun run test src",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsgo --noEmit && tsgo --noEmit -p tsconfig.test.json",
