@@ -481,7 +481,7 @@
 
 /* Reduced motion: the OS setting, or Settings → Appearance → Reduce motion (:root[data-motion="reduce"]). Same rules both ways. */
 @media (prefers-reduced-motion: reduce) {
-  .im-press:active, .im-send:active { transform: none; }
+  .im-press:active:not(:disabled, [aria-disabled="true"]), .im-send:active:not(:disabled) { transform: none; }
   .im-pop[data-state], .im-tip[data-state], .im-dialog[data-state], .im-sheet[data-state], .im-drawer[data-state], .im-scrim[data-state] {
     animation-name: im-fade-in;
     animation-duration: var(--dur-reduce);
@@ -492,7 +492,7 @@
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { transform: none; transition-property: opacity; transition-duration: var(--dur-reduce); }
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { @starting-style { transform: none; opacity: 0; } }
   .im-toast[data-removed] { transform: none; }
-  .im-flip, .im-lift, .im-lift[data-dragging], .im-roll > span, .im-chevron, .im-switch > i { transition: none; }
+  .im-flip, .im-lift, .im-lift[data-dragging], .im-lift[data-settling], .im-roll > span, .im-chevron, .im-switch > i { transition: none; }
   .im-lift[data-dragging] { transform: none; }
   .im-tab { transition-property: opacity; }
   .im-grow, .im-grow > * > * { transition: none; transform: none; }
@@ -506,7 +506,7 @@
   .im-ring { transition-property: stroke; }
 }
 :root[data-motion="reduce"] {
-  .im-press:active, .im-send:active { transform: none; }
+  .im-press:active:not(:disabled, [aria-disabled="true"]), .im-send:active:not(:disabled) { transform: none; }
   .im-pop[data-state], .im-tip[data-state], .im-dialog[data-state], .im-sheet[data-state], .im-drawer[data-state], .im-scrim[data-state] {
     animation-name: im-fade-in;
     animation-duration: var(--dur-reduce);
@@ -517,7 +517,7 @@
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { transform: none; transition-property: opacity; transition-duration: var(--dur-reduce); }
   .im-pane, .im-tab, .im-arrive, .im-event, .im-toast { @starting-style { transform: none; opacity: 0; } }
   .im-toast[data-removed] { transform: none; }
-  .im-flip, .im-lift, .im-lift[data-dragging], .im-roll > span, .im-chevron, .im-switch > i { transition: none; }
+  .im-flip, .im-lift, .im-lift[data-dragging], .im-lift[data-settling], .im-roll > span, .im-chevron, .im-switch > i { transition: none; }
   .im-lift[data-dragging] { transform: none; }
   .im-tab { transition-property: opacity; }
   .im-grow, .im-grow > * > * { transition: none; transform: none; }
