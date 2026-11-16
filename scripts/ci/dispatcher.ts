@@ -3,14 +3,14 @@ import { createHmac, timingSafeEqual } from "node:crypto"
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { type Instabox, instabox, type Machine } from "./instabox.ts"
-import { isVitestFile, type Job, plan, RUNNERS_PER_RUN, VITEST_INCLUDE } from "./plan.ts"
+import { isVitestFile, type Job, plan, RUNNERS_PER_RUN, TEST_WORKERS, VITEST_INCLUDE } from "./plan.ts"
 
 const REPO = "keyurbodar/xin"
 const HOME = process.env.CI_HOME ?? join(process.env.HOME ?? "", "ci")
 const PORT = Number(process.env.CI_PORT ?? 8080)
 const PUBLIC_URL = process.env.CI_PUBLIC_URL ?? ""
 const SELF_MACHINE = process.env.CI_MACHINE_ID ?? ""
-const POOL = 8
+const POOL = 10
 const RUNNER_SPEC = { vcpus: 8, memMiB: 16384 }
 const JOB_TIMEOUT_S = 300
 const RUN_TIMEOUT_MS = 8 * 60_000
@@ -230,7 +230,7 @@ function recordDurations(json: string, planned: readonly string[], wallMs: numbe
   }))
   const missing = planned.filter((file) => !ran.some((result) => result.file === file))
   if (missing.length > 0) throw new Error("planned test files did not run: " + missing.join(", "))
-  const scale = wallMs / Math.max(1, ran.reduce((sum, result) => sum + result.ms, 0) / 8)
+  const scale = wallMs / Math.max(1, ran.reduce((sum, result) => sum + result.ms, 0) / TEST_WORKERS)
   for (const { file, ms } of ran.map((result) => ({ file: result.file, ms: result.ms * scale })))
     db.run("INSERT INTO durations VALUES (?, ?) ON CONFLICT(file) DO UPDATE SET ms = (ms + excluded.ms) / 2", [
       file,
