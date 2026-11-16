@@ -502,4 +502,81 @@ describe("automations", () => {
     for (let index = 1; index < seen.length; index += 1)
       expect(seen[index]).toBeGreaterThan(seen[index - 1] ?? Infinity)
   }, 30_000)
+
+  it("names in the home snapshot the revision of each automation's own latest change", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "touched")
+    const home = () => runInDurableObject(stub, (owner: Home) => owner.loader.ctx.wire.snapshot())
+    const make = (id: string, title: string) =>
+      op<AutomationView>(stub, id, "automation.create", { title, prompt: "Count", project: project.id, triggers: [] })
+    const first = await make("t1", "First")
+    const afterFirst = await home()
+    const second = await make("t2", "Second")
+    const afterSecond = await home()
+    await op<AutomationView>(stub, "t3", "automation.update", { id: second.id, enabled: false })
+    const afterUpdate = await home()
+
+    expect(afterFirst).toMatchObject({ automations: { touched: { [first.id]: expect.any(Number) } } })
+    const touched = (snapshot: typeof afterFirst, id: string) =>
+      (snapshot as { automations: { touched: Record<string, number> } }).automations.touched[id]
+    expect(touched(afterSecond, first.id)).toBe(touched(afterFirst, first.id))
+    expect(touched(afterUpdate, first.id)).toBe(touched(afterFirst, first.id))
+    expect(touched(afterUpdate, second.id)).toBeGreaterThan(touched(afterSecond, second.id) ?? Infinity)
+    expect(afterUpdate).toMatchObject({ automations: { revision: touched(afterUpdate, second.id) } })
+  }, 30_000)
+
+  it("takes back the rules it hands out, nulls included, so a batching webhook can be edited and rotated", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "nullrules")
+    const created = await webhookAutomation(stub, "n1", project.id, [
+      { groupBy: ["repo"], count: 5, quietSeconds: 600 },
+    ])
+    const before = await detail(stub, created.id)
+    const trigger = before.triggers[0]
+    if (trigger?.kind !== "webhook") throw new Error("no webhook trigger")
+    expect(trigger.rules).toEqual([{ when: {}, groupBy: ["repo"], count: 5, maxWaitSeconds: null, quietSeconds: 600 }])
+
+    const edited = await op<AutomationView>(stub, "n2", "automation.update", {
+      id: created.id,
+      triggers: [{ kind: "webhook", id: trigger.id, contains: ["push"], rules: trigger.rules }],
+    })
+    expect(pathOf(edited)).toBe(trigger.path)
+    const rotated = await op<AutomationView>(stub, "n3", "automation.update", {
+      id: created.id,
+      triggers: [{ kind: "webhook", rules: trigger.rules }],
+    })
+    expect(pathOf(rotated)).not.toBe(trigger.path)
+    expect(rotated.triggers[0]).toMatchObject({ rules: trigger.rules })
+  }, 30_000)
+
+  it("runs the open batches of a rotated webhook instead of dropping them, and only once", async () => {
+    const stub = fresh()
+    const project = await makeProject(stub, "rotate")
+    const created = await webhookAutomation(stub, "o1", project.id, [{ quietSeconds: 600 }])
+    const oldPath = pathOf(created)
+    const accepted = await hook(stub, oldPath, { event: "push" }, { "idempotency-key": "d1" })
+    expect(accepted.status).toBe(202)
+    expect(await accepted.json()).toEqual({ status: "batched", count: 1 })
+    const [open] = await runInDurableObject(stub, (home: Home) => home.loader.ctx.automations.store.batches(created.id))
+    if (open === undefined) throw new Error("no open batch")
+
+    const rotated = await op<AutomationView>(stub, "o2", "automation.update", {
+      id: created.id,
+      triggers: [{ kind: "webhook", rules: [{ quietSeconds: 600 }] }],
+    })
+    let current = await detail(stub, created.id)
+    expect(current.batches).toEqual([])
+    expect(current.runs).toHaveLength(1)
+    expect(current.runs[0]).toMatchObject({ source: "webhook", inputs: 1, triggerId: open.trigger_id })
+    expect((await hook(stub, oldPath, { event: "push" })).status).toBe(404)
+
+    await runInDurableObject(stub, (home: Home) => home.loader.ctx.automations.store.putBatch(open))
+    await op<AutomationView>(stub, "o3", "automation.update", {
+      id: created.id,
+      triggers: rotated.triggers.map(() => ({ kind: "webhook" })),
+    })
+    current = await detail(stub, created.id)
+    expect(current.runs).toHaveLength(1)
+    expect(current.batches).toEqual([])
+  }, 30_000)
 })
