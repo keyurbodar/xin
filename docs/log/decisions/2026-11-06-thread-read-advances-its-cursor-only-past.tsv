@@ -1,0 +1,1 @@
+2026-11-06T14:29:41Z	M5	thread_read advances its cursor only past entries it returned; the first oversized entry returns a trimmed excerpt and advances	the old loop set the cursor before the size check, so the skipped entry was never readable	plugins/orchestrator/tools.ts threadRead; 06-orchestration section 9 updated	accepted

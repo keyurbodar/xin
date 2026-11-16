@@ -1,0 +1,1 @@
+2026-11-16T07:00:00Z	onboarding v5	the onboarded flag lives in lib/onboarding.ts (needsOnboarding, markOnboarded), not state/settings.ts OwnerSettings	General's form is keyed by OwnerSettings fields (name, instructions); adding a non-editable field would put it in the draft and LIMIT maps	web/src/components/settings/general.tsx	adopted

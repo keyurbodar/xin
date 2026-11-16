@@ -1,0 +1,1 @@
+2026-11-16T06:00:00Z	issues	Search fetches only the 100 best FTS matches, prefix-matches only tokens of 3+ characters, with an FTS prefix index	a broad search read every match (1,201 rows at 300 issues)	plugins/issues/cost.test.ts: 301 rows read at 300 issues	kept

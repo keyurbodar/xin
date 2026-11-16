@@ -303,6 +303,28 @@ const serve = (transport: Fake): void => {
   vi.spyOn(globalThis, "fetch").mockImplementation(transport.fetch)
 }
 
+const swapOnGrant = async (name: string, version: string, ingle: unknown) => {
+  const transport = fake()
+  const first = BUILT[SEEDS.findIndex((seed) => seed.name === name)]?.find((built) => built.version === version)
+  if (first?.doc === undefined) throw new Error(`no ${name}@${version}`)
+  const bytes = await tarball({ "package.json": JSON.stringify({ name, version, ingle, swapped: true }) })
+  const swapped = await integrityOf(bytes)
+  let served = 0
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input))
+    if (decodeURIComponent(url.pathname) === `/${name}/${version}`) {
+      served += 1
+      return served === 1
+        ? json(first.doc)
+        : json({ ...first.doc, dist: { tarball: first.tarballUrl, integrity: swapped } })
+    }
+    if (url.href === first.tarballUrl && served > 1) return new Response(bytes, { status: 200 })
+    return transport.fetch(input, init)
+  })
+  expect(swapped).not.toBe(first.integrity)
+  return { pin: first.integrity, swapped }
+}
+
 const configure = (stub: Stub, config: unknown): Promise<unknown> =>
   cmd(stub, `market-config-${crypto.randomUUID()}`, "plugin.configure", { id: "market", config })
 
@@ -644,6 +666,103 @@ describe("market", () => {
     expect(await pending(stub)).toMatchObject({
       pins: { [`${LIAR}@1.0.0`]: { permissions: ["network", "secrets"] } },
     })
+  })
+
+  it("shows a registry code package's pin in its entry and in the consent it asks for, and no pin for a bundle or git version", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    const pin = BUILT[SEEDS.findIndex((seed) => seed.name === GUARDED)]?.find(
+      (built) => built.version === "1.1.0",
+    )?.integrity
+    expect(pin).toMatch(/^sha512-/)
+
+    expect((await op(stub, "market.entry", { name: GUARDED })).result).toMatchObject({ kind: "code", integrity: pin })
+    expect((await op(stub, "market.entry", { name: NOTES })).result).toMatchObject({ kind: "bundle", integrity: null })
+    expect((await op(stub, "market.entry", { name: TOOLS })).result).toMatchObject({ integrity: null })
+    expect(await op(stub, "market.install", { name: GUARDED })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { integrity: pin } },
+    })
+    expect(await op(stub, "market.install", { name: GUARDED, grant: ["network", "secrets"] })).toMatchObject({
+      ok: true,
+    })
+    expect(await pending(stub)).toMatchObject({ pins: { [`${GUARDED}@1.1.0`]: { integrity: pin } } })
+  })
+
+  it("asks again when the tarball on the grant call is not the one whose pin the owner consented to", async () => {
+    const { pin, swapped } = await swapOnGrant(GUARDED, "1.1.0", GUARDED_INGLE)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+
+    const asked = await op(stub, "market.install", { name: GUARDED })
+    expect(asked).toMatchObject({ ok: false, error: { code: "consent_required", details: { integrity: pin } } })
+    expect(JSON.stringify(asked)).not.toContain('"changed"')
+    const grant = ["network", "secrets"]
+    expect(await op(stub, "market.install", { name: GUARDED, grant, integrity: pin })).toMatchObject({
+      ok: false,
+      error: {
+        code: "consent_required",
+        details: { permissions: [{ id: "network" }, { id: "secrets" }], integrity: swapped, changed: true },
+      },
+    })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
+    expect(await op(stub, "market.install", { name: GUARDED, grant, integrity: swapped })).toMatchObject({ ok: true })
+    expect(await pending(stub)).toMatchObject({ pins: { [`${GUARDED}@1.1.0`]: { integrity: swapped } } })
+  })
+
+  it("binds a bundle to the pin the owner consented to, and asks again when its tarball changed", async () => {
+    const { pin, swapped } = await swapOnGrant(SECRETIVE, "1.0.0", SECRETIVE_1)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+
+    const asked = await op(stub, "market.install", { name: SECRETIVE, version: "1.0.0" })
+    expect(asked).toMatchObject({ ok: false, error: { code: "consent_required", details: { integrity: pin } } })
+    expect(JSON.stringify(asked)).not.toContain('"changed"')
+    const grant = ["secrets"]
+    expect(
+      await op(stub, "market.install", { name: SECRETIVE, version: "1.0.0", grant, integrity: pin }),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "consent_required",
+        details: { permissions: [{ id: "secrets" }], integrity: swapped, changed: true },
+      },
+    })
+    expect((await op(stub, "bundle.list")).result).not.toContainEqual(expect.objectContaining({ package: SECRETIVE }))
+    expect(
+      await op(stub, "market.install", { name: SECRETIVE, version: "1.0.0", grant, integrity: swapped }),
+    ).toMatchObject({ ok: true, result: { application: "applied" } })
+    expect((await op(stub, "bundle.list")).result).toContainEqual(expect.objectContaining({ package: SECRETIVE }))
+  })
+
+  it("asks again when a grant echoes another pin, even for a package that needs no permission", async () => {
+    const transport = fake()
+    serve(transport)
+    const stub = fresh()
+    expect(await configure(stub, { indexes: [INDEX_URL] })).toMatchObject({ ok: true })
+    const pin = BUILT[SEEDS.findIndex((seed) => seed.name === CODE)]?.find(
+      (built) => built.version === "1.0.0",
+    )?.integrity
+    const other = `sha512-${"A".repeat(86)}==`
+    expect(pin).not.toBe(other)
+
+    expect(await op(stub, "market.install", { name: CODE, version: "1.0.0", integrity: other })).toMatchObject({
+      ok: false,
+      error: { code: "consent_required", details: { permissions: [], integrity: pin, changed: true } },
+    })
+    expect(await pending(stub)).toEqual({ add: [], remove: [] })
+    expect(await op(stub, "market.install", { name: CODE, version: "1.0.0", integrity: "sha512-short" })).toMatchObject(
+      {
+        ok: false,
+        error: { code: "bad_args" },
+      },
+    )
+    expect(await op(stub, "market.install", { name: CODE, version: "1.0.0", integrity: pin })).toMatchObject({
+      ok: true,
+    })
+    expect(await pending(stub)).toMatchObject({ pins: { [`${CODE}@1.0.0`]: { integrity: pin } } })
   })
 
   it("refuses a code package that declares owner, even with consent", async () => {

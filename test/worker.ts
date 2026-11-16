@@ -331,6 +331,10 @@ export class Home extends ProductHome {
       const script = this.ctx.storage.kv.get<Script>("test.script") ?? { responses: [], next: 0 }
       const text = script.responses[script.next] ?? "unscripted"
       this.ctx.storage.kv.put("test.script", { ...script, next: script.next + 1 })
+      if (text.startsWith("error:")) {
+        const errorMessage = text.slice("error:".length)
+        return fauxAssistantMessage("", { stopReason: "error", errorMessage })
+      }
       if (text !== "hang") return fauxAssistantMessage(text)
       this.hanging.resolve()
       return new Promise((_resolve, reject) => {

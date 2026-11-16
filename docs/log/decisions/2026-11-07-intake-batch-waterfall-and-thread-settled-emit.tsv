@@ -1,0 +1,1 @@
+2026-11-07T00:00:00Z	P5	intake/batch (waterfall) and thread/settled (emit) are implemented; they were in the Events table with no code	the spec and code disagreed	grep found no declaration	lanes N-intake, N-orchestrator

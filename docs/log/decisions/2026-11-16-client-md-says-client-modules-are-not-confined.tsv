@@ -1,0 +1,1 @@
+2026-11-16T21:10:00Z	plugins	client.md says client modules are not confined	XIN-23 #36: it claimed client code reaches only host.cmd	docs match 09-plugins.md	fixed in #36

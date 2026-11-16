@@ -1,0 +1,1 @@
+2026-11-07T16:35	P11-P13	Rejected: rewriting the schedules replay test to avoid sendDue and the stored record	pi cannot rewind a task checkpoint under wrangler dev, and the verification skill already documents that replay is driven through sendDue	plugins/schedules/schedules.test.ts	kept as is
