@@ -22,6 +22,7 @@ import * as m9 from "./plugins/m9.ts"
 import * as mcp from "./plugins/mcp.ts"
 import * as p6 from "./plugins/p6.ts"
 import * as piext from "./plugins/piext.ts"
+import * as reach from "./plugins/reach.ts"
 import * as secretsTest from "./plugins/secrets.ts"
 import * as settled from "./plugins/settled.ts"
 import * as skills from "./plugins/skills.ts"
@@ -33,6 +34,7 @@ import type { Extension } from "@earendil-works/pi-durable"
 import { testPlugin } from "./kernel.ts"
 import { lastOwnerText } from "./support.ts"
 import { defineOp } from "../src/ops.ts"
+import type { Context } from "@deepseek-ai/cordis"
 import { int, obj, opt } from "@earendil-works/pi-schema"
 import { env } from "cloudflare:workers"
 import { BUNDLES, CATALOG } from "../src/catalog.ts"
@@ -82,7 +84,12 @@ const bump = defineOp({
 })
 
 const TEST_CATALOG: Catalog = {
-  test: testPlugin("test", { extensions: [defineExtension({ name: "tool-test-ping", tools: [ping] })], ops: [bump] }),
+  test: testPlugin(
+    "test",
+    { extensions: [defineExtension({ name: "tool-test-ping", tools: [ping] })], ops: [bump] },
+    ["pi", "ops"],
+    { permissions: ["conversations"] },
+  ),
   broken: {
     ...testPlugin("broken", {}),
     plugin: {
@@ -96,7 +103,35 @@ const TEST_CATALOG: Catalog = {
   orphan: testPlugin("orphan", {}, ["nothing-provides-this"]),
   "k-requires": testPlugin("k-requires", {}, ["ops"], { requires: ["time@^0.1.0"] }),
   "k-future": testPlugin("k-future", {}, ["ops"], { api: 2 }),
+  "k-unpermitted": testPlugin("k-unpermitted", {}, ["ops", "secrets"], { permissions: [] }),
+  "k-undeclared": testPlugin(
+    "k-undeclared",
+    { ops: [defineOp({ name: "k.undeclared", args: obj({}), actors: ["owner"], run: async () => null })] },
+    ["ops"],
+    { contributes: { tools: [], ops: ["k.declared"] } },
+  ),
   "k-needs-missing": testPlugin("k-needs-missing", {}, ["ops"], { requires: ["absent@^1"] }),
+  "k-announce": {
+    ...testPlugin("k-announce", {}, ["ops", "wire"]),
+    plugin: {
+      name: "k-announce",
+      inject: ["ops", "wire"],
+      apply(ctx: Context) {
+        ctx.ops.define(
+          defineOp({
+            name: "test.announce",
+            args: obj({}),
+            actors: ["owner"],
+            run: async () => {
+              ctx.wire.announce()
+              await new Promise((resolve) => setTimeout(resolve, 20))
+              return null
+            },
+          }),
+        )
+      },
+    },
+  },
   ...m2.catalog,
   ...fakefiles.catalog,
   ...intakebatch.catalog,
@@ -113,13 +148,26 @@ const TEST_CATALOG: Catalog = {
   ...mcp.catalog,
   ...piext.catalog,
   ...secretsTest.catalog,
+  ...reach.catalog,
   ...settled.catalog,
   ...contrib.catalog,
   ...drivescopes.catalog,
 }
 
 const TEST_ROWS = [
-  ...["test", "broken", "orphan", "m2", "m6", "k-requires", "k-future", "k-needs-missing"].map((id) => ({
+  ...[
+    "test",
+    "broken",
+    "orphan",
+    "m2",
+    "m6",
+    "k-requires",
+    "k-future",
+    "k-needs-missing",
+    "k-unpermitted",
+    "k-undeclared",
+    "k-announce",
+  ].map((id) => ({
     id,
     name: `cordis:${id}`,
   })),
@@ -127,6 +175,7 @@ const TEST_ROWS = [
   ...piext.rows,
   ...intakebatch.rows,
   ...secretsTest.rows,
+  ...reach.rows,
   ...settled.rows,
   ...drivescopes.rows,
 ]

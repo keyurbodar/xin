@@ -3,6 +3,7 @@ import { App } from "./app.tsx"
 import { registerBlock } from "./components/chat/blocks.tsx"
 import { VisualBlock } from "./components/chat/visual-block.tsx"
 import { trackMotion } from "./lib/motion.ts"
+import "./plugins/registry.ts"
 import "./styles/app.css"
 
 const root = document.getElementById("root")

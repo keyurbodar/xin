@@ -1,17 +1,21 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { CORE_BUNDLES, CORE_CATALOG } from "../src/kernel/corerows.ts"
 import { readManifest, type Manifest } from "../src/kernel/manifest.ts"
+import { assertUniquePackages } from "./discovery.ts"
+import { reachViolations } from "./reach.ts"
 import { scaffold, TEMPLATE, type Template } from "./scaffold.ts"
 
 const ROOT = join(import.meta.dirname, "..")
 const GENERATED = join(ROOT, "src/catalog.gen.ts")
+const CLIENT_GENERATED = join(ROOT, "web/src/plugins.gen.ts")
 const PROFILE = join(ROOT, "ingle.profile.json")
 const TEMPLATE_DIR = join(ROOT, "plugins", TEMPLATE)
 const NAME = /^[a-z][a-z0-9-]*$/
 
 type Declared = {
   readonly module: string
+  readonly client?: string
   readonly title: string
   readonly description: string
   readonly manifest: Manifest
@@ -23,6 +27,7 @@ type Found = {
   readonly dir: string
   readonly local: boolean
   readonly specifier: (module: string) => string
+  readonly clientSpecifier: (module: string) => string
   readonly plugins: Readonly<Record<string, Declared>>
   readonly bundle: readonly RowSpec[]
 }
@@ -39,7 +44,12 @@ function rootVersion(): string {
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
 
-function parse(path: string, specifier: (module: string) => string, local: boolean): Found | undefined {
+function parse(
+  path: string,
+  specifier: (module: string) => string,
+  clientSpecifier: (module: string) => string,
+  local: boolean,
+): Found | undefined {
   const manifest = readJson(path)
   const ingle = field(manifest, "ingle")
   if (ingle === undefined) return undefined
@@ -54,17 +64,28 @@ function parse(path: string, specifier: (module: string) => string, local: boole
       )
     const module = field(entry, "module")
     if (typeof module !== "string") throw new Error(`${pkg}: ingle.plugins.${name}.module must be a path`)
+    const client = field(entry, "client")
+    if (client !== undefined && typeof client !== "string")
+      throw new Error(`${pkg}: ingle.plugins.${name}.client must be a path`)
+    const parsedManifest = readManifest(
+      {
+        api: field(entry, "api"),
+        requires: field(entry, "requires"),
+        permissions: field(entry, "permissions"),
+        contributes: field(entry, "contributes"),
+        slots: field(entry, "slots"),
+      },
+      `${pkg}: ingle.plugins.${name}`,
+      local ? { pkg, dir: relative(ROOT, dirname(path)) } : undefined,
+    )
+    if ((client === undefined) !== (parsedManifest.slots.length === 0))
+      throw new Error(`${pkg}: ingle.plugins.${name} needs both a client module and the slots it fills, or neither`)
     plugins[name] = {
       module,
+      ...(client === undefined ? {} : { client }),
       title: String(field(entry, "title") ?? name),
       description: String(field(entry, "description") ?? field(manifest, "description") ?? ""),
-      manifest: readManifest(
-        {
-          api: field(entry, "api"),
-          requires: field(entry, "requires"),
-        },
-        `${pkg}: ingle.plugins.${name}`,
-      ),
+      manifest: parsedManifest,
     }
   }
   const rows = field(ingle, "bundle")
@@ -90,6 +111,7 @@ function parse(path: string, specifier: (module: string) => string, local: boole
     dir: dirname(path),
     local,
     specifier,
+    clientSpecifier,
     plugins,
     bundle,
   }
@@ -102,7 +124,8 @@ function discover(): Found[] {
     for (const name of readdirSync(local).toSorted()) {
       const manifest = join(local, name, "package.json")
       if (!existsSync(manifest)) continue
-      const parsed = parse(manifest, (module) => `../plugins/${name}/${module.replace(/^\.\//, "")}`, true)
+      const path = (prefix: string) => (module: string) => `${prefix}/plugins/${name}/${module.replace(/^\.\//, "")}`
+      const parsed = parse(manifest, path(".."), path("../.."), true)
       if (parsed !== undefined) found.push(parsed)
     }
   }
@@ -110,9 +133,11 @@ function discover(): Found[] {
   for (const pkg of Object.keys(typeof deps === "object" && deps !== null ? deps : {}).toSorted()) {
     const manifest = join(ROOT, "node_modules", pkg, "package.json")
     if (!existsSync(manifest)) continue
-    const parsed = parse(manifest, (module) => `${pkg}/${module.replace(/^\.\//, "")}`, false)
+    const path = (module: string) => `${pkg}/${module.replace(/^\.\//, "")}`
+    const parsed = parse(manifest, path, path, false)
     if (parsed !== undefined) found.push(parsed)
   }
+  assertUniquePackages(found.map((entry) => ({ pkg: entry.pkg, at: relative(ROOT, entry.dir) })))
   const seen = new Map<string, string>()
   for (const entry of found)
     for (const name of Object.keys(entry.plugins)) {
@@ -167,6 +192,26 @@ function render(found: readonly Found[]): string {
   ].join("\n")
 }
 
+/** The client half: one lazy loader per client module, so Vite splits each into its own chunk and one that throws at import fails alone. */
+function renderClient(found: readonly Found[]): string {
+  const entries: string[] = []
+  for (const entry of found)
+    for (const [name, declared] of Object.entries(entry.plugins)) {
+      if (declared.client === undefined) continue
+      const rows = entry.bundle.filter((row) => row.name === `cordis:${name}`).map((row) => row.id)
+      entries.push(
+        `  { name: ${JSON.stringify(name)}, rows: ${JSON.stringify(rows)}, load: () => import(${JSON.stringify(entry.clientSpecifier(declared.client))}) },`,
+      )
+    }
+  return [
+    "// generated by bun scripts/ingle.ts plugin generate",
+    'import type { ClientEntry } from "./plugins/sdk.ts"',
+    "",
+    `export const CLIENT_PLUGINS: readonly ClientEntry[] = [${entries.length === 0 ? "" : `\n${entries.join("\n")}\n`}]`,
+    "",
+  ].join("\n")
+}
+
 type Profile = { bundles: string[]; patch: unknown[] }
 
 const readProfile = (): Profile => {
@@ -181,13 +226,64 @@ const readProfile = (): Profile => {
 
 const writeProfile = (profile: Profile) => writeFileSync(PROFILE, `${JSON.stringify(profile, null, 2)}\n`)
 
-function generate(): Found[] {
+const SOURCE = /\.(?:[cm]?[jt]s|tsx)$/
+const TEST = /\.test\.[cm]?[jt]sx?$/
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name)
+    if (statSync(path).isDirectory()) return name === "node_modules" ? [] : sourceFiles(path)
+    return SOURCE.test(path) && !path.endsWith(".d.ts") && !TEST.test(path) ? [path] : []
+  })
+}
+
+/** Refuses an npm code package whose source reaches past the permissions its plugins declare: lint never sees it. */
+function assertWithinPermissions(found: readonly Found[]): void {
+  const violations = found
+    .filter((entry) => !entry.local)
+    .flatMap((entry) =>
+      sourceFiles(entry.dir).flatMap((file) =>
+        reachViolations(
+          `${entry.pkg}/${relative(entry.dir, file)}`,
+          readFileSync(file, "utf8"),
+          new Set(Object.values(entry.plugins).flatMap((plugin) => plugin.manifest.permissions)),
+        ),
+      ),
+    )
+  if (violations.length > 0) throw new Error(`code packages reach past their permissions:\n${violations.join("\n")}`)
+}
+
+/** The catalog as `plugin generate` writes it: formatted with the repo's oxfmt settings, through a scratch file beside it. */
+function formattedCatalog(found: readonly Found[]): string {
+  const scratch = join(dirname(GENERATED), ".catalog.gen.check.ts")
+  writeFileSync(scratch, render(found))
+  try {
+    if (Bun.spawnSync(["bun", "x", "oxfmt", scratch], { cwd: ROOT }).exitCode !== 0)
+      throw new Error(`oxfmt failed on ${relative(ROOT, GENERATED)}`)
+    return readFileSync(scratch, "utf8")
+  } finally {
+    rmSync(scratch, { force: true })
+  }
+}
+
+function generate(check = false): Found[] {
   const found = discover()
   assertCoreFree(found)
-  writeFileSync(GENERATED, render(found))
-  if (Bun.spawnSync(["bun", "x", "oxfmt", GENERATED], { cwd: ROOT }).exitCode !== 0)
-    throw new Error(`oxfmt failed on ${relative(ROOT, GENERATED)}`)
-  console.warn(`wrote ${relative(ROOT, GENERATED)}: ${found.length} package(s)`)
+  assertWithinPermissions(found)
+  const files = [
+    [GENERATED, formattedCatalog(found)],
+    [CLIENT_GENERATED, renderClient(found)],
+  ] as const
+  if (check) {
+    const stale = files.filter(([path, text]) => !existsSync(path) || readFileSync(path, "utf8") !== text)
+    if (stale.length > 0)
+      throw new Error(
+        `${stale.map(([path]) => relative(ROOT, path)).join(" and ")} out of date: run bun scripts/ingle.ts plugin generate`,
+      )
+    return found
+  }
+  for (const [path, text] of files) writeFileSync(path, text)
+  console.warn(`wrote ${relative(ROOT, GENERATED)} and ${relative(ROOT, CLIENT_GENERATED)}: ${found.length} package(s)`)
   return found
 }
 
@@ -265,7 +361,7 @@ async function sync(plan: SyncPlan, dry: boolean): Promise<void> {
 const usage = `usage: bun scripts/ingle.ts plugin <command>
   list                       packages with a ingle field, their plugins and whether their bundle is enabled
   new <name>                 create plugins/<name> from the template package plugins/hello
-  generate                   rewrite src/catalog.gen.ts from plugins/* and installed dependencies
+  generate [--check]         rewrite src/catalog.gen.ts and web/src/plugins.gen.ts from plugins/* and installed dependencies; --check fails if they are stale
   add <spec> [--enable]      bun add <spec>, regenerate, and with --enable append its bundle to the profile
   remove <package>           drop its bundle from the profile, bun remove it, regenerate
   enable <package>           append a discovered package's bundle to the profile
@@ -286,7 +382,7 @@ async function main(argv: readonly string[]): Promise<void> {
       return
     }
     case "generate":
-      return void generate()
+      return void generate(target === "--check")
     case "new": {
       if (target === undefined) throw new Error("new needs a plugin name")
       return createPlugin(target)

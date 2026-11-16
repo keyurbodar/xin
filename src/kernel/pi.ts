@@ -11,17 +11,31 @@ import {
   Harness,
   type Registry,
   type Report,
+  type ToolRegistration,
 } from "@earendil-works/pi-durable"
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env"
 import { loaderRow } from "../contributions.ts"
 import { JournalStorage } from "./journal.ts"
+import { hidden } from "./hidden.ts"
+import type { IngleLoader } from "./loader.ts"
 
 export type Installed = {
   readonly extension: Extension
   readonly owner: number | null
   readonly row: string | undefined
 }
+export type InstalledName = {
+  readonly name: string
+  readonly row: string | undefined
+  readonly kind: "kernel" | "row"
+}
 type EnvProvider = (target: EnvTarget) => ExecutionEnv | undefined
+
+const own = hidden<Pi, Context>()
+
+const refuseHandle = async (): Promise<never> => {
+  throw new Error("a tool handle names a tool for configure and cannot run")
+}
 
 export class Pi extends Service {
   static readonly inject = ["host", "clock"]
@@ -35,6 +49,7 @@ export class Pi extends Service {
 
   constructor(ctx: Context) {
     super(ctx, "pi")
+    own.set(this, ctx)
   }
 
   async [Service.init](): Promise<void> {
@@ -84,6 +99,11 @@ export class Pi extends Service {
     const previous = this.installed.get(extension.name)
     if (previous !== undefined && previous.owner !== owner)
       throw new Error(`extension ${extension.name} is installed by another plugin`)
+    const kernel: IngleLoader | undefined = own.get(this).get("kernel")
+    for (const tool of extension.tools ?? []) {
+      const undeclared = kernel?.undeclared(row, "tools", tool.name)
+      if (undeclared !== undefined) throw new Error(undeclared)
+    }
     return this.ctx.effect(() => {
       this.registry.install(extension)
       this.installed.set(extension.name, { extension, owner, row })
@@ -121,6 +141,43 @@ export class Pi extends Service {
         this.envSources.splice(this.envSources.indexOf(source), 1)
       }
     }, "pi.env")
+  }
+
+  /** Every installed extension's name and the row that installed it, never the extension objects themselves. */
+  extensions(): readonly InstalledName[] {
+    return Object.freeze(
+      [...this.installed.values()].map(({ extension, row }) =>
+        Object.freeze({ name: extension.name, row, kind: row === undefined ? ("kernel" as const) : ("row" as const) }),
+      ),
+    )
+  }
+
+  /**
+   * Handles for the installed extensions with these names, for a row that reconfigures conversations, such as presets.
+   * `configure` keeps only the names it is given, so a handle carries its name and nothing an extension runs.
+   */
+  extensionsNamed(names: readonly string[]): readonly Extension[] {
+    return Object.freeze(names.flatMap((name) => (this.installed.has(name) ? [Object.freeze({ name })] : [])))
+  }
+
+  /**
+   * Handles for the registered tools with these names, for a row that removes or loads tools through `configure`, such
+   * as the orchestrator. `configure` keeps only names, so a handle carries its name and an `execute` that refuses.
+   */
+  toolsNamed(names: readonly string[]): readonly ToolRegistration[] {
+    const registered = new Set(
+      this.registry
+        .snapshot()
+        .tools()
+        .map(({ tool }) => tool.name),
+    )
+    return Object.freeze(
+      names
+        .filter((name) => registered.has(name))
+        .map((name): ToolRegistration =>
+          Object.freeze({ name, description: "", parameters: Object.freeze({}), execute: refuseHandle }),
+        ),
+    )
   }
 
   currentModels(): Models {

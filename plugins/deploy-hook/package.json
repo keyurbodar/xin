@@ -9,7 +9,12 @@
       "deploy-hook": {
         "module": "./deployhook.ts",
         "title": "Deploy hook",
-        "description": "Deploys a new build by POSTing to a configured hook URL."
+        "description": "Deploys a new build by POSTing to a configured hook URL.",
+        "permissions": [
+          "network",
+          "secrets"
+        ],
+        "contributes": {}
       }
     }
   }

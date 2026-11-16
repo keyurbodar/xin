@@ -106,7 +106,7 @@ const send = (ws: WebSocket, frame: ServerFrame) => ws.send(JSON.stringify(frame
 export type SocketDeps = {
   readonly ctx: DurableObjectState
   readonly harness: Harness
-  readonly commands: Commands
+  readonly commands: Pick<Commands, "run">
   readonly beforeWork: () => Promise<void>
   readonly typing: (conversation: ConversationId, on: boolean) => Promise<void>
   readonly home: () => Promise<JsonObject>

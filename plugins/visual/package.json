@@ -10,7 +10,14 @@
       "visual": {
         "module": "./index.ts",
         "title": "Visuals",
-        "description": "The show_visual tool: the model writes a sandboxed Lua script and the reply shows it as a live, interactive chart, table, canvas, 3D scene or shader."
+        "description": "The show_visual tool: the model writes a sandboxed Lua script and the reply shows it as a live, interactive chart, table, canvas, 3D scene or shader.",
+        "api": 1,
+        "permissions": [],
+        "contributes": {
+          "tools": [
+            "show_visual"
+          ]
+        }
       }
     },
     "bundle": [

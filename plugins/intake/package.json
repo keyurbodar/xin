@@ -9,7 +9,21 @@
       "intake": {
         "module": "./index.ts",
         "title": "Intake",
-        "description": "Inbound debounce, batch claim and dispatch."
+        "description": "Inbound debounce, batch claim and dispatch.",
+        "permissions": [
+          "conversations",
+          "files",
+          "models",
+          "runtime"
+        ],
+        "contributes": {
+          "ops": [
+            "conv.stop",
+            "history.page",
+            "message.send",
+            "message.withdraw"
+          ]
+        }
       }
     }
   }

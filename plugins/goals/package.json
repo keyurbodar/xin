@@ -9,17 +9,39 @@
       "goals": {
         "module": "./index.ts",
         "title": "Goals",
-        "description": "One durable objective per conversation: create, edit, pause, resume, complete, block and clear."
+        "description": "One durable objective per conversation: create, edit, pause, resume, complete, block and clear.",
+        "contributes": {
+          "ops": [
+            "goal.get",
+            "goal.set"
+          ]
+        },
+        "permissions": [
+          "runtime"
+        ]
       },
       "tool-goals": {
         "module": "./tools.ts",
         "title": "Goal tools",
-        "description": "The model-facing goal tools. Disable to hide them; the goals service keeps running."
+        "description": "The model-facing goal tools. Disable to hide them; the goals service keeps running.",
+        "contributes": {
+          "tools": [
+            "create_goal",
+            "get_goal",
+            "update_goal"
+          ]
+        }
       },
       "goal-rounds": {
         "module": "./rounds.ts",
         "title": "Goal rounds",
-        "description": "Continues an active goal with one automatic round each time a run ends."
+        "description": "Continues an active goal with one automatic round each time a run ends.",
+        "permissions": [
+          "conversations",
+          "models",
+          "runtime"
+        ],
+        "contributes": {}
       }
     },
     "bundle": [

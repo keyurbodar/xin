@@ -7,7 +7,7 @@ import type {
   EntryId,
   Harness,
   ModelRef,
-  Registry,
+  ToolRegistration,
   Submission,
   Tx,
 } from "@earendil-works/pi-durable"
@@ -47,7 +47,7 @@ export type ServiceDeps = {
   readonly harness: Harness
   run(command: Command, actor: Actor): Promise<Outcome>
   currentModels(): Models
-  readonly registry: Registry
+  readonly toolsNamed: (names: readonly string[]) => readonly ToolRegistration[]
   readonly models: ModelsService
 }
 
@@ -260,7 +260,7 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
           model: model.model,
           clientRequestId: request.clientRequestId,
           requestId,
-          removeTools: childTools(deps.registry),
+          removeTools: childTools(deps.toolsNamed),
         }),
       callContext,
     )

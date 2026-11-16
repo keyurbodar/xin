@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "types": ["bun", "vite/client"] },
-  "include": ["src/**/*.test.ts", "src/visual-frame.d.ts", "src/ui-sdk.d.ts", "e2e"],
+  "include": ["src/**/*.test.ts", "src/visual-frame.d.ts", "src/ui-sdk.d.ts", "e2e", "test"],
   "exclude": []
 }

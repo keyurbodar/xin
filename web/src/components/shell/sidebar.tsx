@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { Dynamic, Portal } from "solid-js/web"
 import { Menu } from "@ark-ui/solid/menu"
-import { Blocks, CalendarClock, Check, ChevronsUpDown, Flower2, HardDrive, Moon, PanelLeft, Plus, Search, Settings, SquarePen, Sun, X } from "lucide-solid"
+import { Blocks, CalendarClock, Check, ChevronsUpDown, Flower2, HardDrive, Moon, Palette, PanelLeft, Plus, Search, Settings, SquarePen, Sun, X } from "lucide-solid"
 import { activeProjects, projectThreads, routeProject, routeThreadId, type ProjectSummary } from "../../state/home.ts"
 import { homeCaptains, routeCaptain } from "../../state/captains.ts"
 import type { CaptainRow } from "../../lib/captains.ts"
@@ -10,7 +10,8 @@ import { navigate, route } from "../../lib/router.ts"
 import { ago } from "../../lib/format.ts"
 import { stagger } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
-import { setTheme, theme, themeOf } from "../../lib/theme.ts"
+import { theme } from "../../lib/theme.ts"
+import { applyTheme, SlotList, themes } from "../../plugins/slots.tsx"
 import { openThreadTab, paneOpen, projectTabs, setSidebarDrawer, showPaneView } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
 import { BrandMark } from "../ui/brand-mark.tsx"
@@ -22,11 +23,7 @@ import { ICON_BUTTON, MENU_CONTENT, MENU_ITEM, MENU_LABEL, MENU_SEPARATOR } from
 
 const ICON = { size: 16, "stroke-width": 1.5 } as const
 
-const THEMES = [
-  { id: "dark", label: "Dark", icon: Moon },
-  { id: "light", label: "Light", icon: Sun },
-  { id: "rose", label: "Rose", icon: Flower2 },
-] as const
+const THEME_ICONS: Readonly<Record<string, typeof Moon>> = { dark: Moon, light: Sun, rose: Flower2 }
 
 const ROW =
   "flex h-[var(--h-row)] w-full shrink-0 items-center gap-2.5 rounded-sm px-2 text-left text-sm im-hover"
@@ -108,6 +105,7 @@ export function Sidebar(props: { onSearch: () => void; onCollapse: () => void; d
         </div>
 
         <Show when={routeProject()}>{(project) => <ThreadList project={project()} />}</Show>
+        <SlotList slot="sidebar.section" />
       </div>
 
       <OwnerMenu />
@@ -308,13 +306,13 @@ function OwnerMenu(): JSX.Element {
                 Settings
               </Menu.Item>
               <Menu.Separator class={MENU_SEPARATOR} />
-              <Menu.RadioItemGroup value={theme()} onValueChange={(details) => setTheme(themeOf(details.value))}>
+              <Menu.RadioItemGroup value={theme()} onValueChange={(details) => applyTheme(details.value)}>
                 <Menu.ItemGroupLabel class={MENU_LABEL}>Theme</Menu.ItemGroupLabel>
-                <For each={THEMES}>
+                <For each={themes()}>
                   {(entry) => (
                     <Menu.RadioItem value={entry.id} closeOnSelect={false} class={MENU_ITEM}>
                       <span class="text-ink-3">
-                        <Dynamic component={entry.icon} {...ICON} />
+                        <Dynamic component={THEME_ICONS[entry.id] ?? Palette} {...ICON} />
                       </span>
                       <Menu.ItemText class="flex-1">{entry.label}</Menu.ItemText>
                       <Menu.ItemIndicator class="text-ink-2">

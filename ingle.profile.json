@@ -29,11 +29,26 @@
     "ingle-plugin-git-native",
     "ingle-plugin-issues",
     "ingle-plugin-drive",
+    "ingle-plugin-theme-pack",
+    "ingle-plugin-outline",
+    "ingle-plugin-standup",
     "ingle-plugin-visual"
   ],
   "patch": [
     {
       "id": "hello",
+      "disabled": true
+    },
+    {
+      "id": "theme-pack",
+      "disabled": true
+    },
+    {
+      "id": "outline",
+      "disabled": true
+    },
+    {
+      "id": "standup",
       "disabled": true
     },
     {

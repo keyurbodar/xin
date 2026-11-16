@@ -7,7 +7,15 @@ import { FragmentId } from "../rowid.ts"
 import { configSchemaOf, validateConfig } from "./config.ts"
 import { pluginOf, type Layer, type Row } from "./layers.ts"
 import type { RowState, IngleLoader } from "./loader.ts"
-import { checkManifest, DEFAULT_MANIFEST, type Manifest, type ManifestProblem } from "./manifest.ts"
+import { formOf } from "./form.ts"
+import {
+  checkManifest,
+  DEFAULT_MANIFEST,
+  injectOf,
+  PERMISSIONS,
+  type Manifest,
+  type ManifestProblem,
+} from "./manifest.ts"
 import { sourcePackage, sourceVersion } from "./packages.ts"
 
 export type Application = "applied" | "failed"
@@ -28,9 +36,13 @@ export type Changed = { readonly application: Application; readonly row: RowView
 
 export type Issue = ManifestProblem | { readonly kind: "failed"; readonly error: string } | { readonly kind: "missing" }
 
+/** What a mounted row registered, read from the live services. */
+export type Inventory = { readonly tools: readonly string[]; readonly ops: readonly string[] }
+
 export type Diagnosis = RowView & {
   readonly package: string
   readonly version: string
+  readonly registered: Inventory
   readonly issues: readonly Issue[]
 }
 
@@ -59,7 +71,7 @@ const packageOf = (loader: IngleLoader, row: Row): { package: string; version: s
     : { package: sourcePackage(entry.source), version: sourceVersion(entry.source) }
 }
 
-export function createManager(loader: IngleLoader): Manager {
+export function createManager(loader: IngleLoader, inventory: (row: string) => Inventory): Manager {
   const { catalog, profile } = loader.composition
   const find = (id: string): Row => {
     const row = loader.rows().find((candidate) => candidate.id === id)
@@ -111,7 +123,10 @@ export function createManager(loader: IngleLoader): Manager {
     const entry = catalog[plugin]
     const { package: pkg, version } = packageOf(loader, row)
     const state = await loader.state(row.id)
-    const problem = entry === undefined ? undefined : checkManifest(loader.manifestOf(row), versionOf)
+    const problem =
+      entry === undefined
+        ? undefined
+        : checkManifest(loader.manifestOf(row), versionOf, entry.manifest === undefined ? [] : injectOf(entry.plugin))
     const issues: Issue[] = []
     if (problem !== undefined) issues.push(problem)
     if (state.kind === "missing") issues.push({ kind: "missing" })
@@ -128,21 +143,29 @@ export function createManager(loader: IngleLoader): Manager {
       manifest: loader.manifestOf(row),
       package: pkg,
       version,
+      registered: inventory(row.id),
       issues,
     }
   }
   return {
     list: () => Promise.all(loader.rows().map((row) => view(row))),
     catalog: () =>
-      Object.entries(catalog).map(([name, entry]) => ({
-        name,
-        title: entry.title,
-        description: entry.description,
-        required: entry.required === true,
-        source: entry.source,
-        manifest: toJson(entry.manifest ?? DEFAULT_MANIFEST),
-        schema: toJson(configSchemaOf(entry.plugin)?.toJSON() ?? null),
-      })),
+      Object.entries(catalog).map(([name, entry]) => {
+        const manifest = entry.manifest ?? DEFAULT_MANIFEST
+        const schema = configSchemaOf(entry.plugin)
+        return {
+          name,
+          title: entry.title,
+          description: entry.description,
+          required: entry.required === true,
+          source: entry.source,
+          version: sourceVersion(entry.source),
+          manifest: toJson(manifest),
+          permissions: manifest.permissions.map((id) => ({ id, title: PERMISSIONS[id].title })),
+          schema: toJson(schema?.toJSON() ?? null),
+          form: toJson(formOf(schema)),
+        }
+      }),
     tree: () => {
       return {
         bundles: [...profile.bundles],
@@ -182,10 +205,17 @@ export function createManager(loader: IngleLoader): Manager {
 }
 
 export const name = "plugins"
-export const inject = ["kernel", "ops", "wire"]
+export const inject = ["kernel", "ops", "wire", "pi"]
 
 export function apply(ctx: Context): void {
-  const manager = createManager(ctx.kernel)
+  const { ops, pi } = ctx
+  const manager = createManager(ctx.kernel, (row) => ({
+    tools: [...pi.installed.values()]
+      .filter((installed) => installed.row === row)
+      .flatMap((installed) => (installed.extension.tools ?? []).map((tool) => tool.name))
+      .toSorted(),
+    ops: [...ops.rows].flatMap(([op, owner]) => (owner === row ? [op] : [])).toSorted(),
+  }))
   ctx.provide("plugins", manager)
   ctx.wire.home("plugins", async () => ({
     plugins: Object.fromEntries((await manager.list()).map((row) => [row.id, row.state.kind])),
@@ -218,7 +248,11 @@ export function apply(ctx: Context): void {
       name: "plugin.enable",
       args: obj({ id: FragmentId, enabled: bool() }),
       actors: OWNER,
-      run: async (_api, args) => toJson(await manager.enable(args.id, args.enabled)),
+      run: async (_api, args) => {
+        const result = toJson(await manager.enable(args.id, args.enabled))
+        await ctx.wire.publishHome()
+        return result
+      },
     }),
   )
   ctx.ops.define(
@@ -226,6 +260,7 @@ export function apply(ctx: Context): void {
       name: "plugin.configure",
       args: obj({ id: FragmentId, config: ConfigSchema }),
       actors: OWNER,
+      credentials: ["config"],
       run: async (_api, args) => toJson(await manager.configure(args.id, isJsonObject(args.config) ? args.config : {})),
     }),
   )

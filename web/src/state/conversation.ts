@@ -19,6 +19,8 @@ export type ChatMessage = {
   readonly model?: string
   readonly toolCallId?: string
   readonly threadId?: number
+  readonly details?: unknown
+  readonly isError?: boolean
 }
 
 export type ToolCallView = {
@@ -119,7 +121,7 @@ function parseMessage(value: unknown): ChatMessage | undefined {
     role,
     content: record.content,
     ...(model === undefined ? {} : { model }),
-    ...(toolCallId === undefined ? {} : { toolCallId }),
+    ...(toolCallId === undefined ? {} : { toolCallId, details: record.details, isError: record.isError === true }),
     ...(threadId === undefined ? {} : { threadId }),
   }
 }
@@ -207,6 +209,27 @@ export function delegatedThreads(entries: readonly EntryView[]): ReadonlyMap<str
     }
   }
   return links
+}
+
+export type ToolResultView = {
+  readonly output: string
+  readonly details: unknown
+  readonly isError: boolean
+}
+
+export function toolResultsOf(entries: readonly EntryView[]): ReadonlyMap<string, ToolResultView> {
+  const results = new Map<string, ToolResultView>()
+  for (const entry of entries) {
+    for (const message of entry.model) {
+      if (message.toolCallId === undefined) continue
+      results.set(message.toolCallId, {
+        output: contentText(message.content),
+        details: message.details,
+        isError: message.isError === true,
+      })
+    }
+  }
+  return results
 }
 
 function parseAttachments(value: unknown): readonly Attachment[] {

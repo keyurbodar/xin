@@ -9,7 +9,25 @@
       "push": {
         "module": "./index.ts",
         "title": "Web Push",
-        "description": "Encrypted pushes when no tab is open."
+        "description": "Encrypted pushes when no tab is open.",
+        "permissions": [
+          "network",
+          "runtime",
+          "storage"
+        ],
+        "contributes": {
+          "ops": [
+            "notify.prefs",
+            "notify.quiet",
+            "notify.quiet.set",
+            "notify.set",
+            "push.key",
+            "push.list",
+            "push.subscribe",
+            "push.test",
+            "push.unsubscribe"
+          ]
+        }
       }
     }
   }

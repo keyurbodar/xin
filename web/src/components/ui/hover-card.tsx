@@ -27,15 +27,16 @@ function hidden(): void {
  * A preview on UI SDK's Hover Card: it opens after the pointer rests 400ms on the trigger or keyboard focus reaches it,
  * closes 150ms after the pointer leaves or on Escape, and opens at once without animating while another card is open or
  * was a moment ago. `children` mount on the first open and stay. While open, the trigger's link or button is described by
- * the card. `onSettle` runs once the card is open and the pointer or focus rests on the trigger or the card: at once after
- * the open delay, or after a short dwell for a warm opening, so a pointer sweeping across triggers settles none of them.
+ * the card. The card settles once it is open and the pointer or focus rests on the trigger or the card: at once after the
+ * open delay, or after a short dwell for a warm opening, so a pointer sweeping across triggers settles none of them.
+ * `onSettledChange` reports true when it settles and false when a settled card closes.
  */
 export function HoverCard(props: {
   trigger: JSX.Element
   side?: "top" | "right" | "bottom" | "left"
   align?: "start" | "center" | "end"
   class?: string
-  onSettle?: () => void
+  onSettledChange?: (settled: boolean) => void
   children: JSX.Element
 }): JSX.Element {
   const id = createUniqueId()
@@ -46,6 +47,12 @@ export function HoverCard(props: {
   let content: HTMLElement | undefined
   let dwell: ReturnType<typeof setTimeout> | undefined
   let held = false
+  let settled = false
+  const mark = (next: boolean): void => {
+    if (next === settled) return
+    settled = next
+    props.onSettledChange?.(next)
+  }
   const hold = (next: boolean): void => {
     if (next === held) return
     held = next
@@ -57,7 +64,7 @@ export function HoverCard(props: {
   const settle = (): void => {
     dwell = setTimeout(() => {
       if (!open()) return
-      if (resting()) props.onSettle?.()
+      if (resting()) mark(true)
       else settle()
     }, DWELL)
   }
@@ -84,9 +91,9 @@ export function HoverCard(props: {
         setOpen(next)
         if (next) setSeen(true)
         clearTimeout(dwell)
-        if (!next) return
-        if (wasWarm) settle()
-        else props.onSettle?.()
+        if (!next) mark(false)
+        else if (wasWarm) settle()
+        else mark(true)
       }}
     >
       <ui-hover-card-trigger ref={trigger}>{props.trigger}</ui-hover-card-trigger>

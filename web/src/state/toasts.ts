@@ -6,7 +6,8 @@ export type Toast = {
   readonly icon: (props: LucideProps) => JSX.Element
   readonly title: string
   readonly detail: string | undefined
-  readonly undo: () => void
+  /** Absent for a notice, which only informs and has nothing to take back. */
+  readonly undo?: () => void
   readonly expire: () => void
 }
 
@@ -26,13 +27,21 @@ export const leavingToast = (id: number): boolean => leaving().has(id)
 /** Toasts still on their way in or resting, newest first; a leaving toast is out of the stack at once. */
 export const liveToasts = (): readonly Toast[] => list().filter((toast) => !leaving().has(toast.id))
 
-/** Shows an undo toast, newest at the front; the oldest beyond the visible three expires without undo. */
-export function showUndoToast(toast: Omit<Toast, "id">): void {
-  const current = list()
-  setList([{ ...toast, id: nextId++ }, ...current].slice(0, TOAST_LIMIT))
-  const evicted = current.slice(TOAST_LIMIT - 1)
-  setHeights((heights) => new Map([...heights].filter(([id]) => !evicted.some((toast) => toast.id === id))))
-  for (const toast of evicted) if (!leaving().has(toast.id)) toast.expire()
+/**
+ * Shows a toast, newest at the front, keeping at most three. A notice never takes an undo toast's place: room is made
+ * by dropping the oldest notice, so with three undo toasts showing a new notice is dropped itself. An undo toast that is
+ * pushed out by a newer undo toast expires, which ends its undo window.
+ */
+export function showToast(toast: Omit<Toast, "id">): void {
+  const next = [{ ...toast, id: nextId++ }, ...list()]
+  const evicted: Toast[] = []
+  while (next.length > TOAST_LIMIT) {
+    const notice = next.findLastIndex((entry) => entry.undo === undefined)
+    evicted.push(...next.splice(notice === -1 ? next.length - 1 : notice, 1))
+  }
+  setList(next)
+  setHeights((heights) => new Map([...heights].filter(([id]) => !evicted.some((entry) => entry.id === id))))
+  for (const entry of evicted) if (!leaving().has(entry.id)) entry.expire()
 }
 
 export function setToastHeight(id: number, height: number): void {
@@ -57,5 +66,5 @@ export function dismissToast(toast: Toast): void {
 }
 
 export function undoToast(toast: Toast): void {
-  if (leave(toast)) toast.undo()
+  if (toast.undo !== undefined && leave(toast)) toast.undo()
 }

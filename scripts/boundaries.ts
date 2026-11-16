@@ -1,18 +1,20 @@
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import { KERNEL_OWNER, tableOwner } from "../src/kernel/dbtables.ts"
+import { reachViolations } from "./reach.ts"
 
 const ROOT = join(import.meta.dirname, "..")
 const PLUGINS = join(ROOT, "plugins")
 const SPECIFIER = /(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"'?]+)/g
 const SQL_TABLE = /\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+([A-Za-z_][A-Za-z0-9_]*)/g
+const TEST = /\.test\.tsx?$/
 const SQL_KEYWORDS: ReadonlySet<string> = new Set(["set", "select", "where", "values", "on", "if", "not"])
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name)
     if (statSync(path).isDirectory()) return name === "node_modules" ? [] : files(path)
-    return path.endsWith(".ts") ? [path] : []
+    return /\.tsx?$/.test(path) ? [path] : []
   })
 }
 
@@ -46,9 +48,20 @@ const injected = (text: string): ReadonlySet<string> | undefined => {
     : new Set(lists.flatMap((list) => [...list.matchAll(/["']([^"']+)["']/g)].map((item) => item[1] ?? "")))
 }
 
+const declaredPermissions = (plugin: string): ReadonlySet<string> => {
+  const manifest: unknown = JSON.parse(readFileSync(join(PLUGINS, plugin, "package.json"), "utf8"))
+  const declared = Object.values(Object(Object(Object(manifest).ingle).plugins))
+  return new Set(
+    declared.flatMap((entry) => (Array.isArray(Object(entry).permissions) ? Object(entry).permissions : [])),
+  )
+}
+
 const violations: string[] = []
+const checkPermissions = (file: string, plugin: string, text: string): void => {
+  violations.push(...reachViolations(relative(ROOT, file), text, declaredPermissions(plugin)))
+}
 const checkInject = (file: string, requireDeclaration: boolean, text: string): void => {
-  if (file.endsWith(".test.ts")) return
+  if (TEST.test(file)) return
   const inject = injected(text)
   if (inject === undefined && !requireDeclaration) return
   for (const read of new Set([...text.matchAll(SERVICE_READ)].map((match) => match[1] ?? ""))) {
@@ -75,7 +88,8 @@ for (const file of [...files(PLUGINS), ...files(join(ROOT, "test", "plugins"))])
   }
   checkInject(file, true, text)
   const plugin = pluginOf(file)
-  if (plugin === undefined || file.endsWith(".test.ts")) continue
+  if (plugin === undefined || TEST.test(file)) continue
+  checkPermissions(file, plugin, text)
   for (const match of text.matchAll(SQL_TABLE)) {
     const table = match[1]
     if (table === undefined || SQL_KEYWORDS.has(table.toLowerCase())) continue
