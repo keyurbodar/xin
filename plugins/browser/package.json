@@ -1,0 +1,40 @@
+{
+  "name": "ingle-plugin-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A headless browser per conversation through agent-browser on Instabox machines.",
+  "type": "module",
+  "ingle": {
+    "plugins": {
+      "tool-browser": {
+        "module": "./index.ts",
+        "title": "Browser tools",
+        "description": "Open pages, read their accessibility snapshot, act on elements and take screenshots in a headless Chromium on an Instabox machine.",
+        "permissions": [
+          "conversations",
+          "network",
+          "runtime"
+        ],
+        "contributes": {
+          "tools": [
+            "browser_act",
+            "browser_close",
+            "browser_open",
+            "browser_screenshot",
+            "browser_snapshot"
+          ]
+        },
+        "requires": [
+          "jobs"
+        ]
+      }
+    },
+    "bundle": [
+      {
+        "id": "tool-browser",
+        "plugin": "tool-browser",
+        "disabled": true
+      }
+    ]
+  }
+}

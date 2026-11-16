@@ -25,6 +25,7 @@
     "ingle-plugin-time",
     "ingle-plugin-watchdog",
     "ingle-plugin-web",
+    "ingle-plugin-browser",
     "ingle-plugin-workspace",
     "ingle-plugin-git-native",
     "ingle-plugin-issues",

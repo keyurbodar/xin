@@ -53,6 +53,7 @@ flowchart LR
 - [15 Web](./architecture/15-web.md): public web search and page fetch as built-in tools.
 - [16 Git](./architecture/16-git.md): read-only GitHub history tools scoped to a project.
 - [17 Issues](./architecture/17-issues.md): the shared work record, its wakes, scope and cost.
+- [18 Browser](./architecture/18-browser.md): a headless browser per conversation through agent-browser on Instabox machines.
 - [Provenance](./provenance.md): what came from pi-durable, pi-ai, t3code, kiko and the other sources.
 - [Milestones](./milestones.md): build order, each with its proof, dependencies and parallel work.
 - [Write a plugin](../plugins/README.md): the author docs: scaffold, the dev loop, client slots, permissions, publishing to a market.

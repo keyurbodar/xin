@@ -1,6 +1,6 @@
 # 15 · Web: search and page fetch
 
-This section decides that Ingle can search the public web and read a page as text, through two built-in tools and one normal feature row. It does not add a browser, JavaScript rendering, authenticated pages or code execution.
+This section decides that Ingle can search the public web and read a page as text, through two built-in tools and one normal feature row. It does not add a browser, JavaScript rendering, authenticated pages or code execution; the optional browser row is [18 Browser](./18-browser.md).
 
 Read with: [06 Orchestration](./06-orchestration.md) for the job wrapper, [08 Files](./08-files.md) for the separate file scope, [09 Plugins](./09-plugins.md) for rows and presets.
 
@@ -50,7 +50,7 @@ No approval prompt, permission gate or click-through is added. The URL policy is
 
 ## Not added
 
-- a browser or JavaScript rendering;
+- a browser or JavaScript rendering in these tools (the separate `tool-browser` row, [18 Browser](./18-browser.md), drives one on an Instabox machine);
 - authenticated pages, cookies or a logged-in session;
 - a search API key or provider setting;
 - page caching, embeddings or an index;

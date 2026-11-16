@@ -34,6 +34,8 @@ export const JobsDoc = defineDoc<JobsState>({
 
 export type JobRun = {
   readonly signal: AbortSignal
+  readonly conversationId: ConversationId
+  readonly jobId: number
 }
 
 export type JobWork = (args: JsonObject, run: JobRun, context: ChordContext) => Promise<ToolExecutionResult>

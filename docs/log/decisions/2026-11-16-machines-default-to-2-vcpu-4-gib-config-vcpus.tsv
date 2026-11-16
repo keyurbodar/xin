@@ -1,0 +1,1 @@
+2026-11-16T13:00:00Z	browser	Machines default to 2 vCPU / 4 GiB (config vcpus, memMiB), not the plan default 4/8	Half the running cost ($0.017 vs $0.034 an hour) and enough for one headless Chromium; Free plans only allow 4/8, so the size is config	GET /v1/orgs allowedSpecs for the owner's Pro workspace lists 2/4, 4/8, 8/16; live test passed at 2/4	shipped

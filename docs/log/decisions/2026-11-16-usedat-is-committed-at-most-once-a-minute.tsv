@@ -1,0 +1,1 @@
+2026-11-16T13:00:00Z	browser	usedAt is committed at most once a minute	A tool call reads the doc without a commit while the session is running and fresh, so a burst of calls costs no extra row; idle time is exact to a minute	cost scratch: later browser_open 7 rows written vs 9 for the first	shipped
