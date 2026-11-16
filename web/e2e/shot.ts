@@ -2,8 +2,8 @@ import { startHarness } from "./harness.ts"
 const [fixture, out, width, ...steps] = process.argv.slice(2)
 const h = await startHarness()
 try {
-  const p = await h.open(fixture!)
-  await p.setViewportSize({ width: Number(width), height: Number(width) < 600 ? 844 : 800 })
+  const [name, query] = fixture!.split("?")
+  const p = await h.open(name!, { width: Number(width), search: query === undefined ? "" : `?${query}` })
   for (const step of steps) {
     if (step.startsWith("click:")) await p.click(step.slice(6))
     else if (step.startsWith("hover:")) await p.hover(step.slice(6))
