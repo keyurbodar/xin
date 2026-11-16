@@ -129,9 +129,9 @@ const admitAnswer =
   (actor: Actor, reply: string): Admit =>
   (open) => {
     if (open.kind === ASK_KIND) return
-    if (actor.kind !== "owner") throw new OpRejected("forbidden", `only the owner answers a ${open.kind} request`)
+    if (actor.kind !== "owner") throw new OpRejected("forbidden", `only the owner answers this ${open.kind} request`)
     if (!(open.options ?? []).includes(reply))
-      throw new OpRejected("bad_args", `a ${open.kind} request takes only its own card's answers`)
+      throw new OpRejected("bad_args", `this ${open.kind} request takes only its own card's answers`)
   }
 
 async function settle(
