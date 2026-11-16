@@ -1,16 +1,17 @@
 # Write a Ingle plugin
 
-A plugin adds one ability to a Home: a tool the model can call, a prompt the owner runs as a slash command, a timer, an op, a route. It is one TypeScript module plus a manifest in `package.json`, and it runs with the same access as the kernel. Installing the build is the trust decision: there is nothing to approve and no sandbox.
+A plugin adds one ability to a Home: a tool the model can call, a prompt the owner runs as a slash command, a timer, an op, a route. It is one TypeScript module plus a manifest in `package.json`, and optionally a web module that adds UI to the shell ([client.md](client.md)). It runs in the Home's own isolate: its manifest declares the permissions it needs and the kernel holds it to them ([permissions.md](permissions.md)), but there is no sandbox.
 
 Work in a checkout of Ingle. `bun install` here and in `web/` (the gate typechecks the client too), then:
 
 ## 1 · Scaffold
 
 ```bash
-bun scripts/ingle.ts plugin new greeting
+bun scripts/ingle.ts plugin new greeting            # server only
+bun scripts/ingle.ts plugin new greeting --client   # plus a web module
 ```
 
-This writes `plugins/greeting/` — `index.ts`, `package.json` and `greeting.test.ts` — regenerates `src/catalog.gen.ts`, and adds `ingle-plugin-greeting` to `ingle.profile.json`, the list of packages your build mounts. The name is lowercase letters, digits and hyphens, starting with a letter.
+This writes `plugins/greeting/` — `index.ts`, `package.json` and `greeting.test.ts`, and with `--client` also `client.tsx`, which adds a "Say greeting" command to the palette — regenerates `src/catalog.gen.ts`, and adds `ingle-plugin-greeting` to `ingle.profile.json`, the list of packages your build mounts. The name is lowercase letters, digits and hyphens, starting with a letter.
 
 ## 2 · Edit the module
 
@@ -60,13 +61,21 @@ export function apply(ctx: Context, config: Config): void {
 ```
 
 - `name` is the plugin's name, the same word the manifest uses.
-- `inject` lists the kernel services the module reads. Every `ctx.<service>` you touch must be in it; the gate's lint fails otherwise.
+- `inject` lists the services the module reads. Every `ctx.<service>` you touch must be in it; the gate's lint fails otherwise. `prompts` comes from the `presets` plugin, so the template's manifest says `"requires": ["presets"]`: a service another plugin provides needs that, or the permission [permissions.md](permissions.md#services-other-plugins-provide) lists for it.
 - `Config` is validated settings with working defaults. The owner changes them with `plugin.configure` or the Extensions screen; the plugin does useful work before anyone configures it.
 - `apply` registers capabilities, and every registration is an effect: turning the plugin off or reconfiguring it unwinds exactly what it added.
 - The tool is model-facing; the prompt is the owner's slash command, listed by `prompt.list`.
 - The pi extension that carries the tools is named `tool-*`; that is the one naming rule the registry enforces.
 
-## 3 · Test it
+## 3 · Run it
+
+```bash
+bun scripts/ingle.ts plugin dev            # Worker on :8799, web on Vite's port
+```
+
+`plugin dev` regenerates the catalog, then runs `wrangler dev` and the web dev server side by side. Edit `index.ts` and wrangler reloads the Worker; edit `client.tsx` and Vite hot-reloads the shell; change `package.json` (permissions, slots, a new client module) and it regenerates the catalog for both. With no `.dev.vars` it starts with the throwaway owner token `dev-owner-token` and a throwaway KEK (`scripts/devvars.ts`); `bun run dev:smoke` checks that path end to end; `bun run bundle` ends with it, so the gate and CI run it on every change. A new plugin ships enabled; turn it on and off in Extensions, and read `plugin.doctor` there when a row reports `failed`. `--port N` moves the Worker.
+
+## 4 · Test it
 
 ```bash
 id=$(bun scripts/gate.ts submit types test --only=plugins/greeting)
@@ -75,7 +84,7 @@ bun scripts/gate.ts wait $id
 
 `greeting.test.ts` turns the plugin on in a real Home, has the model call its tool, and reads `prompt.list`. The file runs in about a second. Extend it as you add capabilities; the same command runs the whole gate without `--only` before you deploy.
 
-## 4 · Deploy it
+## 5 · Deploy it
 
 Deploy the build the way you deploy Ingle (`wrangler deploy`, or your CI's deploy step). Then `plugin.doctor` answers `ok: true`, `plugin.list` shows the plugin as active, and `prompt.list` shows the prompt.
 
@@ -89,7 +98,9 @@ Deploy the build the way you deploy Ingle (`wrangler deploy`, or your CI's deplo
         "module": "./index.ts",
         "title": "Greeting",
         "description": "Greets the owner and offers a slash command.",
-        "api": 1
+        "api": 1,
+        "permissions": [],
+        "contributes": { "tools": ["greeting"] }
       }
     },
     "bundle": [{ "id": "greeting", "plugin": "greeting" }]
@@ -102,7 +113,10 @@ Deploy the build the way you deploy Ingle (`wrangler deploy`, or your CI's deplo
 | `module` | the file that exports `name`, `inject` and `apply` |
 | `title`, `description` | what the owner sees in Extensions |
 | `api` | the plugin API the module is written against; `1` today, and a module written for another version fails alone, with the reason in `plugin.doctor` |
-| `requires` | other plugins it needs, as `name` or `name@range`; a missing or too-old one fails that plugin alone, not the Home |
+| `requires` | other plugins it needs, as `name` or `name@range`; a missing or too-old one fails that plugin alone, not the Home. It is also what lets a row read a service another plugin provides |
+| `permissions` | the guarded services it uses ([permissions.md](permissions.md)); a row that reaches past them fails at mount, at the access, or in `lint` |
+| `contributes` | `{ tools, ops }` it registers, a trailing `*` covering a prefix; a registration it leaves out fails the row |
+| `client`, `slots` | a web module and the shell slots it fills ([client.md](client.md)) |
 | `bundle` | the entries this package mounts when it is in your build; one plugin needs one entry, and it can be omitted when the package declares exactly one plugin |
 
 ## What a plugin can add
@@ -119,7 +133,7 @@ Deploy the build the way you deploy Ingle (`wrangler deploy`, or your CI's deplo
 | op | `ctx.ops.define(op)` |
 | timer | `ctx.clock.timer({ due, fire })` |
 | route | `ctx.http.route("GET /path", handler)` |
-| service | `ctx.provide(key, value)`, for other plugins to `inject` |
+| service | `ctx.provide(key, value)`, for other plugins to `inject` and `requires` |
 
 A plugin that others call provides a service; one that only adds tools, prompts or ops provides none.
 

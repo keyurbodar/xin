@@ -1,6 +1,15 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
-import { errorMessage, installFromMarket, offeredVersion, type InstallResult, type MarketDetail } from "../../state/extensions.ts"
+import {
+  consentOf,
+  errorMessage,
+  installFromMarket,
+  offeredVersion,
+  type ConsentPermission,
+  type InstallResult,
+  type MarketDetail,
+} from "../../state/extensions.ts"
 import { Button, Chip, Failure, Note } from "./chrome.tsx"
+import { ConsentPrompt } from "./consent.tsx"
 import { Glyph } from "./glyph.tsx"
 import { keyStarted } from "../../lib/motion.ts"
 
@@ -20,6 +29,7 @@ export function InstallSheet(props: {
   }
   const [error, setError] = createSignal<string | undefined>(undefined)
   const [result, setResult] = createSignal<InstallResult | undefined>(undefined)
+  const [consent, setConsent] = createSignal<readonly ConsentPermission[] | undefined>(undefined)
 
   onMount(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -31,14 +41,17 @@ export function InstallSheet(props: {
 
   const version = (): string => offeredVersion(props.detail)?.version ?? "latest"
 
-  const install = async (): Promise<void> => {
+  const install = async (grant: readonly string[] = []): Promise<void> => {
     if (busy()) return
     setBusy(true)
     setError(undefined)
+    setConsent(undefined)
     try {
-      setResult(await installFromMarket(props.name))
+      setResult(await installFromMarket(props.name, grant))
     } catch (failure: unknown) {
-      setError(errorMessage(failure))
+      const asked = consentOf(failure)
+      if (asked === undefined) setError(errorMessage(failure))
+      else setConsent(asked)
     } finally {
       setBusy(false)
     }
@@ -145,6 +158,19 @@ export function InstallSheet(props: {
                 </div>
               </section>
 
+              <Show when={consent()}>
+                {(permissions) => (
+                  <ConsentPrompt
+                    subject={props.title}
+                    permissions={permissions()}
+                    action="Allow and install"
+                    busy={busy()}
+                    onAllow={(grant) => void install(grant)}
+                    onCancel={() => setConsent(undefined)}
+                  />
+                )}
+              </Show>
+
               <Show when={error()}>
                 {(message) => <Failure message={message()} />}
               </Show>
@@ -192,7 +218,7 @@ export function InstallSheet(props: {
           </span>
           <span class="ml-auto" />
           <Button size="sm" variant="quiet" onClick={close}>{result() === undefined ? "Cancel" : "Close"}</Button>
-          <Show when={result() === undefined}>
+          <Show when={result() === undefined && consent() === undefined}>
             <Button
               size="sm"
               variant="primary"
