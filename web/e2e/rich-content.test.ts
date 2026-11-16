@@ -106,6 +106,23 @@ test("a long code block collapses and expands", async () => {
   await page.close()
 })
 
+test("diff lines draw from the diff colour tokens, so the Appearance choice applies", async () => {
+  const page = await open("code")
+  await page.evaluate(() => window.harness.set("```diff\n-old\n+new\n```", false))
+  await page.locator(".sh__line--diff-add").waitFor({ timeout: 15_000 })
+  const colors = await page.evaluate(() => {
+    document.documentElement.style.setProperty("--color-diff-add", "rgb(1, 2, 3)")
+    document.documentElement.style.setProperty("--color-diff-del", "rgb(4, 5, 6)")
+    const sign = (selector: string): string => {
+      const line = document.querySelector(selector)
+      return line === null ? "" : getComputedStyle(line, "::before").color
+    }
+    return { add: sign(".sh__line--diff-add"), del: sign(".sh__line--diff-remove") }
+  })
+  expect(colors).toEqual({ add: "rgb(1, 2, 3)", del: "rgb(4, 5, 6)" })
+  await page.close()
+}, 60_000)
+
 test("full screen opens, Esc closes it and focus returns to the opener", async () => {
   const page = await open("code")
   const opener = page.getByRole("button", { name: "Open code full screen" })

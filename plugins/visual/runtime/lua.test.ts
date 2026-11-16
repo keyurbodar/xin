@@ -76,18 +76,18 @@ describe("visual runtime", () => {
     expect(failure("while true do xpcall(function() while true do end end, function() end) end")).toContain(
       "time budget",
     )
-    expect(
-      failure("return function() while true do pcall(pcall, function() while true do end end) end end"),
-    ).toContain("time budget")
+    expect(failure("return function() while true do pcall(pcall, function() while true do end end) end end")).toContain(
+      "time budget",
+    )
   })
 
   it("bounds memory: string doubling, text churn and table fills stop with a reason", () => {
     expect(failure(`local s = "x" while true do s = s .. s end`)).toContain("over 1 MB")
     expect(failure(`local t = {} for i = 1, 1e7 do t[i] = i end`)).toContain("too many entries")
     expect(failure(`local t = {} for i = 1, 1e7 do t["k" .. i] = true end`)).toContain("too many entries")
-    expect(
-      failure(`local t = {} local s = string.rep("x", 1 << 19) for i = 1, 1e4 do t[i] = s .. i end`),
-    ).toContain("table.concat")
+    expect(failure(`local t = {} local s = string.rep("x", 1 << 19) for i = 1, 1e4 do t[i] = s .. i end`)).toContain(
+      "table.concat",
+    )
     expect(failure(`local s = "x" while true do pcall(function() s = s .. s end) end`)).toContain("over 1 MB")
   })
 

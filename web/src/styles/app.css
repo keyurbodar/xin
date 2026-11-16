@@ -105,21 +105,21 @@
   }
 
   .code-block pre .sh__line--diff-add {
-    background: var(--color-done-soft);
+    background: color-mix(in oklch, var(--color-diff-add) 16%, transparent);
   }
 
   .code-block pre .sh__line--diff-add::before {
     content: "+";
-    color: var(--color-done);
+    color: var(--color-diff-add);
   }
 
   .code-block pre .sh__line--diff-remove {
-    background: var(--color-failed-soft);
+    background: color-mix(in oklch, var(--color-diff-del) 16%, transparent);
   }
 
   .code-block pre .sh__line--diff-remove::before {
     content: "−";
-    color: var(--color-failed);
+    color: var(--color-diff-del);
   }
 
   .code-block pre .sh__line--diff-hunk,
