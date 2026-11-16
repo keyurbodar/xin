@@ -58,6 +58,8 @@ function loopEscape(code: string): string | undefined {
     const open = code.slice(match.index + match[0].length).search(/\S/) + match.index + match[0].length
     const close = code[open] === "(" ? closing(code, open) : -1
     if (close < 0) return `a shader \`${match[1]}\` must be followed by its own parenthesized header`
+    if (/\n[ \t]*#/.test(code.slice(open, close)))
+      return "a shader loop header cannot contain preprocessor directives (#if, #else, ...); write it on one branch"
     if (match[1] === "for" && code.slice(open + 1, close).split(";").length !== 3)
       return "a shader for loop header must be written out as (init; condition; step)"
   }
