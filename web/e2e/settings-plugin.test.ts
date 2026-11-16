@@ -13,7 +13,7 @@ afterAll(async () => {
   await harness.close()
 })
 
-test("a plugin Settings page that throws shows its fallback and leaves Settings standing", async () => {
+test("a plugin Settings page that throws shows its fallback and leaves the next page and Settings standing", async () => {
   const page = await harness.open("settings-plugin", {
     before: (page) =>
       page.route("**/v1/cmd", (route) => {
@@ -23,11 +23,19 @@ test("a plugin Settings page that throws shows its fallback and leaves Settings 
         return route.fulfill({ json: Array.isArray(frames) ? acks : acks[0] })
       }),
   })
-  expect(await page.locator("#steady").textContent()).toBe("steady body")
-  await page.getByRole("button", { name: "Broken settings" }).click()
-  expect(await page.getByRole("heading", { name: "Broken settings" }).isVisible()).toBe(true)
-  expect(await page.getByText("broken failed to render").isVisible()).toBe(true)
-  await page.getByRole("navigation", { name: "Settings" }).getByRole("button", { name: "Plugins" }).click()
-  expect(await page.getByRole("heading", { name: "Plugins" }).isVisible()).toBe(true)
-  await page.close()
+  try {
+    const plugins = page.getByRole("navigation", { name: "Settings" })
+    await page.locator("#steady").waitFor()
+    await plugins.getByRole("button", { name: "Broken settings" }).click()
+    await page.getByRole("heading", { name: "Broken settings" }).waitFor()
+    await page.getByText("broken failed to render").waitFor()
+    await plugins.getByRole("button", { name: "Steady settings" }).click()
+    await page.getByRole("heading", { name: "Steady settings" }).waitFor()
+    expect(await page.locator("#steady").textContent()).toBe("steady body")
+    expect(await page.getByText("failed to render").count()).toBe(0)
+    await plugins.getByRole("button", { name: "Plugins" }).click()
+    await page.getByRole("heading", { name: "Plugins" }).waitFor()
+  } finally {
+    await page.close()
+  }
 })

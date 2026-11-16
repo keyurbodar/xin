@@ -90,6 +90,7 @@ export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"sett
         <div class="mx-auto w-full max-w-[800px] px-7 pb-16 pt-8">
           <Show
             when={page()}
+            keyed
             fallback={
               <>
                 <h1 class="text-xl font-semibold tracking-[-0.015em] text-ink">{current().label}</h1>
@@ -123,7 +124,7 @@ export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"sett
             }
           >
             {(found) => (
-              <PluginPage plugin={found().plugin} title={found().title} component={found().component} host={host} />
+              <PluginPage plugin={found.plugin} title={found.title} component={found.component} host={host} />
             )}
           </Show>
         </div>
