@@ -66,6 +66,7 @@ export function Transcript(props: {
   onAnswer: (request: RequestRow, answer: string) => Promise<void>
   onRetry: (entryId: number) => Promise<void>
   onLoadOlder: () => Promise<void>
+  welcome?: JSX.Element
 }): JSX.Element {
   let scroller!: HTMLDivElement
   let pinned = true
@@ -148,7 +149,7 @@ export function Transcript(props: {
         </Show>
 
         <Show when={items().length === 0 && props.optimistic.length === 0 && !live().busy}>
-          <Welcome project={props.project} />
+          {props.welcome ?? <Welcome project={props.project} />}
         </Show>
 
         <EntryList items={items()} context={context()} />

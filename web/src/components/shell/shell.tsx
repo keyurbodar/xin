@@ -1,4 +1,4 @@
-import { createEffect, createSignal, ErrorBoundary, Match, on, onCleanup, onMount, Show, Switch, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, ErrorBoundary, Match, on, onCleanup, onMount, Show, Switch, type JSX } from "solid-js"
 import { Menu as MenuIcon } from "lucide-solid"
 import { navigate, route } from "../../lib/router.ts"
 import { owner } from "../../state/settings.ts"
@@ -10,7 +10,8 @@ import { NewThreadDialog } from "./new-thread.tsx"
 import { ICON_BUTTON } from "./menu.ts"
 import { ProjectScreen } from "../../screens/project.tsx"
 import { CaptainScreen } from "../../screens/captain.tsx"
-import { NewCaptainDialog } from "../captain/captain-dialog.tsx"
+import { closeNewCaptain, newCaptainOpen, newCaptainReturn } from "../captain/captain-dialog.tsx"
+import { Dialog } from "../ui/dialog.tsx"
 import { NewProjectDialog } from "../project/new-project.tsx"
 import { createPresence } from "./presence.ts"
 import { Toasts } from "../ui/toast.tsx"
@@ -22,26 +23,30 @@ const screenSkeleton = (): JSX.Element => <RowSkeleton rows={8} />
 export const ExtensionsScreen = lazyView(() => import("../../screens/extensions.tsx").then((module) => module.ExtensionsScreen), screenSkeleton)
 const SettingsScreen = lazyView(() => import("../../screens/settings.tsx").then((module) => module.SettingsScreen), screenSkeleton)
 const AutomationsScreen = lazyView(() => import("../../screens/automations.tsx").then((module) => module.AutomationsScreen), screenSkeleton)
+const NewCaptainDialog = lazyView(() => import("../captain/new-captain.tsx").then((module) => module.NewCaptainDialog), () => <></>)
 
 /**
- * The lazy screens by the label of the sidebar row that opens each one. sidebar.tsx gives its rows no route of their
- * own (another lane owns it), so the shell matches a hovered or focused row by its text to start the chunk early.
+ * The lazy screens and dialogs by the label of the sidebar control that opens each one. sidebar.tsx gives its rows no
+ * route of their own (another lane owns it), so the shell matches a hovered or focused row by its text, or an icon
+ * button by its aria-label, to start the chunk early.
  */
 const PREFETCH: Readonly<Record<string, () => void>> = {
   Automations: () => void AutomationsScreen.preload(),
+  "New Captain": () => void NewCaptainDialog.preload(),
   Extensions: () => void ExtensionsScreen.preload(),
   Settings: () => void SettingsScreen.preload(),
 }
 
 function prefetch(event: Event): void {
   const row = event.target instanceof Element ? event.target.closest("button, [role=menuitem]") : null
-  PREFETCH[row?.textContent?.trim() ?? ""]?.()
+  PREFETCH[row?.textContent?.trim() || (row?.getAttribute("aria-label") ?? "")]?.()
 }
 
 export function Shell(): JSX.Element {
   const first = () => route().parts[0]
   const [palette, setPalette] = createSignal(false)
   const project = (): boolean => first() === undefined || first() === "p" || first() === "new"
+  const captainRequested = createMemo((asked: boolean) => asked || newCaptainOpen(), false)
   const drawer = createPresence(() => !wide() && sidebarDrawer(), 180)
 
   createEffect(() => {
@@ -136,7 +141,20 @@ export function Shell(): JSX.Element {
       </main>
       <NewProjectDialog open={first() === "new"} onClose={() => navigate("/")} />
       <NewThreadDialog />
-      <NewCaptainDialog />
+      <ErrorBoundary
+        fallback={(error: unknown, reset) => {
+          createEffect(on(newCaptainOpen, (open) => open && reset(), { defer: true }))
+          return (
+            <Dialog open={newCaptainOpen()} onClose={closeNewCaptain} returnFocus={newCaptainReturn()} title="New Captain">
+              <Stopped title="New Captain didn't load" error={error} onRetry={reset} class="py-6" />
+            </Dialog>
+          )
+        }}
+      >
+        <Show when={captainRequested()}>
+          <NewCaptainDialog />
+        </Show>
+      </ErrorBoundary>
       <CommandPalette open={palette()} onClose={() => setPalette(false)} />
       <Toasts />
     </div>

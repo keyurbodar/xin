@@ -19,6 +19,7 @@ declare module "solid-js" {
       dismissattempt: CustomEvent<{ readonly reason: string }>
       action: CustomEvent<{ readonly value: string }>
       valuechange: UiChange
+      querychange: UiChange<string>
       pressedchange: UiChange<boolean>
       checkedchange: UiChange<boolean>
       querychange: CustomEvent<{ readonly value: string; readonly trigger: string }>
