@@ -133,6 +133,7 @@ export function AddUrl(props: { onClose: () => void }): JSX.Element {
                 subject={spec().trim()}
                 permissions={asked().permissions}
                 integrity={asked().integrity}
+                changed={asked().changed}
                 action="Allow and add"
                 busy={busy()}
                 onAllow={(grant) => void submit(grant, asked().integrity)}

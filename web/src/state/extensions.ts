@@ -507,8 +507,12 @@ export async function configureRow(id: string, config: Readonly<Record<string, u
 
 export type ConsentPermission = { readonly id: string; readonly title: string; readonly why: string }
 
-/** What the owner is asked to allow: the permissions, and the registry pin when a code package is pinned. */
-export type ConsentRequest = { readonly permissions: readonly ConsentPermission[]; readonly integrity?: string | undefined }
+/** What the owner is asked to allow: the permissions, the registry pin when the package is pinned, and whether it changed since the owner last reviewed it. */
+export type ConsentRequest = {
+  readonly permissions: readonly ConsentPermission[]
+  readonly integrity?: string | undefined
+  readonly changed: boolean
+}
 
 /** The consent an install was refused for, when the market asks for the owner's consent before it runs. */
 export function consentOf(failure: unknown): ConsentRequest | undefined {
@@ -518,7 +522,7 @@ export function consentOf(failure: unknown): ConsentRequest | undefined {
     const id = strOf(item["id"])
     return id === undefined ? [] : [{ id, title: strOf(item["title"]) ?? id, why: strOf(item["why"]) ?? "" }]
   })
-  return { permissions, integrity: integrityOf(details["integrity"]) }
+  return { permissions, integrity: integrityOf(details["integrity"]), changed: details["changed"] === true }
 }
 
 /** A grant, and the pin of the consent it answers, so the market asks again if the tarball changed since. */

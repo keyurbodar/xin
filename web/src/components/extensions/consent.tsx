@@ -10,6 +10,7 @@ export function ConsentPrompt(props: {
   subject: string
   permissions: readonly ConsentPermission[]
   integrity?: string | undefined
+  changed?: boolean | undefined
   action: string
   busy: boolean
   onAllow: (grant: readonly string[]) => void
@@ -21,6 +22,11 @@ export function ConsentPrompt(props: {
         <Glyph name="lock" size={13} class="text-working-text" />
         <span class="text-sm text-ink">{props.subject} asks for</span>
       </div>
+      <Show when={props.changed === true}>
+        <p class="border-b border-line-1 px-3.5 py-2 text-xs text-working-text">
+          This package changed since you last reviewed it.
+        </p>
+      </Show>
       <ul class="flex flex-col">
         <For each={props.permissions}>
           {(permission) => (

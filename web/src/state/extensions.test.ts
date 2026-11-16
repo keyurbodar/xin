@@ -9,7 +9,15 @@ test("a consent request carries the registry pin the market sent", () => {
   expect(consentOf(new OpError("consent_required", "asks", { permissions: PERMISSIONS, integrity: PIN }))).toEqual({
     permissions: PERMISSIONS,
     integrity: PIN,
+    changed: false,
   })
+})
+
+test("a consent request says the package changed only when the market says so", () => {
+  for (const [changed, expected] of [[true, true], ["true", false], [undefined, false]] as const)
+    expect(
+      consentOf(new OpError("consent_required", "asks", { permissions: PERMISSIONS, integrity: PIN, changed }))?.changed,
+    ).toBe(expected)
 })
 
 test("a consent request without a well-formed sha512 pin carries none", () => {

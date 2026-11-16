@@ -164,6 +164,7 @@ export function InstallSheet(props: {
                     subject={props.title}
                     permissions={asked().permissions}
                     integrity={asked().integrity}
+                    changed={asked().changed}
                     action="Allow and install"
                     busy={busy()}
                     onAllow={(grant) => void install(grant, asked().integrity)}

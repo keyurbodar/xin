@@ -95,6 +95,7 @@ export function Updates(): JSX.Element {
             subject={asked().entry.name}
             permissions={asked().permissions}
             integrity={asked().integrity}
+            changed={asked().changed}
             action="Allow and update"
             busy={busy() !== undefined}
             onAllow={(grant) => void updateOne(asked().entry, grant, asked().integrity)}

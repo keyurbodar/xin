@@ -319,6 +319,7 @@ function RowPanel(props: {
                         subject={bundle().package}
                         permissions={asked().permissions}
                         integrity={asked().integrity}
+                        changed={asked().changed}
                         action="Allow and roll back"
                         busy={busy()}
                         onAllow={(grant) => void rollback(grant, asked().integrity)}

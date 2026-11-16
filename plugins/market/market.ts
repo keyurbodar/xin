@@ -207,6 +207,7 @@ function requireConsent(label: string, needs: Needs, consent: Consent, integrity
         .toSorted(([left], [right]) => left.localeCompare(right))
         .map(([permission, why]) => ({ id: permission, title: PERMISSIONS[permission].title, why: why.join("; ") })),
       ...(integrity === undefined ? {} : { integrity }),
+      ...(changed ? { changed: true } : {}),
     },
   )
 }
@@ -593,7 +594,7 @@ export function createMarket(ports: MarketPorts): MarketFeature {
     const integrity = installed.integrity
     const kind = installed.kind
     const declaration = declarationOf(installed.ingle, target.spec)
-    requireConsent(target.spec, bundleNeeds(target.spec, declaration), consent)
+    requireConsent(target.spec, bundleNeeds(target.spec, declaration), consent, integrity)
     const application = await ports.packages.put({
       package: name,
       source: { kind: "registry", version: version.version, integrity },

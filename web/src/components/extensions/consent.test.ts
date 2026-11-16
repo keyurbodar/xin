@@ -46,7 +46,7 @@ test("the consent prompt lists plain sentences and grants exactly the ids the ba
 
 const PIN = `sha512-ABCDEFGH${"x".repeat(72)}stuvwx==`
 
-const consent = (integrity: string | undefined): TestNode => {
+const consent = (integrity: string | undefined, changed = false): TestNode => {
   const tree = root()
   createRoot(() =>
     insert(
@@ -55,6 +55,7 @@ const consent = (integrity: string | undefined): TestNode => {
         subject: "@lahn/ingle-guarded",
         permissions: [{ id: "network", title: "Reach the network", why: "guarded declares it" }],
         integrity,
+        changed,
         action: "Allow and install",
         busy: false,
         onAllow: () => undefined,
@@ -74,4 +75,9 @@ test("the consent sheet shows the exact pin being consented to, and no row when 
   expect(textOf(unpinned)).toContain("Says it connects to websites")
   expect(textOf(unpinned)).not.toContain("Integrity")
   expect(textOf(unpinned)).not.toContain("sha512")
+})
+
+test("a consent asked again because the package changed says so, and a first ask does not", () => {
+  expect(textOf(consent(PIN, true))).toContain("This package changed since you last reviewed it.")
+  expect(textOf(consent(PIN))).not.toContain("changed since")
 })
