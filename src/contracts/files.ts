@@ -9,6 +9,11 @@ export type FileEntry = {
   readonly updated_at: number
 }
 
+const TEXT_TYPE = /^(text\/|application\/(json|xml|.*\+json|.*\+xml)|image\/svg\+xml)/
+
+/** A type whose bytes read as text: what `file.read` previews and what a turn may inline. */
+export const isText = (type: string): boolean => TEXT_TYPE.test(type)
+
 export type FileVersion = {
   readonly sha256: string
   readonly size: number
@@ -28,6 +33,8 @@ export interface FilesService {
   list(prefix?: string): Promise<FileEntry[]>
   read(path: string): Promise<string | undefined>
   readBytes(path: string): Promise<Uint8Array | undefined>
+  /** The bytes stored under a content address, whatever path holds them now; one R2 read and no index row. */
+  readBlob(sha256: string): Promise<Uint8Array | undefined>
   stat(path: string): Promise<FileEntry | undefined>
   /** With `base`, refused with StaleWrite unless the file's current sha is `base`. */
   write(path: string, text: string, base?: string): Promise<FileEntry>
