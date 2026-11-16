@@ -19,9 +19,20 @@ type State = {
   /** The home revision: in memory only, with a per-instance epoch so a fresh instance never repeats an old value. */
   readonly epoch: string
   changes: number
+  /** Home snapshots published so far: a batch that published one needs no separate `changed` frame. */
+  published: number
 }
 
 const state = hidden<Wire, State>()
+
+/** Moves the home revision on, and tells home subscribers unless a snapshot already told them. */
+function bump(wire: Wire, tell: boolean): string {
+  const held = state.get(wire)
+  held.changes += 1
+  const rev = `${held.epoch}.${held.changes}`
+  if (tell) held.sockets?.publishChanged(rev)
+  return rev
+}
 
 const socketsOf = (wire: Wire): Sockets | undefined => state.get(wire).sockets
 
@@ -30,7 +41,13 @@ export class Wire extends Service {
 
   constructor(ctx: Context) {
     super(ctx, "wire")
-    state.set(this, { parts: new Map(), sockets: undefined, epoch: crypto.randomUUID().slice(0, 8), changes: 0 })
+    state.set(this, {
+      parts: new Map(),
+      sockets: undefined,
+      epoch: crypto.randomUUID().slice(0, 8),
+      changes: 0,
+      published: 0,
+    })
     ctx.http.route("POST /v1/cmd", async (request) => {
       const body: unknown = await request.json().catch(() => undefined)
       const batch = Array.isArray(body)
@@ -42,6 +59,7 @@ export class Wire extends Service {
       await ctx.clock.arm()
       const acks: ServerFrame[] = []
       let wrote = false
+      const published = state.get(this).published
       let broken: string | undefined
       for (const command of commands) {
         if (broken !== undefined) {
@@ -56,7 +74,7 @@ export class Wire extends Service {
           acks.push({ t: "ack", id: command.id, ok: false, error: { code: "failed", message: messageOf(error) } })
         }
       }
-      const headers = wrote ? { "x-ingle-rev": this.announce() } : undefined
+      const headers = wrote ? { "x-ingle-rev": bump(this, state.get(this).published === published) } : undefined
       return Response.json(batch ? acks : acks[0], headers === undefined ? {} : { headers })
     })
     ctx.http.route("POST /v1/auth", async () => new Response(null, { status: 204 }))
@@ -116,11 +134,7 @@ export class Wire extends Service {
 
   /** Owner state changed (a batch that ran a non-read op, or an agent's write): tells every home subscriber, so tabs drop their cached reads, and returns the new revision. */
   announce(): string {
-    const held = state.get(this)
-    held.changes += 1
-    const rev = `${held.epoch}.${held.changes}`
-    held.sockets?.publishChanged(rev)
-    return rev
+    return bump(this, true)
   }
 
   home(part: string, read: HomePart): () => void {
@@ -140,6 +154,7 @@ export class Wire extends Service {
   }
 
   async publishHome(): Promise<void> {
+    state.get(this).published += 1
     await socketsOf(this)?.publishHome()
   }
 

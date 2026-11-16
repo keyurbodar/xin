@@ -1,7 +1,7 @@
 import { For, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { Brain, CalendarClock, CircleDot, HardDrive, LayoutList, ListTree, Puzzle, Timer, Users, type LucideProps } from "lucide-solid"
-import { activeConversation, host, slotItems } from "../../plugins/slots.tsx"
+import { activeConversation, host, PluginBoundary, slotItems } from "../../plugins/slots.tsx"
 import { Icon, isIconName } from "../ui/icon.tsx"
 import { MemoryTab } from "../chat/memory.tsx"
 import { AutomationsTab } from "../chat/automations.tsx"
@@ -129,7 +129,11 @@ export function paneViews(context: PaneContext): readonly PaneEntry[] {
         id: `plugin:${item.key}`,
         label: item.title,
         icon: pluginIcon(item.icon),
-        render: () => <Dynamic component={item.component} host={host} conversation={activeConversation()} />,
+        render: () => (
+          <PluginBoundary plugin={item.plugin}>
+            <Dynamic component={item.component} host={host} conversation={activeConversation()} />
+          </PluginBoundary>
+        ),
       }),
     ),
   ]

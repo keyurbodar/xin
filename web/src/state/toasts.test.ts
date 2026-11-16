@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test"
-import { TOAST_EXIT_MS, TOAST_LIMIT, dismissToast, liveToasts, showUndoToast, toasts, undoToast } from "./toasts.ts"
+import { TOAST_EXIT_MS, TOAST_LIMIT, dismissToast, liveToasts, showToast, toasts, undoToast } from "./toasts.ts"
 
 const icon = () => null
 
 function counted(title: string) {
   const calls = { undo: 0, expire: 0 }
-  showUndoToast({ icon, title, detail: undefined, undo: () => calls.undo++, expire: () => calls.expire++ })
+  showToast({ icon, title, detail: undefined, undo: () => calls.undo++, expire: () => calls.expire++ })
   return calls
 }
 

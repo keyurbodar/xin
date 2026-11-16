@@ -177,7 +177,7 @@ The two fields earn their place:
 
 ### Client plugins
 
-A plugin may ship a web module beside its server row. It declares `client: "./client.tsx"` and the `slots` it fills, and the module default-exports `definePlugin({ name, slots })` from `@ingle/sdk` (`web/src/plugins/sdk.ts`). `plugin generate` writes `web/src/plugins.gen.ts` (static imports, so Vite bundles each module into `web/dist`) and `web/public/plugins.json` (the static manifest: title, description, slots, config form). Nothing is loaded from outside the build.
+A plugin may ship a web module beside its server row. It declares `client: "./client.tsx"` and the `slots` it fills, and the module default-exports `definePlugin({ name, slots })` from `@ingle/sdk` (`web/src/plugins/sdk.ts`). `plugin generate` writes `web/src/plugins.gen.ts`: one lazy `import()` loader per module, so Vite splits each into its own chunk in `web/dist`. Nothing is loaded from outside the build, and lint runs `plugin generate --check`, so a stale generated file fails the gate. The shell loads every module at start, each on its own: one that throws at import is logged and left out while the rest load. Each slot component renders inside its own error boundary, so one that throws while rendering shows a line in its place instead of blanking the app. Plugin themes appear in the owner menu and Appearance beside the built-in ones, and `host.toast` shows a notice on the shell's toast stack, the same `aria-live` stack as undo toasts.
 
 | Slot | Where the shell renders it |
 | --- | --- |
@@ -189,7 +189,7 @@ A plugin may ship a web module beside its server row. It declares `client: "./cl
 | `settings.page` | a page under Settings, Plugins |
 | `theme` | an Appearance theme: a base scheme and colour tokens, data only |
 
-A registration shows while one of its package's rows is `active` in the home snapshot's `plugins` part, so the existing `plugin.enable` switch governs the server and client halves together, and `plugin.enable` republishes the home snapshot so the shell updates at once. A client module reaches the backend only through `host.cmd(op, args)`, the same ops any client uses. Cost: the modules are static assets and their state rides in the snapshot already sent, so 0 Worker requests and 0 rows per user action; a toggle is the one `plugin.enable` op it always was, plus one snapshot frame to open sockets.
+A registration shows while one of its package's rows is `active` in the home snapshot's `plugins` part, so the existing `plugin.enable` switch governs the server and client halves together, and `plugin.enable` republishes the home snapshot so the shell updates at once. A client module is meant to reach the backend through `host.cmd(op, args)`, the same ops any client uses, and its manifest's `permissions` describe what its server rows may do. Nothing confines the client half: it runs in the shell's own page with the shell's session, so it can call any op the owner can, and its permissions are advisory there. A client module is trusted code, like a market code package. Cost: the modules are static assets and their state rides in the snapshot already sent, so 0 Worker requests and 0 rows per user action; a toggle is the one `plugin.enable` op it always was, plus one home frame to open sockets: the snapshot it publishes stands in for the batch's `changed` frame, since a home snapshot already tells a tab to drop its cached reads.
 
 ## Discovery
 
