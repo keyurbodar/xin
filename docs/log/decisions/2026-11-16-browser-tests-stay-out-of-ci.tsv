@@ -1,0 +1,1 @@
+2026-11-16T07:00:00Z	ci	browser tests stay out of CI	the PAT lacks workflow scope, Bosun's call; Chromium checks run locally with Playwright against wrangler dev and Vite	—	deferred

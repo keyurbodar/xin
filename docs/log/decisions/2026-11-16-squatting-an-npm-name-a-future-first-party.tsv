@@ -1,0 +1,1 @@
+2026-11-16T14:30:00Z	plugins	Squatting an npm name a future first-party package will use stays possible; npm name registration is left alone	Bosun's call: the build refuses a name it already ships, which is the replacement risk; a name the build does not ship yet is the owner's consent decision like any other package	none: logged risk	accepted

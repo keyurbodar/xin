@@ -1,0 +1,1 @@
+2026-11-07T18:42	P14	A routed screen that throws renders an inline error with Try again instead of blanking the app	a parser bug or a missing field in one screen used to empty the whole client with no console error; the boundary keeps the shell and names the message	web/src/components/shell/shell.tsx ErrorBoundary; web/src/state/home.ts now parses every project field	accepted

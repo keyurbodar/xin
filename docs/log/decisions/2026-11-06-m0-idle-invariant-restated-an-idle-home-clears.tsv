@@ -1,0 +1,1 @@
+2026-11-06T14:44:30Z	M8	M0 idle invariant restated: an idle home clears the heartbeat, but the alarm may sit at a far module due (weekly sweep, daily Dreamer, schedule slot)	full gate failed src/host.test.ts: alarm never null once periodic modules exist; the spec 01 "no alarm" was written before them	full gate job; src/host.test.ts rerun pass	accepted

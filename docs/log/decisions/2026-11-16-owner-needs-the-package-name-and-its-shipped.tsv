@@ -1,0 +1,1 @@
+2026-11-16T22:30:00Z	plugins	owner needs the package name and its shipped path plugins/automations, and discovery refuses two packages with one name	XIN-23 #19: owner trusted the package name alone	manifest.test and discovery.test	fixed in #19

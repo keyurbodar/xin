@@ -1,0 +1,1 @@
+2026-11-07T12:30	P9	Unknown preset fails only on use (project.create, preset.select bad_args); no start-time default check	dsh agent-preset-registry throws agent-preset/not-found at resolution; the start-time check needed a one-tick wait and read other rows' config	plugins/presets/index.ts; comment review	accepted
