@@ -68,13 +68,13 @@ const CHIP =
 
 /**
  * An inline reference to a PR, thread, issue, commit or file. Its hover card loads the details through `load` while it is
- * settled, once per href and `version`: the caller sets `version` from whatever changes the content (PR state, issue
- * status, a thread's updated time), so a changed item reloads and an unchanged one never does. The card shows only details
+ * settled, once per href, `version` and, for a PR, its state: the caller sets `version` from whatever else changes the
+ * content (issue status, a thread's updated time), so a changed item reloads and an unchanged one never does. The card shows only details
  * loaded for the chip's current href and version, and the loading state otherwise.
  */
 export function LinkChip(props: LinkChipProps): JSX.Element {
   const mono = (): boolean => props.kind === "commit" || props.kind === "file"
-  const identity = (): string => JSON.stringify([props.href, props.version ?? null])
+  const identity = (): string => JSON.stringify([props.href, props.version ?? null, props.kind === "pr" ? props.state : null])
   const [settled, setSettled] = createSignal(false)
   const [wanted, setWanted] = createSignal<string | false>(false)
   createEffect(() => {

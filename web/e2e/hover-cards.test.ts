@@ -131,7 +131,7 @@ test("under reduced motion a warm card still opens without animating", async () 
   }
 })
 
-const pageWindow = <T,>(page: Page, run: (scope: { loads: string[]; bump: () => void; advance: () => void }) => T) =>
+const pageWindow = <T,>(page: Page, run: (scope: { loads: string[]; bump: () => void; advance: () => void; merge: () => void }) => T) =>
   page.evaluate(`(${run.toString()})(window)`) as Promise<T>
 
 const watchStale = async (page: Page, stale: string, ms: number) => {
@@ -169,6 +169,43 @@ test("a version change shows the loading state and then the new details, never t
   await page.waitForTimeout(800)
   expect(await shown(page, "Title version 3")).toBe(true)
   expect(await pageWindow(page, (scope) => scope.loads.length)).toBe(3)
+  await page.close()
+})
+
+test("a warm open after a version change shows the loading state, never the old details", async () => {
+  const page = await harness.open("hover-cards")
+  await page.hover("a[href='#pr-7']")
+  await page.waitForTimeout(800)
+  expect(await shown(page, "Title version 1")).toBe(true)
+  await page.mouse.move(1200, 780)
+  await page.waitForTimeout(600)
+  await pageWindow(page, (scope) => scope.bump())
+  await page.hover("a[href='#ama-25']")
+  await page.waitForTimeout(550)
+  expect(await shown(page, "Versioned issue")).toBe(true)
+  await page.hover("a[href='#pr-7']")
+  const warmOpen = await watchStale(page, "Title version 1", 600)
+  expect(warmOpen).toEqual({ seenStale: false, seenLoading: true })
+  expect(await card(page, "Title version 2").getAttribute("data-warm")).toBe("")
+  expect(await shown(page, "Title version 2")).toBe(true)
+  await page.close()
+})
+
+test("a PR chip whose state changes without a version bump reloads its card", async () => {
+  const page = await harness.open("hover-cards")
+  const loads = () => pageWindow(page, (scope) => scope.loads.length)
+  const pr = card(page, "Title version 1")
+  await page.hover("a[href='#pr-7']")
+  await page.waitForTimeout(800)
+  expect(await pr.textContent()).toContain("Open")
+  expect(await loads()).toBe(1)
+  await page.mouse.move(1200, 780)
+  await page.waitForTimeout(600)
+  await pageWindow(page, (scope) => scope.merge())
+  await page.hover("a[href='#pr-7']")
+  await page.waitForTimeout(800)
+  expect(await pr.textContent()).toContain("Merged")
+  expect(await loads()).toBe(2)
   await page.close()
 })
 
