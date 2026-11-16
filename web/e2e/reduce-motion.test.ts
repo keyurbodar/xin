@@ -90,3 +90,21 @@ test("the Reduce motion setting stills the spinner and the boot trace", async ()
   const names = await indicatorAnimations("setting")
   for (const loop of LOOPS) expect(names[loop]?.every((name) => name === "none")).toBe(true)
 })
+
+async function hoveredSwipe(reduce: "os" | "setting" | "none"): Promise<string> {
+  const page = await browser.newPage()
+  await page.emulateMedia({ reducedMotion: reduce === "os" ? "reduce" : "no-preference" })
+  await page.setContent(
+    `<html${reduce === "setting" ? ' data-motion="reduce"' : ""}><head><style>${css}</style></head><body><div class="im-toast-stack" style="position:fixed;bottom:20px;left:20px;width:200px;height:120px"><div class="im-toast" style="--i:0">a</div><div class="im-toast" id="swiping" data-swiping style="--i:1;--offset:40px;--swipe-x:50px">b</div></div></body></html>`,
+  )
+  await page.hover(".im-toast-stack")
+  const transform = await page.evaluate(() => getComputedStyle(document.getElementById("swiping") as Element).transform)
+  await page.close()
+  return transform
+}
+
+test("a swiping toast follows the pointer over the hover fan-out, with or without reduced motion", async () => {
+  for (const reduce of ["none", "os", "setting"] as const) {
+    expect(await hoveredSwipe(reduce)).toBe("matrix(1, 0, 0, 1, 50, 0)")
+  }
+})

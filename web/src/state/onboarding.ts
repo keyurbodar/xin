@@ -88,11 +88,8 @@ export async function skipStep(step: 1 | 2 | 3): Promise<void> {
       nextStep()
       return
     case "shell":
-      try {
-        await markOnboarded()
-      } finally {
-        navigate("/")
-      }
+      await markOnboarded().catch(() => undefined)
+      navigate("/")
       return
   }
 }
@@ -143,8 +140,8 @@ export async function loadProgress(): Promise<void> {
 
 export async function createFirstCaptain(input: CaptainInput, commandId: string): Promise<CaptainResult> {
   const result = await ensureCaptain(input, commandId)
-  await markOnboarded()
   setFirstCaptain(result)
+  await markOnboarded().catch(() => undefined)
   return result
 }
 

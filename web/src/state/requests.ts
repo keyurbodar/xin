@@ -1,13 +1,12 @@
 import { createSignal } from "solid-js"
 import { cmd, OpError } from "../lib/api.ts"
+import { coalesce } from "../lib/requests.ts"
 import { parseRequestList, type RequestRow } from "./conversation.ts"
 
 type InboxQuestion = RequestRow
 
 const [questions, setQuestions] = createSignal<readonly InboxQuestion[]>([])
 export const openRequests = questions
-
-let pending: Promise<void> | undefined
 
 async function fetchQuestions(): Promise<void> {
   try {
@@ -19,13 +18,7 @@ async function fetchQuestions(): Promise<void> {
   }
 }
 
-export function refreshRequests(): Promise<void> {
-  if (pending !== undefined) return pending
-  pending = fetchQuestions().finally(() => {
-    pending = undefined
-  })
-  return pending
-}
+export const refreshRequests = coalesce(fetchQuestions)
 
 export async function respondToQuestion(question: InboxQuestion, answer: string): Promise<void> {
   await cmd("request.respond", { threadId: question.conversationId, requestId: question.id, answer })
