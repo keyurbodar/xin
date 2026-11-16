@@ -92,6 +92,7 @@ export type MarketDetail = {
   readonly status: MarketStatus
   readonly versions: readonly MarketVersion[]
   readonly readme?: string | undefined
+  readonly integrity?: string | undefined
   readonly requires: readonly string[]
   readonly rows: readonly MarketDeclaration[]
 }
@@ -327,6 +328,14 @@ const parseMarket = (value: unknown): readonly MarketSummary[] => {
   })
 }
 
+const SRI = /^sha512-[A-Za-z0-9+/]{86}==$/u
+
+/** A registry pin as the market sends it: a sha512 SRI, or nothing for anything that has no pin. */
+const integrityOf = (value: unknown): string | undefined => {
+  const text = strOf(value)
+  return text !== undefined && SRI.test(text) ? text : undefined
+}
+
 const parseMarketDetail = (value: unknown): MarketDetail | undefined => {
   if (!isRecord(value)) return undefined
   const name = strOf(value["name"])
@@ -350,6 +359,7 @@ const parseMarketDetail = (value: unknown): MarketDetail | undefined => {
       ]
     }),
     readme: strOf(value["readme"]),
+    integrity: kind === "code" ? integrityOf(value["integrity"]) : undefined,
     requires: stringsOf(value["requires"]),
     rows: records(value["rows"]).flatMap((item) => {
       const id = strOf(item["id"])
@@ -497,19 +507,39 @@ export async function configureRow(id: string, config: Readonly<Record<string, u
 
 export type ConsentPermission = { readonly id: string; readonly title: string; readonly why: string }
 
-/** The permissions an install was refused for, when the market asks for the owner's consent before it runs. */
-export function consentOf(failure: unknown): readonly ConsentPermission[] | undefined {
+/** What the owner is asked to allow: the permissions, the registry pin when the package is pinned, and whether it changed since the owner last reviewed it. */
+export type ConsentRequest = {
+  readonly permissions: readonly ConsentPermission[]
+  readonly integrity?: string | undefined
+  readonly changed: boolean
+}
+
+/** The consent an install was refused for, when the market asks for the owner's consent before it runs. */
+export function consentOf(failure: unknown): ConsentRequest | undefined {
   if (!(failure instanceof OpError) || failure.code !== "consent_required") return undefined
-  return records(isRecord(failure.details) ? failure.details["permissions"] : undefined).flatMap((item) => {
+  const details = isRecord(failure.details) ? failure.details : {}
+  const permissions = records(details["permissions"]).flatMap((item) => {
     const id = strOf(item["id"])
     return id === undefined ? [] : [{ id, title: strOf(item["title"]) ?? id, why: strOf(item["why"]) ?? "" }]
   })
+  return { permissions, integrity: integrityOf(details["integrity"]), changed: details["changed"] === true }
 }
 
-const granted = (grant: readonly string[]): { grant?: readonly string[] } => (grant.length === 0 ? {} : { grant })
+/** A grant, and the pin of the consent it answers, so the market asks again if the tarball changed since. */
+const granted = (
+  grant: readonly string[],
+  integrity: string | undefined,
+): { grant?: readonly string[]; integrity?: string } => ({
+  ...(grant.length === 0 ? {} : { grant }),
+  ...(integrity === undefined ? {} : { integrity }),
+})
 
-export async function installFromMarket(name: string, grant: readonly string[] = []): Promise<InstallResult> {
-  const result = parseInstall(await cmd("market.install", { name, ...granted(grant) }))
+export async function installFromMarket(
+  name: string,
+  grant: readonly string[] = [],
+  integrity?: string,
+): Promise<InstallResult> {
+  const result = parseInstall(await cmd("market.install", { name, ...granted(grant, integrity) }))
   await Promise.all([rows.reload(), packages.reload(), market.reload(), marketDetail(name).reload()])
   return result
 }
@@ -518,8 +548,9 @@ export async function updateFromMarket(
   name: string,
   version: string,
   grant: readonly string[] = [],
+  integrity?: string,
 ): Promise<InstallResult> {
-  const result = parseInstall(await cmd("market.update", { name, version, ...granted(grant) }))
+  const result = parseInstall(await cmd("market.update", { name, version, ...granted(grant, integrity) }))
   await Promise.all([rows.reload(), packages.reload(), market.reload(), marketDetail(name).reload()])
   return result
 }
@@ -618,8 +649,12 @@ export const skippedMarket: RemoteHandle<readonly SkippedVersion[]> = remote(
 
 export type RollbackResult = { readonly application: string; readonly reason?: string | undefined }
 
-export async function rollbackPackage(name: string, grant: readonly string[] = []): Promise<RollbackResult> {
-  const value = await cmd<unknown>("market.rollback", { name, ...granted(grant) })
+export async function rollbackPackage(
+  name: string,
+  grant: readonly string[] = [],
+  integrity?: string,
+): Promise<RollbackResult> {
+  const value = await cmd<unknown>("market.rollback", { name, ...granted(grant, integrity) })
   await Promise.all([rows.reload(), packages.reload(), market.reload()])
   if (!isRecord(value)) return { application: "failed" }
   return { application: strOf(value["application"]) ?? "failed", reason: strOf(value["reason"]) }
@@ -636,8 +671,8 @@ export async function setMarketPolicy(autoUpdate: boolean): Promise<void> {
   await marketPolicy.reload()
 }
 
-export async function addSpec(spec: string, grant: readonly string[]): Promise<void> {
-  await cmd("market.add", { spec, grant })
+export async function addSpec(spec: string, grant: readonly string[], integrity?: string): Promise<void> {
+  await cmd("market.add", { spec, grant, ...(integrity === undefined ? {} : { integrity }) })
   await Promise.all([packages.reload(), rows.reload()])
 }
 

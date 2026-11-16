@@ -1,0 +1,1 @@
+2026-11-07T14:40	P13	Goal state in the DO kv per conversation; armed is in-memory and cleared at row start	dsh keeps goal state in its session log and activation process-local; a durable armed flag would let a crash loop keep spending rounds	plugins/goals; dsh goal/src/index.ts	accepted

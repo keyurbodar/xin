@@ -1,0 +1,1 @@
+2026-11-06T14:41:38Z	M5	Reporter root cause: runtime.entry is scoped to the task conversation, so the thread answer was read from the wrong conversation	found by the live run, missed by faux	plugins/orchestrator/threads.ts settle(); new thinking-part test	accepted

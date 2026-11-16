@@ -8,7 +8,7 @@ const SENTENCES: ReadonlyMap<string, string> = new Map(Object.entries({
   models: "Uses AI models, which spends your tokens",
   conversations: "Reads and writes your conversations",
   plugins: "Installs, switches on and sets up other plugins",
-  network: "Says it connects to websites and services on the internet (Ingle can’t stop this)",
+  network: "Says it connects to websites and services on the internet (Ingle can't stop this)",
   runtime: "Has full access to your Home, including its data, keys and files",
   owner: "Acts as you, such as starting threads on your behalf",
 }))

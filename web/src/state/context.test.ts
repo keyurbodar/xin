@@ -23,18 +23,18 @@ afterEach(() => {
 
 test("switching coordinator, thread, coordinator sends conv.context once per conversation", async () => {
   serve()
-  await ensureContext(3)
-  await ensureContext(9)
-  await ensureContext(3)
-  await ensureContext(9)
-  expect(sent).toEqual([3, 9])
-  expect(cachedContext(3)?.used).toBe(1_000)
+  await ensureContext(31)
+  await ensureContext(39)
+  await ensureContext(31)
+  await ensureContext(39)
+  expect(sent).toEqual([31, 39])
+  expect(cachedContext(31)?.used).toBe(1_000)
 })
 
 test("a finished turn or an opened popover reads again, and overlapping reads share one request", async () => {
   serve()
-  await Promise.all([refreshContext(3), refreshContext(3), ensureContext(3)])
-  expect(sent).toEqual([3])
+  await Promise.all([refreshContext(42), refreshContext(42), ensureContext(42)])
+  expect(sent).toEqual([42])
 })
 
 test("a model or preset change reads the context again; a thinking change does not", async () => {

@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	onboarding v5	setup finished: Setup counts as finished once a live Captain exists; form sign-in skips #/welcome then	no owner op records onboarding (owner.set holds only name and instructions) and the brief forbids a new backend op	plugins/workspace/workspace.ts owner.set	adopted

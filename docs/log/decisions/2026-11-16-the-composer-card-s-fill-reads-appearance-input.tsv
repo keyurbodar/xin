@@ -1,0 +1,1 @@
+2026-11-16T18:00:00Z	AMA-23 (XIN-25)	The composer card's fill reads --appearance-input-opacity with a fallback of 1	The token comes from the Appearance branch (capy/appearance, not on main yet). color-mix on the fill keeps text and chips opaque, unlike opacity on the whole card	origin/capy/appearance web/src/appearance/store.ts	adopted

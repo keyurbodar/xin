@@ -13,7 +13,7 @@ INGLE_LIVE=1 completes one coordinator reply, one delegated thread with its repo
 switch, on the OpenCode Go model order in .dev.vars (iceman-contributor-free,
 else beam-free, else muse-spark-1.3-contributor); docs/plan matches the code; one commit per milestone.
 
-Work unattended. Don't stop to ask me. Decide, log the decision in docs/log/decisions.tsv, and continue.
+Work unattended. Don't stop to ask me. Decide, log the decision as its own file in docs/log/decisions/, and continue.
 Run it the way docs/process/orchestration.md describes: you are the lead (plan each wave, brief lanes from
 docs/process/brief-template.md, review, iterate, commit). Workers are delegate_task subagents on magpie
 group/workhorse[1m], with shared checkout and disjoint files by default, at most 24 live and at most 4
@@ -22,7 +22,7 @@ Workers submit only their own scoped tests, and you submit the full gate once pe
 marking any milestone done, run /pstack:thermo-nuclear-code-quality-review and /pstack:no-comments on
 its diff and fix what they find. Do not deploy to Cloudflare and do not push. Stop only when all of the
 above holds, or when a blocker needs something only I can provide (a credential or account). In that
-case, write the blocker and what you tried at the top of docs/log/decisions.tsv and finish every
+case, write the blocker and what you tried as a decision file in docs/log/decisions/ and finish every
 milestone it doesn't block first.
 ```
 
@@ -30,7 +30,7 @@ milestone it doesn't block first.
 
 - **"Done" is a set of checks, not a feeling**: gate green, verification skill passing against the real Worker, one live run. Each of those is something you can rerun.
 - **One background queue runs every heavy job**, one at a time, with identical requests merged and unchanged trees cached. 20 workers can never trigger 20 builds.
-- **"Don't ask, log"** keeps the run unattended without hiding judgement calls. `docs/log/decisions.tsv` is where you review them afterwards.
+- **"Don't ask, log"** keeps the run unattended without hiding judgement calls. `docs/log/decisions/` is where you review them afterwards (`bun scripts/decisions.ts` prints them as one table).
 - **No deploy and no push**: those are the only steps that leave this machine, so they wait for you.
 
 ## Expected lane plan

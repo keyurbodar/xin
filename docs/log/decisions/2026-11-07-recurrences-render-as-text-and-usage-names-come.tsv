@@ -1,0 +1,1 @@
+2026-11-07T19:10	P14	Recurrences render as text, and usage names come from the catalog	the Schedules screen and the panel printed a raw RRULE and a raw model id, both of which the design's frames show as prose	web/src/lib/format.ts describeRule; web/src/components/settings/usage.tsx modelName	accepted

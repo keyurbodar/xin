@@ -1,0 +1,1 @@
+2026-11-07T00:00:00Z	P5	runtime code loading (Dynamic Workers / Worker Loader) stays later; install from the client records the wish and a build-then-deploy pipeline applies it	Dynamic Workers are only on the Workers Paid plan (developers.cloudflare.com/dynamic-workers/pricing); a Worker cannot run bun add	pricing page fetched 2026-11-07	lane K-install

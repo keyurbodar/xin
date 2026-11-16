@@ -1,0 +1,1 @@
+2026-11-16T22:00:00Z	XIN-21	After creating an automation with a webhook trigger, the client opens its history so the minted URL is in view with Copy	The secret only exists after create; showing it right away is the step the owner needs next. Edits stay in place	Chromium: create with a webhook routed to #/automations/<id>; Copy put location.origin + path on the clipboard	adopted

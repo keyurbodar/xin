@@ -1,0 +1,1 @@
+2026-11-15T19:00:00Z	captains	The Reporter enqueues to the thread's current parentId, not the one captured when the run started	a thread added to or removed from a crew mid-run must report to its new coordinator	captains.test.ts: adds a running thread to a crew so its report reaches the Captain	adopted
