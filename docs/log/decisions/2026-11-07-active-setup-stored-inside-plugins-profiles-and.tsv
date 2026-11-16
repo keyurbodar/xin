@@ -1,0 +1,1 @@
+2026-11-07T09:00	P8	Active setup stored inside plugins.profiles and reconciled at boot	Three separate kv writes in a switch could leave a mixed setup after a crash	P8 review #1	accepted

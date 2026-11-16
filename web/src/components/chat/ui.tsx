@@ -29,6 +29,7 @@ export function createPaneAction(): {
   const [busy, setBusy] = createSignal<string | number | undefined>()
   const [failed, setFailed] = createSignal<string | undefined>()
   const run = async (key: string | number, work: () => Promise<void>): Promise<void> => {
+    if (busy() !== undefined) return
     setBusy(key)
     setFailed(undefined)
     try {

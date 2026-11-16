@@ -1,0 +1,1 @@
+2026-11-16T20:30:00Z	plugins	Plugin toasts show as notices on main's toast stack (undo optional); web/public/plugins.json is gone; plugin themes join the owner-menu picker	XIN-23 #30: two overlapping toast stacks, a manifest with no consumer, a picker that listed only built-in themes	one aria-live stack; no generated asset without a reader	fixed in #30

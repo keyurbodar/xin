@@ -1,0 +1,1 @@
+2026-11-16T12:00:00Z	page-15	--shadow-popover moved from @theme to :root and used as shadow-[var(--shadow-popover)]	XIN-23: Tailwind 4 inlines @theme shadow values into the utility, so the light and rose overrides were never read	Chromium computed box-shadow: dark rgba(0,0,0,.3), light rgba(20,21,24,.08), rose rgba(10,3,5,.36)	adopted

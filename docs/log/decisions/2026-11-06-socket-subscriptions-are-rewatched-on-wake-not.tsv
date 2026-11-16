@@ -1,0 +1,1 @@
+2026-11-06T13:21:05Z	M1	socket subscriptions are rewatched on wake, not only on the next sub	spec said lazily on first sub after wake, which would silently drop events for a hibernated tab that stays subscribed	Sockets.rehydrate runs at open from getWebSockets attachments	03 spec updated

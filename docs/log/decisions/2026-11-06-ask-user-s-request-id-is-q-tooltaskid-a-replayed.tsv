@@ -1,0 +1,1 @@
+2026-11-06T15:12:00Z	M6	ask_user's request id is q:<toolTaskId>; a replayed tool call reuses the same request	the id must be derived for idempotency, and the tool task id is stable across a rerun	plugins/questions/questions.ts askUser; plugins/questions/questions.test.ts open request id matches question:<requestId>	accepted

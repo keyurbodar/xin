@@ -1,0 +1,1 @@
+2026-11-06T13:21:05Z	M1	schemas use pi-schema builders + compile, not TypeBox Type	pi-ai 1.5.0 exports no Type; pi-schema is what pi-durable tools use and has no eval	grep of pi-ai index.d.ts; pi-schema dist has 0 'new Function'	AGENTS.md updated

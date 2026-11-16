@@ -1,6 +1,7 @@
+import "@ui-sdk/web/command"
+import "@ui-sdk/web/popover"
+import "@ui-sdk/web/segmented-control"
 import { createResource, createSignal, For, onCleanup, Show, type Accessor, type JSX } from "solid-js"
-import { Portal } from "solid-js/web"
-import { Popover } from "@ark-ui/solid/popover"
 import { Plus, X } from "lucide-solid"
 import {
   assigneeCandidates,
@@ -20,7 +21,9 @@ import {
 import { createFocusReturn, type EditorExit } from "../../lib/focus.ts"
 import { searchIssues } from "../../state/issues.ts"
 import { Button } from "../ui/button.tsx"
-import { ICON_BUTTON, MENU_CONTENT } from "../shell/menu.ts"
+import { ICON_BUTTON } from "../shell/menu.ts"
+import { createOverlayMount } from "../shell/presence.ts"
+import { POPUP, POPUP_ITEM } from "../ui/surface.ts"
 import { AssigneeChip } from "./issue-marks.tsx"
 
 function messageOf(problem: unknown): string {
@@ -107,7 +110,7 @@ export function TitleField(props: { value: string; busy: boolean; onSave: (draft
         <button
           ref={focus.trigger}
           type="button"
-          class="im-hover -mx-1 rounded-sm px-1 text-left text-lg font-medium text-ink"
+          class="im-hover -mx-1 rounded-sm px-1 text-left text-title-sm font-title text-ink"
           title="Edit the title"
           onClick={() => setEditing(true)}
         >
@@ -121,7 +124,7 @@ export function TitleField(props: { value: string; busy: boolean; onSave: (draft
         maxLength={300}
         aria-label="Title"
         disabled={props.busy}
-        class={`${INPUT} h-8 text-lg font-medium`}
+        class={`${INPUT} h-8 text-title-sm font-title`}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault()
@@ -202,7 +205,7 @@ export function DueField(props: {
   onSave: (value: string) => Promise<boolean>
 }): JSX.Element {
   return (
-    <span class="flex h-7 items-center gap-1">
+    <span class="-mx-1.5 flex h-7 items-center gap-1">
       <input
         type="date"
         aria-label="Due date"
@@ -222,6 +225,8 @@ export function DueField(props: {
   )
 }
 
+const assigneeKey = (assignee: Assignee): string => `${assignee.kind}:${assignee.id}`
+
 export function AssigneesField(props: {
   assignees: readonly Assignee[]
   name: (assignee: Assignee) => string
@@ -231,6 +236,7 @@ export function AssigneesField(props: {
   onRemove: (assignee: Assignee) => Promise<boolean>
 }): JSX.Element {
   const [open, setOpen] = createSignal(false)
+  const content = createOverlayMount(open)
   const [query, setQuery] = createSignal("")
   const matches = () => assigneeCandidates(props.candidates, props.assignees, query())
   return (
@@ -252,61 +258,70 @@ export function AssigneesField(props: {
           </span>
         )}
       </For>
-      <Popover.Root
-        open={open()}
-        onOpenChange={(details) => {
-          setOpen(details.open)
-          if (!details.open) setQuery("")
+      <ui-popover
+        prop:open={open()}
+        on:openchange={(event) => {
+          event.preventDefault()
+          const next = event.detail.value
+          if (next && props.busy) return
+          if (!next) setQuery("")
+          queueMicrotask(() => setOpen(next))
         }}
-        lazyMount
-        unmountOnExit
-        positioning={{ placement: "bottom-start", gutter: 4 }}
+        on:openchangecomplete={content.settle}
       >
-        <Popover.Trigger class={`${ICON_BUTTON} h-6 w-6`} aria-label="Add an assignee" disabled={props.busy}>
-          <Plus size={14} stroke-width={1.5} />
-        </Popover.Trigger>
-        <Portal>
-          <Popover.Positioner>
-            <Popover.Content class={`${MENU_CONTENT} w-[260px] p-0`}>
+        <ui-popover-trigger>
+          <button
+            type="button"
+            class={`${ICON_BUTTON} h-6 w-6 aria-expanded:bg-hover aria-expanded:text-ink aria-disabled:opacity-50`}
+            aria-label="Add an assignee"
+            title="Add an assignee"
+            aria-disabled={props.busy ? "true" : undefined}
+          >
+            <Plus size={14} stroke-width={1.5} />
+          </button>
+        </ui-popover-trigger>
+        <ui-popover-content side="bottom" align="start" side-offset="4" class={`${POPUP} w-[260px] p-0`}>
+          <Show when={content.mounted()}>
+            <ui-popover-title class="sr-only">Add an assignee</ui-popover-title>
+            <ui-command
+              filter="false"
+              auto-highlight
+              on:action={(event) => {
+                const chosen = matches().find((candidate) => assigneeKey(candidate.assignee) === event.detail.value)
+                if (chosen === undefined) return
+                setOpen(false)
+                setQuery("")
+                void props.onAdd(chosen.assignee)
+              }}
+              class="flex flex-col"
+            >
               <div class="border-b border-line-1 px-3 py-2">
-                <input
-                  autofocus
-                  value={query()}
-                  onInput={(event) => setQuery(event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    const first = matches()[0]
-                    if (event.key === "Enter" && first !== undefined) {
-                      setOpen(false)
-                      void props.onAdd(first.assignee)
-                    }
-                  }}
-                  placeholder="Assign a person, thread or Captain"
-                  aria-label="Search assignees"
-                  class="h-6 w-full bg-transparent text-sm text-ink outline-none placeholder:text-placeholder"
-                />
+                <ui-command-input>
+                  <input
+                    autofocus
+                    value={query()}
+                    onInput={(event) => setQuery(event.currentTarget.value)}
+                    placeholder="Assign a person, thread or Captain"
+                    aria-label="Search assignees"
+                    class="h-6 w-full bg-transparent text-small text-ink outline-none placeholder:text-placeholder"
+                  />
+                </ui-command-input>
               </div>
-              <div class="flex max-h-[260px] flex-col overflow-y-auto p-1">
-                <For each={matches()} fallback={<span class="px-2 py-1.5 text-sm text-ink-3">No one matches</span>}>
+              <ui-command-list class="flex max-h-[260px] flex-col overflow-y-auto p-1">
+                <For each={matches()} fallback={<span class="px-2 py-1.5 text-small text-ink-3">No one matches</span>}>
                   {(candidate) => (
-                    <button
-                      type="button"
-                      class="im-hover flex h-8 items-center gap-2 rounded-sm px-2 text-left text-sm text-ink"
-                      onClick={() => {
-                        setOpen(false)
-                        void props.onAdd(candidate.assignee)
-                      }}
-                    >
+                    <ui-command-item value={assigneeKey(candidate.assignee)} label={candidate.name} class={POPUP_ITEM}>
                       <AssigneeChip names={[candidate.name]} />
                       <span class="min-w-0 flex-1 truncate">{candidate.name}</span>
-                      <span class="shrink-0 text-xs text-ink-3">{candidate.detail}</span>
-                    </button>
+                      <span class="shrink-0 text-mini text-ink-3">{candidate.detail}</span>
+                    </ui-command-item>
                   )}
                 </For>
-              </div>
-            </Popover.Content>
-          </Popover.Positioner>
-        </Portal>
-      </Popover.Root>
+              </ui-command-list>
+            </ui-command>
+          </Show>
+        </ui-popover-content>
+      </ui-popover>
     </span>
   )
 }
@@ -322,6 +337,7 @@ export function AddLink(props: {
   onLink: (kind: LinkKind, other: number) => Promise<boolean>
 }): JSX.Element {
   const [open, setOpen] = createSignal(false)
+  const content = createOverlayMount(open)
   const [kind, setKind] = createSignal<LinkKind>("related")
   const [query, setQuery] = createSignal("")
   const [settled, setSettled] = createSignal("")
@@ -358,87 +374,102 @@ export function AddLink(props: {
     }
   }
   return (
-    <Popover.Root
-      open={open()}
-      onOpenChange={(details) => setOpen(details.open)}
-      lazyMount
-      unmountOnExit
-      positioning={{ placement: "bottom-start", gutter: 4 }}
+    <ui-popover
+      prop:open={open()}
+      on:openchange={(event) => {
+        event.preventDefault()
+        const next = event.detail.value
+        if (next && props.busy) return
+        queueMicrotask(() => setOpen(next))
+      }}
+      on:openchangecomplete={content.settle}
     >
-      <Popover.Trigger class="link mx-2 mt-1 flex items-center gap-1 self-start text-xs text-ink-3" disabled={props.busy}>
-        <Plus size={12} stroke-width={1.5} />
-        Add a link
-      </Popover.Trigger>
-      <Portal>
-        <Popover.Positioner>
-          <Popover.Content class={`${MENU_CONTENT} w-[300px] p-0`}>
-            <div class="flex gap-1 border-b border-line-1 px-2 py-2" role="radiogroup" aria-label="Link kind">
+      <ui-popover-trigger>
+        <button
+          type="button"
+          class="link mx-2 mt-1 flex items-center gap-1 self-start text-mini text-ink-3 aria-disabled:opacity-50"
+          aria-disabled={props.busy ? "true" : undefined}
+        >
+          <Plus size={12} stroke-width={1.5} />
+          Add a link
+        </button>
+      </ui-popover-trigger>
+      <ui-popover-content side="bottom" align="start" side-offset="4" class={`${POPUP} w-[300px] p-0`}>
+        <Show when={content.mounted()}>
+          <ui-popover-title class="sr-only">Add a link</ui-popover-title>
+          <div class="border-b border-line-1 p-2">
+            <ui-segmented-control
+              aria-label="Link kind"
+              prop:value={kind()}
+              on:valuechange={(event) => {
+                const next = LINK_KINDS.find((entry) => entry === event.detail.value)
+                if (next !== undefined) setKind(next)
+              }}
+              class="grid grid-cols-3 gap-0.5 rounded-sm border border-line-1 p-0.5"
+            >
               <For each={LINK_KINDS}>
                 {(entry) => (
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={kind() === entry}
-                    class="im-press h-7 rounded-sm border px-2 text-xs"
-                    classList={{
-                      "border-line-3 bg-hover text-ink": kind() === entry,
-                      "border-line-1 text-ink-2 hover:bg-secondary": kind() !== entry,
-                    }}
-                    onClick={() => setKind(entry)}
+                  <ui-segmented-control-item
+                    value={entry}
+                    class="im-press flex h-6 cursor-default items-center justify-center rounded-xs text-mini text-ink-2 outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-primary-soft data-[checked]:bg-hover data-[checked]:text-ink"
                   >
                     {LINK_LABEL[entry]}
-                  </button>
+                  </ui-segmented-control-item>
                 )}
               </For>
-            </div>
+            </ui-segmented-control>
+          </div>
+          <ui-command
+            filter="false"
+            auto-highlight
+            on:action={(event) => {
+              const other = Number(event.detail.value)
+              if (Number.isInteger(other)) void pick(other)
+            }}
+            class="flex flex-col"
+          >
             <div class="border-b border-line-1 px-3 py-2">
-              <input
-                autofocus
-                value={query()}
-                onInput={(event) => typed(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  const id = direct() ?? results()[0]?.id
-                  if (event.key === "Enter" && id !== undefined) void pick(id)
-                }}
-                maxLength={LINK_QUERY_MAX}
-                placeholder="Search issues or type #id"
-                aria-label="Find an issue to link"
-                class="h-6 w-full bg-transparent text-sm text-ink outline-none placeholder:text-placeholder"
-              />
+              <ui-command-input>
+                <input
+                  autofocus
+                  value={query()}
+                  onInput={(event) => typed(event.currentTarget.value)}
+                  maxLength={LINK_QUERY_MAX}
+                  placeholder="Search issues or type #id"
+                  aria-label="Find an issue to link"
+                  class="h-6 w-full bg-transparent text-small text-ink outline-none placeholder:text-placeholder"
+                />
+              </ui-command-input>
             </div>
-            <div class="flex max-h-[240px] flex-col overflow-y-auto p-1">
+            <ui-command-list class="flex max-h-[240px] flex-col overflow-y-auto p-1">
               <Show when={direct()}>
                 {(id) => (
-                  <button type="button" class="im-hover flex h-8 items-center gap-2 rounded-sm px-2 text-left text-sm text-ink" onClick={() => void pick(id())}>
-                    <span class="font-mono text-2xs text-ink-3">#{id()}</span>
+                  <ui-command-item value={String(id())} label={`#${id()}`} class={POPUP_ITEM}>
+                    <span class="font-mono text-mini text-ink-3">#{id()}</span>
                     <span class="truncate">
                       {LINK_LABEL[kind()]} #{id()}
                     </span>
-                  </button>
+                  </ui-command-item>
                 )}
               </Show>
               <For each={direct() === undefined ? results() : []}>
                 {(issue) => (
-                  <button
-                    type="button"
-                    class="im-hover flex h-8 items-center gap-2 rounded-sm px-2 text-left text-sm text-ink"
-                    onClick={() => void pick(issue.id)}
-                  >
-                    <span class="shrink-0 font-mono text-2xs text-ink-3">#{issue.id}</span>
+                  <ui-command-item value={String(issue.id)} label={issue.title} class={POPUP_ITEM}>
+                    <span class="shrink-0 font-mono text-mini text-ink-3">#{issue.id}</span>
                     <span class="min-w-0 flex-1 truncate">{issue.title}</span>
-                  </button>
+                  </ui-command-item>
                 )}
               </For>
               <Show when={direct() === undefined ? searchNote() : undefined}>
-                {(note) => <span class="px-2 py-1.5 text-xs text-ink-3">{note()}</span>}
+                {(note) => <span class="px-2 py-1.5 text-mini text-ink-3">{note()}</span>}
               </Show>
-            </div>
-            <div class="px-2 pb-1.5">
-              <FieldError message={props.error} />
-            </div>
-          </Popover.Content>
-        </Popover.Positioner>
-      </Portal>
-    </Popover.Root>
+            </ui-command-list>
+          </ui-command>
+          <div class="px-2 pb-1.5">
+            <FieldError message={props.error} />
+          </div>
+        </Show>
+      </ui-popover-content>
+    </ui-popover>
   )
 }
