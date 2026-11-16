@@ -6,14 +6,12 @@ import type {
   ConversationHandle,
   EntryId,
   Harness,
-  ModelRef,
   ToolRegistration,
   Submission,
   Tx,
 } from "@earendil-works/pi-durable"
 import type {
   Caller,
-  CallerProject,
   CapabilitiesOutcome,
   CreateThreadOutcome,
   CreateThreadRequest,
@@ -36,7 +34,7 @@ import type {
 } from "../../src/contracts/threads.ts"
 import type { CommandId, ProjectId } from "../../src/ids.ts"
 import { entryText, detailOf, textOf } from "../../src/transcript.ts"
-import { capReason, resolveModel as resolveRoleModel, type ModelsService } from "../../src/contracts/models.ts"
+import { capReason, type ModelsService } from "../../src/contracts/models.ts"
 import { ThreadDoc, defaultSpaceOf, type ThreadDocState } from "../../src/contracts/threaddoc.ts"
 import { canUseThread, projectByRef, scopeOf, type Scope } from "../../src/contracts/scope.ts"
 import { WorkspaceDoc, type ProjectState } from "../../src/contracts/workspace.ts"
@@ -54,19 +52,26 @@ export type ServiceDeps = {
 const context = BACKGROUND_CONTEXT
 const DEFAULT_WAIT_MS = 8_000
 
-const projectOf = (projectId: string, project: ProjectState): CallerProject => ({
-  projectId,
-  name: project.name,
-  threadLimit: project.settings.threadLimit,
-})
+/** A thread's model and thinking level, read from its conversation's agent in memory. */
+const modelLabel = async (harness: Harness, id: number): Promise<string | undefined> => {
+  const conversation = await harness.conversation(id as ConversationId, context)
+  const agent = conversation === undefined ? undefined : await conversation.agent(context)
+  if (agent?.model === undefined) return undefined
+  const name = `${agent.model.provider}/${agent.model.modelId}`
+  return agent.thinkingLevel === "off" ? name : `${name} · ${agent.thinkingLevel}`
+}
 
-const summaryOf = (id: number, doc: ThreadDocState): ThreadSummary => ({
-  id,
-  title: doc.title,
-  status: doc.status,
-  ...(doc.statusLine === undefined ? {} : { statusLine: doc.statusLine }),
-  ...(doc.result === undefined ? {} : { result: doc.result }),
-})
+const summaryOf = async (harness: Harness, id: number, doc: ThreadDocState): Promise<ThreadSummary> => {
+  const model = await modelLabel(harness, id)
+  return {
+    id,
+    title: doc.title,
+    status: doc.status,
+    ...(doc.statusLine === undefined ? {} : { statusLine: doc.statusLine }),
+    ...(doc.result === undefined ? {} : { result: doc.result }),
+    ...(model === undefined ? {} : { model }),
+  }
+}
 
 const commandId = (value: string): CommandId => value as CommandId
 
@@ -119,7 +124,7 @@ const threadOf = async (
 ): Promise<ThreadSummary | undefined> => {
   if (!(await canUseThread(harness, callerId, threadId))) return undefined
   const doc = await harness.snapshot(ThreadDoc, threadId as ConversationId, context)
-  return doc === undefined ? undefined : summaryOf(threadId, doc)
+  return doc === undefined ? undefined : summaryOf(harness, threadId, doc)
 }
 
 type ProjectChoice =
@@ -192,44 +197,6 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
     return assistant === undefined ? "" : textOf(assistant)
   }
 
-  const resolveModel = async (
-    callerId: ConversationId,
-    role: ThreadRole,
-    project: CallerProject,
-    target: ModelRef | undefined,
-    callContext: Context,
-  ): Promise<
-    { readonly kind: "model"; readonly model: ModelRef } | { readonly kind: "none"; readonly reason: string }
-  > => {
-    if (target !== undefined) {
-      if (models().getModel(target.provider, target.modelId) === undefined || (await deps.models.disabled(target))) {
-        return {
-          kind: "none",
-          reason: `No model ${target.provider}/${target.modelId} is available. Pick another model.`,
-        }
-      }
-      return { kind: "model", model: target }
-    }
-    const workspace = await deps.harness.snapshot(WorkspaceDoc, context)
-    const defaults = workspace?.projects[project.projectId]?.settings.models
-    const resolved = resolveRoleModel({
-      role,
-      ...(defaults === undefined ? {} : { project: defaults }),
-      owner: await deps.models.ownerDefaults(),
-    })
-    if (resolved.kind === "model" && !(await deps.models.disabled(resolved.model)))
-      return { kind: "model", model: resolved.model }
-    const parent = await deps.harness.conversation(callerId, callContext)
-    const parentModel = parent === undefined ? undefined : (await parent.agent(callContext)).model
-    if (parentModel !== undefined && !(await deps.models.disabled(parentModel)))
-      return { kind: "model", model: parentModel }
-    return {
-      kind: "none",
-      reason:
-        "No model is set for this project's threads. Pick a model (delegate_task target.model, the project's thread default, or the owner default), then try again.",
-    }
-  }
-
   const delegate = async (caller: Caller, request: DelegateRequest, callContext: Context): Promise<DelegateOutcome> => {
     const harness = deps.harness
     const scope = await scopeOf(harness, caller.conversationId)
@@ -237,14 +204,13 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
     const found = await projectFor(harness, scope, request.project)
     if ("kind" in found) return found
     const role: ThreadRole = request.role ?? "thread"
-    const model = await resolveModel(
-      caller.conversationId,
+    const model = await deps.models.pick({
+      creator: caller.conversationId,
       role,
-      projectOf(found.projectId, found.project),
-      request.model,
-      callContext,
-    )
-    if (model.kind === "none") return { kind: "no_model", reason: model.reason }
+      ...(found.project.settings.models === undefined ? {} : { project: found.project.settings.models }),
+      ...(request.choice === undefined ? {} : { choice: request.choice }),
+    })
+    if (model.kind === "refused") return { kind: "no_model", reason: model.reason }
     const admission = await deps.models.admit("thread")
     if (admission.kind === "capped") return { kind: "rejected", reason: capReason(admission) }
     const requestId = `delegate:${caller.conversationId}:${request.clientRequestId}`
@@ -258,6 +224,7 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
           role,
           task: request.task,
           model: model.model,
+          ...(model.thinking === undefined ? {} : { thinking: model.thinking }),
           clientRequestId: request.clientRequestId,
           requestId,
           removeTools: childTools(deps.toolsNamed),
@@ -349,7 +316,7 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
           const doc = await deps.harness.snapshot(ThreadDoc, id as ConversationId, context)
           if (doc === undefined || doc.archived === true) continue
           if (filter.status !== undefined && doc.status !== filter.status) continue
-          found.push({ ...summaryOf(id, doc), projectId: space.projectId })
+          found.push({ ...(await summaryOf(deps.harness, id, doc)), projectId: space.projectId })
         }
       }
       return { kind: "all", threads: found }
@@ -365,7 +332,7 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
       const doc = await deps.harness.snapshot(ThreadDoc, id as ConversationId, context)
       if (doc === undefined || doc.archived === true) continue
       if (filter.status !== undefined && doc.status !== filter.status) continue
-      matching.push(summaryOf(id, doc))
+      matching.push(await summaryOf(deps.harness, id, doc))
     }
     return { kind: "threads", projectId: scope.projectId, threads: matching }
   }
@@ -373,7 +340,13 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
   const capabilities = async (caller: Caller, callContext: Context): Promise<CapabilitiesOutcome> => {
     const conversation = await deps.harness.conversation(caller.conversationId, callContext)
     const agent = conversation === undefined ? undefined : await conversation.agent(callContext)
-    const listed = (await models().getAvailable()).slice(0, 10).map((model) => `${model.provider}/${model.id}`)
+    const keyed = await models().getAvailable()
+    const listed: string[] = []
+    for (const model of keyed) {
+      if (listed.length === 10) break
+      if (!(await deps.models.disabled({ provider: model.provider, modelId: model.id })))
+        listed.push(`${model.provider}/${model.id}`)
+    }
     const scope = await scopeOf(deps.harness, caller.conversationId)
     const workspace = scope?.kind === "puck" ? await deps.harness.snapshot(WorkspaceDoc, context) : undefined
     const projects: PuckProject[] = []
@@ -397,7 +370,7 @@ export function threadService(deps: ServiceDeps, threads: Threads): ThreadsServi
         ? { name: scope.project.name, threadLimit: scope.project.settings.threadLimit, live }
         : undefined
     return {
-      ...(agent?.model === undefined ? {} : { model: agent.model }),
+      ...(agent?.model === undefined ? {} : { model: agent.model, thinking: agent.thinkingLevel }),
       models: listed,
       ...(project === undefined ? {} : { project }),
       ...(workspace === undefined ? {} : { puck: { projects } }),

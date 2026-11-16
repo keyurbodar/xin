@@ -34,7 +34,7 @@ import { DEFAULT_DEADLINE_MS, WorkspaceDoc } from "../../src/contracts/workspace
 
 const context = BACKGROUND_CONTEXT
 const JOB_KIND = "xin.job"
-const JOB_WAIT_MS = 8_000
+export const JOB_WAIT_MS = 8_000
 
 export type JobSummary = {
   readonly text: string
@@ -57,7 +57,7 @@ const RUNNERS = new Map<string, JobWork>()
 
 export const isJobTool = (name: string): boolean => RUNNERS.has(name)
 
-export function jobTool(tool: JobTool, work: JobWork): ToolRegistration {
+export function jobTool(tool: JobTool, work: JobWork, waitMs = JOB_WAIT_MS): ToolRegistration {
   RUNNERS.set(tool.name, work)
   return {
     ...tool,
@@ -96,7 +96,7 @@ export function jobTool(tool: JobTool, work: JobWork): ToolRegistration {
       if (claim.detached) return started(claim.id)
       const waiter = withCancel(callContext)
       let expired = false
-      const limit = Math.max(0, inThread ? deadlineAt - api.now() : JOB_WAIT_MS)
+      const limit = Math.max(0, inThread ? deadlineAt - api.now() : waitMs)
       const timer = setTimeout(() => {
         expired = true
         waiter.cancel(new Error("job deadline"))
@@ -277,6 +277,7 @@ function jsonObjectOf(value: unknown): JsonObject {
 export type JobsPorts = {
   readonly harness: Harness
   readonly intake: IntakeService
+  readonly waitMs: number
   arm(): Promise<void>
 }
 
@@ -304,7 +305,7 @@ export function createJobs(ports: JobsPorts): JobsModule {
   let scheduled = false
 
   const jobs: JobsService = {
-    tool: jobTool,
+    tool: (tool, work) => jobTool(tool, work, ports.waitMs),
     isJobTool,
     cancel: (callerId, jobId) => cancelJob(ports.harness, callerId, jobId),
   }

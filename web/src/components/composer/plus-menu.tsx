@@ -1,4 +1,5 @@
 import { ariaKeyshortcuts, formatShortcut } from "@ui-sdk/core"
+import "@ui-sdk/web/command"
 import { ChevronRight, Paperclip, Plus } from "lucide-solid"
 import { For, Show, createSignal, type JSX } from "solid-js"
 import type { ProjectSummary } from "../../state/home.ts"
@@ -113,7 +114,7 @@ export function PlusMenu(props: {
       }}
     >
       <ui-menu-trigger>
-        <button type="button" aria-label="Add" disabled={props.disabled} class={`${TOOL} w-[var(--h-control)] justify-center px-0`} {...loadOnIntent("menu", "command")}>
+        <button type="button" aria-label="Add" disabled={props.disabled} class={`${TOOL} w-[var(--h-control)] justify-center px-0`} {...loadOnIntent("menu")}>
           <Plus size={16} stroke-width={1.5} />
         </button>
       </ui-menu-trigger>

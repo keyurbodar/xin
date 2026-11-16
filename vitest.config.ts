@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs"
+import { builtinModules } from "node:module"
 import { join } from "node:path"
 import { cloudflareTest } from "@cloudflare/vitest-plugin"
 import { defineConfig } from "vitest/config"
@@ -38,6 +39,34 @@ function liveBindings(): Record<string, string> {
   return bindings
 }
 
+const PREBUNDLED = [
+  "@deepseek-ai/cordis",
+  "@deepseek-ai/cordis-plugin-loader",
+  "@deepseek-ai/schemastery",
+  "@earendil-works/chord",
+  "@earendil-works/chord/context",
+  "@earendil-works/chord/sqlite",
+  "@earendil-works/chord/sqlite/cloudflare",
+  "@earendil-works/pi-ai",
+  "@earendil-works/pi-ai/api/anthropic-messages.lazy",
+  "@earendil-works/pi-ai/api/google-generative-ai.lazy",
+  "@earendil-works/pi-ai/api/openai-completions.lazy",
+  "@earendil-works/pi-ai/api/openai-responses.lazy",
+  "@earendil-works/pi-ai/models",
+  "@earendil-works/pi-ai/providers/all",
+  "@earendil-works/pi-ai/providers/model-schema",
+  "@earendil-works/pi-ai/providers/opencode-go",
+  "@earendil-works/pi-ai/utils/estimate",
+  "@earendil-works/pi-durable",
+  "@earendil-works/pi-durable/env",
+  "@earendil-works/pi-durable/storage/sqlite/cloudflare",
+  "@earendil-works/pi-durable/testing",
+  "@earendil-works/pi-durable/tool-search",
+  "@earendil-works/pi-durable/tools",
+  "@earendil-works/pi-mcp",
+  "@earendil-works/pi-schema",
+]
+
 const live = process.env.INGLE_LIVE === "1"
 const instabox = process.env.INSTABOX_API_KEY
 const instaboxLive = process.env.INSTABOX_LIVE === "1" && instabox !== undefined && instabox !== ""
@@ -56,8 +85,12 @@ export default defineConfig({
       },
     }),
   ],
+  resolve: {
+    alias: { "node-addon-require-builtin": path("./test/no-require-builtin.cjs") },
+  },
   test: {
     include: load ? ["test/**/*.bench.ts"] : ["src/**/*.test.ts", "plugins/**/*.test.ts", "test/**/*.test.ts"],
+    deps: { optimizer: { ssr: { enabled: true, include: PREBUNDLED, rolldownOptions: { external: [/^node:/, /^cloudflare:/, ...builtinModules] } } } },
     maxWorkers,
     retry: 0,
   },

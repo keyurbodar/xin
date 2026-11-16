@@ -49,7 +49,7 @@ export { default } from "../src/worker.ts"
 /** The product profile plus the test bundle and the optional tool packages the tests exercise. */
 export const TEST_PROFILE: Profile = {
   bundles: [...PROFILE.bundles, "test"],
-  patch: PROFILE.patch,
+  patch: [...PROFILE.patch, { id: "jobs", config: { waitMs: m6.TEST_JOB_WAIT_MS } }],
 }
 
 export const Counter = defineDoc<{ count: number }>({
