@@ -30,17 +30,23 @@ const TRANSIENT = new RegExp(
   "i",
 )
 
+/**
+ * Faults the same request would hit again, whatever transient wording they carry: a client status other than 408, 425
+ * or 429 (a bad body, a bad key, a missing model), and an exhausted credit balance.
+ */
+const FINAL = /(?<![a-z0-9])4(?!08|25|29)\d\d(?![a-z0-9])|credit.?balance/i
+
 /** The prefix that hands a reclassified failure to pi's durable retry; pi-ai treats this wording as transient. */
 export const TRANSIENT_PREFIX = "Provider returned an error: "
 
 /**
- * True when `message` failed with a transient fault pi-ai would otherwise treat as final. Quota and billing faults stay
- * final (pi-ai's own rule), and so does a context overflow, which only a compaction can fix.
+ * True when `message` failed with a transient fault pi-ai would otherwise treat as final. Client errors, quota, billing
+ * and credit faults stay final, and so does a context overflow, which only a compaction can fix.
  */
 export function needsRetry(message: AssistantMessage): boolean {
   if (message.stopReason !== "error" || message.errorMessage === undefined) return false
   if (isRetryableAssistantError(message) || isContextOverflow(message)) return false
-  if (!TRANSIENT.test(message.errorMessage)) return false
+  if (!TRANSIENT.test(message.errorMessage) || FINAL.test(message.errorMessage)) return false
   return isRetryableAssistantError({ ...message, errorMessage: `${TRANSIENT_PREFIX}${message.errorMessage}` })
 }
 

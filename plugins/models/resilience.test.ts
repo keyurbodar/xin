@@ -34,6 +34,13 @@ describe("provider retries", () => {
       "401 Unauthorized",
       "insufficient_quota: invalid response",
       "prompt is too long: 250000 tokens > 200000 maximum",
+      "400 invalid_request_error: malformed tool_use block",
+      "400 Bad Request: request body is malformed JSON",
+      "400 Invalid response_format: json_schema is required",
+      "400 invalid_request_error: max_tokens: 529 is not a valid value",
+      "401 Unauthorized: invalid response from auth service",
+      "404 Not Found: body is not valid json",
+      "Your credit balance is too low. invalid response",
     ])
       expect(needsRetry(failed(text)), text).toBe(false)
     expect(needsRetry(fauxAssistantMessage("Invalid response"))).toBe(false)
