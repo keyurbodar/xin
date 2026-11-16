@@ -1,6 +1,6 @@
 import "@ui-sdk/web/input"
 import { ChevronRight, Search, X } from "lucide-solid"
-import { createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { createSignal, For, Match, Show, Switch, type Accessor, type JSX } from "solid-js"
 import { host, slotItems, type SlotItem } from "../plugins/slots.tsx"
 import { PluginPage } from "./plugin-page.tsx"
 import { route } from "../lib/router.ts"
@@ -144,10 +144,10 @@ const NAV_LABEL = "px-2 text-mini font-title text-ink-3 max-sm:px-3"
 const NAV_LIST =
   "flex flex-col gap-px max-sm:gap-0 max-sm:overflow-hidden max-sm:rounded-lg max-sm:shadow-ring max-sm:[&>a+a]:border-t max-sm:[&>a]:border-line-1 max-sm:[&>a]:rounded-none"
 
-export function SettingsScreen(): JSX.Element {
+export function SettingsScreen(props: { pages?: Accessor<readonly SlotItem<"settings.page">[]> }): JSX.Element {
   const [query, setQuery] = createSignal("")
   const current = (): Entry => entryOf(route().parts[1])
-  const pages = slotItems("settings.page")
+  const pages = props.pages ?? slotItems("settings.page")
   const page = () =>
     route().parts[1] === "plugin"
       ? pages().find((item) => item.key === `${route().parts[2]}:${route().parts[3]}`)
@@ -250,6 +250,7 @@ export function SettingsScreen(): JSX.Element {
         <div class="mx-auto flex w-full max-w-[calc(var(--w-settings)+var(--page-gutter)*2)] flex-col gap-2 px-[var(--page-gutter)] pb-16 pt-6 sm:pt-12">
           <Show
             when={page()}
+            keyed
             fallback={
               <>
                 <Breadcrumb
@@ -310,10 +311,10 @@ export function SettingsScreen(): JSX.Element {
                 <Breadcrumb
                   crumbs={[
                     { label: "Settings", href: "#/settings" },
-                    { label: found().title, href: pluginHref(found()) },
+                    { label: found.title, href: pluginHref(found) },
                   ]}
                 />
-                <PluginPage plugin={found().plugin} title={found().title} component={found().component} host={host} />
+                <PluginPage plugin={found.plugin} title={found.title} component={found.component} host={host} />
               </>
             )}
           </Show>
