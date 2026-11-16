@@ -3,6 +3,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { describe, expect, it } from "vitest"
 import { cmd as call, fresh } from "../../test/support.ts"
 import { FAUX_MODEL, type Home } from "../../test/worker.ts"
+import { scrub } from "./health.ts"
 
 type Stub = ReturnType<typeof fresh>
 type ProviderRow = { id: string; health: { state: string; failures: number; error?: string } | null }
@@ -127,6 +128,41 @@ describe("credential checks", () => {
       () => call(stub, "test-old", "credential.test", { provider: "gate" }),
     )
     expect(used).toEqual(["Bearer good-key"])
+  })
+
+  it("keeps a stored key that is not key-shaped out of health from a turn", async () => {
+    const stub = fresh()
+    expect(
+      (await call(stub, "short-key", "credential.set", { provider: FAUX_MODEL.provider, key: "local-dev-tok" })).ok,
+    ).toBe(true)
+    await runInDurableObject(stub, async (home: Home) => {
+      home.script(["error:401 token local-dev-tok is not valid"])
+      await home.chooseModel(FAUX_MODEL)
+      await home.submit("hello", "short-key-turn")
+      await home.harness.waitForIdle(BACKGROUND_CONTEXT)
+    })
+    expect(await healthOf(stub, "short-key-health", FAUX_MODEL.provider)).toMatchObject({
+      state: "failing",
+      error: "401 token [redacted] is not valid",
+    })
+  })
+
+  it("redacts whole key-shaped words but leaves model and request ids readable", () => {
+    expect(
+      scrub(
+        "404 The model meta-llama-3-1-405b-instruct-turbo-fp8 does not exist (request 3f1c2a9e-8b7d-4c6e-9a1b-2d3e4f5a6b7c)",
+        [],
+      ),
+    ).toBe(
+      "404 The model meta-llama-3-1-405b-instruct-turbo-fp8 does not exist (request 3f1c2a9e-8b7d-4c6e-9a1b-2d3e4f5a6b7c)",
+    )
+    expect(scrub("429 rate limit on task_queue_overloaded_error", [])).toBe(
+      "429 rate limit on task_queue_overloaded_error",
+    )
+    expect(scrub("bad key sk-proj-abcdefghijklmnop and AIzaSyA1234567890abcdef", [])).toBe(
+      "bad key [redacted] and [redacted]",
+    )
+    expect(scrub(`Basic ${btoa("tok-1234")}`, ["tok-1234"])).toBe("Basic [redacted]")
   })
 
   it("refuses endpoints a Worker cannot reach", async () => {

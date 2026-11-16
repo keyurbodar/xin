@@ -375,6 +375,7 @@ type Settings = {
 }
 
 const PROBE_TOKENS = 16
+const PROBE_TIMEOUT_MS = 20_000
 const price = (model: Model<Api>): number => model.cost.input + model.cost.output
 const PRIVATE_HOST =
   /^(?:(?:.*\.)?localhost|.*\.local|.*\.internal|(?:0|10|127)\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+|198\.1[89]\.\d+\.\d+|(?:22[4-9]|2[3-5]\d)\.\d+\.\d+\.\d+|\[.*\])$/i
@@ -901,7 +902,11 @@ export function create(deps: ModelsPort): ModelsParts {
   }
   const registry = createRegistry(deps)
   const store = registry.store
-  const health = createHealthBoard()
+  let storedSecrets: readonly string[] = []
+  const refreshSecrets = async (): Promise<void> => {
+    storedSecrets = await credentialSecrets(db, store)
+  }
+  const health = createHealthBoard(() => storedSecrets)
 
   /**
    * One tiny request on a model the provider's stored key unlocks: the named one, else the owner's default, favourite
@@ -918,7 +923,7 @@ export function create(deps: ModelsPort): ModelsParts {
     const preferred = [...Object.values(settings.defaults), ...settings.favorites, ...settings.recent]
     const model =
       modelId === undefined
-        ? (keyed.find((candidate) => preferred.some((ref) => same(ref, refOf(candidate)))) ??
+        ? (preferred.flatMap((ref) => keyed.filter((candidate) => same(ref, refOf(candidate))))[0] ??
           keyed.toSorted((left, right) => price(left) - price(right))[0])
         : keyed.find((candidate) => candidate.id === modelId)
     if (model === undefined)
@@ -936,7 +941,13 @@ export function create(deps: ModelsPort): ModelsParts {
       const reply = await target.models.completeSimple(
         model,
         { messages: [{ role: "user", content: [{ type: "text", text: "Reply with OK." }], timestamp: started }] },
-        { maxTokens: PROBE_TOKENS, cacheRetention: "none" },
+        {
+          maxTokens: PROBE_TOKENS,
+          cacheRetention: "none",
+          sessionId: crypto.randomUUID(),
+          timeoutMs: PROBE_TIMEOUT_MS,
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        },
       )
       if (reply.stopReason === "error" || reply.stopReason === "aborted") error = reply.errorMessage ?? "provider error"
     } catch (thrown) {
@@ -1341,6 +1352,7 @@ export function create(deps: ModelsPort): ModelsParts {
         await store.modify(args.provider, async () => ({ type: "api_key", key }))
       }
       registry.restore(args.provider)
+      await refreshSecrets()
       const stored = { provider: args.provider, type: "api_key", custom: args.custom !== undefined }
       if (test === undefined) return stored
       health.record(args.provider, { ok: true })
@@ -1373,6 +1385,7 @@ export function create(deps: ModelsPort): ModelsParts {
     run: async (_api, { provider }) => {
       await store.delete(provider)
       registry.restore(provider)
+      await refreshSecrets()
       return { provider, deleted: true }
     },
   })
@@ -1639,6 +1652,7 @@ export function create(deps: ModelsPort): ModelsParts {
     start: async () => {
       disabledRefs = (await readKv(db, "owner.disabled", refsCheck.check)) ?? []
       await registry.sync()
+      await refreshSecrets()
       setPercent((await readKv(db, COMPACTION_KEY, compactionCheck.check))?.percent)
       await seedUsage(db, harness)
       await budget.load()

@@ -15,12 +15,19 @@ export type HealthBoard = {
 }
 
 const MAX_ERROR = 300
-const KEY_SHAPED = /(?:sk|pk|rk|xai|gsk|key|ghp|hf|AIza)[-_A-Za-z0-9]{12,}|[A-Za-z0-9_-]{32,}/g
+const KEY_SHAPED =
+  /(?<![A-Za-z0-9_-])(?:(?:sk|pk|rk|xai|gsk|ghp|hf)[-_]|AIza)[A-Za-z0-9_-]{12,}(?![A-Za-z0-9_-])|(?<![A-Za-z0-9_-])[A-Za-z0-9]{32,}(?![A-Za-z0-9_-])/g
 
-/** `text` with each of `secrets`, and anything shaped like an API key, replaced, so a provider that echoes a key leaks nothing. */
+/**
+ * `text` with each of `secrets` (also base64-encoded, as a Basic header carries it) and every whole word shaped like an
+ * API key replaced, so a provider that echoes a key leaks nothing while model and request ids stay readable.
+ */
 export function scrub(text: string, secrets: readonly string[]): string {
   let clean = text
-  for (const secret of secrets) if (secret.length >= 4) clean = clean.split(secret).join("[redacted]")
+  for (const secret of secrets) {
+    if (secret.length < 4) continue
+    for (const form of [secret, btoa(secret)]) clean = clean.split(form).join("[redacted]")
+  }
   return clean.replace(KEY_SHAPED, "[redacted]")
 }
 
@@ -28,7 +35,7 @@ export function scrub(text: string, secrets: readonly string[]): string {
  * Each provider's newest outcome, from every model response and every `credential.test`. It lives in memory, so it
  * costs no row and starts empty after an eviction; the next request on a provider fills it again.
  */
-export function createHealthBoard(now: () => number = Date.now): HealthBoard {
+export function createHealthBoard(secrets: () => readonly string[], now: () => number = Date.now): HealthBoard {
   const board = new Map<string, ProviderHealth>()
   const record: HealthBoard["record"] = (provider, outcome) => {
     if (outcome.ok) {
@@ -39,7 +46,7 @@ export function createHealthBoard(now: () => number = Date.now): HealthBoard {
       state: "failing",
       at: now(),
       failures: (board.get(provider)?.failures ?? 0) + 1,
-      error: scrub(outcome.error, []).slice(0, MAX_ERROR),
+      error: scrub(outcome.error, secrets()).slice(0, MAX_ERROR),
     })
   }
   const observe = (message: AssistantMessage): void => {
