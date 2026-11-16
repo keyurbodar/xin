@@ -24,6 +24,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.provide("models", parts.service)
   ctx.pi.models(parts.models)
   ctx.pi.install(defineExtension({ name: "fast-mode", hooks: [fastRequests] }))
+  ctx.pi.compaction(() => parts.compaction())
   ctx.wire.home("spend", async () => parts.home())
   for (const op of parts.ops) ctx.ops.define(op)
   ctx.clock.timer({
