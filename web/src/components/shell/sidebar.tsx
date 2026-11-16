@@ -10,7 +10,7 @@ import { ago } from "../../lib/format.ts"
 import { stagger } from "../../lib/motion.ts"
 import { visualState } from "../../lib/status.ts"
 import { theme } from "../../lib/theme.ts"
-import { loadOnIntent, replayWhenReady, warmUiSdk } from "../../lib/ui-sdk-lazy.ts"
+import { loadOnIntent, replayWhenReady, uiSdkReady, warmUiSdk } from "../../lib/ui-sdk-lazy.ts"
 import { applyTheme, SlotList, themes } from "../../plugins/slots.tsx"
 import { openThreadTab, paneOpen, projectTabs, setSidebarDrawer, showPaneView } from "../../state/tabs.ts"
 import { ProjectMark, projectState } from "../chat/project-glyph.tsx"
@@ -233,15 +233,31 @@ function LowerSection(): JSX.Element {
         <ui-segmented-control
           aria-label="Sidebar list"
           default-value={initial}
+          onFocusIn={() => warmUiSdk("segmented-control")}
+          onKeyDown={(event) => {
+            if (uiSdkReady("segmented-control") || (event.key !== "Enter" && event.key !== " ")) return
+            event.preventDefault()
+            if (event.target instanceof HTMLElement) event.target.click()
+          }}
           onClick={(event) => replayWhenReady(["segmented-control"], event)}
           on:valuechange={(event) => pick(event.detail.value)}
           class="relative isolate flex h-[var(--h-control-sm)] flex-1 items-center rounded-sm bg-secondary p-0.5"
         >
           <ui-segmented-control-indicator class={`${INDICATOR} ${INDICATOR_AT[initial]}`} />
-          <ui-segmented-control-item value="threads" attr:data-checked={initial === "threads" ? "" : undefined} class={SEGMENT}>
+          <ui-segmented-control-item
+            value="threads"
+            attr:data-checked={initial === "threads" ? "" : undefined}
+            attr:tabindex={initial === "threads" ? "0" : undefined}
+            class={SEGMENT}
+          >
             Threads
           </ui-segmented-control-item>
-          <ui-segmented-control-item value="captains" attr:data-checked={initial === "captains" ? "" : undefined} class={SEGMENT}>
+          <ui-segmented-control-item
+            value="captains"
+            attr:data-checked={initial === "captains" ? "" : undefined}
+            attr:tabindex={initial === "captains" ? "0" : undefined}
+            class={SEGMENT}
+          >
             Captains
           </ui-segmented-control-item>
         </ui-segmented-control>

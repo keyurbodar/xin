@@ -43,27 +43,33 @@ export function warmUiSdk(...names: readonly LazyElements[]): void {
   loadAll(names).catch(() => undefined)
 }
 
-const holding = new WeakSet<EventTarget>()
+const held = new WeakMap<EventTarget, MouseEvent>()
 
 /**
- * Lets a press that lands before its element families have registered count once: it is held, and a copy of it (a
- * click or a context menu, with its position) is sent again to its target on the frame after the load. Further presses on the same control while one is held are
- * dropped, so a double press opens a menu once instead of opening and closing it, and a failed load drops the held
- * press so the next one retries the load.
+ * Lets presses that land before their element families have registered count once: the latest press on each control
+ * is held, and on the frame after the load the element it hit takes focus and a copy of it (a click or a context menu,
+ * with its position) is sent to that element. A double press opens a menu once instead of opening and closing it, a
+ * second pick on a toggle wins over the first, and a failed load drops the held press so the next one retries.
  */
 export function replayWhenReady(names: readonly LazyElements[], event: MouseEvent): void {
   if (names.every(uiSdkReady)) return
   event.preventDefault()
-  const { target, currentTarget } = event
-  if (target === null || currentTarget === null || holding.has(currentTarget)) return
-  holding.add(currentTarget)
+  const { currentTarget } = event
+  if (currentTarget === null || event.target === null) return
+  const loading = held.has(currentTarget)
+  held.set(currentTarget, event)
+  if (loading) return
   loadAll(names).then(
     () =>
       requestAnimationFrame(() => {
-        holding.delete(currentTarget)
-        target.dispatchEvent(new MouseEvent(event.type, event))
+        const latest = held.get(currentTarget)
+        held.delete(currentTarget)
+        const target = latest?.target
+        if (latest === undefined || !(target instanceof Element)) return
+        target.closest<HTMLElement>("[tabindex], button, a[href]")?.focus({ preventScroll: true })
+        target.dispatchEvent(new MouseEvent(latest.type, latest))
       }),
-    () => holding.delete(currentTarget),
+    () => held.delete(currentTarget),
   )
 }
 

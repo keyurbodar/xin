@@ -208,6 +208,13 @@ test("before Segmented Control loads, the stored section already shows checked u
 })
 
 const item = (page: Page, value: string) => page.locator(`ui-segmented-control-item[value=${value}]`)
+const focused = (page: Page) => page.evaluate(() => document.activeElement?.getAttribute("value"))
+const waitChecked = (page: Page, value: string) =>
+  page.waitForFunction(
+    (value) => document.querySelector(`ui-segmented-control-item[value=${value}]`)?.getAttribute("aria-checked") === "true",
+    value,
+    { timeout: 5000 },
+  )
 
 test("an aborted Segmented Control chunk raises no page error, and the next press loads it and switches the section", async () => {
   const errors: string[] = []
@@ -223,33 +230,60 @@ test("an aborted Segmented Control chunk raises no page error, and the next pres
   expect(await page.evaluate(() => customElements.get("ui-segmented-control") === undefined)).toBe(true)
   await release()
   await item(page, "captains").click()
-  await page.waitForFunction(() => document.querySelector("ui-segmented-control-item[value=captains]")?.getAttribute("aria-checked") === "true", undefined, {
-    timeout: 5000,
-  })
+  await waitChecked(page, "captains")
   expect((await rows(page)).join("|")).toContain("Atlas")
+  expect(await focused(page)).toBe("captains")
   expect(errors).toEqual([])
   await page.close()
 })
 
-test("a press while the Segmented Control chunk is slow switches the section once it lands", async () => {
+test("after an aborted Segmented Control chunk the stored item is a tab stop, Enter retries the load, and arrows then switch", async () => {
+  let release = async (): Promise<void> => undefined
+  const page = await harness.open("sidebar", {
+    expected: /Failed to load resource/,
+    before: async (page) => {
+      release = await holdChunk(page, "segmented-control", true)
+    },
+  })
+  await page.waitForTimeout(300)
+  for (let step = 0; step < 30 && (await focused(page)) !== "threads"; step++) await page.keyboard.press("Tab")
+  expect(await focused(page)).toBe("threads")
+  await page.waitForTimeout(300)
+  expect(await page.evaluate(() => customElements.get("ui-segmented-control") === undefined)).toBe(true)
+  await release()
+  await page.keyboard.press("Enter")
+  await page.waitForFunction(() => customElements.get("ui-segmented-control") !== undefined, undefined, { timeout: 5000 })
+  await page.waitForTimeout(200)
+  expect(await focused(page)).toBe("threads")
+  await page.keyboard.press("ArrowRight")
+  await waitChecked(page, "captains")
+  expect((await rows(page)).join("|")).toContain("Atlas")
+  await page.close()
+})
+
+test("while the Segmented Control chunk is slow, the latest press wins: Captains then Threads leaves Threads, focused", async () => {
   let release = async (): Promise<void> => undefined
   const page = await harness.open("sidebar", {
     before: async (page) => {
+      await page.addInitScript(() => {
+        const changes: unknown[] = []
+        Object.assign(window, { changes })
+        document.addEventListener("valuechange", (event) => changes.push((event as CustomEvent<{ value: unknown }>).detail.value), true)
+      })
       release = await holdChunk(page, "segmented-control")
     },
   })
   await item(page, "captains").click()
-  await item(page, "captains").click()
+  await item(page, "threads").click()
   await page.waitForTimeout(200)
   expect((await rows(page)).join("|")).not.toContain("Atlas")
   await release()
-  await page.waitForFunction(() => document.querySelector("ui-segmented-control-item[value=captains]")?.getAttribute("aria-checked") === "true", undefined, {
-    timeout: 5000,
-  })
+  await page.waitForFunction(() => customElements.get("ui-segmented-control") !== undefined, undefined, { timeout: 5000 })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("value") === "threads", undefined, { timeout: 5000 })
   await page.waitForTimeout(200)
-  expect(await segment(page, "Captains").getAttribute("aria-checked")).toBe("true")
-  expect((await rows(page)).join("|")).toContain("Atlas")
-  expect(await page.evaluate(() => localStorage.getItem("ingle.sidebar.section"))).toBe("captains")
+  expect(await segment(page, "Threads").getAttribute("aria-checked")).toBe("true")
+  expect((await rows(page)).join("|")).not.toContain("Atlas")
+  expect(await page.evaluate(() => (window as unknown as { changes: unknown[] }).changes)).toEqual([])
   await page.close()
 })
 
