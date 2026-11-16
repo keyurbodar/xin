@@ -121,13 +121,14 @@ describe("plugin doctor", () => {
       piAuth: expect.stringContaining("without declaring the models permission"),
       piInstalled: "no installed",
       piModelSources: "no modelSources",
-      piRegister: "no install",
+      piRegister: expect.stringContaining("uses registry without declaring the plugins permission"),
       clockTimers: "no timers",
       piExtensionObject: "no extension",
       piExtensionsNamed: expect.stringContaining("uses extensionsNamed without declaring the plugins permission"),
       piEnv: expect.stringContaining("uses env without declaring the runtime permission"),
       driveWrite: expect.stringContaining("without declaring the files permission"),
       foreignService: expect.stringContaining("uses the push service from push without requiring it"),
+      piRegistry: expect.stringContaining("uses registry without declaring the plugins permission"),
       before: {
         "secret.set": JSON.stringify({ ref: "k-reach-probe", value: "[redacted]" }),
         "bundle.put": JSON.stringify({
@@ -166,6 +167,9 @@ describe("plugin doctor", () => {
       pushPermissions: expect.stringContaining("not extensible"),
       pushComposition: expect.stringContaining("not extensible"),
       granted: expect.stringContaining("without declaring the secrets permission"),
+      plantSnapshot: "snapshot is frozen",
+      plantedSeen: false,
+      replaceExecute: "tool is frozen",
     })
   })
 

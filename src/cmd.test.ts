@@ -114,6 +114,19 @@ describe("a batch that throws, and the home revision", () => {
     socket.close()
   })
 
+  it("holds a change announced inside a batch until the batch ends, so one frame tells its final revision", async () => {
+    const socket = await connect()
+    socket.send({ t: "sub", stream: "home" })
+    await socket.next((frame) => frame.t === "snap" && frame.stream === "home")
+    const write = await post({ id: `a-${crypto.randomUUID()}`, op: "test.announce", args: {} })
+    expect(await socket.next((frame) => frame.t === "changed")).toEqual({
+      t: "changed",
+      stream: "home",
+      rev: write.headers.get("x-ingle-rev"),
+    })
+    socket.close()
+  })
+
   it("tells home subscribers once for agent writes that land in the same tick", async () => {
     const socket = await connect()
     socket.send({ t: "sub", stream: "home" })
