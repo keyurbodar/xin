@@ -238,7 +238,7 @@ export function Profile(): JSX.Element {
                 rows={10}
                 spellcheck={false}
                 aria-label="Profile markdown"
-                class="w-full resize-y bg-transparent px-4 py-3 font-mono text-small text-ink outline-none"
+                class="w-full resize-y bg-transparent px-4 py-3 font-mono text-small text-ink"
               />
             </ui-textarea>
           </Card>

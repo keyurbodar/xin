@@ -378,7 +378,7 @@ export function SteerComposer(props: {
                 ? "Steer this thread…"
                 : "Ask a follow-up, or re-run with changes…"
           }
-          class="block min-h-[22px] w-full resize-none bg-transparent px-3 pb-1.5 pt-2.5 text-base text-ink outline-none placeholder:text-placeholder disabled:opacity-60"
+          class="block min-h-[22px] w-full resize-none bg-transparent px-3 pb-1.5 pt-2.5 text-base text-ink placeholder:text-placeholder disabled:opacity-60"
         />
         <div class="flex items-center justify-end px-1.5 pb-1.5">
           <SendButton

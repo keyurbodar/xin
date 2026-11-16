@@ -222,7 +222,7 @@ export function ConversationTabs(props: {
           <MenuIcon {...ICON} />
         </button>
       </Show>
-      <div role="tablist" class="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+      <div role="tablist" class="focus-inset flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
         <button
           type="button"
           ref={projectTab}

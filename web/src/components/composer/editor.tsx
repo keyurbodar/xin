@@ -146,7 +146,7 @@ export function ComposerEditor(props: {
       <ui-token-input-editor
         aria-label={props.label}
         placeholder={props.placeholder}
-        class="block max-h-[320px] min-h-[48px] w-full overflow-y-auto whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-body text-ink outline-none data-[empty]:before:pointer-events-none data-[empty]:before:text-placeholder data-[empty]:before:content-[attr(aria-placeholder)] [&:not(:defined)]:before:text-placeholder [&:not(:defined)]:before:content-[attr(placeholder)] data-[disabled]:opacity-60"
+        class="block max-h-[320px] min-h-[48px] w-full overflow-y-auto whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-body text-ink data-[empty]:before:pointer-events-none data-[empty]:before:text-placeholder data-[empty]:before:content-[attr(aria-placeholder)] [&:not(:defined)]:before:text-placeholder [&:not(:defined)]:before:content-[attr(placeholder)] data-[disabled]:opacity-60"
       />
       <ui-trigger-menu
         on:openchange={(event) => {

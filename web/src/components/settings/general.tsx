@@ -242,7 +242,7 @@ export function General(): JSX.Element {
               <textarea
                 rows={7}
                 aria-label="Instructions for every project"
-                class="w-full resize-y bg-transparent px-4 py-3 text-body text-ink outline-none disabled:opacity-40"
+                class="w-full resize-y bg-transparent px-4 py-3 text-body text-ink disabled:opacity-40"
                 value={valueOf("instructions")}
                 maxLength={LIMIT.instructions}
                 disabled={!readable()}

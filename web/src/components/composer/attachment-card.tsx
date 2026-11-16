@@ -20,7 +20,7 @@ const RING_RADIUS = 9
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS
 
 const CARD =
-  "relative flex h-14 min-w-0 items-center gap-3 rounded-md bg-secondary py-2 pl-2 pr-1.5 text-left shadow-ring outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-1 focus-visible:outline-primary"
+  "relative flex h-14 min-w-0 items-center gap-3 rounded-md bg-secondary py-2 pl-2 pr-1.5 text-left shadow-ring outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-1 focus-visible:outline-focus"
 
 function ProgressRing(props: { name: string; fraction: number }): JSX.Element {
   const percent = (): number => Math.round(props.fraction * 100)
@@ -259,7 +259,7 @@ export function MessageAttachments(props: {
                 <button
                   type="button"
                   aria-label={`Open ${file.name}`}
-                  class="im-press absolute inset-0 rounded-md outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-1 focus-visible:outline-primary"
+                  class="im-press absolute inset-0 rounded-md outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-1 focus-visible:outline-focus"
                   onClick={() => props.onOpen(index())}
                 />
               </Show>

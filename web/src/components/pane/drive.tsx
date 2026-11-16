@@ -708,7 +708,7 @@ function HistoryPanel(props: { scope: DriveScope; path: string; blobs: BlobCache
                       <ui-listbox-item
                         value={entry.sha256}
                         label={bytes(entry.size)}
-                        class={`${CENTER_ROW} cursor-default outline-none data-[highlighted]:bg-hover data-[selected]:bg-secondary`}
+                        class={`${CENTER_ROW} cursor-default focus-inset data-[highlighted]:bg-hover data-[selected]:bg-secondary`}
                       >
                         <span class="h-1.5 w-1.5 shrink-0 rounded-full border border-line-3" />
                         <span class="flex-1 text-sm text-ink-2">{bytes(entry.size)}</span>

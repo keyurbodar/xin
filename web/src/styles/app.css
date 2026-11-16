@@ -46,8 +46,37 @@
   }
 
   :focus-visible {
-    outline: 1px solid var(--color-line-3);
-    outline-offset: 1px;
+    outline: var(--focus-ring-width) solid var(--color-focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  ui-tree-item:focus-visible {
+    outline: none;
+  }
+
+  ui-tree-item:focus-visible > ui-tree-item-label {
+    outline: var(--focus-ring-width) solid var(--color-focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+
+  :is(ui-input-group, [data-focus-group]):has(:focus-visible) {
+    outline: var(--focus-ring-width) solid var(--color-focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  :is(ui-input-group, [data-focus-group]) :focus-visible {
+    outline: none;
+  }
+
+  @media (forced-colors: active) {
+    [data-highlighted] {
+      outline: var(--focus-ring-width) solid Highlight;
+      outline-offset: calc(var(--focus-ring-width) * -1);
+    }
+  }
+
+  :is(textarea, ui-token-input-editor, ui-combobox-input input, ui-command-input input):focus-visible {
+    outline-offset: calc(var(--focus-ring-width) * -1);
   }
 
   * {
@@ -727,4 +756,11 @@
 
 :root[data-motion="reduce"] .block-expand[data-animate] {
   transition: none;
+}
+
+@utility focus-inset {
+  &:focus-visible,
+  & :focus-visible {
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
 }

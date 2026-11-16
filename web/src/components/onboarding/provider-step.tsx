@@ -120,7 +120,7 @@ export function ProviderStep(): JSX.Element {
                 setChoice(item.id)
                 touch()
               }}
-              class="halftone im-press im-hover flex h-[58px] items-center gap-3 rounded-md border px-2.5 text-left"
+              class="halftone im-press im-hover flex h-[58px] items-center focus-visible:z-10 gap-3 rounded-md border px-2.5 text-left"
               style={HALFTONE_STYLE}
               classList={{
                 "border-line-2 bg-panel": choice() === item.id,

@@ -83,7 +83,7 @@ export function Usage(): JSX.Element {
               {(entry) => (
                 <ui-segmented-control-item
                   value={entry.key}
-                  class="flex h-full cursor-default items-center rounded-xs px-2 text-small text-ink-3 outline-none transition-colors duration-100 focus-visible:shadow-[0_0_0_2px_var(--color-primary-soft)] hover:text-ink data-[checked]:bg-card data-[checked]:text-ink data-[checked]:shadow-ring"
+                  class="flex h-full cursor-default items-center rounded-xs px-2 text-small text-ink-3 transition-colors duration-100 hover:text-ink data-[checked]:bg-card data-[checked]:text-ink data-[checked]:shadow-ring"
                 >
                   {entry.label}
                 </ui-segmented-control-item>
@@ -431,7 +431,7 @@ function DollarField(props: {
   onEnter: () => void
 }): JSX.Element {
   return (
-    <ui-input-group class="flex h-[var(--h-control)] w-[104px] items-center gap-1 rounded-sm bg-bg px-2 shadow-ring focus-within:shadow-[0_0_0_1px_var(--color-primary),0_0_0_3px_var(--color-primary-soft)]">
+    <ui-input-group class="flex h-[var(--h-control)] w-[104px] items-center gap-1 rounded-sm bg-bg px-2 shadow-ring">
       <span class="font-mono text-small text-ink-3" aria-hidden="true">$</span>
       <ui-input class="flex min-w-0 flex-1">
         <input
@@ -444,7 +444,7 @@ function DollarField(props: {
           onKeyDown={(event) => {
             if (event.key === "Enter") props.onEnter()
           }}
-          class="min-w-0 flex-1 bg-transparent font-mono text-small text-ink outline-none placeholder:text-icon"
+          class="min-w-0 flex-1 bg-transparent font-mono text-small text-ink placeholder:text-icon"
         />
       </ui-input>
     </ui-input-group>

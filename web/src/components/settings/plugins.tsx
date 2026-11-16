@@ -71,7 +71,7 @@ export function Plugins(): JSX.Element {
       </div>
 
       <div class="flex items-center gap-2">
-        <ui-input-group class="flex h-[var(--h-control)] min-w-0 flex-1 items-center gap-2 rounded-sm bg-bg px-2 shadow-ring focus-within:shadow-[0_0_0_1px_var(--color-primary),0_0_0_3px_var(--color-primary-soft)]">
+        <ui-input-group class="flex h-[var(--h-control)] min-w-0 flex-1 items-center gap-2 rounded-sm bg-bg px-2 shadow-ring">
           <Glyph name="search" size={14} class="text-ink-3" />
           <ui-input class="flex min-w-0 flex-1">
             <input
@@ -80,7 +80,7 @@ export function Plugins(): JSX.Element {
               placeholder="Filter plugins"
               spellcheck={false}
               aria-label="Filter plugins"
-              class="min-w-0 flex-1 bg-transparent text-small text-ink outline-none placeholder:text-placeholder"
+              class="min-w-0 flex-1 bg-transparent text-small text-ink placeholder:text-placeholder"
             />
           </ui-input>
         </ui-input-group>
