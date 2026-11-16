@@ -1,0 +1,1 @@
+2026-11-06T16:20:43Z	P1	dsh Loader runs in workerd with one build define import.meta.url and internal=undefined; plugins resolve only through cordis:<name> builtins	ModuleLoader.fromInternal calls createRequire(import.meta.url) at construction; no runtime import in a Worker	spike: TypeError path undefined until the define was added	accepted

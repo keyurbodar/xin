@@ -1,0 +1,1 @@
+2026-11-07T22:30	P14	Mobile Home hides the dashed New project tile and pins a full-width primary button above the tab bar	M1 draws that button over the content; the dashed tile is a desktop pattern	web/src/screens/home.tsx fixed inset-x-4 bottom-[88px] sm:hidden; pb-32 on the mobile body	P14-mobile-home.png at 390 wide

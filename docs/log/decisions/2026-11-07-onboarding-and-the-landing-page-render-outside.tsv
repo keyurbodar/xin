@@ -1,0 +1,1 @@
+2026-11-07T17:26	P14	Onboarding and the landing page render outside the shell; every other route renders inside it	frames O2-O5 and L1 are full-bleed surfaces with their own top bar, and a signed-in shell would misrepresent first-run	web/src/app.tsx route branching	accepted

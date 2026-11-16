@@ -1,0 +1,1 @@
+2026-11-16T06:00:00Z	issues	Issue wakes go through an outbox table (issue_wakes) written in the mutation's transaction, delivered after commit and replayed at boot	a crash between the issue commit and the intake enqueue lost the wake; intake commandIds keep replay idempotent	plugins/issues/review.test.ts outbox replay test	kept; +2 rows written per wake

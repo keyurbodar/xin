@@ -1,0 +1,1 @@
+2026-11-16T10:00:00Z	client	lib/motion.ts also sets :root[data-visibility] on visibilitychange	ingle-motion.css pauses loops on data-visibility="hidden" while motion.css still reads data-hidden; both stay set until #22 retires one	web/src/lib/motion.ts	adopted

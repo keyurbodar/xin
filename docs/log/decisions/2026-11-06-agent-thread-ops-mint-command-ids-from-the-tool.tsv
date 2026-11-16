@@ -1,0 +1,1 @@
+2026-11-06T14:29:41Z	M5	Agent thread ops mint command ids from the tool task id: thread.send:<taskId> and thread.stop:<taskId>	api.callId can repeat across conversations, which collided receipts and idempotency keys	plugins/orchestrator/tools.ts tool wrappers	accepted

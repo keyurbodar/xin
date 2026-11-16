@@ -1,0 +1,1 @@
+2026-11-06T13:57:41Z	M9	VAPID key pair generated on first use and stored as a private JWK in kv vapid	no env binding needed; one owner per DO	plugins/push/push.test.ts gate 4ab10609 (VAPID case); the .verify scratch artifact is gone	accepted

@@ -1,0 +1,1 @@
+2026-11-06T13:49:01Z	M5	M5a accepted: archived flag on projects, project id derived from command id, default threadLimit 8	02-state omits archived; a derived id keeps create idempotent past the 24 h receipt TTL; spec names no limit	workspace proof rerun by lead after the lane's last async fix: pass	kept; 02-state to note archived at the M5 commit

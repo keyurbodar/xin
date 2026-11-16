@@ -1,0 +1,1 @@
+2026-11-17T01:00:00Z	XIN-21	Trigger rows are keyed by their key string, not the draft object	Solid's For keyed rows by object identity, so each keystroke remounted the field and dropped focus	Chromium: typing 'push, tag' character by character kept focus in the field	adopted

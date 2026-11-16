@@ -1,0 +1,1 @@
+2026-11-16T14:00:00Z	onboarding v5	captain idempotency: ensureCaptain reuses a live Captain with the same alias, and project.create runs under the command id onboarding-<slug>	project.create and captain.create replay by command id; a lost reply or a reload must not fail on a taken alias or slug	web/src/lib/onboarding.test.ts	adopted

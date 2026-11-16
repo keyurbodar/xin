@@ -1,0 +1,1 @@
+2026-11-06T13:57:41Z	M8	Plugin runtime re-reconciles in place on plugin.enable/configure/secret.set; reserved op names cannot be shadowed	hot reload without reopening the DO	src/kernel/kernel.test.ts gate 18a0afd6	accepted
