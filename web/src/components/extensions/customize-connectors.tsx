@@ -3,6 +3,8 @@ import { settled } from "../../lib/loading.ts"
 import { addServer, errorMessage, isRecord, readMcpTools, removeServer, servers, type McpServer } from "../../state/extensions.ts"
 import { Button, Empty, Failure, MONO_INPUT, Note, Panel, Pending, failureOf } from "./chrome.tsx"
 import { Glyph } from "./glyph.tsx"
+import { IntegrationRow } from "../ui/integration-row.tsx"
+import { serverDetail, serverStatus } from "../../lib/integrations.ts"
 
 export function Connectors(): JSX.Element {
   const [selected, setSelected] = createSignal<string | undefined>(undefined)
@@ -56,23 +58,20 @@ export function Connectors(): JSX.Element {
                   setSelected(server.name)
                   setAdding(false)
                 }}
-                class="flex w-full items-center gap-2.5 border-b border-line-1 px-3.5 py-3 text-left hover:bg-secondary"
+                class="block w-full border-b border-line-1 px-3.5 py-3 text-left hover:bg-secondary"
                 classList={{ "bg-secondary": selected() === server.name }}
               >
-                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary text-ink-2">
-                  <Glyph name="plug" size={15} />
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate text-sm font-medium text-ink">{server.name}</span>
-                  <span class="flex items-center gap-1.5 text-xs text-ink-3">
-                    <span
-                      class="h-1.5 w-1.5 rounded-2xs"
-                      classList={{ "bg-done": server.error === undefined, "bg-failed": server.error !== undefined }}
-                    />
-                    {server.error ?? `${server.tools} ${server.tools === 1 ? "tool" : "tools"}`}
-                  </span>
-                </span>
-                <Glyph name="chevron-right" size={13} class="text-icon" />
+                <IntegrationRow
+                  mark={
+                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-line-2 bg-secondary text-ink-2">
+                      <Glyph name="plug" size={15} />
+                    </span>
+                  }
+                  name={server.name}
+                  detail={serverDetail(server)}
+                  status={serverStatus(server)}
+                  actions={<Glyph name="chevron-right" size={13} class="text-icon" />}
+                />
               </button>
             )}
           </For>

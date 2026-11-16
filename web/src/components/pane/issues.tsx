@@ -189,6 +189,7 @@ function NewIssue(props: NewIssueProps): JSX.Element {
         throw error
       },
     ))
+  const warm = (): void => void load().catch(() => undefined)
   return (
     <>
       <ui-popover-trigger attr:for={id}>
@@ -197,13 +198,16 @@ function NewIssue(props: NewIssueProps): JSX.Element {
           class={`${ICON_BUTTON} aria-expanded:bg-hover aria-expanded:text-ink`}
           aria-label="New issue"
           title="New issue"
-          onPointerEnter={() => void load()}
-          onPointerDown={() => void load()}
-          onFocus={() => void load()}
+          onPointerEnter={warm}
+          onPointerDown={warm}
+          onFocus={warm}
           onClick={(event) => {
             if (popover() !== undefined) return
             const button = event.currentTarget
-            void load().then(() => requestAnimationFrame(() => button.click()))
+            void load().then(
+              () => requestAnimationFrame(() => button.click()),
+              () => undefined,
+            )
           }}
         >
           <Plus size={14} stroke-width={1.5} />

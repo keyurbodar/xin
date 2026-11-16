@@ -12,8 +12,8 @@ export function PluginPage(props: {
 }): JSX.Element {
   return (
     <>
-      <h1 class="text-xl font-semibold tracking-[-0.015em] text-ink">{props.title}</h1>
-      <div class="mt-7">
+      <h1 class="text-title font-title text-ink">{props.title}</h1>
+      <div class="mt-6">
         <PluginBoundary plugin={props.plugin}>
           <Dynamic component={props.component} host={props.host} />
         </PluginBoundary>

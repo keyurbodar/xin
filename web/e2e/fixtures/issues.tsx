@@ -142,6 +142,7 @@ const answer = (op: string, args: Record<string, unknown>): unknown => {
       return issue
     }
     case "captain.crew.add":
+    case "captain.crew.remove":
       return {}
     default:
       throw new Error(`fixture has no ${op}`)

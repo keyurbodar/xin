@@ -1,8 +1,8 @@
-import { Popover } from "@ark-ui/solid/popover"
+import "@ui-sdk/web/popover"
 import { For, Show, createEffect, createSignal, on, type JSX } from "solid-js"
-import { Portal } from "solid-js/web"
 import { cachedContext, ensureContext, refreshContext, type ContextCategoryKey, type ContextReport } from "../../state/context.ts"
-import { SURFACE } from "./styles.ts"
+import { createOverlayMount } from "../shell/presence.ts"
+import { POPUP } from "../ui/surface.ts"
 
 const CATEGORY: Readonly<Record<ContextCategoryKey, { readonly label: string; readonly color: string }>> = {
   system: { label: "System prompt", color: "bg-ink-3" },
@@ -43,6 +43,8 @@ function Ring(props: { fraction: number }): JSX.Element {
 /** How full the conversation's context is, read from `conv.context` on open and after each turn. */
 export function ContextMeter(props: { conversation: number; busy: boolean }): JSX.Element {
   const [error, setError] = createSignal<string | undefined>()
+  const [open, setOpen] = createSignal(false)
+  const overlay = createOverlayMount(open)
   const report = (): ContextReport | undefined => cachedContext(props.conversation)
 
   const settle = (read: Promise<ContextReport>): void => {
@@ -69,25 +71,29 @@ export function ContextMeter(props: { conversation: number; busy: boolean }): JS
   return (
     <Show when={report()}>
       {(value) => (
-        <Popover.Root
-          positioning={{ placement: "top-end", gutter: 8 }}
-          lazyMount
-          unmountOnExit
-          onOpenChange={(details) => {
-            if (details.open) refresh()
+        <ui-popover
+          prop:open={open()}
+          on:openchange={(event) => {
+            event.preventDefault()
+            const next = event.detail.value
+            if (next) refresh()
+            queueMicrotask(() => setOpen(next))
           }}
+          on:openchangecomplete={overlay.settle}
         >
-          <Popover.Trigger
-            aria-label={`Context ${percent(value())}% used`}
-            class="composer-press grid h-[var(--h-control)] w-[var(--h-control)] place-items-center rounded-sm outline-none hover:bg-secondary focus-visible:outline-2 focus-visible:outline-primary data-[state=open]:bg-secondary"
-          >
-            <Ring fraction={fraction(value())} />
-          </Popover.Trigger>
-          <Portal>
-            <Popover.Positioner>
-              <Popover.Content class={`${SURFACE} w-[min(340px,calc(100vw-16px))] p-3`}>
+          <ui-popover-trigger>
+            <button
+              type="button"
+              aria-label={`Context ${percent(value())}% used`}
+              class="composer-press grid h-[var(--h-control)] w-[var(--h-control)] place-items-center rounded-sm outline-none hover:bg-secondary focus-visible:outline-2 focus-visible:outline-primary aria-expanded:bg-secondary"
+            >
+              <Ring fraction={fraction(value())} />
+            </button>
+          </ui-popover-trigger>
+          <ui-popover-content side="top" align="end" side-offset="8" class={`${POPUP} w-[min(340px,calc(100vw-16px))] p-3`}>
+            <Show when={overlay.mounted()}>
                 <div class="flex items-baseline justify-between gap-3">
-                  <Popover.Title class="text-sm font-medium text-ink">Context</Popover.Title>
+                  <ui-popover-title class="text-small font-title text-ink">Context</ui-popover-title>
                   <span class="text-xs tabular-nums text-ink-3">
                     {tokens(value().used)} / {tokens(value().contextWindow)} used ({percent(value())}%)
                   </span>
@@ -127,10 +133,9 @@ export function ContextMeter(props: { conversation: number; busy: boolean }): JS
                     {error() ?? "Estimated until the model's next reply reports its usage."}
                   </p>
                 </Show>
-              </Popover.Content>
-            </Popover.Positioner>
-          </Portal>
-        </Popover.Root>
+            </Show>
+          </ui-popover-content>
+        </ui-popover>
       )}
     </Show>
   )

@@ -254,3 +254,48 @@ test("while a crew add saves, the add menu opens nothing and only one add goes o
   expect(await sent(page, "captain.crew.add")).toEqual(['captain.crew.add:{"id":"c1","threadId":31}'])
   await page.close()
 })
+
+test("removing a second crew member while the first removal runs sends nothing more", async () => {
+  const page = await open("crew", "&slow=1500")
+  await page.getByRole("button", { name: "Remove Port the dialog shell from the crew" }).click()
+  await page.getByRole("button", { name: "Remove Review the spec from the crew" }).click()
+  await page.waitForTimeout(2200)
+  expect(await sent(page, "captain.crew.remove")).toEqual(['captain.crew.remove:{"id":"c1","threadId":11}'])
+  await page.close()
+})
+
+test("an aborted New issue or toggle chunk raises no unhandled rejection and the next press loads it", async () => {
+  const aborted = new Set<string>()
+  const page = await harness.open("issues", {
+    search: "?view=list",
+    width: 900,
+    before: async (target) => {
+      await target.addInitScript(() => {
+        const seen: string[] = []
+        Object.assign(window, { rejections: seen })
+        window.addEventListener("unhandledrejection", (event) => seen.push(String(event.reason)))
+      })
+      await target.route(/new-issue\.tsx|ui-sdk_web_toggle|@ui-sdk\/web\/dist\/toggle/, async (route) => {
+        const key = route.request().url().includes("new-issue") ? "new-issue" : "toggle"
+        if (aborted.has(key)) return route.continue()
+        aborted.add(key)
+        return route.abort()
+      })
+    },
+  })
+  await page.locator("[data-issue='1']").waitFor()
+  await page.getByRole("button", { name: "New issue" }).click()
+  await page.getByRole("button", { name: "Closed issues" }).click()
+  await page.waitForTimeout(600)
+  expect([...aborted].sort()).toEqual(["new-issue", "toggle"])
+  expect(await page.getByRole("dialog").count()).toBe(0)
+  expect(await page.evaluate(() => (window as unknown as { rejections: string[] }).rejections)).toEqual([])
+  await page.getByRole("button", { name: "New issue" }).click()
+  await page.getByRole("dialog").waitFor()
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.getByRole("button", { name: "Closed issues" }).click()
+  await page.locator("[data-issue='5']").waitFor()
+  expect(await page.evaluate(() => (window as unknown as { rejections: string[] }).rejections)).toEqual([])
+  await page.close()
+})

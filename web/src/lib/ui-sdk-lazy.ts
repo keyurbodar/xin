@@ -1,5 +1,8 @@
 const LOADERS = {
   menu: () => import("@ui-sdk/web/menu"),
+  command: () => import("@ui-sdk/web/command"),
+  combobox: () => import("@ui-sdk/web/combobox"),
+  editor: () => Promise.all([import("@ui-sdk/web/token-input"), import("@ui-sdk/web/trigger-menu")]),
   toggle: () => import("@ui-sdk/web/toggle"),
 } as const
 
@@ -33,17 +36,24 @@ export function loadUiSdk(name: LazyElements): Promise<void> {
   return running
 }
 
-/** Trigger handlers that register an element family on first hover, focus or press, and replay a click that came before it. */
-export function loadOnIntent(name: LazyElements) {
-  const warm = (): void => void loadUiSdk(name)
+/**
+ * Trigger handlers that load element families on first hover, focus or press, and replay a click that came before them.
+ * A failed load is swallowed here; loadUiSdk forgets it, so the next intent retries.
+ */
+export function loadOnIntent(...names: readonly LazyElements[]) {
+  const load = (): Promise<unknown> => Promise.all(names.map(loadUiSdk))
+  const warm = (): void => void load().catch(() => undefined)
   return {
     onPointerEnter: warm,
     onPointerDown: warm,
     onFocus: warm,
     onClick: (event: MouseEvent & { currentTarget: HTMLButtonElement }): void => {
-      if (uiSdkReady(name)) return
+      if (names.every(uiSdkReady)) return
       const button = event.currentTarget
-      void loadUiSdk(name).then(() => requestAnimationFrame(() => button.click()))
+      void load().then(
+        () => requestAnimationFrame(() => button.click()),
+        () => undefined,
+      )
     },
   }
 }
