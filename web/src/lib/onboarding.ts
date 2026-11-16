@@ -139,11 +139,15 @@ export function showsOnboarding(state: { readonly onboarded: boolean; readonly h
 }
 
 export async function needsOnboarding(): Promise<boolean> {
-  const [owner, captains] = await Promise.all([cmd<unknown>("owner.read"), liveCaptains()])
-  return showsOnboarding({
-    onboarded: strOf(recordOf(owner)?.["onboardedAt"]) !== undefined,
-    hasCaptain: captains.some((entry) => captainOf(entry, { model: undefined }) !== undefined),
-  })
+  try {
+    const [owner, captains] = await Promise.all([cmd<unknown>("owner.read"), liveCaptains()])
+    return showsOnboarding({
+      onboarded: strOf(recordOf(owner)?.["onboardedAt"]) !== undefined,
+      hasCaptain: captains.some((entry) => captainOf(entry, { model: undefined }) !== undefined),
+    })
+  } catch {
+    return true
+  }
 }
 
 export async function markOnboarded(): Promise<void> {
