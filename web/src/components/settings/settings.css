@@ -25,3 +25,7 @@
 :root[data-motion="reduce"] .settings-switch > [data-slot="switch-thumb"] {
   transition-property: background-color;
 }
+
+ui-tooltip-content:not(:defined) {
+  display: none;
+}

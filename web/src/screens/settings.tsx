@@ -125,7 +125,7 @@ export const SECTIONS: readonly { readonly title: string; readonly entries: read
         label: "Models + providers",
         icon: "cpu",
         about: "Provider keys and the catalog they unlock.",
-        terms: ["Providers", "Add provider", "API key", "Catalog"],
+        terms: ["Providers", "Add provider", "API key", "Test", "Health", "Fallback models", "Catalog"],
       },
       {
         id: "plugins",

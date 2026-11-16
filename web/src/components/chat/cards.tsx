@@ -1,5 +1,6 @@
 import { For, Show, createSignal, type JSX } from "solid-js"
-import type { BatchRow, FailureData, RequestRow, ToolCallView } from "../../state/conversation.ts"
+import type { BatchRow, FailureData, FallbackData, FallbackRef, RequestRow, ToolCallView } from "../../state/conversation.ts"
+import { modelName } from "../../state/settings.ts"
 import type { ThreadSummary } from "../../state/home.ts"
 import { STATE_WORD, visualState, type SignalState } from "../../lib/status.ts"
 import { ago } from "../../lib/format.ts"
@@ -433,6 +434,19 @@ export function AnsweredQuestionCard(props: {
         <span class="text-base text-ink">{props.answer}</span>
       </div>
     </div>
+  )
+}
+
+const fallbackName = (ref: FallbackRef): string => modelName(ref.provider, ref.modelId) ?? ref.modelId
+
+/** A run that failed on one model and continued on the next fallback, as a centred timeline note. */
+export function FallbackNote(props: { fallback: FallbackData }): JSX.Element {
+  return (
+    <p data-fallback="" class="im-event m-0 py-1 text-center text-mini text-ink-3 [overflow-wrap:anywhere]">
+      Switched from <span class="text-ink-2">{fallbackName(props.fallback.from)}</span> to{" "}
+      <span class="text-ink-2">{fallbackName(props.fallback.to)}</span>
+      {props.fallback.error === "" ? "" : ` after: ${props.fallback.error}`}
+    </p>
   )
 }
 

@@ -281,6 +281,27 @@ export function entryFailure(entry: EntryView): FailureData | undefined {
   }
 }
 
+export type FallbackRef = { readonly provider: string; readonly modelId: string }
+
+export type FallbackData = { readonly from: FallbackRef; readonly to: FallbackRef; readonly error: string }
+
+const fallbackRef = (value: unknown): FallbackRef | undefined => {
+  const ref = recordOf(value)
+  const provider = strOf(ref?.provider)
+  const modelId = strOf(ref?.modelId)
+  return provider === undefined || modelId === undefined ? undefined : { provider, modelId }
+}
+
+/** A `xin.fallback` entry: the run failed on `from` and continued on `to`. */
+export function entryFallback(entry: EntryView): FallbackData | undefined {
+  if (entry.kind !== "xin.fallback") return undefined
+  const data = recordOf(entry.data)
+  const from = fallbackRef(data?.from)
+  const to = fallbackRef(data?.to)
+  if (from === undefined || to === undefined) return undefined
+  return { from, to, error: strOf(data?.error)?.trim() ?? "" }
+}
+
 export function liveOf(snapshot: Snapshot | undefined): LiveView {
   const live = recordOf(snapshot?.docs["pi.live"])
   const run = recordOf(live?.run)

@@ -198,3 +198,18 @@ test("dates divide the turns as separators", async () => {
   expect(await dividers.evaluateAll((items) => items.map((item) => item.getAttribute("aria-label")))).toEqual(["Yesterday", "Today"])
   await page.close()
 })
+
+test("a fallback reads as a note in place: switched from one model to the next, with the error", async () => {
+  const page = await harness.open("timeline")
+  const note = page.locator("[data-fallback]")
+  expect(await note.count()).toBe(1)
+  expect(await note.textContent()).toBe("Switched from alpha-large to beta-fast after: 529 overloaded_error: the model is overloaded")
+  const order = await page.evaluate(() => {
+    const fallback = document.querySelector("[data-fallback]")!
+    const message = [...document.querySelectorAll("[data-text]")].find((node) => node.textContent?.includes("I asked Release notes"))!
+    return fallback.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING
+  })
+  expect(order).toBeGreaterThan(0)
+  expect(await note.evaluate((node) => getComputedStyle(node).textAlign)).toBe("center")
+  await page.close()
+})

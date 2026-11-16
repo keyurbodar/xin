@@ -9,11 +9,20 @@ import {
   type ModelsList,
   type ProviderSummary,
 } from "../../state/settings.ts"
+import { providerHealth, testCredential, type CredentialTest, type ProviderHealth } from "../../state/providers.ts"
 import { Button, Chip, Failure, Note, Pending, failureOf } from "../extensions/chrome.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
 import { IntegrationRow } from "../ui/integration-row.tsx"
+import { lazyView } from "../ui/lazy-view.tsx"
+import { Signal } from "../ui/signal.tsx"
 import { providerDetail, providerStatus } from "../../lib/integrations.ts"
+import { loadUiSdk } from "../../lib/ui-sdk-lazy.ts"
 import { Card, CheckboxField, Group, SelectField, TextField } from "./parts.tsx"
+
+const FallbackList = lazyView(
+  () => import("./fallbacks.tsx").then((module) => module.FallbackList),
+  () => <Pending label="Reading fallbacks" />,
+)
 
 const APIS: readonly { readonly value: string; readonly label: string }[] = [
   { value: "openai-completions", label: "OpenAI completions" },
@@ -29,6 +38,7 @@ export function Models(): JSX.Element {
 
   onMount(() => {
     void models.reload()
+    void providerHealth.reload()
   })
 
   const list = (): ModelsList => {
@@ -72,6 +82,10 @@ export function Models(): JSX.Element {
         </Show>
       </Group>
 
+      <Group title="Fallback models" detail="When a run fails on a provider error, it moves to the first model here it has not tried">
+        <FallbackList />
+      </Group>
+
       <Group title="Catalog" detail="The list comes from your providers; nothing is hard-coded">
         <Card>
           <div class="grid grid-cols-[minmax(0,1fr)_96px_64px_56px_72px] gap-2 px-4 py-2 max-sm:grid-cols-[minmax(0,1fr)_64px]">
@@ -101,6 +115,26 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
   const [confirming, setConfirming] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | undefined>(undefined)
+  const [testing, setTesting] = createSignal(false)
+  const [tested, setTested] = createSignal<CredentialTest | undefined>(undefined)
+
+  const health = (): ProviderHealth | undefined => {
+    const state = providerHealth.state()
+    return state.kind === "ready" ? state.value.get(props.provider.id) : undefined
+  }
+
+  const test = async (): Promise<void> => {
+    if (testing()) return
+    setTesting(true)
+    setTested(undefined)
+    try {
+      setTested(await testCredential(props.provider.id))
+    } catch (failure: unknown) {
+      setTested({ ok: false, error: errorMessage(failure) })
+    } finally {
+      setTesting(false)
+    }
+  }
 
   const save = async (): Promise<void> => {
     if (key().trim() === "" || busy()) return
@@ -108,6 +142,7 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
     setError(undefined)
     try {
       await saveCredential(props.provider.id, key().trim())
+      void providerHealth.reload()
       setKey("")
       setEditing(false)
     } catch (failure: unknown) {
@@ -131,7 +166,7 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
   }
 
   return (
-    <div class="px-4 py-3">
+    <div class="px-4 py-3" data-provider={props.provider.id}>
       <IntegrationRow
         mark={
           <span class="grid h-[var(--h-control)] w-[var(--h-control)] shrink-0 place-items-center rounded-sm bg-secondary font-mono text-small uppercase text-ink-2 shadow-ring">
@@ -143,11 +178,31 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
         status={providerStatus(error())}
         actions={
           <Show when={!confirming()}>
+            <Show when={health()}>{(known) => <HealthDot provider={props.provider.id} health={known()} />}</Show>
+            <Button size="sm" variant="quiet" busy={testing()} onClick={() => void test()}>{testing() ? "Testing" : "Test"}</Button>
             <Button size="sm" variant="quiet" onClick={() => setEditing((open) => !open)}>Edit</Button>
             <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>Remove</Button>
           </Show>
         }
       />
+
+      <p role="status" data-credential-test={props.provider.id} class="m-0 empty:hidden">
+        <Show when={tested()}>
+          {(result) => {
+            const outcome = result()
+            return (
+              <span class="mt-2 flex items-start gap-2 text-mini">
+                <span class="mt-px flex shrink-0">
+                  <Signal state={outcome.ok ? "done" : "failed"} size={12} />
+                </span>
+                <span class="min-w-0 break-words" classList={{ "text-ink-2": outcome.ok, "text-failed": !outcome.ok }}>
+                  {outcome.ok ? `The key answered in ${outcome.latencyMs.toLocaleString("en-US")} ms` : outcome.error}
+                </span>
+              </span>
+            )
+          }}
+        </Show>
+      </p>
 
       <Show when={error()}>
         {(message) => (
@@ -169,7 +224,7 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
             spellcheck={false}
             aria-label={`${props.provider.id} API key`}
           />
-          <Button size="sm" variant="primary" disabled={busy() || key().trim() === ""} onClick={() => void save()}>{busy() ? "Saving" : "Save key"}</Button>
+          <Button size="sm" variant="primary" disabled={busy() || key().trim() === ""} onClick={() => void save()}>{busy() ? "Testing key" : "Save key"}</Button>
         </div>
       </Show>
 
@@ -183,6 +238,33 @@ function ProviderRow(props: { provider: ProviderSummary }): JSX.Element {
         </div>
       </Show>
     </div>
+  )
+}
+
+/** The provider's newest response outcome as a dot; its tooltip carries the error. */
+function HealthDot(props: { provider: string; health: ProviderHealth }): JSX.Element {
+  onMount(() => void loadUiSdk("tooltip"))
+  const failing = (): boolean => props.health.state === "failing"
+  return (
+    <ui-tooltip>
+      <ui-tooltip-trigger>
+        <button
+          type="button"
+          data-health={props.health.state}
+          aria-label={`${props.provider} health: ${failing() ? "failing" : "answering"}`}
+          class="grid h-[var(--h-control-sm)] w-[var(--h-control-sm)] place-items-center rounded-sm outline-none focus-visible:shadow-[0_0_0_3px_var(--color-primary-soft)]"
+        >
+          <span aria-hidden="true" class="size-2 rounded-full" classList={{ "bg-done": !failing(), "bg-failed": failing() }} />
+        </button>
+      </ui-tooltip-trigger>
+      <ui-tooltip-content
+        side="top"
+        side-offset="6"
+        class="im-tip max-w-[280px] break-words rounded-sm bg-inverse px-2 py-1 text-mini text-on-inverse shadow-[var(--shadow-popover)]"
+      >
+        {failing() ? (props.health.error ?? "The last request failed") : "The last request answered"}
+      </ui-tooltip-content>
+    </ui-tooltip>
   )
 }
 
@@ -215,6 +297,7 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
         key().trim(),
         custom() ? { baseUrl: baseUrl().trim(), api: api() } : undefined,
       )
+      void providerHealth.reload()
       props.onDone()
     } catch (failure: unknown) {
       setError(errorMessage(failure))
@@ -269,7 +352,7 @@ function AddProvider(props: { onDone: () => void }): JSX.Element {
         <Note>A provider id that is not built in needs a custom endpoint, or its key has nothing to attach to.</Note>
         <span class="ml-auto" />
         <Button size="sm" variant="quiet" onClick={props.onDone}>Cancel</Button>
-        <Button size="sm" variant="primary" disabled={busy() || !valid()} onClick={() => void submit()}>{busy() ? "Saving" : "Add provider"}</Button>
+        <Button size="sm" variant="primary" disabled={busy() || !valid()} onClick={() => void submit()}>{busy() ? "Testing key" : "Add provider"}</Button>
       </div>
     </div>
   )

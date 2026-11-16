@@ -23,6 +23,10 @@ export function Button(props: {
   variant?: ButtonVariant | undefined
   size?: ButtonSize | undefined
   disabled?: boolean | undefined
+  /** Working: the button keeps focus and its place in the tab order, but ignores presses. */
+  busy?: boolean | undefined
+  /** Unavailable without losing focus, unlike `disabled`: for a button that turns off while it is pressed. */
+  idle?: boolean | undefined
   onClick?: (() => void) | undefined
   type?: "button" | "submit" | undefined
   class?: string | undefined
@@ -34,8 +38,12 @@ export function Button(props: {
     <button
       type={props.type ?? "button"}
       disabled={props.disabled === true}
-      onClick={() => props.onClick?.()}
-      class={`${BASE} ${SIZES[size()]} ${VARIANTS[variant()]} ${props.class ?? ""}`}
+      aria-busy={props.busy === true ? "true" : undefined}
+      aria-disabled={props.busy === true || props.idle === true ? "true" : undefined}
+      onClick={() => {
+        if (props.busy !== true && props.idle !== true) props.onClick?.()
+      }}
+      class={`${BASE} aria-disabled:opacity-40 aria-busy:cursor-progress aria-busy:opacity-70 ${SIZES[size()]} ${VARIANTS[variant()]} ${props.class ?? ""}`}
     >
       {props.children}
     </button>

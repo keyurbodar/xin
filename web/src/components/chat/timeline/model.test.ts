@@ -199,3 +199,21 @@ test("a streamed token rebuilds only the item it lands in", () => {
   const before = next.filter((item) => item.kind === "tools")
   expect(groups[0]).toBe(before[0])
 })
+
+test("a fallback entry becomes its own note in place, and a malformed one draws nothing", () => {
+  const from = { provider: "alpha", modelId: "a-1" }
+  const to = { provider: "beta", modelId: "b-1" }
+  const items = buildTimeline(
+    [
+      ask(1, "Go", NOW - 60_000),
+      answer(5, NOW - 55_000, { type: "text", text: "Starting" }),
+      entry(2, "xin.fallback", [], { from, to, error: " 429 overloaded " }),
+      entry(3, "xin.fallback", [], { from }),
+      answer(4, NOW - 50_000, { type: "text", text: "Done" }),
+    ],
+    IDLE,
+    OPTIONS,
+  )
+  expect(items.filter((item) => item.kind === "fallback")).toEqual([{ kind: "fallback", key: "e2", fallback: { from, to, error: "429 overloaded" } }])
+  expect(items.map((item) => item.kind)).toEqual(["date", "owner", "text", "fallback", "text", "summary"])
+})

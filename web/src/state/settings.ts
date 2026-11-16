@@ -425,14 +425,16 @@ export async function setDefault(role: ModelRole, model: ModelRef): Promise<void
   await cmd("owner.defaults", { role, model })
 }
 
+/** Saves a key only after one tiny request with it answers; a failing key is refused with the provider's reason. */
 export async function saveCredential(provider: string, key: string, custom?: { baseUrl: string; api: string }): Promise<void> {
-  const args: Record<string, unknown> = { provider }
+  const args: Record<string, unknown> = { provider, test: true }
   if (key !== "") args["key"] = key
   if (custom !== undefined) args["custom"] = { baseUrl: custom.baseUrl, key, api: custom.api }
   await cmd("credential.set", args)
   favoriteLookups.clear()
   await models.reload()
 }
+
 
 export async function deleteCredential(provider: string): Promise<void> {
   await cmd("credential.delete", { provider })

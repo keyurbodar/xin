@@ -76,6 +76,11 @@ const history: TimelineEntry[] = [
     call("c7", "thread_send", { threadId: 31, text: "Draft release notes for the refresh fix.", mode: "queue" }),
   ]),
   result(NOW - 560_000, "c7", "Sent to thread 31"),
+  entry("xin.fallback", [], {
+    from: { provider: "alpha", modelId: "alpha-large" },
+    to: { provider: "beta", modelId: "beta-fast" },
+    error: "529 overloaded_error: the model is overloaded",
+  }),
   assistant(NOW - 548_000, [text("I asked Release notes to draft the changelog entry.")]),
 ]
 

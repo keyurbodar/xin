@@ -202,3 +202,138 @@ for (const [label, reduce] of [
     await page.close()
   })
 }
+
+type Sent = { op: string; args: Record<string, unknown> }
+type FixtureState = { testDelay: number; fallbacks: { provider: string; modelId: string }[]; sent: Sent[] }
+const fixture = (page: Page) => page.evaluate(() => (window as unknown as { state: FixtureState }).state)
+const sentOf = async (page: Page, op: string) => (await fixture(page)).sent.filter((frame) => frame.op === op)
+const focusedLabel = (page: Page) => page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.textContent?.trim())
+const provider = (page: Page, id: string) => page.locator(`[data-provider="${id}"]`)
+const fallbackOrder = (page: Page) =>
+  page.locator("[data-fallback-row]").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-fallback-row")))
+
+test("Test sends one credential.test while busy, keeps focus and shows the latency", async () => {
+  const page = await open("/settings/models")
+  await page.evaluate(() => {
+    ;(window as unknown as { state: FixtureState }).state.testDelay = 800
+  })
+  const button = provider(page, "anthropic").getByRole("button", { name: "Test" })
+  await button.focus()
+  await page.keyboard.press("Enter")
+  await page.waitForTimeout(100)
+  const busy = provider(page, "anthropic").getByRole("button", { name: "Testing" })
+  expect(await busy.getAttribute("aria-busy")).toBe("true")
+  await page.keyboard.press("Enter")
+  await busy.click({ force: true })
+  await page.waitForTimeout(1200)
+  expect((await sentOf(page, "credential.test")).map((frame) => frame.args)).toEqual([{ provider: "anthropic" }])
+  expect(await page.locator('[data-credential-test="anthropic"]').textContent()).toBe("The key answered in 412 ms")
+  expect(await focusedLabel(page)).toBe("Test")
+  expect(await provider(page, "anthropic").getByRole("button", { name: "Test" }).getAttribute("aria-busy")).toBeNull()
+  await page.close()
+})
+
+test("a failing Test shows the provider's error inline", async () => {
+  const page = await open("/settings/models")
+  await provider(page, "openai").getByRole("button", { name: "Test" }).click()
+  await page.waitForTimeout(400)
+  const status = page.locator('[data-credential-test="openai"]')
+  expect(await status.getAttribute("role")).toBe("status")
+  expect(await status.textContent()).toBe("401 invalid x-api-key")
+  await page.close()
+})
+
+test("the health dot's tooltip carries the error, from hover and from focus", async () => {
+  const page = await open("/settings/models")
+  const failing = page.getByRole("button", { name: "openai health: failing" })
+  await failing.hover()
+  await page.waitForTimeout(900)
+  const tip = page.getByRole("tooltip").filter({ hasText: "401 invalid x-api-key" })
+  expect(await tip.isVisible()).toBe(true)
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(400)
+  await page.getByRole("button", { name: "anthropic health: answering" }).focus()
+  await page.keyboard.press("Shift+Tab")
+  await page.keyboard.press("Tab")
+  await page.waitForTimeout(900)
+  expect(await page.getByRole("tooltip").filter({ hasText: "The last request answered" }).isVisible()).toBe(true)
+  await page.close()
+})
+
+test("the key form tests before saving and shows why a key was refused", async () => {
+  const page = await open("/settings/models")
+  await provider(page, "openai").getByRole("button", { name: "Edit" }).click()
+  await page.getByLabel("openai API key").fill("bad")
+  await page.getByRole("button", { name: "Save key" }).click()
+  await page.waitForTimeout(500)
+  expect((await sentOf(page, "credential.set")).map((frame) => frame.args)).toEqual([{ provider: "openai", key: "bad", test: true }])
+  expect(await provider(page, "openai").getByText("the key was not saved: 401 invalid x-api-key").isVisible()).toBe(true)
+  expect(await page.getByLabel("openai API key").isVisible()).toBe(true)
+  await page.close()
+})
+
+test("fallbacks reorder by keyboard and pointer, remove, add from the picker and save in order", async () => {
+  const page = await open("/settings/models")
+  await page.waitForSelector("[data-fallback-row]")
+  expect(await fallbackOrder(page)).toEqual(["anthropic/claude-sonnet", "openai/gpt-mini"])
+  await page.getByRole("button", { name: "Move Mini, position 2 of 2" }).focus()
+  await page.keyboard.press("ArrowUp")
+  await page.waitForTimeout(100)
+  expect(await fallbackOrder(page)).toEqual(["openai/gpt-mini", "anthropic/claude-sonnet"])
+  expect(await focusedLabel(page)).toBe("Move Mini, position 1 of 2")
+  expect(await page.locator("[role=status].sr-only").textContent()).toBe("Mini moved to position 1 of 2")
+
+  const handle = await page.getByRole("button", { name: "Move Sonnet, position 2 of 2" }).boundingBox()
+  const first = await page.locator("[data-fallback-row]").first().boundingBox()
+  if (handle === null || first === null) throw new Error("no layout")
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handle.x + handle.width / 2, first.y + first.height / 2, { steps: 6 })
+  await page.mouse.up()
+  await page.waitForTimeout(100)
+  expect(await fallbackOrder(page)).toEqual(["anthropic/claude-sonnet", "openai/gpt-mini"])
+
+  await page.getByRole("button", { name: "Model: Add a fallback" }).click()
+  await page.waitForTimeout(400)
+  expect(await page.locator('ui-combobox-item[label="Sonnet"]').count()).toBe(0)
+  await page.locator('ui-combobox-item[label="Opus"]').click()
+  await page.waitForTimeout(300)
+  await page.getByRole("button", { name: "Remove Sonnet" }).click()
+  await page.waitForTimeout(100)
+  expect(await focusedLabel(page)).toBe("Remove Mini")
+  expect(await fallbackOrder(page)).toEqual(["openai/gpt-mini", "anthropic/fixture-opus"])
+  expect((await sentOf(page, "owner.fallbacks.set")).length).toBe(0)
+
+  await page.getByRole("button", { name: "Save order" }).click()
+  await page.waitForTimeout(400)
+  expect((await sentOf(page, "owner.fallbacks.set")).map((frame) => frame.args)).toEqual([
+    { models: [{ provider: "openai", modelId: "gpt-mini" }, { provider: "anthropic", modelId: "fixture-opus" }] },
+  ])
+  expect((await fixture(page)).fallbacks.map((ref) => ref.modelId)).toEqual(["gpt-mini", "fixture-opus"])
+  expect(await page.getByText("Saved", { exact: true }).isVisible()).toBe(true)
+  expect(await focusedLabel(page)).toBe("Save order")
+  await page.close()
+})
+
+test("the fallback list stops at 8: the picker gives way to a note and the save sends 8", async () => {
+  const page = await open("/settings/models")
+  await page.waitForSelector("[data-fallback-row]")
+  for (const name of ["Opus", "Haiku", "Lyric", "Nano", "Turbo", "Large"]) {
+    await page.getByRole("button", { name: "Model: Add a fallback" }).click()
+    await page.waitForTimeout(300)
+    await page.locator(`ui-combobox-item[label="${name}"]`).click()
+    await page.waitForTimeout(300)
+  }
+  expect((await fallbackOrder(page)).length).toBe(8)
+  expect(await page.getByRole("button", { name: "Model: Add a fallback" }).count()).toBe(0)
+  expect(await page.getByText("8 of 8. Remove one to add another.").isVisible()).toBe(true)
+  expect(await focusedLabel(page)).toBe("Move Large, position 8 of 8")
+  await page.getByRole("button", { name: "Save order" }).click()
+  await page.waitForTimeout(400)
+  const [saved] = await sentOf(page, "owner.fallbacks.set")
+  expect((saved?.args.models as unknown[]).length).toBe(8)
+  await page.getByRole("button", { name: "Remove Large" }).click()
+  await page.waitForTimeout(100)
+  expect(await page.getByRole("button", { name: "Model: Add a fallback" }).isVisible()).toBe(true)
+  await page.close()
+})

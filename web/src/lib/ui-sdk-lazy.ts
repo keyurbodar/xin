@@ -2,6 +2,7 @@ const LOADERS = {
   menu: () => import("@ui-sdk/web/menu"),
   command: () => import("@ui-sdk/web/command"),
   combobox: () => import("@ui-sdk/web/combobox"),
+  tooltip: () => import("@ui-sdk/web/tooltip"),
   editor: () => Promise.all([import("@ui-sdk/web/token-input"), import("@ui-sdk/web/trigger-menu")]),
   toggle: () => import("@ui-sdk/web/toggle"),
 } as const
