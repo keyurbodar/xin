@@ -38,6 +38,7 @@
         "description": "Continues an active goal with one automatic round each time a run ends.",
         "permissions": [
           "conversations",
+          "models",
           "runtime"
         ],
         "contributes": {}

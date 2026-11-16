@@ -83,7 +83,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "owner", "routes", "storage"],
+      permissions: ["conversations", "models", "owner", "routes", "storage"],
       contributes: {
         tools: [],
         ops: [
@@ -283,7 +283,7 @@ export const CATALOG: Catalog = {
     manifest: {
       api: 1,
       requires: [],
-      permissions: ["conversations", "runtime"],
+      permissions: ["conversations", "models", "runtime"],
       contributes: { tools: [], ops: [] },
       slots: [],
     },
@@ -513,7 +513,12 @@ export const CATALOG: Catalog = {
           "usage.alert.set",
           "usage.cap",
           "usage.cap.set",
+          "usage.cost",
+          "usage.crew",
+          "usage.feature.cap.set",
+          "usage.features",
           "usage.summary",
+          "usage.today",
         ],
       },
       slots: [],
