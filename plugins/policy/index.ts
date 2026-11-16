@@ -8,7 +8,7 @@ export async function apply(ctx: Context): Promise<void> {
   const policy = createPolicy({
     harness: ctx.harness,
     questions: ctx.questions,
-    redact: (text) => ctx.secrets.redact(text),
+    redactValue: (value) => ctx.secrets.redactValue(value),
     registry: () => ctx.pi.registry.snapshot(),
     pluginOf: (extension) => {
       const row = ctx.pi.extensions().find((installed) => installed.name === extension)?.row

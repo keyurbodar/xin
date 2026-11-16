@@ -3,13 +3,13 @@ import { defineExtension, type Extension, hook, type ToolExecutionResult, ToolTa
 
 const REDACTED = "[redacted]"
 
-export const redact = (text: string, secrets: readonly string[]): string => {
+const redact = (text: string, secrets: readonly string[]): string => {
   let redacted = text
   for (const secret of secrets) redacted = redacted.split(secret).join(REDACTED)
   return redacted
 }
 
-const redactValue = (value: JsonValue, secrets: readonly string[]): JsonValue => {
+export const redactValue = (value: JsonValue, secrets: readonly string[]): JsonValue => {
   if (typeof value === "string") return redact(value, secrets)
   if (Array.isArray(value)) return value.map((item) => redactValue(item, secrets))
   if (typeof value === "object" && value !== null)

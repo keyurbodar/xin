@@ -77,7 +77,7 @@ const parseRespond = compile(obj({ threadId: int({ minimum: 0 }), requestId: str
 export type PolicyPort = {
   readonly harness: Harness
   readonly questions: Pick<QuestionsService, "ask" | "settle">
-  redact(text: string): string
+  redactValue(value: JsonValue): JsonValue
   registry(): RegistrySnapshot
   pluginOf(extension: string): string | undefined
 }
@@ -279,6 +279,7 @@ export function createPolicy(port: PolicyPort): Policy {
   })
 
   const ask = async (conversationId: ConversationId, callId: string, tool: string, args: string): Promise<void> => {
+    const values: JsonValue = JSON.parse(args)
     const requestId = `${APPROVAL_PREFIX}${callId}`
     await port.harness.commit(async (tx) => {
       const doc = await tx.doc(CallsDoc, conversationId)
@@ -291,7 +292,7 @@ export function createPolicy(port: PolicyPort): Policy {
         requestId,
         question: `Allow ${tool} to run?`,
         options: APPROVAL_OPTIONS,
-        subject: { tool, arguments: preview(port.redact(args)) },
+        subject: { tool, arguments: preview(canonical(port.redactValue(values))) },
         now: Date.now(),
       },
       context,

@@ -21,6 +21,7 @@ import type { Home } from "../../test/worker.ts"
 import { RequestsDoc } from "../../src/contracts/questions.ts"
 import { ThreadDoc } from "../../src/contracts/threaddoc.ts"
 import { threadIdsOfProject, WorkspaceDoc } from "../../src/contracts/workspace.ts"
+import type { CommandId } from "../../src/ids.ts"
 import { canonical } from "./policy.ts"
 
 const context = BACKGROUND_CONTEXT
@@ -254,9 +255,11 @@ describe("tool policy", () => {
     expect(results.filter((text) => text.includes("quick done"))).toHaveLength(1)
   }, 20_000)
 
-  it("redacts a stored secret out of the approval preview before capping it", async () => {
+  it("redacts a stored secret holding JSON-escaped characters out of the approval preview before capping it", async () => {
     const stub = fresh()
-    const secret = "sk-live-0123456789abcdef"
+    const secret = ["owner", 'pa"ss', "w\\ord", "7f3k9q"].join("-")
+    expect(secret).toContain('"')
+    expect(secret).toContain("\\")
     expect(await cmd(stub, "policy-secret", "secret.set", { ref: "TOKEN", value: secret })).toMatchObject({ ok: true })
     await setMode(stub, "ask")
     const text = `${"x".repeat(470)}${secret} tail`
@@ -274,9 +277,70 @@ describe("tool policy", () => {
     const stored = await runInDurableObject(stub, async (home: Home) =>
       JSON.stringify(await home.harness.snapshot(RequestsDoc, ROOT_CONVERSATION_ID, context)),
     )
+    const forms = [secret, JSON.stringify(secret).slice(1, -1), JSON.stringify(JSON.stringify(secret)).slice(1, -1)]
     for (const seen of [JSON.stringify(row), stored]) {
-      expect(seen).not.toContain(secret)
-      expect(seen).not.toContain(secret.slice(0, 8))
+      for (const form of forms) expect(seen).not.toContain(form)
+      expect(seen).not.toContain("7f3k9q")
     }
   })
+
+  it("refuses an agent's answer to an approval and keeps the request open", async () => {
+    const stub = fresh()
+    await setMode(stub, "ask")
+    const request = await asked(stub, "policy-agent")
+    const outcome = await runInDurableObject(stub, (home: Home) =>
+      home.commands.run(
+        {
+          id: "policy-agent-approve" as CommandId,
+          op: "request.respond",
+          args: { threadId: ROOT, requestId: request.id, answer: "Approve" },
+        },
+        { kind: "agent", conversationId: ROOT_CONVERSATION_ID },
+      ),
+    )
+    expect(outcome).toMatchObject({ kind: "rejected", code: "forbidden" })
+    expect((await listed(stub)).map((row) => row.id)).toEqual([request.id])
+  })
+
+  it("asks again when the retried call's arguments differ from the approved ones", async () => {
+    const stub = fresh()
+    await setMode(stub, "ask")
+    const request = await asked(stub, "policy-other-args")
+    respond([
+      fauxAssistantMessage([fauxToolCall("remember", { scope: "me", text: "Something else" }, { id: "call-other" })], {
+        stopReason: "toolUse",
+      }),
+    ])
+    expect((await answer(stub, request.id, "Approve")).result).toMatchObject({ kind: "answered" })
+    await idle(stub)
+    expect(await notes(stub)).toEqual([])
+    expect((await listed(stub)).map((row) => row.id)).toEqual(["approval:call-other"])
+  })
+
+  it("keeps a thread's own tool removals when its project allows a tool Home turned off", async () => {
+    const stub = fresh()
+    const project = await ok(stub, "project.create", { slug: "child", name: "Child" })
+    const projectId = String(field(project, "id"))
+    const coordinator = Number(field(project, "coordinatorId")) as ConversationId
+    await runInDurableObject(stub, async (home: Home) => {
+      await (await home.harness.conversation(coordinator, context))?.configure({ model: M6_MODEL }, context)
+    })
+    await ok(stub, "message.send", { conv: coordinator, text: "delegate hello" })
+    await runInDurableObject(stub, (home: Home) => home.fireIntake())
+    await runDurableObjectAlarm(stub)
+    const removed = async (home: Home): Promise<readonly string[]> => {
+      const [id] = threadIdsOfProject(await home.harness.snapshot(WorkspaceDoc, context), projectId)
+      if (id === undefined) return []
+      const tools = (await home.harness.snapshot(AgentDoc, id as ConversationId, context))?.tools
+      return tools !== undefined && !Array.isArray(tools) ? tools.remove : []
+    }
+    await eventually(stub, async (home: Home) => (await removed(home)).includes("delegate_task"))
+
+    await setMode(stub, "off")
+    expect(await runInDurableObject(stub, removed)).toEqual(expect.arrayContaining(["delegate_task", "remember"]))
+    await setMode(stub, "allow", projectId)
+    const kept = await runInDurableObject(stub, removed)
+    expect(kept).toContain("delegate_task")
+    expect(kept).not.toContain("remember")
+  }, 20_000)
 })

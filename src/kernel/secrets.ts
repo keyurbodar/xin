@@ -1,11 +1,12 @@
 import { type Context, Service } from "@deepseek-ai/cordis"
+import type { JsonValue } from "@earendil-works/chord"
 import { obj, str } from "@earendil-works/pi-schema"
 import { defineOp } from "../ops.ts"
 import { FragmentId } from "../rowid.ts"
 import { Sealer } from "../seal.ts"
 import { hidden } from "./hidden.ts"
 import type { IngleLoader } from "./loader.ts"
-import { redact, redactionExtension } from "./redaction.ts"
+import { redactionExtension, redactValue } from "./redaction.ts"
 import { CredentialStore } from "./sealed.ts"
 
 type State = { readonly own: Context; store: CredentialStore | undefined }
@@ -56,9 +57,9 @@ export class Secrets extends Service {
     this.ctx.emit("credentials/updated", ref)
   }
 
-  /** `text` with every stored credential value replaced by `[redacted]`, so a row can redact without reading a value. */
-  redact(text: string): string {
-    return redact(text, sealed(this).values())
+  /** `value` with every stored credential value in its strings replaced by `[redacted]`, so a row can redact without reading a value. */
+  redactValue(value: JsonValue): JsonValue {
+    return redactValue(value, sealed(this).values())
   }
 
   /** Every plaintext value, for redaction. A plugin row's facade refuses this; a kernel row is refused here. */
