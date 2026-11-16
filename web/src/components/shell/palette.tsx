@@ -5,6 +5,7 @@ import { openThreadTab } from "../../state/tabs.ts"
 import { Signal } from "../ui/signal.tsx"
 import type { SignalState } from "../../lib/status.ts"
 import { Icon, type IconName } from "../ui/icon.tsx"
+import { host, slotItems } from "../../plugins/slots.tsx"
 
 type Kind = "thread" | "project" | "page" | "action"
 
@@ -15,6 +16,7 @@ type Item = {
   readonly meta: string
   readonly state?: SignalState
   readonly icon?: IconName
+  readonly keywords?: string
   readonly open: () => void
 }
 
@@ -92,6 +94,17 @@ function items(): readonly Item[] {
       open: () => navigate(action.path),
     })
   }
+  for (const command of slotItems("palette.command")()) {
+    rows.push({
+      id: `plugin:${command.key}`,
+      kind: "action",
+      title: command.title,
+      meta: command.shortcut ?? command.plugin,
+      keywords: command.keywords?.join(" ") ?? "",
+      icon: "grid",
+      open: () => command.run(host),
+    })
+  }
   return rows
 }
 
@@ -101,7 +114,7 @@ function rank(item: Item): number {
 }
 
 function matches(item: Item, query: string): boolean {
-  return item.title.toLowerCase().includes(query) || item.meta.toLowerCase().includes(query)
+  return [item.title, item.meta, item.keywords ?? ""].some((text) => text.toLowerCase().includes(query))
 }
 
 function Marked(props: { text: string; query: string }): JSX.Element {

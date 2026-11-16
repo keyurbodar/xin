@@ -89,6 +89,8 @@ const ICONS = {
 
 export type IconName = keyof typeof ICONS
 
+export const isIconName = (name: string): name is IconName => Object.hasOwn(ICONS, name)
+
 export function Icon(props: { name: IconName; size?: number; class?: string; strokeWidth?: number }): JSX.Element {
   return (
     <Dynamic

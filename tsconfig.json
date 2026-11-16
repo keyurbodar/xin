@@ -15,5 +15,6 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "plugins", "test", "vitest.config.ts"]
+  "include": ["src", "plugins", "test", "vitest.config.ts"],
+  "exclude": ["plugins/*/client.tsx"]
 }

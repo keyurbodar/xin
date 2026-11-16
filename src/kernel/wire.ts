@@ -19,6 +19,8 @@ type State = {
   /** The home revision: in memory only, with a per-instance epoch so a fresh instance never repeats an old value. */
   readonly epoch: string
   changes: number
+  /** Home snapshots published so far: a batch that published one needs no separate `changed` frame. */
+  published: number
   /** HTTP batches running now: their changes are told once, when the last one ends. */
   batches: number
   /** A change not yet told to home subscribers. */
@@ -48,6 +50,7 @@ export class Wire extends Service {
       sockets: undefined,
       epoch: crypto.randomUUID().slice(0, 8),
       changes: 0,
+      published: 0,
       batches: 0,
       untold: false,
       queued: false,
@@ -65,6 +68,7 @@ export class Wire extends Service {
       let wrote = false
       let broken: string | undefined
       const held = state.get(this)
+      const published = held.published
       held.batches += 1
       try {
         for (const command of commands) {
@@ -84,6 +88,7 @@ export class Wire extends Service {
         held.batches -= 1
       }
       const headers = wrote ? { "x-ingle-rev": this.announce() } : undefined
+      if (held.published !== published) held.untold = false
       tell(held)
       return Response.json(batch ? acks : acks[0], headers === undefined ? {} : { headers })
     })
@@ -178,6 +183,7 @@ export class Wire extends Service {
   }
 
   async publishHome(): Promise<void> {
+    state.get(this).published += 1
     await socketsOf(this)?.publishHome()
   }
 

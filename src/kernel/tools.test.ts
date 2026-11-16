@@ -52,8 +52,8 @@ describe("plugin tools", () => {
       fauxAssistantMessage("done"),
     ])
     const [listed, changed] = await turn(stub, "t1")
-    expect(listed).toContain('"id": "time"')
-    expect(changed).toContain('"application": "applied"')
+    expect(listed).toContain('"id":"time"')
+    expect(changed).toContain('"application":"applied"')
     const rows = await cmd(stub, "g1", "plugin.list")
     const time = Array.isArray(rows.result) ? rows.result.find((row) => Reflect.get(row, "id") === "time") : undefined
     expect(time).toMatchObject({ disabled: true, state: { kind: "disabled" } })

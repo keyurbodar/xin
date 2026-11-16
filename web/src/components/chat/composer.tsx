@@ -1,5 +1,5 @@
 import { ArrowUp, Square, X } from "lucide-solid"
-import { Show, createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js"
+import { For, Show, createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js"
 import { pendingDraftFor, takePendingDraft } from "../../lib/draft.ts"
 import { handleAttachShortcut } from "../../lib/attach-shortcut.ts"
 import type { UploadedFile } from "../../lib/api.ts"
@@ -13,6 +13,8 @@ import { ModelPicker } from "../composer/model-picker.tsx"
 import { PlusMenu } from "../composer/plus-menu.tsx"
 import { ReasoningMenu } from "../composer/reasoning-menu.tsx"
 import "../composer/composer.css"
+import { bindComposer, host, slotItems } from "../../plugins/slots.tsx"
+import { Icon, isIconName } from "../ui/icon.tsx"
 import { Spinner } from "./ui.tsx"
 
 function errorText(failure: unknown): string {
@@ -246,6 +248,16 @@ export function Composer(props: {
     }
   }
 
+  const actions = slotItems("composer.action")
+  const handle = {
+    insert,
+    submit: (text: string): void => {
+      setDraft(text)
+      void submit()
+    },
+  }
+  bindComposer(handle)
+
   const filesOf = (list: FileList | null | undefined): readonly File[] => (list === null || list === undefined ? [] : Array.from(list))
 
   return (
@@ -318,6 +330,19 @@ export function Composer(props: {
                 event.currentTarget.value = ""
               }}
             />
+            <For each={actions()}>
+              {(action) => (
+                <button
+                  type="button"
+                  onClick={() => action.run(host, handle)}
+                  title={action.title}
+                  aria-label={action.title}
+                  class="im-press im-hover grid h-8 min-w-8 place-items-center rounded-md px-1.5 text-xs text-ink-2"
+                >
+                  {action.icon !== undefined && isIconName(action.icon) ? <Icon name={action.icon} size={14} /> : action.title}
+                </button>
+              )}
+            </For>
             <ModelPicker
               label={props.modelLabel}
               current={props.model}

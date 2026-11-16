@@ -1,7 +1,7 @@
 import { evictDurableObject, runInDurableObject } from "cloudflare:test"
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context"
 import { describe, expect, it } from "vitest"
-import { connect, cmd, field, owner } from "../test/support.ts"
+import { api, connect, cmd, field, owner } from "../test/support.ts"
 import { FAUX_MODEL, type Home } from "../test/worker.ts"
 import { SNAPSHOT_ENTRIES } from "./wire.ts"
 
@@ -92,6 +92,22 @@ describe("wire protocol", () => {
     })
     socket.send({ t: "sub", stream: "conv:999999" })
     expect(await socket.next((f) => f.t === "error")).toMatchObject({ message: "unknown stream conv:999999" })
+    socket.close()
+  })
+
+  it("republishes the home projection when a plugin row is enabled or disabled", async () => {
+    const socket = await connect()
+    socket.send({ t: "sub", stream: "home" })
+    await socket.next((f) => f.t === "snap")
+    await cmd(owner(), `off-${crypto.randomUUID()}`, "plugin.enable", { id: "test", enabled: false })
+    expect(await socket.next((f) => f.t === "snap")).toMatchObject({ value: { plugins: { test: "disabled" } } })
+    await cmd(owner(), `on-${crypto.randomUUID()}`, "plugin.enable", { id: "test", enabled: true })
+    expect(await socket.next((f) => f.t === "snap")).toMatchObject({ value: { plugins: { test: "active" } } })
+    const bump = await api("/v1/cmd", {
+      method: "POST",
+      body: JSON.stringify({ id: `b-${crypto.randomUUID()}`, op: "test.bump", args: { by: 1 } }),
+    })
+    expect(await socket.next((f) => f.t === "changed")).toMatchObject({ rev: bump.headers.get("x-ingle-rev") })
     socket.close()
   })
 

@@ -8,7 +8,7 @@ const READS = ["list", "catalog", "tree", "doctor"] as const
 const ACTIONS = [...READS, "enable", "configure"] as const
 
 const text = (value: unknown, isError = false) => ({
-  output: [{ type: "text" as const, text: JSON.stringify(value, null, 1) }],
+  output: [{ type: "text" as const, text: JSON.stringify(value) }],
   ...(isError ? { isError: true } : {}),
 })
 

@@ -42,6 +42,21 @@ export type FirstParty = { readonly pkg: string; readonly dir: string }
 
 export const isPermission = (value: string): value is Permission => Object.hasOwn(PERMISSIONS, value)
 
+/** The client slots a plugin's web module may fill (`web/src/plugins/sdk.ts`). */
+export const SLOTS = [
+  "sidebar.section",
+  "pane.tab",
+  "composer.action",
+  "message.renderer",
+  "palette.command",
+  "settings.page",
+  "theme",
+] as const
+
+export type Slot = (typeof SLOTS)[number]
+
+const isSlot = (value: string): value is Slot => (SLOTS as readonly string[]).includes(value)
+
 /** What a row registers. A name ending in `*` covers every name with that prefix. */
 export type Contributes = { readonly tools: readonly string[]; readonly ops: readonly string[] }
 
@@ -54,12 +69,14 @@ export type Manifest = {
   readonly requires: readonly string[]
   readonly permissions: readonly Permission[]
   readonly contributes?: Contributes
+  readonly slots: readonly Slot[]
 }
 
 export const DEFAULT_MANIFEST: Manifest = {
   api: PLUGIN_API,
   requires: [],
   permissions: [],
+  slots: [],
 }
 
 export type ManifestProblem =
@@ -74,6 +91,7 @@ const ManifestSchema = obj({
   requires: opt(arr(Name)),
   permissions: opt(arr(Name)),
   contributes: opt(obj({ tools: opt(arr(Name)), ops: opt(arr(Name)) })),
+  slots: opt(arr(Name)),
 })
 
 const manifestCheck = compile(ManifestSchema)
@@ -103,6 +121,10 @@ export function readManifest(value: unknown, where: string, firstParty?: FirstPa
       throw new Error(`${where}: only first-party ${OWNER_PACKAGE} at ${OWNER_DIR} may declare the owner permission`)
     return permission
   })
+  const slots = (value.slots ?? []).map((slot) => {
+    if (!isSlot(slot)) throw new Error(`${where}: slot ${slot} is not one of ${SLOTS.join(", ")}`)
+    return slot
+  })
   const contributes = value.contributes
   return Object.freeze({
     api: value.api ?? DEFAULT_MANIFEST.api,
@@ -116,6 +138,7 @@ export function readManifest(value: unknown, where: string, firstParty?: FirstPa
             ops: Object.freeze([...(contributes.ops ?? [])]),
           }),
         }),
+    slots: Object.freeze(slots),
   })
 }
 

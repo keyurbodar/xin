@@ -53,6 +53,7 @@ export type ProjectSummary = {
 const [projects, setProjects] = createSignal<readonly ProjectSummary[]>([])
 const [requests, setRequests] = createSignal<readonly RequestRow[]>([])
 const [loaded, setLoaded] = createSignal(false)
+const [plugins, setPlugins] = createSignal<Readonly<Record<string, string>>>({})
 const [automationsRevision, setAutomationsRevision] = createSignal<number>()
 
 /** Home frames re-send the same revision for unrelated changes; only a new value arms the reload, and a burst of them coalesces. */
@@ -79,6 +80,7 @@ export const automationTouched = (id: string): number | undefined => automations
 
 export const homeProjects = projects
 export const homeLoaded = loaded
+export const homePlugins = plugins
 export const homeRequests = requests
 export const homeAutomationsRevision = automationsRevision
 
@@ -141,6 +143,11 @@ function parse(value: unknown): readonly ProjectSummary[] {
   })
 }
 
+function pluginStates(value: unknown): Readonly<Record<string, string>> {
+  const record = recordOf(value) ?? {}
+  return Object.fromEntries(Object.entries(record).flatMap(([row, state]) => (typeof state === "string" ? [[row, state]] : [])))
+}
+
 export function subscribeHome(streams: Streams): () => void {
   let rev: string | undefined
   return streams.subscribe("home", {
@@ -148,6 +155,7 @@ export function subscribeHome(streams: Streams): () => void {
       rev = next
       batch(() => {
         setProjects(parse(value))
+        setPlugins(isRecord(value) ? pluginStates(value.plugins) : {})
         setRequests(parseRequestList(value))
         receiveRevision(automationsRevisionOf(value), automationsTouchedOf(value))
         noteIssuesRev(parseIssuesRev(value))
