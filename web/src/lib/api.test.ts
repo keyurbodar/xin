@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
+import { installGlobal, snapshotGlobals } from "../../test/globals.ts"
 import { repair, Streams } from "./api.ts"
 
 type Listener = () => void
@@ -27,45 +28,35 @@ const timers = new Map<number, () => void>()
 const waiting = new Set<Listener>()
 let nextTimer = 1
 let visibility: "visible" | "hidden" = "visible"
-const saved = {
-  fetch: globalThis.fetch,
-  setTimeout: globalThis.setTimeout,
-  clearTimeout: globalThis.clearTimeout,
-  WebSocket: Reflect.get(globalThis, "WebSocket"),
-  document: Reflect.get(globalThis, "document"),
-  location: Reflect.get(globalThis, "location"),
-}
-
-function install(name: string, value: unknown): void {
-  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true })
-}
+let restore = (): void => undefined
 
 beforeEach(() => {
+  restore = snapshotGlobals(["fetch", "setTimeout", "clearTimeout", "WebSocket", "document", "location"])
   FakeSocket.opened = []
   timers.clear()
   waiting.clear()
   visibility = "visible"
-  install("WebSocket", FakeSocket)
-  install("location", { href: "http://127.0.0.1:5199/" })
-  install("document", {
+  installGlobal("WebSocket", FakeSocket)
+  installGlobal("location", { href: "http://127.0.0.1:5199/" })
+  installGlobal("document", {
     get visibilityState() {
       return visibility
     },
     addEventListener: (_type: string, listener: Listener) => waiting.add(listener),
     removeEventListener: (_type: string, listener: Listener) => waiting.delete(listener),
   })
-  install("setTimeout", (run: () => void) => {
+  installGlobal("setTimeout", (run: () => void) => {
     const id = nextTimer++
     timers.set(id, run)
     return id
   })
-  install("clearTimeout", (id: number | undefined) => {
+  installGlobal("clearTimeout", (id: number | undefined) => {
     if (id !== undefined) timers.delete(id)
   })
 })
 
 afterEach(() => {
-  for (const [name, value] of Object.entries(saved)) install(name, value)
+  restore()
 })
 
 const quiet = (): Streams => new Streams(() => {}, () => {}, () => {}, () => {}, () => {})
@@ -116,7 +107,7 @@ test("a hidden tab's wait for visibility is dropped when a dial starts, so it ca
 
 test("repair posts no body for a report and the drop for a repair, with the bearer token", async () => {
   const sent: { method: string | undefined; body: unknown; auth: string | null }[] = []
-  install("fetch", async (_url: string, init: RequestInit) => {
+  installGlobal("fetch", async (_url: string, init: RequestInit) => {
     sent.push({
       method: init.method,
       body: init.body,
