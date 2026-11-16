@@ -37,13 +37,13 @@ function CrewRow(props: { member: CrewMember; at: number; onOpen: (id: number) =
         <Signal state={state()} size={16} class="mt-0.5 shrink-0" />
         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
           <span class="flex items-baseline gap-1.5">
-            <span class="truncate text-sm text-ink">{props.member.title}</span>
+            <span class="min-w-0 truncate text-sm text-ink">{props.member.title}</span>
             <Show when={props.member.run > 1}>
               <span class="shrink-0 font-mono text-2xs text-icon">run {props.member.run}</span>
             </Show>
             <Show when={props.model}>
               {(model) => (
-                <span class="ml-auto shrink-0 truncate font-mono text-2xs text-ink-3" title="Model and thinking level">
+                <span class="ml-auto min-w-0 max-w-[45%] truncate font-mono text-2xs text-ink-3" title={model()}>
                   {model()}
                 </span>
               )}

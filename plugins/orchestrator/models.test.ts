@@ -112,4 +112,48 @@ describe("models for what a Captain starts", () => {
     expect(unsupported).toMatchObject({ kind: "started" })
     expect(await agentOf(stub, threadIdOf(unsupported))).toMatchObject({ thinking: "off" })
   })
+
+  it("refuses a tied name with the candidates and names why a keyless model was refused by name", async () => {
+    const stub = fresh()
+    const lead = await captain(stub, "names", { model: THINKING_MODEL })
+    const tied = await delegate(stub, lead.coordinatorId, "tied", { query: "alt" })
+    expect(tied).toMatchObject({ kind: "no_model" })
+    expect((tied as { reason: string }).reason).toMatch(/Several models match "alt": .*faux-alt\/alt-/)
+    const catalog = await cmd(stub, "anthropic-names", "models.catalog", { provider: "anthropic" })
+    const unkeyed = (catalog.result as { models: { provider: string; modelId: string; keyed: boolean }[] }).models.find(
+      (model) => !model.keyed,
+    )
+    if (unkeyed === undefined) throw new Error("no unkeyed anthropic model")
+    const named = await delegate(stub, lead.coordinatorId, "named", { query: `${unkeyed.provider}/${unkeyed.modelId}` })
+    expect((named as { reason: string }).reason).toMatch(/has no key.*Usable: /)
+  })
+
+  it("forks a side thread on the Captain's model and thinking level", async () => {
+    const stub = fresh()
+    const lead = await captain(stub, "side", { model: THINKING_MODEL, thinking: "high" })
+    const side = await cmd(stub, "side", "thread.side", { conv: lead.coordinatorId, title: "side", task: "say hi" })
+    expect(side.ok, JSON.stringify(side)).toBe(true)
+    expect(await agentOf(stub, (side.result as { threadId: number }).threadId)).toEqual({
+      model: THINKING_MODEL,
+      thinking: "high",
+    })
+  })
+
+  it("starts a Captain created without a model on its project coordinator's model and thinking level", async () => {
+    const stub = fresh()
+    const project = await cmd(stub, "project-coord", "project.create", { slug: "coord", name: "coord" })
+    const { id: projectId, coordinatorId } = project.result as { id: string; coordinatorId: number }
+    const configured = await cmd(stub, "coord-model", "conv.configure", {
+      conv: coordinatorId,
+      model: THINKING_MODEL,
+      thinking: "high",
+    })
+    expect(configured.ok, JSON.stringify(configured)).toBe(true)
+    const created = await cmd(stub, "captain-coord", "captain.create", { projectId, name: "Inherits" })
+    expect(created.ok, JSON.stringify(created)).toBe(true)
+    expect(await agentOf(stub, (created.result as Captain).coordinatorId)).toEqual({
+      model: THINKING_MODEL,
+      thinking: "high",
+    })
+  })
 })

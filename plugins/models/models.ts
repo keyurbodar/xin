@@ -862,12 +862,10 @@ export function create(deps: ModelsPort): ModelsParts {
   let disabledRefs: readonly ModelRef[] = []
   /** The owner's disabled models, read once at start and updated by `models.enable`, so a check reads no row. */
   const isOff = (ref: ModelRef): boolean => disabledRefs.some((entry) => same(entry, ref))
-  const isKeyed = async (ref: ModelRef): Promise<boolean> => {
-    if (registry.custom.has(ref.provider)) await registry.models.refresh({ providers: [ref.provider] })
-    return (await registry.models.getAvailable(ref.provider)).some((model) => model.id === ref.modelId)
-  }
+  const isKeyed = async (ref: ModelRef): Promise<boolean> =>
+    (await registry.models.getAvailable(ref.provider)).some((model) => model.id === ref.modelId)
   const usableModels = async (): Promise<readonly Model<Api>[]> =>
-    (await available(registry)).filter((model) => !isOff(refOf(model)))
+    (await registry.models.getAvailable()).filter((model) => !isOff(refOf(model)))
   const unusable = async (ref: ModelRef): Promise<string | undefined> => {
     const name = `${ref.provider}/${ref.modelId}`
     const problem =
@@ -885,12 +883,14 @@ export function create(deps: ModelsPort): ModelsParts {
       : `${problem}. Usable: ${usable.map((model) => `${model.provider}/${model.id}`).join(", ")}.`
   }
   const byName = async (query: string): Promise<ModelRef | string> => {
-    const usable = await usableModels()
-    const exact = usable.find((model) => `${model.provider}/${model.id}` === query)
+    const slash = query.trim().indexOf("/")
+    const exact =
+      slash > 0 ? registry.models.getModel(query.trim().slice(0, slash), query.trim().slice(slash + 1)) : undefined
     if (exact !== undefined) return refOf(exact)
-    const matches = search(usable, query)
+    const usable = search(await usableModels(), query)
+    const matches = usable.length > 0 ? usable : search(registry.models.getModels(), query)
     const top = matches[0]
-    if (top === undefined) return `No usable model matches "${query}".`
+    if (top === undefined) return `No model matches "${query}".`
     if ((matches[1]?.score ?? 0) === top.score)
       return `Several models match "${query}": ${matches
         .slice(0, 4)
