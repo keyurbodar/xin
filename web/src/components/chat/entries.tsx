@@ -14,7 +14,7 @@ import {
 } from "../../state/conversation.ts"
 import { ToolRenderer } from "../../plugins/slots.tsx"
 import type { ProjectSummary, ThreadSummary } from "../../state/home.ts"
-import { FileChip } from "../ui/file-chip.tsx"
+import { SentAttachments } from "../composer/attachment-card.tsx"
 import { Markdown } from "./markdown.tsx"
 import {
   FailureCard,
@@ -115,8 +115,8 @@ export function OwnerBubble(props: {
   return (
     <div class="flex flex-col items-end gap-1.5">
       <Show when={files().length > 0}>
-        <div class="flex flex-wrap justify-end gap-1.5">
-          <For each={files()}>{(file) => <FileChip name={file.name} type={file.type} size={file.size} />}</For>
+        <div class="w-full" classList={{ "max-w-[520px]": props.density === "chat", "max-w-[280px]": props.density === "panel" }}>
+          <SentAttachments attachments={files()} />
         </div>
       </Show>
       <Show when={props.text !== ""}>

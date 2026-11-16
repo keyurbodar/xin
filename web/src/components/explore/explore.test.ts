@@ -7,15 +7,13 @@ type Frame = { readonly id: string }
 
 const realFetch = globalThis.fetch
 const realWindow: unknown = Reflect.get(globalThis, "window")
-Object.defineProperty(globalThis, "window", {
-  value: { location: { hash: "" }, addEventListener: () => undefined, removeEventListener: () => undefined },
-  configurable: true,
-})
-if (Reflect.get(globalThis, "document") === undefined)
-  Object.defineProperty(globalThis, "document", {
-    value: { documentElement: { setAttribute: () => undefined }, addEventListener: () => undefined },
-    configurable: true,
-  })
+const realDocument: unknown = Reflect.get(globalThis, "document")
+const setGlobal = (key: "window" | "document", value: unknown): void => {
+  Object.defineProperty(globalThis, key, { value, configurable: true, writable: true })
+}
+setGlobal("window", { location: { hash: "" }, addEventListener: () => undefined, removeEventListener: () => undefined })
+if (realDocument === undefined)
+  setGlobal("document", { documentElement: { setAttribute: () => undefined }, addEventListener: () => undefined })
 void mock.module("../extensions/glyph.tsx", () => ({ Glyph: () => undefined }))
 void mock.module("@ark-ui/solid/menu", () => ({ Menu: new Proxy({}, { get: () => () => undefined }) }))
 void mock.module("../../appearance/store.ts", () => ({ isCatalogThemeAdded: () => false }))
@@ -37,7 +35,8 @@ afterEach(() => {
 })
 
 afterAll(() => {
-  Object.defineProperty(globalThis, "window", { value: realWindow, configurable: true })
+  setGlobal("window", realWindow)
+  setGlobal("document", realDocument)
 })
 
 const find = (node: TestNode, match: (node: TestNode) => boolean): TestNode | undefined =>

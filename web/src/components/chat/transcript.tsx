@@ -16,6 +16,7 @@ import { Markdown } from "./markdown.tsx"
 import { AnsweredQuestionCard } from "./cards.tsx"
 import { EntryList, OwnerBubble, itemsOf, type EntryItem, type ItemContext } from "./entries.tsx"
 import { ProjectGlyph } from "./project-glyph.tsx"
+import { SentBlobsScope } from "../composer/attachment-card.tsx"
 import { bindConversation } from "../../plugins/slots.tsx"
 
 export type PendingMessage = {
@@ -123,6 +124,7 @@ export function Transcript(props: {
   })
 
   return (
+    <SentBlobsScope scope={props.snapshot.id}>
     <div
       ref={scroller}
       onScroll={() => {
@@ -197,5 +199,6 @@ export function Transcript(props: {
         </For>
       </div>
     </div>
+    </SentBlobsScope>
   )
 }
