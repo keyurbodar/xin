@@ -15,6 +15,8 @@ export type Palette = { readonly accent: string; readonly background: string; re
 export type CustomTheme = {
   readonly id: string
   readonly label: string
+  /** The catalogue id this theme was added from, so Explore shows it as added. */
+  readonly source?: string
   readonly dark: Palette
   readonly light: Palette
   readonly background?: Background
@@ -163,10 +165,12 @@ export function parseCustomTheme(value: unknown): CustomTheme | undefined {
   const id = text(raw["id"], 64)
   const label = text(raw["label"], 48)
   if (id === undefined || label === undefined || !/^[\w-]+$/u.test(id)) return undefined
+  const source = text(raw["source"], 128)
   const background = raw["background"] === undefined ? undefined : parseBackground(raw["background"])
   return {
     id,
     label,
+    ...(source === undefined ? {} : { source }),
     dark: parsePalette(raw["dark"], INGLE_DARK),
     light: parsePalette(raw["light"], INGLE_LIGHT),
     ...(background === undefined ? {} : { background }),
@@ -286,5 +290,17 @@ export function withoutWallpaper(current: Appearance, url: string): Appearance {
     ...current,
     background: image?.url === url ? rest : current.background,
     wallpapers: current.wallpapers.filter((entry) => entry.url !== url),
+  }
+}
+
+/** A catalogue theme added once, keyed by `source`, and applied with its background; adding it again only reapplies it. */
+export function withCatalogTheme(current: Appearance, entry: CustomTheme, freshId: string): Appearance {
+  const known = current.custom.find((theme) => theme.source !== undefined && theme.source === entry.source)
+  const theme = known ?? { ...entry, id: freshId }
+  return {
+    ...current,
+    theme: `${CUSTOM_PREFIX}${theme.id}`,
+    custom: known === undefined ? [...current.custom, theme] : current.custom,
+    background: theme.background ?? current.background,
   }
 }

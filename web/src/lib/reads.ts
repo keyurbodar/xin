@@ -7,6 +7,8 @@
 export const READS: Readonly<Record<string, "cached" | "live">> = {
   "appearance.read": "live",
   "automation.list": "cached",
+  "explore.entry": "cached",
+  "explore.search": "cached",
   "market.entry": "cached",
   "market.policy": "cached",
   "market.search": "cached",
