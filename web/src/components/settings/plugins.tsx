@@ -1,3 +1,4 @@
+import "@ui-sdk/web/collapsible"
 import { createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { navigate } from "../../lib/router.ts"
 import {
@@ -8,10 +9,10 @@ import {
   type CatalogEntry,
   type PluginRow,
 } from "../../state/extensions.ts"
-import { Button, Failure, Note, Pending, StateChip, Toggle, failureOf } from "../extensions/chrome.tsx"
+import { Button, Failure, Note, Pending, StateChip, failureOf } from "../extensions/chrome.tsx"
 import { ConfigForm } from "../extensions/config-form.tsx"
 import { Glyph } from "../extensions/glyph.tsx"
-import { Group } from "./parts.tsx"
+import { Card, Group, Switch } from "./parts.tsx"
 
 export function Plugins(): JSX.Element {
   const [filter, setFilter] = createSignal("")
@@ -62,25 +63,27 @@ export function Plugins(): JSX.Element {
   }
 
   return (
-    <div class="flex flex-col gap-6">
-      <div class="grid grid-cols-3 overflow-hidden rounded-lg border border-line-1 bg-panel">
+    <>
+      <div class="grid grid-cols-3 overflow-hidden rounded-lg shadow-ring">
         <Figure label="Running" value={tally("active")} />
         <Figure label="Off" value={tally("disabled")} />
         <Figure label="Not running" value={tally("broken")} bad={tally("broken") > 0} />
       </div>
 
       <div class="flex items-center gap-2">
-        <div class="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-line-2 bg-bg px-2.5 focus-within:border-line-3">
+        <ui-input-group class="flex h-[var(--h-control)] min-w-0 flex-1 items-center gap-2 rounded-sm bg-bg px-2 shadow-ring focus-within:shadow-[0_0_0_1px_var(--color-primary),0_0_0_3px_var(--color-primary-soft)]">
           <Glyph name="search" size={14} class="text-ink-3" />
-          <input
-            value={filter()}
-            onInput={(event) => setFilter(event.currentTarget.value)}
-            placeholder="Filter plugins"
-            spellcheck={false}
-            aria-label="Filter plugins"
-            class="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-placeholder focus:outline-none"
-          />
-        </div>
+          <ui-input class="flex min-w-0 flex-1">
+            <input
+              value={filter()}
+              onInput={(event) => setFilter(event.currentTarget.value)}
+              placeholder="Filter plugins"
+              spellcheck={false}
+              aria-label="Filter plugins"
+              class="min-w-0 flex-1 bg-transparent text-small text-ink outline-none placeholder:text-placeholder"
+            />
+          </ui-input>
+        </ui-input-group>
         <Button size="sm" class="im-press" onClick={() => navigate("/extensions/installed")}>
           <Glyph name="package" size={14} />
           Packages
@@ -98,11 +101,11 @@ export function Plugins(): JSX.Element {
       <Show when={rows.state().kind === "ready"}>
         <Show
           when={shown().length > 0}
-          fallback={<p class="py-6 text-center text-sm text-ink-3">No plugin matches “{filter().trim()}”.</p>}
+          fallback={<p class="py-6 text-center text-small text-ink-3">No plugin matches “{filter().trim()}”.</p>}
         >
           <Show when={optional().length > 0}>
             <Group title="Optional" detail="A row that is off doesn’t start, so its tools and ops are gone until it’s on">
-              <div class="overflow-hidden rounded-lg border border-line-1 bg-panel">
+              <Card>
                 <For each={optional().map((row) => row.id)}>
                   {(id) => (
                     <Show when={byId().get(id)}>
@@ -116,18 +119,18 @@ export function Plugins(): JSX.Element {
                     </Show>
                   )}
                 </For>
-              </div>
+              </Card>
             </Group>
           </Show>
           <Show when={core().length > 0}>
             <Group title="Core" detail="The kernel needs these to run; they can’t be turned off">
-              <div class="overflow-hidden rounded-lg border border-line-1 bg-panel">
+              <Card>
                 <For each={core().map((row) => row.id)}>
                   {(id) => (
                     <Show when={byId().get(id)}>{(row) => <PluginLine row={row()} entry={entryFor(row().plugin)} />}</Show>
                   )}
                 </For>
-              </div>
+              </Card>
             </Group>
           </Show>
         </Show>
@@ -137,16 +140,16 @@ export function Plugins(): JSX.Element {
         Switches write one plugin row each and apply at once. Install, update, roll back or remove packages from
         Extensions.
       </Note>
-    </div>
+    </>
   )
 }
 
 function Figure(props: { label: string; value: number; bad?: boolean | undefined }): JSX.Element {
   return (
-    <div class="border-r border-line-1 px-4 py-3 last:border-0">
-      <span class="block text-xs text-ink-3">{props.label}</span>
+    <div class="border-r border-line-1 px-4 py-3 last:border-r-0">
+      <span class="block text-mini text-ink-3">{props.label}</span>
       <span
-        class="mt-0.5 block font-mono text-lg tabular-nums"
+        class="mt-0.5 block font-mono text-title-sm tabular-nums"
         classList={{ "text-failed": props.bad === true, "text-ink": props.bad !== true }}
       >
         {props.value}
@@ -165,52 +168,48 @@ function PluginLine(props: {
 
   const configurable = (): boolean => props.entry?.schema !== null && props.entry?.schema !== undefined
 
-  /** The form mounts collapsed and opens a frame later, so its first opening grows like every later one. */
-  const flip = (): void => {
-    if (open()) {
-      setOpen(false)
-      return
-    }
-    setMounted(true)
-    requestAnimationFrame(() => setOpen(true))
-  }
-
   return (
-    <div class="border-b border-line-1 last:border-0">
-      <div class="flex items-start gap-3 px-3.5 py-3" classList={{ "opacity-60": props.row.state.kind === "disabled" }}>
-        <span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-line-2 bg-card text-ink-2">
+    <ui-collapsible
+      class="block"
+      on:openchange={(event) => {
+        setOpen(event.detail.value)
+        if (event.detail.value) setMounted(true)
+      }}
+    >
+      <div class="flex items-start gap-3 px-4 py-3" classList={{ "opacity-60": props.row.state.kind === "disabled" }}>
+        <span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-secondary text-ink-2 shadow-ring">
           <Glyph name="plug" size={14} />
         </span>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <span class="truncate text-sm font-medium text-ink">{props.row.title}</span>
+            <span class="truncate text-small font-title text-ink">{props.row.title}</span>
             <StateChip state={props.row.state} />
           </div>
           <Show when={props.entry?.description}>
-            {(description) => <span class="mt-0.5 block text-xs leading-snug text-ink-3">{description()}</span>}
+            {(description) => <span class="mt-0.5 block text-mini text-ink-3">{description()}</span>}
           </Show>
-          <span class="mt-1 block truncate font-mono text-2xs text-icon">{props.row.id}</span>
+          <span class="mt-1 block truncate font-mono text-micro text-icon">{props.row.id}</span>
           <Show when={props.row.state.kind === "failed" ? props.row.state.error : undefined}>
-            {(message) => <span class="mt-1 block text-xs text-failed">{message()}</span>}
+            {(message) => <span class="mt-1 block text-mini text-failed">{message()}</span>}
           </Show>
         </div>
         <div class="flex shrink-0 items-center gap-2 pt-0.5">
           <Show when={configurable()}>
-            <button
-              type="button"
-              class="im-press inline-flex h-7 items-center gap-1 rounded-md px-2 text-sm text-ink-2 hover:bg-hover hover:text-ink"
-              aria-expanded={open()}
-              onClick={flip}
-            >
-              Configure
-              <span class="im-chevron inline-flex" data-open={open() ? "" : undefined}>
-                <Glyph name="chevron-right" size={13} />
-              </span>
-            </button>
+            <ui-collapsible-trigger>
+              <button
+                type="button"
+                class="im-press im-hover inline-flex h-[var(--h-control-sm)] items-center gap-1 rounded-sm px-2 text-small text-ink-2"
+              >
+                Configure
+                <span class="im-chevron inline-flex" data-open={open() ? "" : undefined}>
+                  <Glyph name="chevron-right" size={14} />
+                </span>
+              </button>
+            </ui-collapsible-trigger>
           </Show>
           <Show when={props.onToggle}>
             {(onToggle) => (
-              <Toggle
+              <Switch
                 on={!props.row.disabled}
                 label={`${props.row.disabled ? "Turn on" : "Turn off"} ${props.row.title}`}
                 onChange={onToggle()}
@@ -219,17 +218,17 @@ function PluginLine(props: {
           </Show>
         </div>
       </div>
-      <Show when={mounted() && props.entry}>
-        {(entry) => (
-          <div class="im-grow" data-open={open() ? "" : undefined} inert={!open()}>
-            <div>
-              <div class="border-t border-line-1 bg-bg/40 px-3.5 py-3.5 pl-[54px]">
-                <ConfigForm rowId={props.row.id} schema={entry().schema} config={props.row.config} />
-              </div>
+      <Show when={configurable()}>
+        <ui-collapsible-panel class="im-grow">
+          <div>
+            <div class="border-t border-line-1 px-4 py-3.5 pl-[56px]">
+              <Show when={mounted() && props.entry}>
+                {(entry) => <ConfigForm rowId={props.row.id} schema={entry().schema} config={props.row.config} />}
+              </Show>
             </div>
           </div>
-        )}
+        </ui-collapsible-panel>
       </Show>
-    </div>
+    </ui-collapsible>
   )
 }
