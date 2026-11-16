@@ -43,6 +43,13 @@ export function reservedOf(path: string): Reserved | undefined {
   return name === undefined ? undefined : { kind: "skill", name }
 }
 
+const THUMBNAIL = /^image\/(png|jpe?g|gif|webp|avif)$/u
+
+/** Whether a file shows its own picture as its thumbnail: the raster types every browser decodes. */
+export function hasThumbnail(type: string): boolean {
+  return THUMBNAIL.test(type)
+}
+
 export type DriveRow =
   | { readonly kind: "folder"; readonly name: string; readonly path: string; readonly files: number }
   | { readonly kind: "file"; readonly name: string; readonly entry: DriveEntry }

@@ -23,6 +23,7 @@ import {
   copyLink,
   drive,
   folderOf,
+  hasThumbnail,
   INSTRUCTIONS_CAP,
   INSTRUCTIONS_FILE,
   isStale,
@@ -61,7 +62,11 @@ import { createOverlayMount } from "../shell/presence.ts"
 import { Markdown } from "../chat/markdown.tsx"
 import { createPaneAction, EmptyState, ResourceError } from "../chat/ui.tsx"
 import { fileName as baseName, forgetProjectFiles, PANE_ROW } from "./bodies.tsx"
-import { DriveTree } from "./drive-tree.tsx"
+import { DriveTree, FileIcon } from "./drive-tree.tsx"
+import { blobUrl } from "../../lib/attachments.ts"
+import { pageOf } from "../../lib/pages.ts"
+import { Pager } from "../ui/pager.tsx"
+import { Tile } from "../ui/tile.tsx"
 
 const CENTER_ROW = PANE_ROW.replace("items-start", "items-center")
 
@@ -622,7 +627,22 @@ function FilePanel(props: {
 }
 
 function FileBody(props: { file: DriveFile }): JSX.Element {
+  const name = (): string => baseName(props.file.path)
   return (
+    <Show
+      when={!hasThumbnail(props.file.type)}
+      fallback={
+        <div class="px-2 pb-4">
+          <Tile
+            load={() => blobUrl(props.file.sha256, props.file.type)}
+            alt={name()}
+            fit="contain"
+            fallback={<FileIcon name={name()} folder={false} />}
+            class="aspect-[4/3] w-full rounded-md border border-line-1 bg-secondary"
+          />
+        </div>
+      }
+    >
     <Show
       when={props.file.text}
       fallback={<EmptyState pictogram="files" title="No text preview" detail={`${props.file.type} · ${bytes(props.file.size)}`} />}
@@ -638,12 +658,14 @@ function FileBody(props: { file: DriveFile }): JSX.Element {
         </div>
       )}
     </Show>
+    </Show>
   )
 }
 
 function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () => void }): JSX.Element {
   const [history, { refetch }] = createResource(() => props.path, (path) => drive.history(props.scope, path))
   const [viewing, setViewing] = createSignal<string | undefined>()
+  const [page, setPage] = createSignal(1)
   const [older] = createResource(viewing, (sha256) => drive.read(props.scope, props.path, sha256))
   const action = createPaneAction()
 
@@ -678,7 +700,7 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
                   on:valuechange={(event) => setViewing(typeof event.detail.value === "string" ? event.detail.value : undefined)}
                   class="flex flex-col outline-none"
                 >
-                  <For each={data().versions}>
+                  <For each={pageOf(data().versions, page())}>
                     {(entry) => (
                       <ui-listbox-item
                         value={entry.sha256}
@@ -693,6 +715,7 @@ function HistoryPanel(props: { scope: DriveScope; path: string; onRestored: () =
                     )}
                   </For>
                 </ui-listbox>
+                <Pager label="Earlier versions pages" total={data().versions.length} page={page()} onPage={setPage} />
               </Show>
             </>
           )}
