@@ -4,6 +4,7 @@ import type { BlockPayloads } from "../../src/components/chat/registry.ts"
 import { VisualBlock } from "../../src/components/chat/visual-block.tsx"
 import { registerBlock, renderBlock } from "../../src/components/chat/blocks.tsx"
 import { BUILT_IN_THEMES, DEFAULT_THEME, setTheme } from "../../src/lib/theme.ts"
+import { paintWash } from "../../../plugins/visual/frame/dither.ts"
 
 const themeOf = (id: string | null) => BUILT_IN_THEMES.find((entry) => entry.id === id) ?? DEFAULT_THEME
 
@@ -46,10 +47,10 @@ local s = ui.state { track = 1 }
 return function()
   return ui.column { gap = 12,
     ui.tabs { options = tracks, value = tracks[s.track], on_change = function(v) for i, t in ipairs(tracks) do if t == v then s.track = i end end end },
-    ui.chart { type = "bar", horizontal = true, dither = true, height = 220,
+    ui.chart { type = "bar", horizontal = true, dither = true, bloom = "low", height = 220,
       x = { "QueueSnap", "Liquidity Shepherd", "HealthBeat", "LoopMeter" },
       series = { { name = tracks[s.track], values = { 4.6, 3.9, 3.4, 3.1 }, color = ui.series(s.track) } } },
-    ui.chart { type = "area", dither = true, height = 160, x = { "Mon", "Tue", "Wed", "Thu", "Fri" },
+    ui.chart { type = "area", dither = "dotted", height = 160, x = { "Mon", "Tue", "Wed", "Thu", "Fri" },
       series = { { name = "Submissions", values = { 3, 7, 5, 11, 9 } } } },
   }
 end`
@@ -73,6 +74,7 @@ declare global {
     visualHarness: {
       set: (script: string, status: BlockPayloads["tool"]["status"]) => void
       theme: (next: string) => void
+      wash: () => { readonly top: number; readonly bottom: number }
       readonly dashboard: string
     }
   }
@@ -82,6 +84,21 @@ window.visualHarness = {
   set: (script, status) =>
     setCall({ name: "show_visual", callId: "call-1", args: { title: "Latency", script }, status }),
   theme: (next) => setTheme(themeOf(next)),
+  wash: () => {
+    const canvas = document.createElement("canvas")
+    canvas.width = 32
+    canvas.height = 32
+    const context = canvas.getContext("2d")
+    if (context === null) return { top: 0, bottom: 0 }
+    paintWash(context, 32, 32, "rgb(255 0 0)", { direction: "up", opacity: 1 })
+    const alpha = (row: number): number => {
+      const data = context.getImageData(0, row, 32, 1).data
+      let sum = 0
+      for (let at = 3; at < data.length; at += 4) sum += data[at] ?? 0
+      return sum / 32 / 255
+    }
+    return { top: alpha(0), bottom: alpha(31) }
+  },
   dashboard: DASHBOARD,
 }
 

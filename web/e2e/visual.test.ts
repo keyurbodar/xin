@@ -155,28 +155,52 @@ test("the theme follows the app without reloading the script", async () => {
   await page.close()
 }, 60_000)
 
-test("a dithered chart draws its bars as Bayer dots that grow denser toward the value", async () => {
+test("a dithered chart paints its bars dense at the base and dissolving toward the value, with a bloom layer", async () => {
   for (const theme of ["dark", "light"] as const) {
     const { page, frame } = await open({ fixture: "dither", theme })
     try {
-      await frame.locator(".v-chart svg pattern").first().waitFor({ state: "attached" })
-      const bars = await frame.evaluate(() => {
-        const chart = document.querySelector(".v-chart svg")
-        if (chart === null) return { pieces: 0, levels: [] as number[] }
-        const fills = [...chart.querySelectorAll("rect[fill^='url(']")].map((rect) => rect.getAttribute("fill") ?? "")
-        const dots = (fill: string): number => {
-          const id = /url\(#(.+)\)/.exec(fill)?.[1] ?? ""
-          return document.getElementById(id)?.childElementCount ?? 0
+      await frame.locator(".v-chart canvas").first().waitFor({ state: "attached" })
+      const bar = await frame.evaluate(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>(".v-chart canvas")
+        const context = canvas?.getContext("2d")
+        if (canvas === null || canvas === undefined || context === null || context === undefined)
+          return { base: 0, tip: 0, layers: 0 }
+        const { width, height } = canvas
+        const data = context.getImageData(0, 0, width, height).data
+        let lane = 0
+        let reach = 0
+        for (let y = 0; y < height; y += 1) {
+          let count = 0
+          for (let x = 0; x < width; x += 1) if ((data[(y * width + x) * 4 + 3] ?? 0) > 0) count += 1
+          if (count > reach) {
+            reach = count
+            lane = y
+          }
         }
-        return { pieces: fills.length, levels: fills.slice(0, 8).map(dots) }
+        const xs: number[] = []
+        for (let x = 0; x < width; x += 1) if ((data[(lane * width + x) * 4 + 3] ?? 0) > 0) xs.push(x)
+        const first = xs[0] ?? 0
+        const span = (xs.at(-1) ?? 0) - first
+        const mean = (from: number, to: number): number => {
+          let sum = 0
+          for (let x = first + Math.round(span * from); x < first + Math.round(span * to); x += 1)
+            sum += data[(lane * width + x) * 4 + 3] ?? 0
+          return sum / Math.max(1, Math.round(span * (to - from)))
+        }
+        const chart = canvas.closest(".v-chart")
+        return {
+          base: mean(0, 0.25),
+          tip: mean(0.6, 0.85),
+          layers: chart?.querySelectorAll("canvas").length ?? 0,
+          blend: [...(chart?.querySelectorAll("canvas") ?? [])].map((item) => item.style.mixBlendMode).join(","),
+        }
       })
-      expect(bars.pieces).toBeGreaterThan(8)
-      const first = bars.levels[0] ?? 0
-      const last = bars.levels.at(-1) ?? 0
-      expect(last).toBeGreaterThan(first)
+      expect(bar.base).toBeGreaterThan(bar.tip)
+      expect(bar.layers).toBe(2)
+      expect(bar.blend).toContain("plus-lighter")
       expect(await frame.locator(".v-error").isHidden()).toBe(true)
       await frame.getByRole("tab", { name: "Reactive Meets AI" }).click()
-      await frame.locator(".v-chart svg rect[fill^='url(']").first().waitFor({ state: "attached" })
+      await frame.locator(".v-chart canvas").first().waitFor({ state: "attached" })
       if (renders !== undefined)
         await page.screenshot({ path: join(renders, `visual-dither-${theme}-1280.png`), fullPage: true })
     } finally {
@@ -184,6 +208,17 @@ test("a dithered chart draws its bars as Bayer dots that grow denser toward the 
     }
   }
 }, 90_000)
+
+test("the shared dither engine paints a wash that dissolves toward its direction", async () => {
+  const { page } = await open({ fixture: "dither" })
+  try {
+    const wash = await page.evaluate(() => window.visualHarness.wash())
+    expect(wash.bottom).toBeGreaterThan(0.8)
+    expect(wash.top).toBeLessThan(0.1)
+  } finally {
+    await page.close()
+  }
+}, 60_000)
 
 test("a 3D scene renders with WebGL inside the frame", async () => {
   const { page, frame } = await open({ fixture: "scene" })

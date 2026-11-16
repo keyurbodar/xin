@@ -37,7 +37,7 @@ tr.v-hover { margin: 0; padding: 0; }
 .v-table th:last-child, .v-table td:last-child { padding-right: 0; }
 .v-table tr.v-hover:hover td { background: color-mix(in oklab, var(--text) 5%, transparent); }
 .v-chart, .v-canvas, .v-scene, .v-shader { position: relative; min-width: 0; width: 100%; }
-.v-chart svg { display: block; overflow: visible; font-variant-numeric: tabular-nums; }
+.v-chart svg { position: relative; display: block; overflow: visible; font-variant-numeric: tabular-nums; }
 .v-canvas canvas, .v-scene canvas, .v-shader canvas { display: block; width: 100%; }
 button { font: inherit; color: inherit; }
 .v-button {

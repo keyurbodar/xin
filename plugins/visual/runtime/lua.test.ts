@@ -29,6 +29,12 @@ const failure = (script: string): string => {
   throw new Error(`expected ${script} to fail`)
 }
 
+const ditherChart = (props: string): Node =>
+  Visual.load(
+    `return ui.chart { type = "bar", ${props}, x = { "a" }, series = { { name = "n", values = { 1 } } } }`,
+    1,
+  ).render()
+
 describe("visual runtime", () => {
   it("renders a view, and handlers change its state", () => {
     const visual = Visual.load(
@@ -212,12 +218,23 @@ describe("visual runtime", () => {
     )
   })
 
-  it("takes dither = true on a chart and refuses it elsewhere", () => {
-    const tree = Visual.load(
-      `return ui.chart { type = "bar", dither = true, x = { "a", "b" }, series = { { name = "n", values = { 1, 2 } } } }`,
-      1,
-    ).render()
-    expect(tree.kind === "chart" && tree.dither).toBe(true)
+  it("takes a dither variant and bloom on a chart and refuses them elsewhere", () => {
+    const plain = ditherChart(`dither = true`)
+    expect(plain.kind === "chart" && [plain.dither, plain.bloom]).toEqual(["gradient", "off"])
+    const glowing = ditherChart(`dither = "hatched", bloom = "aura"`)
+    expect(glowing.kind === "chart" && [glowing.dither, glowing.bloom]).toEqual(["hatched", "aura"])
+    const off = ditherChart(`dither = false`)
+    expect(off.kind === "chart" && off.dither).toBeUndefined()
+    expect(
+      failure(
+        `return ui.chart { type = "bar", dither = "plaid", x = { "a" }, series = { { name = "n", values = { 1 } } } }`,
+      ),
+    ).toContain("one of gradient")
+    expect(
+      failure(
+        `return ui.chart { type = "bar", bloom = "low", x = { "a" }, series = { { name = "n", values = { 1 } } } }`,
+      ),
+    ).toContain("needs dither")
     expect(failure(`return ui.text { "x", dither = true }`)).toContain("has no 'dither'")
   })
 

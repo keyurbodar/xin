@@ -2,7 +2,11 @@
 
 import {
   type Align,
+  type Bloom,
+  BLOOMS,
   type Color,
+  DITHER_VARIANTS,
+  type DitherVariant,
   type Justify,
   type NumberFormat,
   type TextSize,
@@ -65,7 +69,8 @@ export type ChartNode = {
   readonly format: NumberFormat
   readonly xFormat: NumberFormat
   readonly legend: boolean
-  readonly dither: boolean
+  readonly dither: DitherVariant | undefined
+  readonly bloom: Bloom
 }
 
 export type Camera = { readonly yaw: number; readonly pitch: number; readonly zoom: number }
@@ -615,6 +620,19 @@ export class Parser {
   }
 }
 
+function dithering(props: Props): { dither: DitherVariant | undefined; bloom: Bloom } {
+  const raw = props.raw("dither")
+  const named = typeof raw === "string" ? DITHER_VARIANTS.find((variant) => variant === raw) : undefined
+  if (raw !== undefined && typeof raw !== "boolean" && named === undefined)
+    throw props.error(`'dither' must be true or one of ${DITHER_VARIANTS.join(", ")}`)
+  const dither = raw === true ? "gradient" : named
+  const glow = props.string("bloom")
+  const bloom = glow === undefined ? "off" : BLOOMS.find((level) => level === glow)
+  if (bloom === undefined) throw props.error(`'bloom' must be one of ${BLOOMS.join(", ")}`)
+  if (bloom !== "off" && dither === undefined) throw props.error("'bloom' needs dither")
+  return { dither, bloom }
+}
+
 function chart(props: Props): ChartNode {
   props.allow([
     "type",
@@ -632,6 +650,7 @@ function chart(props: Props): ChartNode {
     "x_decimals",
     "legend",
     "dither",
+    "bloom",
   ])
   const type = props.string("type") ?? "bar"
   if (type !== "bar" && type !== "line" && type !== "area" && type !== "scatter")
@@ -690,7 +709,7 @@ function chart(props: Props): ChartNode {
       decimals: xDecimals === undefined ? undefined : Math.trunc(clamp(xDecimals, 0, 6)),
     },
     legend: props.bool("legend") ?? true,
-    dither: props.bool("dither") ?? false,
+    ...dithering(props),
   }
 }
 
