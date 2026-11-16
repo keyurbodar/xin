@@ -482,14 +482,22 @@ describe("workspace", () => {
     const reasked = await revs()
     expect(reasked.mine).toBeGreaterThan(resolved.mine)
 
+    await requests(asker, (doc) => {
+      answer("q2")(doc)
+      ask("q3")(doc)
+    })
+    const swapped = await revs()
+    expect(swapped.mine).toBeGreaterThan(reasked.mine)
+    expect(swapped.other).toBe(start.other)
+
     await requests(chatter, ask("q9"))
     const elsewhere = await revs()
-    expect(elsewhere.mine).toBe(reasked.mine)
-    expect(elsewhere.other).toBeGreaterThan(reasked.other)
+    expect(elsewhere.mine).toBe(swapped.mine)
+    expect(elsewhere.other).toBeGreaterThan(swapped.other)
 
     await evictDurableObject(stub)
     const rebooted = await revs()
-    expect(rebooted.mine).toBeGreaterThan(Math.max(reasked.mine, elsewhere.other))
-    expect(rebooted.other).toBeGreaterThan(Math.max(reasked.mine, elsewhere.other))
+    expect(rebooted.mine).toBeGreaterThan(Math.max(swapped.mine, elsewhere.other))
+    expect(rebooted.other).toBeGreaterThan(Math.max(swapped.mine, elsewhere.other))
   })
 })
